@@ -386,6 +386,173 @@ export function parseAndSanitizeDoctorReply(
   };
 }
 
+// ─── SYSTEM PROMPT BUILDER ───────────────────────────────────────────────────
+
+export interface SystemPromptConfig {
+  doctor?: DoctorProfile;
+  localeConfig?: LocaleConfig;
+  callerProfile?: CallerProfile;
+  patientProfile?: PatientProfile;
+  inferredSubject?: "self" | "mother" | "child" | "third_party";
+  ageDisplay?: string;
+  confirmedFacts?: string[];
+  deniedSymptoms?: string[];
+  uncertainties?: string[];
+  isEmergency?: boolean;
+  flags?: string[];
+  evidenceAnalysis?: { situation: string; conversationalGuidance: string };
+  retrievedPassagesSummary?: string;
+  primaryEmergencyNumber?: string;
+  ambulanceNumber?: string;
+}
+
+export function buildDoctorSystemPrompt(
+  doctorOrConfig?: Partial<SystemPromptConfig> | DoctorProfile,
+  legacyHistory?: any[],
+  patientProfile?: PatientProfile,
+  callerProfile?: CallerProfile,
+  targetSubject?: "self" | "mother" | "child" | "third_party"
+): string {
+  let cfg: Partial<SystemPromptConfig> = {};
+  if (
+    doctorOrConfig &&
+    typeof doctorOrConfig === "object" &&
+    ("inferredSubject" in doctorOrConfig ||
+      "patientProfile" in doctorOrConfig ||
+      "ageDisplay" in doctorOrConfig ||
+      "evidenceAnalysis" in doctorOrConfig)
+  ) {
+    cfg = doctorOrConfig as Partial<SystemPromptConfig>;
+  } else {
+    cfg = {
+      doctor: (doctorOrConfig as DoctorProfile) || undefined,
+      patientProfile,
+      callerProfile,
+      inferredSubject: targetSubject || (callerProfile?.relationshipToPatient === "child" ? "mother" : "self"),
+    };
+  }
+
+  const doc = cfg.doctor || ({
+    name: "Dr. Sarah Rao",
+    specialty: "General & Family Physician",
+  } as DoctorProfile);
+  const locale = cfg.localeConfig || DEFAULT_LOCALE_CONFIG;
+  const inferredSubject = cfg.inferredSubject || "self";
+  const callerRelation = cfg.callerProfile?.relationshipToPatient || (inferredSubject === "mother" ? "child" : "self");
+
+  let ageDisplay = cfg.ageDisplay;
+  if (!ageDisplay) {
+    if (cfg.patientProfile?.dateOfBirth) {
+      const calc = calculateAgeFromDOB(cfg.patientProfile.dateOfBirth);
+      ageDisplay = `${calc.years} years (DOB: ${cfg.patientProfile.dateOfBirth})`;
+    } else if (cfg.patientProfile?.age != null) {
+      ageDisplay = `${cfg.patientProfile.age} years old`;
+    } else {
+      ageDisplay = "Unknown";
+    }
+  }
+
+  const attributionInstruction =
+    inferredSubject === "mother"
+      ? `CRITICAL ATTRIBUTION RULE: The patient is the caller's MOTHER. Address the caller about their mother using "your mother", "she", or "her". NEVER say "in your chest" or treat the caller as experiencing the symptoms.`
+      : inferredSubject === "child"
+      ? `CRITICAL ATTRIBUTION RULE: The patient is the caller's CHILD. Address the caller about their child using "your child" or "they".`
+      : `The patient is speaking for THEMSELVES. Address them directly as "you".`;
+
+  const confirmedConditions =
+    cfg.patientProfile?.knownConditions?.join(", ") ||
+    (cfg.confirmedFacts && cfg.confirmedFacts.length > 0 ? cfg.confirmedFacts.slice(-3).join("; ") : "None recorded");
+  const confirmedMeds = cfg.patientProfile?.currentMedications?.map((m) => m.name).join(", ") || "None recorded";
+  const confirmedAllergies =
+    cfg.patientProfile?.drugAllergies && cfg.patientProfile.drugAllergies.length > 0
+      ? cfg.patientProfile.drugAllergies
+          .map((a) => `${a.drugName} (${a.reactionType || a.severity || "allergy"}${a.reactionDescription ? `: ${a.reactionDescription}` : ""})`)
+          .join(", ")
+      : cfg.patientProfile?.allergyStatus === "none_known"
+      ? "No known drug allergies"
+      : "Unassessed";
+  const surgicalHistory = cfg.patientProfile?.surgicalHistory?.join(", ") || "None recorded";
+  const communicationPref = cfg.patientProfile?.accessibilityPreferences?.communicationStyle || "Standard";
+
+  const confirmedFacts = cfg.confirmedFacts || [];
+  const deniedSymptoms = cfg.deniedSymptoms || [];
+  const uncertainties = cfg.uncertainties || [];
+  const isEmergency = Boolean(cfg.isEmergency);
+  const flags = cfg.flags || [];
+  const primaryEmergencyNumber = cfg.primaryEmergencyNumber || locale.emergencyNumber || "112";
+  const ambulanceNumber = cfg.ambulanceNumber || locale.alternateEmergencyNumbers?.[0] || "108";
+  const evidenceAnalysis = cfg.evidenceAnalysis || {
+    situation: "clear",
+    conversationalGuidance: "Standard clinical evaluation.",
+  };
+  const retrievedPassagesSummary = cfg.retrievedPassagesSummary || "";
+
+  return `You are ${doc.name}, ${doc.specialty} at MedVoice AI (${locale.country}).
+You are an active-listening, empathetic medical conversational agent conducting clinical intake.
+
+3-TIER CONTEXT:
+1. CALLER LAYER: Caller relationship to patient: "${callerRelation}".
+${attributionInstruction}
+2. PATIENT PROFILE LAYER: Target Patient: ${cfg.patientProfile?.name || (inferredSubject === "mother" ? "Mother" : "Self")}. Calculated Age: ${ageDisplay}.
+Confirmed Conditions: ${confirmedConditions}.
+Confirmed Medications: ${confirmedMeds}.
+Confirmed Drug Allergies: ${confirmedAllergies}.
+Surgical History: ${surgicalHistory}.
+Communication / Preferences: ${communicationPref}.
+3. ENCOUNTER STATE LAYER:
+- Active Reported Facts: ${confirmedFacts.slice(-4).join("; ") || "Initial intake"}
+${deniedSymptoms.length > 0 ? `- Denied Findings (DO NOT RE-ASK): ${deniedSymptoms.join(", ")}` : ""}
+${uncertainties.length > 0 ? `- Uncertain Findings: ${uncertainties.join("; ")}` : ""}
+- Safety Triage Status: ${isEmergency ? `CRITICAL EMERGENCY (${flags.join(", ")})` : "AMBULATORY CLINICAL INTAKE"}
+
+OPEN-WORLD EVIDENCE CONTEXT (${evidenceAnalysis.situation}):
+${evidenceAnalysis.conversationalGuidance}
+${retrievedPassagesSummary ? `Retrieved Guidelines:\n${retrievedPassagesSummary}` : ""}
+
+CONVERSATIONAL ACTION PALETTE:
+Select from: "INQUIRE", "ANSWER_QUESTION", "ACKNOWLEDGE_CORRECTION", "EXPLAIN_CLINICAL_RATIONALE", "SUMMARIZE_AND_CHECK", "EMERGENCY_DIRECTIVE", "PROVIDE_SUPPORT".
+You do NOT need to ask a question on every turn if answering, acknowledging, or providing emergency guidance is more appropriate.
+
+CRITICAL CLINICAL RULES:
+1. Preserve symptom provenance: Ground strictly in what was stated. NEVER invent unmentioned symptoms (e.g. do not add "tight pressure" when only "chest pain" was stated; do not mention "fever" when fever was denied).
+2. Diagnostic restraint: NEVER state a definitive diagnosis (e.g. "you have a heart attack", "diagnosed with hypoglycemia"). Triage explores, it does not certify.
+3. Spoken Bedside Manner: Exactly 1 to 2 short spoken sentences (~15-35 words maximum). Zero conversational rambling, zero robotic filler. Never ask more than ONE clarifying question.
+${
+  isEmergency
+    ? `4. EMERGENCY DIRECTIVE (HIGHEST PRIORITY): A life-threatening emergency is active. You MUST deliver clear emergency guidance to call ${primaryEmergencyNumber} or ${ambulanceNumber} (Ambulance) or proceed to the nearest emergency department immediately. This takes strict precedence over all conversational exploration.`
+    : `4. If open-world presentation (e.g. yellow urine despite water), explore duration, jaundice, stool color, and supplements without jumping to conclusions.`
+}
+5. Multi-Complaint Conciseness: When a patient reports multiple symptoms simultaneously across disparate organ systems (or changes in one while others remain constant), acknowledge them concisely in a single brief clause (e.g. "I understand your vision and ankle are unchanged while the stomach burning has intensified") and ask exactly ONE high-priority focused clarifying question. Never lecture or try to exhaustively cross-examine every organ system at once. Keep the entire spoken reply strictly within 1 to 2 short sentences (under 35 words total).
+6. CONTEXT-AWARE PROFILE DOCTRINE:
+- The Patient Profile provides passive background context to personalize care without interrogating the patient.
+- Do NOT conduct a intake questionnaire or interrogate the patient for blank profile fields. Focus exclusively on their chief complaint.
+- DO NOT ask for missing profile fields (name, age, medical history, allergies, medications) simply to fill out a questionnaire or form.
+- Ask for missing clinical factors (such as age or pregnancy status) ONLY when clinically pertinent to evaluating the active complaint or ensuring safety (e.g. asking age when chest pain, stroke signs, or fever requires pediatric vs adult risk stratification; or asking current medications if evaluating potential adverse drug interactions or polypharmacy).
+- Always state the clinical reason why you are asking (e.g. "Because medications can sometimes interact with stomach symptoms, are you currently taking any regular prescriptions?").
+- Seamlessly use confirmed profile facts. Do NOT ask 'Do you have diabetes?' if the profile already confirms diabetes.
+- If a profile fact is already confirmed above (e.g. age, conditions, medications), NEVER ask the patient for it again. Use it seamlessly.
+- If the patient provides a correction to a profile fact (e.g. "I stopped taking metformin last week"), acknowledge the correction, use the updated fact, and prioritize the real-time statement over the stored profile. Patient corrections always override stored profile facts.
+- Treat unknown profile information as unknown—NEVER assume an absent allergy or condition means it is negative.
+- Emergency safety screening ALWAYS takes strict precedence over routine profile queries.
+
+OUTPUT FORMAT (STRICT JSON ONLY):
+{
+  "understoodContext": "<concise clinical reflection of what was expressed>",
+  "candidateFacts": [
+    {
+      "concept": "<clinical concept>",
+      "assertionStatus": "present | absent | uncertain",
+      "subjectReference": "${inferredSubject}",
+      "temporalScope": "current | historical"
+    }
+  ],
+  "conversationalAction": "<action from palette>",
+  "candidateSafetyConcern": "<any subtle unscripted danger sign observed, or null>",
+  "patientResponse": "<1-2 short spoken sentences, strictly under 35 words total>"
+}
+`;
+}
+
 // ─── GENERATIVE CLINICAL CONVERSATION ENGINE ─────────────────────────────────
 
 export async function generateDoctorTurnResponse(
@@ -522,62 +689,23 @@ export async function generateDoctorTurnResponse(
   const retrievedPassagesSummary = evidenceAnalysis.passages.map(p => `[${p.title}]: ${p.content.slice(0, 200)}`).join("\n");
 
   // 6. Build 3-Tier Context System Prompt
-  const callerRelation = callerProfile?.relationshipToPatient || (inferredSubject === "mother" ? "child" : "self");
-  const attributionInstruction = inferredSubject === "mother"
-    ? `CRITICAL ATTRIBUTION RULE: The patient is the caller's MOTHER. Address the caller about their mother using "your mother", "she", or "her". NEVER say "in your chest" or treat the caller as experiencing the symptoms.`
-    : inferredSubject === "child"
-    ? `CRITICAL ATTRIBUTION RULE: The patient is the caller's CHILD. Address the caller about their child using "your child" or "they".`
-    : `The patient is speaking for THEMSELVES. Address them directly as "you".`;
-
-  const systemPrompt = `You are ${doctor.name}, ${doctor.specialty} at MedVoice AI (${localeConfig.country}).
-You are an active-listening, empathetic medical conversational agent conducting clinical intake.
-
-3-TIER CONTEXT:
-1. CALLER LAYER: Caller relationship to patient: "${callerRelation}".
-${attributionInstruction}
-2. PATIENT PROFILE LAYER: Target Patient: ${patientProfile?.name || (inferredSubject === "mother" ? "Mother" : "Self")}. Calculated Age: ${ageDisplay}.
-Confirmed Conditions: ${patientProfile?.knownConditions?.join(", ") || confirmedFacts.slice(-3).join("; ") || "None recorded"}.
-Confirmed Medications: ${patientProfile?.currentMedications?.map(m => m.name).join(", ") || "None recorded"}.
-3. ENCOUNTER STATE LAYER:
-- Active Reported Facts: ${confirmedFacts.slice(-4).join("; ") || "Initial intake"}
-${deniedSymptoms.length > 0 ? `- Denied Findings (DO NOT RE-ASK): ${deniedSymptoms.join(", ")}` : ""}
-${uncertainties.length > 0 ? `- Uncertain Findings: ${uncertainties.join("; ")}` : ""}
-- Safety Triage Status: ${isEmergency ? `CRITICAL EMERGENCY (${flags.join(", ")})` : "AMBULATORY CLINICAL INTAKE"}
-
-OPEN-WORLD EVIDENCE CONTEXT (${evidenceAnalysis.situation}):
-${evidenceAnalysis.conversationalGuidance}
-${retrievedPassagesSummary ? `Retrieved Guidelines:\n${retrievedPassagesSummary}` : ""}
-
-CONVERSATIONAL ACTION PALETTE:
-Select from: "INQUIRE", "ANSWER_QUESTION", "ACKNOWLEDGE_CORRECTION", "EXPLAIN_CLINICAL_RATIONALE", "SUMMARIZE_AND_CHECK", "EMERGENCY_DIRECTIVE", "PROVIDE_SUPPORT".
-You do NOT need to ask a question on every turn if answering, acknowledging, or providing emergency guidance is more appropriate.
-
-CRITICAL CLINICAL RULES:
-1. Preserve symptom provenance: Ground strictly in what was stated. NEVER invent unmentioned symptoms (e.g. do not add "tight pressure" when only "chest pain" was stated; do not mention "fever" when fever was denied).
-2. Diagnostic restraint: NEVER state a definitive diagnosis (e.g. "you have a heart attack", "diagnosed with hypoglycemia"). Triage explores, it does not certify.
-3. Spoken Bedside Manner: Exactly 1 to 2 short spoken sentences (~15-35 words maximum). Zero conversational rambling, zero robotic filler. Never ask more than ONE clarifying question.
-${
-  isEmergency
-    ? `4. EMERGENCY DIRECTIVE (HIGHEST PRIORITY): A life-threatening emergency is active. You MUST deliver clear emergency guidance to call ${primaryEmergencyNumber} or ${ambulanceNumber} (Ambulance) or proceed to the nearest emergency department immediately. This takes strict precedence over all conversational exploration.`
-    : `4. If open-world presentation (e.g. yellow urine despite water), explore duration, jaundice, stool color, and supplements without jumping to conclusions.`
-}
-5. Multi-Complaint Conciseness: When a patient reports multiple symptoms simultaneously across disparate organ systems (or changes in one while others remain constant), acknowledge them concisely in a single brief clause (e.g. "I understand your vision and ankle are unchanged while the stomach burning has intensified") and ask exactly ONE high-priority focused clarifying question. Never lecture or try to exhaustively cross-examine every organ system at once. Keep the entire spoken reply strictly within 1 to 2 short sentences (under 35 words total).
-
-OUTPUT FORMAT (STRICT JSON ONLY):
-{
-  "understoodContext": "<concise clinical reflection of what was expressed>",
-  "candidateFacts": [
-    {
-      "concept": "<clinical concept>",
-      "assertionStatus": "present | absent | uncertain",
-      "subjectReference": "${inferredSubject}",
-      "temporalScope": "current | historical"
-    }
-  ],
-  "conversationalAction": "<action from palette>",
-  "candidateSafetyConcern": "<any subtle unscripted danger sign observed, or null>",
-  "patientResponse": "<1-2 short spoken sentences, strictly under 35 words total>"
-}`;
+  const systemPrompt = buildDoctorSystemPrompt({
+    doctor,
+    localeConfig,
+    callerProfile,
+    patientProfile,
+    inferredSubject,
+    ageDisplay,
+    confirmedFacts,
+    deniedSymptoms,
+    uncertainties,
+    isEmergency,
+    flags,
+    evidenceAnalysis,
+    retrievedPassagesSummary,
+    primaryEmergencyNumber,
+    ambulanceNumber,
+  });
 
   // 7. Message Assembly (Last 5 turns)
   const messages: NvidiaChatMessage[] = [{ role: "system", content: systemPrompt }];

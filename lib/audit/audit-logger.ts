@@ -8,7 +8,10 @@ export type AuditAction =
   | "EMERGENCY_DISPATCH"
   | "AUDIT_CHAIN_VERIFIED"
   | "ACCESS_DENIED"
-  | "ROLE_ELEVATION_ATTEMPT";
+  | "ROLE_ELEVATION_ATTEMPT"
+  | "PATIENT_PROFILE_ACCESSED"
+  | "PATIENT_PROFILE_SAVED"
+  | "PATIENT_PROFILE_DELETED";
 
 export type AuditActorRole = "patient" | "admin" | "system";
 

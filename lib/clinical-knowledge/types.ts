@@ -152,8 +152,23 @@ export interface PatientProfile {
   allergies?: any[];
   surgicalHistory?: string[];
 
-  // Lifestyle
+  // Lifestyle & Vitals
   smokingStatus?: "current" | "former" | "never" | "unknown";
+  bloodGroup?: string;
+  clinicalNotes?: string;
+
+  // Emergency & Accessibility (Optional)
+  emergencyContact?: {
+    name?: string;
+    phone?: string;
+    relationship?: string;
+  };
+  accessibilityPreferences?: {
+    communicationStyle?: string;
+    visualAccommodations?: boolean;
+    hearingAccommodations?: boolean;
+    notes?: string;
+  };
 
   // DPDP Privacy Compliance
   consentGiven?: boolean;

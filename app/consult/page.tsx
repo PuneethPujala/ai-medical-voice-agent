@@ -400,7 +400,25 @@ export type ConsultSessionMode = "CONSULT_LOBBY" | "ACTIVE_CONSULTATION" | "CONS
 
 export default function ConsultPage() {
   const { user } = useUser();
-  const patientDisplayName = user?.fullName || user?.firstName || "Patient";
+  const [activeProfile, setActiveProfile] = useState<any>(null);
+  const [userProfiles, setUserProfiles] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (user?.id) {
+      fetch("/api/patient/profile?all=true")
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success && data.profiles?.length > 0) {
+            setUserProfiles(data.profiles);
+            const defaultProfile = data.profiles.find((p: any) => p.relationshipToUser === "self") || data.profiles[0];
+            setActiveProfile(defaultProfile);
+          }
+        })
+        .catch((err) => console.warn("Failed to load patient profiles:", err));
+    }
+  }, [user?.id]);
+
+  const patientDisplayName = activeProfile?.name || user?.fullName || user?.firstName || "Patient";
 
   const [sessionMode, setSessionMode] = useState<ConsultSessionMode>("CONSULT_LOBBY");
   const [selectedDoctor, setSelectedDoctor] = useState<DoctorProfile>(DOCTOR_PROFILES[0]);
@@ -1876,6 +1894,10 @@ export default function ConsultPage() {
           message: cleanUserText,
           conversationHistory: [...messages, userMessage],
           patientName: patientDisplayName,
+          patientAge: activeProfile?.age != null ? String(activeProfile.age) : undefined,
+          patientId: activeProfile?.id,
+          patientRelationship: activeProfile?.relationshipToUser || "self",
+          patientProfile: activeProfile || undefined,
           userId: user?.id,
           isInterruption: isBargeIn,
           interruptedAgent: selectedDoctor.name,
@@ -2108,6 +2130,56 @@ export default function ConsultPage() {
                 <p className="text-base sm:text-lg text-slate-600 max-w-2xl font-normal leading-relaxed">
                   Choose who you&apos;d like to consult with. Your symptoms will be carefully reviewed, with safety checks running continuously in the background.
                 </p>
+
+                {/* Linked Patient Profile Context Banner */}
+                <div className="pt-1">
+                  {activeProfile ? (
+                    <div className="inline-flex items-center gap-2.5 px-4 py-2 rounded-2xl bg-white border border-slate-200/90 shadow-2xs text-xs">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981]" />
+                      <span className="text-slate-500 font-medium">Consulting for:</span>
+                      <strong className="text-slate-900 font-bold">{activeProfile.name || (activeProfile.relationshipToUser === "self" ? "Myself" : activeProfile.relationshipToUser)}</strong>
+                      {activeProfile.age ? (
+                        <span className="text-slate-500 font-mono text-[11px]">({activeProfile.age}y)</span>
+                      ) : null}
+                      {activeProfile.knownConditions?.length ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-800 text-[10px] font-bold">
+                          {activeProfile.knownConditions.length} condition{activeProfile.knownConditions.length > 1 ? "s" : ""}
+                        </span>
+                      ) : null}
+                      {userProfiles.length > 1 ? (
+                        <select
+                          aria-label="Switch patient profile"
+                          value={activeProfile.id}
+                          onChange={(e) => {
+                            const chosen = userProfiles.find((p) => p.id === e.target.value);
+                            if (chosen) setActiveProfile(chosen);
+                          }}
+                          className="text-[11px] font-semibold text-slate-700 bg-slate-100 rounded-lg px-2 py-0.5 border border-slate-200 cursor-pointer ml-1"
+                        >
+                          {userProfiles.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name || (p.relationshipToUser === "self" ? "Myself (Self)" : p.relationshipToUser)}
+                            </option>
+                          ))}
+                        </select>
+                      ) : null}
+                      <Link
+                        href="/profile"
+                        className="ml-2 font-semibold text-cyan-700 hover:text-cyan-900 text-[11px] underline"
+                      >
+                        Edit Profile
+                      </Link>
+                    </div>
+                  ) : (
+                    <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/90 border border-slate-200/80 text-xs text-slate-500 shadow-2xs">
+                      <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />
+                      <span>No medical profile attached.</span>
+                      <Link href="/profile" className="text-cyan-700 hover:text-cyan-900 font-semibold text-[11px] underline">
+                        Add Details (Optional)
+                      </Link>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Active Clinical Team Quick Roster Rail */}

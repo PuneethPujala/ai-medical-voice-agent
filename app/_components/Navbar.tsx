@@ -34,6 +34,7 @@ interface NavLinkItem {
 const NAV_LINKS: NavLinkItem[] = [
   { href: "/", label: "Home", alt: "OVERVIEW" },
   { href: "/consult", label: "Consult", alt: "DELIBERATION" },
+  { href: "/profile", label: "Profile", alt: "PATIENT" },
   { href: "/dashboard", label: "SOAP", alt: "CHARTS" },
   { href: "/care", label: "Care", alt: "HOSPITALS" },
   { href: "/admin", label: "Admin", alt: "GOVERNANCE" },
@@ -238,6 +239,20 @@ export function Navbar() {
                           </div>
                           <span className="text-[10px] font-mono text-cyan-700 bg-cyan-50 px-1.5 py-0.5 rounded border border-cyan-200 font-bold">
                             16kHz
+                          </span>
+                        </Link>
+
+                        <Link
+                          href="/profile"
+                          onClick={() => setDropdownOpen(false)}
+                          className="flex items-center justify-between px-2.5 py-2 rounded-xl hover:bg-slate-100 text-xs font-semibold text-slate-800 transition-colors group cursor-pointer"
+                        >
+                          <div className="flex items-center gap-2">
+                            <User className="w-4 h-4 text-teal-600" />
+                            <span>Patient Profile & History</span>
+                          </div>
+                          <span className="text-[10px] font-mono text-teal-700 bg-teal-50 px-1.5 py-0.5 rounded border border-teal-200 font-bold">
+                            Context
                           </span>
                         </Link>
 
@@ -499,6 +514,18 @@ export function Navbar() {
 
                   {/* Simple unboxed rows */}
                   <div className="flex flex-col gap-1 pt-1">
+                    <Link
+                      href="/profile"
+                      onClick={() => setDrawerOpen(false)}
+                      className="flex items-center justify-between p-2.5 rounded-xl text-slate-700 hover:text-slate-950 hover:bg-slate-100/70 transition-all group"
+                    >
+                      <div className="flex items-center gap-2.5">
+                        <User className="w-4 h-4 text-teal-600 transition-colors" />
+                        <span className="text-xs font-medium">Patient Health Profile</span>
+                      </div>
+                      <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-slate-700 group-hover:translate-x-0.5 transition-all" />
+                    </Link>
+
                     <Link
                       href="/dashboard"
                       onClick={() => setDrawerOpen(false)}

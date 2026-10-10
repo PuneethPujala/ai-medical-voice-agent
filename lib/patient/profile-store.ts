@@ -12,11 +12,15 @@ export const patientProfilesTable = pgTable("patient_profiles", {
   relationshipToUser: varchar("relationship_to_user", { length: 32 }).default("self"), // self | child | parent | spouse | other
   
   // Demographics (minimizing sensitive data: yearOfBirth preferred over exact DOB)
+  name: varchar("name", { length: 128 }),
+  preferredLanguage: varchar("preferred_language", { length: 32 }).default("en"),
   yearOfBirth: integer("year_of_birth"),
   dateOfBirth: varchar("date_of_birth", { length: 32 }),
   age: integer("age"),
   ageGroup: varchar("age_group", { length: 32 }).notNull().default("adult"),
   sexAssignedAtBirth: varchar("sex_assigned_at_birth", { length: 16 }),
+  gender: varchar("gender", { length: 32 }),
+  bloodGroup: varchar("blood_group", { length: 8 }),
   pregnancyStatus: varchar("pregnancy_status", { length: 32 }).default("not_applicable"),
   
   // Clinical History
@@ -26,6 +30,11 @@ export const patientProfilesTable = pgTable("patient_profiles", {
   drugAllergies: jsonb("drug_allergies").$type<DrugAllergy[]>().default([]),
   surgicalHistory: jsonb("surgical_history").$type<string[]>().default([]),
   smokingStatus: varchar("smoking_status", { length: 16 }).default("unknown"),
+
+  // Emergency & Accessibility (Optional)
+  emergencyContact: jsonb("emergency_contact").$type<{ name?: string; phone?: string; relationship?: string }>(),
+  accessibilityPreferences: jsonb("accessibility_preferences").$type<{ communicationStyle?: string; visualAccommodations?: boolean; hearingAccommodations?: boolean; notes?: string }>(),
+  clinicalNotes: text("clinical_notes"),
 
   // DPDP Act (India) Compliance
   consentGiven: boolean("consent_given").default(false).notNull(),
