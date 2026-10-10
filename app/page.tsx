@@ -398,11 +398,14 @@ export default function HomePage() {
                 as={Link}
                 href="/consult"
                 color="#06b6d4"
-                speed="4.5s"
-                className="cursor-pointer"
-                innerClassName="bg-slate-950 text-white rounded-[14px] flex items-center shadow-lg hover:shadow-cyan-500/20 transition-all border border-slate-800"
+                duration={4}
+                theme="dark"
+                backgroundColor="#020617"
+                textColor="#ffffff"
+                radius={16}
+                className="cursor-pointer shadow-lg hover:shadow-cyan-500/20 transition-all border border-slate-800"
               >
-                <div className="px-6 py-3.5 flex items-center justify-center gap-2.5 text-sm font-bold text-white tracking-wide">
+                <div className="flex items-center justify-center gap-2.5 text-sm font-bold text-white tracking-wide">
                   <div className="w-6 h-6 rounded-lg bg-cyan-500/20 border border-cyan-400/40 flex items-center justify-center">
                     <Mic className="w-3.5 h-3.5 text-cyan-300" />
                   </div>

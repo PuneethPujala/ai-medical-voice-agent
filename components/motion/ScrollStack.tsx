@@ -17,6 +17,7 @@ export interface ScrollStackCard {
 export interface ScrollStackProps {
   cards: ScrollStackCard[];
   className?: string;
+  stackPosition?: number;
 }
 
 function StackCardItem({
@@ -24,40 +25,41 @@ function StackCardItem({
   index,
   total,
   progress,
+  stackPosition = 96,
 }: {
   card: ScrollStackCard;
   index: number;
   total: number;
   progress: any;
+  stackPosition?: number;
 }) {
   const reduceMotion = useReducedMotion();
 
   // Progress threshold for when this card is covered by subsequent cards
   const rangeStart = index / total;
-  const rangeEnd = Math.min(1, (index + 1) / total);
 
-  // Subtle scale down as cards stack on top (1 down to ~0.94)
-  const targetScale = 1 - (total - index - 1) * 0.03;
+  // Progressive scale-down as subsequent cards stack on top (1 down to ~0.92)
+  const targetScale = 1 - (total - index - 1) * 0.035;
   const scale = useTransform(progress, [rangeStart, 1], [1, targetScale]);
 
-  // Subtle dimming as card settles under the next card
+  // Subtle dimming as card settles under the deck
   const opacity = useTransform(
     progress,
     [rangeStart, (rangeStart + 1) / 2, 1],
     [1, index === total - 1 ? 1 : 0.96, index === total - 1 ? 1 : 0.88]
   );
 
-  // Elevation offset for the deck lip
-  const yOffset = index * 20;
+  // Cascading deck lip elevation offset
+  const yOffset = index * 18;
 
   return (
     <motion.div
       style={{
         scale: reduceMotion ? 1 : scale,
         opacity: reduceMotion ? 1 : opacity,
-        top: `calc(13vh + ${yOffset}px)`,
+        top: `calc(${stackPosition}px + ${yOffset}px)`,
       }}
-      className="sticky w-full max-w-4xl mx-auto rounded-3xl bg-white/95 backdrop-blur-xl border border-slate-200/90 shadow-[0_20px_50px_-15px_rgba(15,23,42,0.08)] p-6 sm:p-10 mb-10 transition-colors will-change-transform"
+      className="sticky w-full max-w-4xl mx-auto rounded-3xl bg-white/95 backdrop-blur-xl border border-slate-200/90 shadow-[0_20px_50px_-15px_rgba(15,23,42,0.09)] p-6 sm:p-10 mb-12 transition-colors will-change-transform"
     >
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center">
         
@@ -107,7 +109,11 @@ function StackCardItem({
   );
 }
 
-export function ScrollStack({ cards, className = "" }: ScrollStackProps) {
+export function ScrollStack({
+  cards,
+  className = "",
+  stackPosition = 96,
+}: ScrollStackProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const { scrollYProgress } = useScroll({
     target: containerRef,
@@ -130,6 +136,7 @@ export function ScrollStack({ cards, className = "" }: ScrollStackProps) {
           index={index}
           total={cards.length}
           progress={smoothProgress}
+          stackPosition={stackPosition}
         />
       ))}
     </div>
