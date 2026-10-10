@@ -42,6 +42,8 @@ import { OptionWheel, OptionWheelItem } from "@/components/navigation/OptionWhee
 import { ClinicalFlipCard } from "@/components/clinical/ClinicalFlipCard";
 import { ClinicalStepper, StepItem } from "@/components/clinical/ClinicalStepper";
 import PremiumButton from "@/components/PremiumButton";
+import GlowCursor from "@/components/ui/GlowCursor";
+import StarBorder from "@/components/ui/StarBorder";
 
 const ROTATING_TOPICS = [
   "Emergency Triage",
@@ -304,17 +306,13 @@ export default function HomePage() {
 
   return (
     <div className="relative min-h-screen bg-[#FAF9F6] text-slate-900 font-sans flex flex-col justify-between selection:bg-cyan-500 selection:text-white">
+      {/* React Bits Subtle Interactive Ambient Cursor Glow */}
+      <GlowCursor color="rgba(6, 182, 212, 0.14)" size={380} blur={70} opacity={0.75} />
+
       {/* ------------------------------------------------------------------ */}
       {/* 1. FLOATING CLINICAL HEADER (PILL NAV INTEGRATED)                 */}
       {/* ------------------------------------------------------------------ */}
-      <motion.div
-        initial={{ opacity: 0, y: -16 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.45, ease: "easeOut" }}
-        className="sticky top-0 z-50 w-full"
-      >
-        <Navbar />
-      </motion.div>
+      <Navbar />
 
       <main className="w-full flex-1">
         {/* ================================================================ */}
@@ -389,22 +387,29 @@ export default function HomePage() {
               </span>
             </motion.div>
 
-            {/* Interactive CTAs with SpecularButton */}
+            {/* Interactive CTAs with StarBorder on Primary Action */}
             <motion.div
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.34 }}
               className="flex flex-col sm:flex-row items-center justify-center gap-3.5 pt-2 pb-12"
             >
-              <Link href="/consult">
-                <PremiumButton
-                  variant="primary"
-                  size="lg"
-                  icon={<Mic className="w-4 h-4 text-cyan-400" />}
-                >
-                  Start Voice Consult
-                </PremiumButton>
-              </Link>
+              <StarBorder
+                as={Link}
+                href="/consult"
+                color="#06b6d4"
+                speed="4.5s"
+                className="cursor-pointer"
+                innerClassName="bg-slate-950 text-white rounded-[14px] flex items-center shadow-lg hover:shadow-cyan-500/20 transition-all border border-slate-800"
+              >
+                <div className="px-6 py-3.5 flex items-center justify-center gap-2.5 text-sm font-bold text-white tracking-wide">
+                  <div className="w-6 h-6 rounded-lg bg-cyan-500/20 border border-cyan-400/40 flex items-center justify-center">
+                    <Mic className="w-3.5 h-3.5 text-cyan-300" />
+                  </div>
+                  <span>Start Voice Consult</span>
+                  <ArrowRight className="w-4 h-4 text-cyan-400 ml-0.5 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </StarBorder>
 
               <Link
                 href="/care"

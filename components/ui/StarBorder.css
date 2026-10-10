@@ -1,0 +1,37 @@
+@keyframes star-movement-top {
+  0% {
+    transform: translate(0%, 0%);
+    opacity: 0.85;
+  }
+  100% {
+    transform: translate(100%, 0%);
+    opacity: 0.85;
+  }
+}
+
+@keyframes star-movement-bottom {
+  0% {
+    transform: translate(0%, 0%);
+    opacity: 0.85;
+  }
+  100% {
+    transform: translate(-100%, 0%);
+    opacity: 0.85;
+  }
+}
+
+.star-movement-top {
+  animation: star-movement-top linear infinite;
+}
+
+.star-movement-bottom {
+  animation: star-movement-bottom linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .star-movement-top,
+  .star-movement-bottom {
+    animation: none !important;
+    opacity: 0.4 !important;
+  }
+}

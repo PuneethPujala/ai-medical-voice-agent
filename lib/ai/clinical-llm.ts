@@ -466,7 +466,7 @@ export function buildDoctorSystemPrompt(
   const confirmedAllergies =
     cfg.patientProfile?.drugAllergies && cfg.patientProfile.drugAllergies.length > 0
       ? cfg.patientProfile.drugAllergies
-          .map((a) => `${a.drugName} (${a.reactionType || a.severity || "allergy"}${a.reactionDescription ? `: ${a.reactionDescription}` : ""})`)
+          .map((a) => `${a.drugName} (${a.severity || a.reactionType || "allergy"}${a.reactionDescription ? `: ${a.reactionDescription}` : ""})`)
           .join(", ")
       : cfg.patientProfile?.allergyStatus === "none_known"
       ? "No known drug allergies"

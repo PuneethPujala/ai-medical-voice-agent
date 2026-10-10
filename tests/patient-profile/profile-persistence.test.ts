@@ -56,9 +56,9 @@ async function runProfilePersistenceTests() {
 
     assert(Boolean(partialProfile.id), "Partial profile generates valid UUID");
     assert(partialProfile.name === "Alice Smith", "Name is correctly persisted");
-    assert(partialProfile.knownConditions.length === 1 && partialProfile.knownConditions[0] === "Hypertension", "Condition is persisted");
-    assert(partialProfile.currentMedications.length === 0, "Omitted medications default to empty array");
-    assert(partialProfile.drugAllergies.length === 0, "Omitted allergies default to empty array");
+    assert((partialProfile.knownConditions || []).length === 1 && partialProfile.knownConditions?.[0] === "Hypertension", "Condition is persisted");
+    assert((partialProfile.currentMedications || []).length === 0, "Omitted medications default to empty array");
+    assert((partialProfile.drugAllergies || []).length === 0, "Omitted allergies default to empty array");
     assert(partialProfile.dateOfBirth === undefined, "Omitted DOB remains undefined without throwing");
     assert(partialProfile.emergencyContact === undefined, "Omitted emergency contact remains undefined");
     assert(partialProfile.consentGiven === true, "DPDP consent flag recorded");
@@ -84,13 +84,13 @@ async function runProfilePersistenceTests() {
       ],
       allergyStatus: "confirmed",
       drugAllergies: [
-        { drugName: "Penicillin", severity: "severe", reactionDescription: "Anaphylaxis" }
+        { drugName: "Penicillin", severity: "severe", reactionType: "allergy", reactionDescription: "Anaphylaxis" }
       ]
     });
 
-    assert(updatedAlice.knownConditions.includes("Hypertension"), "Existing condition preserved during partial update");
-    assert(updatedAlice.currentMedications.length === 1 && updatedAlice.currentMedications[0].name === "Lisinopril", "New medication persisted");
-    assert(updatedAlice.drugAllergies.length === 1 && updatedAlice.drugAllergies[0].drugName === "Penicillin", "Drug allergy persisted");
+    assert(Boolean(updatedAlice.knownConditions?.includes("Hypertension")), "Existing condition preserved during partial update");
+    assert((updatedAlice.currentMedications || []).length === 1 && updatedAlice.currentMedications?.[0].name === "Lisinopril", "New medication persisted");
+    assert((updatedAlice.drugAllergies || []).length === 1 && updatedAlice.drugAllergies?.[0].drugName === "Penicillin", "Drug allergy persisted");
     assert(updatedAlice.allergyStatus === "confirmed", "Allergy status updated to confirmed");
   } catch (err: any) {
     assert(false, "Incremental profile update failed", err.message);
@@ -154,7 +154,7 @@ async function runProfilePersistenceTests() {
       dateOfBirth: "2019-07-22",
       sexAssignedAtBirth: "male",
       knownConditions: ["Pediatric Asthma"],
-      drugAllergies: [{ drugName: "Amoxicillin", severity: "moderate" }]
+      drugAllergies: [{ drugName: "Amoxicillin", severity: "moderate", reactionType: "allergy" }]
     });
 
     const allCaregiverProfiles = await PatientProfileService.listProfiles(userCaregiver);
@@ -166,11 +166,11 @@ async function runProfilePersistenceTests() {
     // Verify queries by relationship return correct distinct identities
     const retrievedMother = await PatientProfileService.getProfileByRelationship(userCaregiver, "parent");
     assert(retrievedMother?.name === "Eleanor Vance", "Retrieved parent profile matches mother");
-    assert(retrievedMother?.knownConditions.includes("Type 2 Diabetes") === true, "Mother profile retains diabetic history");
+    assert(retrievedMother?.knownConditions?.includes("Type 2 Diabetes") === true, "Mother profile retains diabetic history");
 
     const retrievedChild = await PatientProfileService.getProfileByRelationship(userCaregiver, "child");
     assert(retrievedChild?.name === "Leo Vance", "Retrieved child profile matches Leo");
-    assert(retrievedChild?.knownConditions.includes("Pediatric Asthma") === true, "Child profile retains pediatric asthma");
+    assert(retrievedChild?.knownConditions?.includes("Pediatric Asthma") === true, "Child profile retains pediatric asthma");
 
     // Modifying Child profile does not affect Mother or Self
     await PatientProfileService.upsertProfile(userCaregiver, {

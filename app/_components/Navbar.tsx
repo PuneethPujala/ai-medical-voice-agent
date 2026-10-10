@@ -34,7 +34,6 @@ interface NavLinkItem {
 const NAV_LINKS: NavLinkItem[] = [
   { href: "/", label: "Home", alt: "OVERVIEW" },
   { href: "/consult", label: "Consult", alt: "DELIBERATION" },
-  { href: "/profile", label: "Profile", alt: "PATIENT" },
   { href: "/dashboard", label: "SOAP", alt: "CHARTS" },
   { href: "/care", label: "Care", alt: "HOSPITALS" },
   { href: "/admin", label: "Admin", alt: "GOVERNANCE" },
@@ -48,6 +47,8 @@ export function Navbar() {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [spotlightPos, setSpotlightPos] = useState({ x: 0, y: 0, opacity: 0 });
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const accountButtonRef = useRef<HTMLButtonElement>(null);
+  const menuItemRefs = useRef<(HTMLAnchorElement | HTMLButtonElement | null)[]>([]);
   const { isSignedIn, isLoaded, user } = useUser();
   const { signOut } = useClerk();
 
@@ -60,12 +61,15 @@ export function Navbar() {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         setDrawerOpen(false);
-        setDropdownOpen(false);
+        if (dropdownOpen) {
+          setDropdownOpen(false);
+          accountButtonRef.current?.focus();
+        }
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [dropdownOpen]);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -78,6 +82,17 @@ export function Navbar() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  // Focus first item when dropdown opens
+  useEffect(() => {
+    if (dropdownOpen) {
+      const timer = setTimeout(() => {
+        const items = menuItemRefs.current.filter(Boolean);
+        items[0]?.focus();
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [dropdownOpen]);
+
   // Lock body scroll when drawer is open
   useEffect(() => {
     if (drawerOpen) {
@@ -89,6 +104,42 @@ export function Navbar() {
       document.body.style.overflow = "";
     };
   }, [drawerOpen]);
+
+  const handleTriggerKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>) => {
+    if (e.key === "ArrowDown" || e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      setDropdownOpen(true);
+    }
+  };
+
+  const handleMenuKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    const items = menuItemRefs.current.filter(Boolean) as (HTMLAnchorElement | HTMLButtonElement)[];
+    if (items.length === 0) return;
+
+    const currentIndex = items.findIndex((el) => el === document.activeElement);
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      const nextIndex = currentIndex === -1 || currentIndex === items.length - 1 ? 0 : currentIndex + 1;
+      items[nextIndex]?.focus();
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      const prevIndex = currentIndex <= 0 ? items.length - 1 : currentIndex - 1;
+      items[prevIndex]?.focus();
+    } else if (e.key === "Home") {
+      e.preventDefault();
+      items[0]?.focus();
+    } else if (e.key === "End") {
+      e.preventDefault();
+      items[items.length - 1]?.focus();
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      setDropdownOpen(false);
+      accountButtonRef.current?.focus();
+    } else if (e.key === "Tab") {
+      setDropdownOpen(false);
+    }
+  };
 
   const userName =
     user?.fullName ||
@@ -109,11 +160,11 @@ export function Navbar() {
   return (
     <>
       {/* ============================================================ Floating Architectural Clinical Header */}
-      <header className="sticky top-0 z-50 w-full pt-2.5 px-4 sm:px-8 pointer-events-none transition-all duration-300">
+      <header className="sticky top-0 z-50 w-full pt-5 sm:pt-6 pb-2 px-4 sm:px-8 pointer-events-none transition-all duration-300">
         <div
           className="mx-auto flex h-[64px] sm:h-[68px] max-w-[1360px] items-center justify-between px-6 sm:px-8 rounded-2xl pointer-events-auto transition-all"
           style={{
-            background: "rgba(255, 255, 255, 0.72)",
+            background: "rgba(255, 255, 255, 0.76)",
             backdropFilter: "blur(20px)",
             WebkitBackdropFilter: "blur(20px)",
             border: "1px solid rgba(255, 255, 255, 0.85)",
@@ -123,7 +174,7 @@ export function Navbar() {
           
           {/* Group 1: Brand Identity Anchor */}
           <div className="flex items-center min-w-[200px]">
-            <Link href="/" className="flex items-center gap-2.5 group cursor-pointer">
+            <Link href="/" className="flex items-center gap-2.5 group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 rounded-xl">
               {/* 34px clinical icon with subtle pulse waveform */}
               <div className="w-[34px] h-[34px] rounded-xl bg-gradient-to-br from-cyan-500 to-teal-600 flex items-center justify-center text-white shadow-[0_2px_8px_rgba(6,182,212,0.25)] flex-shrink-0 group-hover:scale-105 transition-transform">
                 <svg viewBox="0 0 24 24" className="w-4 h-4 text-white stroke-[2.2]" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
@@ -153,9 +204,14 @@ export function Navbar() {
                 /* Polished Signed-in User Capsule with Floating HUD Dropdown */
                 <div className="relative" ref={dropdownRef}>
                   <button
-                    onClick={() => setDropdownOpen(!dropdownOpen)}
-                    className="inline-flex items-center gap-2.5 rounded-full border border-slate-200/90 bg-white/95 backdrop-blur-md px-3.5 py-1.5 text-xs font-bold text-slate-900 shadow-xs transition-all hover:bg-slate-50 hover:border-cyan-400 hover:shadow-sm cursor-pointer group"
+                    ref={accountButtonRef}
+                    id="clinical-account-trigger"
+                    aria-haspopup="menu"
                     aria-expanded={dropdownOpen}
+                    aria-controls="clinical-account-menu"
+                    onClick={() => setDropdownOpen(!dropdownOpen)}
+                    onKeyDown={handleTriggerKeyDown}
+                    className="inline-flex items-center gap-2.5 rounded-full border border-slate-200/90 bg-white/95 backdrop-blur-md px-3.5 py-1.5 text-xs font-bold text-slate-900 shadow-xs transition-all hover:bg-slate-50 hover:border-cyan-400 hover:shadow-sm cursor-pointer group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
                   >
                     <div className="relative flex-shrink-0">
                       {user?.imageUrl ? (
@@ -177,11 +233,17 @@ export function Navbar() {
                     <ChevronDown className={`h-3.5 w-3.5 text-slate-400 group-hover:text-slate-700 transition-transform duration-200 ${dropdownOpen ? "rotate-180" : ""}`} />
                   </button>
 
-                  {/* FLOATING CLINICAL PROFILE DROPDOWN */}
+                  {/* FLOATING CLINICAL WORKSPACE HUD DROPDOWN */}
                   {dropdownOpen && (
-                    <div className="absolute right-0 top-full mt-2.5 w-84 rounded-2xl bg-white/98 backdrop-blur-2xl border border-slate-200/90 shadow-2xl p-4 flex flex-col gap-3.5 z-50 animate-in fade-in zoom-in-95 duration-150">
-                      
-                      {/* Physician Profile Card */}
+                    <div
+                      id="clinical-account-menu"
+                      role="menu"
+                      aria-labelledby="clinical-account-trigger"
+                      aria-orientation="vertical"
+                      onKeyDown={handleMenuKeyDown}
+                      className="absolute right-0 top-full mt-2.5 w-84 sm:w-88 rounded-2xl bg-white/98 backdrop-blur-2xl border border-slate-200/90 shadow-2xl p-4 flex flex-col gap-3.5 z-50 animate-in fade-in zoom-in-95 duration-150"
+                    >
+                      {/* Physician Profile Header Card */}
                       <div className="flex items-center gap-3 pb-3 border-b border-slate-200/80">
                         {user?.imageUrl ? (
                           <img
@@ -203,14 +265,14 @@ export function Navbar() {
                           <p className="text-xs text-slate-500 font-mono truncate">
                             {user?.primaryEmailAddress?.emailAddress || "physician@hospital.org"}
                           </p>
-                          <div className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200/80 text-[10px] font-bold text-emerald-800">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981]" />
-                            <span>Level 1 Triage Access</span>
+                          <div className="mt-1.5 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200/80 text-[10px] font-bold text-emerald-800">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981] animate-pulse" />
+                            <span>Level 1 Triage Access · Active Session</span>
                           </div>
                         </div>
                       </div>
 
-                      {/* Security & Workspace Status */}
+                      {/* Security & Workspace Status Summary */}
                       <div className="p-2.5 rounded-xl bg-slate-50/90 border border-slate-200/70 text-xs flex flex-col gap-1">
                         <div className="flex items-center justify-between text-[11px]">
                           <span className="text-slate-500 font-medium">Session Status:</span>
@@ -222,71 +284,112 @@ export function Navbar() {
                         </div>
                       </div>
 
-                      {/* Clinical Workspace Shortcuts */}
+                      {/* Group 1: Clinical Workspace */}
                       <div className="flex flex-col gap-1">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1">
+                        <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 px-1">
                           Clinical Workspace
                         </span>
                         
                         <Link
                           href="/consult"
+                          role="menuitem"
+                          tabIndex={-1}
+                          ref={(el) => { menuItemRefs.current[0] = el; }}
                           onClick={() => setDropdownOpen(false)}
-                          className="flex items-center justify-between px-2.5 py-2 rounded-xl hover:bg-slate-100 text-xs font-semibold text-slate-800 transition-colors group cursor-pointer"
+                          className="flex items-center justify-between px-2.5 py-2 rounded-xl hover:bg-slate-100 text-xs font-semibold text-slate-800 transition-colors group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 focus:bg-slate-100"
                         >
                           <div className="flex items-center gap-2">
                             <Stethoscope className="w-4 h-4 text-cyan-600" />
                             <span>Voice Consultation</span>
                           </div>
                           <span className="text-[10px] font-mono text-cyan-700 bg-cyan-50 px-1.5 py-0.5 rounded border border-cyan-200 font-bold">
-                            16kHz
+                            16kHz Audio
                           </span>
                         </Link>
 
                         <Link
                           href="/profile"
+                          role="menuitem"
+                          tabIndex={-1}
+                          ref={(el) => { menuItemRefs.current[1] = el; }}
                           onClick={() => setDropdownOpen(false)}
-                          className="flex items-center justify-between px-2.5 py-2 rounded-xl hover:bg-slate-100 text-xs font-semibold text-slate-800 transition-colors group cursor-pointer"
+                          className="flex items-center justify-between px-2.5 py-2 rounded-xl hover:bg-slate-100 text-xs font-semibold text-slate-800 transition-colors group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus:bg-slate-100"
                         >
                           <div className="flex items-center gap-2">
                             <User className="w-4 h-4 text-teal-600" />
                             <span>Patient Profile & History</span>
                           </div>
                           <span className="text-[10px] font-mono text-teal-700 bg-teal-50 px-1.5 py-0.5 rounded border border-teal-200 font-bold">
-                            Context
+                            Context Aware
                           </span>
                         </Link>
 
                         <Link
                           href="/dashboard"
+                          role="menuitem"
+                          tabIndex={-1}
+                          ref={(el) => { menuItemRefs.current[2] = el; }}
                           onClick={() => setDropdownOpen(false)}
-                          className="flex items-center justify-between px-2.5 py-2 rounded-xl hover:bg-slate-100 text-xs font-semibold text-slate-800 transition-colors group cursor-pointer"
+                          className="flex items-center justify-between px-2.5 py-2 rounded-xl hover:bg-slate-100 text-xs font-semibold text-slate-800 transition-colors group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus:bg-slate-100"
                         >
                           <div className="flex items-center gap-2">
                             <FileText className="w-4 h-4 text-indigo-600" />
                             <span>SOAP Charts & History</span>
                           </div>
                           <span className="text-[10px] font-mono text-indigo-700 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-200 font-bold">
-                            Live
+                            HL7 FHIR Live
                           </span>
                         </Link>
+                      </div>
+
+                      {/* Group 2: Care & Security */}
+                      <div className="flex flex-col gap-1 pt-1 border-t border-slate-200/80">
+                        <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 px-1">
+                          Care & Security
+                        </span>
 
                         <Link
                           href="/care"
+                          role="menuitem"
+                          tabIndex={-1}
+                          ref={(el) => { menuItemRefs.current[3] = el; }}
                           onClick={() => setDropdownOpen(false)}
-                          className="flex items-center justify-between px-2.5 py-2 rounded-xl hover:bg-slate-100 text-xs font-semibold text-slate-800 transition-colors group cursor-pointer"
+                          className="flex items-center justify-between px-2.5 py-2 rounded-xl hover:bg-slate-100 text-xs font-semibold text-slate-800 transition-colors group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus:bg-slate-100"
                         >
                           <div className="flex items-center gap-2">
                             <Building2 className="w-4 h-4 text-emerald-600" />
                             <span>Hospital Routing (ABDM)</span>
                           </div>
-                          <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-700" />
+                          <span className="text-[10px] font-mono text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200 font-bold">
+                            ED / Cath Lab
+                          </span>
+                        </Link>
+
+                        <Link
+                          href="/privacy"
+                          role="menuitem"
+                          tabIndex={-1}
+                          ref={(el) => { menuItemRefs.current[4] = el; }}
+                          onClick={() => setDropdownOpen(false)}
+                          className="flex items-center justify-between px-2.5 py-2 rounded-xl hover:bg-slate-100 text-xs font-semibold text-slate-800 transition-colors group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus:bg-slate-100"
+                        >
+                          <div className="flex items-center gap-2">
+                            <ShieldCheck className="w-4 h-4 text-slate-600" />
+                            <span>Privacy & Technical Safeguards</span>
+                          </div>
+                          <span className="text-[10px] font-mono text-slate-600 bg-slate-100 px-1.5 py-0.5 rounded font-bold">
+                            Zero Retention
+                          </span>
                         </Link>
 
                         {user?.publicMetadata?.role === "admin" && (
                           <Link
                             href="/admin"
+                            role="menuitem"
+                            tabIndex={-1}
+                            ref={(el) => { menuItemRefs.current[5] = el; }}
                             onClick={() => setDropdownOpen(false)}
-                            className="flex items-center justify-between px-2.5 py-2 rounded-xl hover:bg-slate-100 text-xs font-semibold text-purple-900 transition-colors group cursor-pointer bg-purple-50/50 border border-purple-200/50"
+                            className="flex items-center justify-between px-2.5 py-2 rounded-xl hover:bg-purple-50 text-xs font-semibold text-purple-900 transition-colors group cursor-pointer bg-purple-50/50 border border-purple-200/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus:bg-purple-100"
                           >
                             <div className="flex items-center gap-2">
                               <ShieldCheck className="w-4 h-4 text-purple-600" />
@@ -297,28 +400,19 @@ export function Navbar() {
                             </span>
                           </Link>
                         )}
-
-                        <Link
-                          href="/privacy"
-                          onClick={() => setDropdownOpen(false)}
-                          className="flex items-center justify-between px-2.5 py-2 rounded-xl hover:bg-slate-100 text-xs font-semibold text-slate-800 transition-colors group cursor-pointer"
-                        >
-                          <div className="flex items-center gap-2">
-                            <ShieldCheck className="w-4 h-4 text-slate-600" />
-                            <span>Privacy & Technical Safeguards</span>
-                          </div>
-                          <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-slate-700" />
-                        </Link>
                       </div>
 
-                      {/* Sign Out Action */}
+                      {/* Group 3: Account Actions */}
                       <div className="pt-2 border-t border-slate-200/80">
                         <button
+                          role="menuitem"
+                          tabIndex={-1}
+                          ref={(el) => { menuItemRefs.current[6] = el; }}
                           onClick={() => {
                             setDropdownOpen(false);
                             signOut({ redirectUrl: "/" });
                           }}
-                          className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-rose-50/80 hover:bg-rose-100 text-rose-700 border border-rose-200/80 text-xs font-bold transition-colors cursor-pointer"
+                          className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-rose-50/80 hover:bg-rose-100 text-rose-700 border border-rose-200/80 text-xs font-bold transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-rose-500"
                         >
                           <LogOut className="w-3.5 h-3.5 text-rose-600" />
                           <span>Sign Out of Clinical Session</span>

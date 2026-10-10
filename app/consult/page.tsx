@@ -54,6 +54,7 @@ import AccordionGallery from "@/components/AccordionGallery";
 import { SpotlightCard } from "@/components/ui/spotlight-card";
 import { GlowingBorder } from "@/components/ui/glowing-border";
 import { MovingBorder } from "@/components/ui/moving-border";
+import GlowCursor from "@/components/ui/GlowCursor";
 import { AnimatedContent } from "@/components/ui/animated-content";
 import { VoicePill, VoicePillState } from "@/components/clinical/VoicePill";
 import { ThoughtLine, ThoughtStep } from "@/components/clinical/ThoughtLine";
@@ -2099,6 +2100,9 @@ export default function ConsultPage() {
 
   return (
     <div className="relative min-h-screen bg-transparent text-slate-900 flex flex-col font-sans selection:bg-cyan-500 selection:text-white overflow-x-clip">
+      {/* React Bits Subtle Interactive Ambient Cursor Glow */}
+      <GlowCursor color="rgba(6, 182, 212, 0.12)" size={350} blur={65} opacity={0.7} />
+
       <Navbar />
 
       <main className="relative z-10 flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 pt-6 sm:pt-8 pb-16 flex flex-col gap-8">
@@ -2771,65 +2775,53 @@ export default function ConsultPage() {
                   </div>
                 </div>
 
-                {/* React Bits MovingBorder Segmented Tab Navigation */}
-                <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-slate-100/90 border border-slate-200/70 text-sm font-semibold">
-                  <div className="flex-1">
-                    <MovingBorder active={activeRightTab === "board"} borderRadius="12px" duration={3.5}>
-                      <button
-                        type="button"
-                        onClick={() => setActiveRightTab("board")}
-                        className={`w-full py-2.5 px-4 rounded-xl transition-all cursor-pointer text-center ${
-                          activeRightTab === "board"
-                            ? "text-slate-950 font-bold shadow-2xs"
-                            : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
-                        }`}
-                      >
-                        Review
-                      </button>
-                    </MovingBorder>
-                  </div>
+                {/* Clinical Segmented Tab Navigation */}
+                <div className="flex items-center gap-1.5 p-1.5 rounded-2xl bg-slate-100/90 border border-slate-200/70 text-sm font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => setActiveRightTab("board")}
+                    className={`flex-1 py-2.5 px-4 rounded-xl transition-all cursor-pointer text-center text-xs sm:text-sm ${
+                      activeRightTab === "board"
+                        ? "bg-white text-slate-950 font-bold shadow-xs border border-slate-200/80"
+                        : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+                    }`}
+                  >
+                    Review
+                  </button>
 
-                  <div className="flex-1">
-                    <MovingBorder active={activeRightTab === "context"} borderRadius="12px" duration={3.5}>
-                      <button
-                        type="button"
-                        onClick={() => setActiveRightTab("context")}
-                        className={`w-full py-2.5 px-4 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 ${
-                          activeRightTab === "context"
-                            ? "text-slate-950 font-bold shadow-2xs"
-                            : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
-                        }`}
-                      >
-                        <span>Context</span>
-                        {hasContextFacts && (
-                          <span className="px-2 py-0.5 rounded-full text-xs font-mono bg-teal-100 text-teal-800 font-bold">
-                            {contextKnownFacts.length}
-                          </span>
-                        )}
-                      </button>
-                    </MovingBorder>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveRightTab("context")}
+                    className={`flex-1 py-2.5 px-4 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 text-xs sm:text-sm ${
+                      activeRightTab === "context"
+                        ? "bg-white text-slate-950 font-bold shadow-xs border border-slate-200/80"
+                        : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+                    }`}
+                  >
+                    <span>Context</span>
+                    {hasContextFacts && (
+                      <span className="px-2 py-0.5 rounded-full text-xs font-mono bg-teal-100 text-teal-800 font-bold">
+                        {contextKnownFacts.length}
+                      </span>
+                    )}
+                  </button>
 
-                  <div className="flex-1">
-                    <MovingBorder active={activeRightTab === "care"} borderRadius="12px" duration={3.5}>
-                      <button
-                        type="button"
-                        onClick={() => setActiveRightTab("care")}
-                        className={`w-full py-2.5 px-4 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 ${
-                          activeRightTab === "care"
-                            ? "text-slate-950 font-bold shadow-2xs"
-                            : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
-                        }`}
-                      >
-                        <span>Care Options</span>
-                        {nearbyHospitals && nearbyHospitals.length > 0 && (
-                          <span className="px-2 py-0.5 rounded-full text-xs font-mono bg-emerald-100 text-emerald-800 font-bold">
-                            {nearbyHospitals.length}
-                          </span>
-                        )}
-                      </button>
-                    </MovingBorder>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveRightTab("care")}
+                    className={`flex-1 py-2.5 px-4 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 text-xs sm:text-sm ${
+                      activeRightTab === "care"
+                        ? "bg-white text-slate-950 font-bold shadow-xs border border-slate-200/80"
+                        : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+                    }`}
+                  >
+                    <span>Care Options</span>
+                    {nearbyHospitals && nearbyHospitals.length > 0 && (
+                      <span className="px-2 py-0.5 rounded-full text-xs font-mono bg-emerald-100 text-emerald-800 font-bold">
+                        {nearbyHospitals.length}
+                      </span>
+                    )}
+                  </button>
                 </div>
 
                 {/* TAB: DELIBERATION STREAM (HUMAN-SCALE AGENT CARDS + REACT BITS ANIMATION) */}

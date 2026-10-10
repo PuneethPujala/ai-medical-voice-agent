@@ -61,7 +61,7 @@ async function runContextAwareChatTests() {
       { name: "Amlodipine", dose: "5mg", frequency: "daily" }
     ],
     allergyStatus: "confirmed",
-    drugAllergies: [{ drugName: "Penicillin", severity: "severe", reactionDescription: "Hives and swelling" }],
+    drugAllergies: [{ drugName: "Penicillin", severity: "severe", reactionType: "allergy", reactionDescription: "Hives and swelling" }],
     emergencyContact: { name: "Marcus Vance", phone: "+1-555-0199", relationship: "Son" }
   });
 
@@ -203,7 +203,7 @@ async function runContextAwareChatTests() {
     );
     assert(motherResolution.inferredSubject === "mother", "Mother utterance infers 'mother' subject");
     assert(motherResolution.profile?.name === "Eleanor Vance", "Mother utterance resolves mother profile");
-    assert(motherResolution.profile?.knownConditions.includes("Type 2 Diabetes") === true, "Resolved mother profile includes diabetic history");
+    assert(motherResolution.profile?.knownConditions?.includes("Type 2 Diabetes") === true, "Resolved mother profile includes diabetic history");
 
     // Scenario C: Caller speaks for their child
     const childResolution = await PatientProfileService.resolveTargetPatientProfile(
