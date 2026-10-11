@@ -276,14 +276,17 @@ export function MedicalHeroDashboardPreview({
         {/* CALLER PROFILE & STATUS BAR */}
         <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs">
           <div className="flex items-center gap-3.5">
-            <div className="w-10 h-10 rounded-xl bg-slate-900 text-white flex items-center justify-center font-bold text-sm shadow-2xs">
-              <User className="w-5 h-5 text-cyan-400" />
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-2xs">
+              <User className="w-5 h-5 text-white" />
             </div>
             <div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <h3 className="font-bold text-base text-slate-950 tracking-tight">{scenario.patientName}</h3>
                 <span className={`text-[11px] px-2.5 py-0.5 rounded-full border ${scenario.esiBadgeStyle}`}>
                   {scenario.esiLevel}
+                </span>
+                <span className="font-mono text-[9px] uppercase tracking-wider text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md border border-slate-200">
+                  Synthetic Simulation
                 </span>
               </div>
               <p className="text-xs text-slate-500 font-medium mt-0.5">{scenario.patientDetails}</p>
@@ -302,17 +305,17 @@ export function MedicalHeroDashboardPreview({
             >
               {isMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
             </button>
-            <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-950 text-white text-xs font-semibold shadow-xs">
-              <Volume2 className="w-4 h-4 text-cyan-400 animate-pulse" />
+            <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-cyan-50 border border-cyan-200/90 text-cyan-900 text-xs font-semibold shadow-2xs">
+              <Volume2 className="w-4 h-4 text-cyan-600 animate-pulse" />
               <span>Voice Stream Active ({scenario.duration})</span>
             </div>
           </div>
         </div>
 
         {/* AI VOICE WAVEFORM VISUALIZER ORB */}
-        <div className="relative py-6 bg-slate-950 rounded-2xl p-6 shadow-inner flex flex-col items-center justify-center gap-4 overflow-hidden border border-slate-800">
+        <div className="relative py-6 bg-gradient-to-b from-slate-50/80 via-cyan-50/25 to-slate-100/70 rounded-2xl p-6 shadow-2xs flex flex-col items-center justify-center gap-4 overflow-hidden border border-slate-200/90">
           {/* Subtle Ambient Radial Glow */}
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(6,182,212,0.15),transparent_70%)] pointer-events-none" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(6,182,212,0.12),transparent_70%)] pointer-events-none" />
 
           {/* Dynamic Audio Waveform Bars */}
           <div className="flex items-center justify-center gap-1.5 h-16 w-full max-w-md px-4">
@@ -335,9 +338,9 @@ export function MedicalHeroDashboardPreview({
             ))}
           </div>
 
-          <div className="flex items-center gap-2 text-xs text-slate-300 font-mono">
-            <Radio className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
-            <span>Local Whisper base.en ASR · Kokoro-82M Neural Synthesis</span>
+          <div className="flex items-center gap-2 text-xs text-slate-600 font-mono">
+            <Radio className="w-3.5 h-3.5 text-cyan-600 animate-pulse" />
+            <span className="font-semibold text-slate-700">Local Whisper base.en ASR · Kokoro-82M Neural Synthesis</span>
           </div>
         </div>
 

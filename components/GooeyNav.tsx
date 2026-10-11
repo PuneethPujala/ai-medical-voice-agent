@@ -24,11 +24,11 @@ export interface GooeyNavProps {
 
 export const GooeyNav: React.FC<GooeyNavProps> = ({
   items,
-  animationTime = 500,
-  particleCount = 12,
-  particleDistances = [38, 8],
-  particleR = 60,
-  timeVariance = 200,
+  animationTime = 450,
+  particleCount = 7,
+  particleDistances = [20, 5],
+  particleR = 28,
+  timeVariance = 150,
   colors = [1, 2, 3, 1, 2, 3, 1, 4],
   initialActiveIndex = 0,
   className = ''
@@ -36,7 +36,7 @@ export const GooeyNav: React.FC<GooeyNavProps> = ({
   const pathname = usePathname();
   const router = useRouter();
 
-  // Route-based active index: -1 if current route is not one of the top-level items
+  // Route-based active index: strictly match current route
   const derivedIndex = items.findIndex(it =>
     it.href === '/' ? pathname === '/' : pathname === it.href || pathname.startsWith(it.href + '/')
   );
@@ -46,7 +46,8 @@ export const GooeyNav: React.FC<GooeyNavProps> = ({
   const filterRef = useRef<HTMLSpanElement>(null);
   const textRef = useRef<HTMLSpanElement>(null);
   const isInitialMountRef = useRef<boolean>(true);
-  const [activeIndex, setActiveIndex] = useState<number>(derivedIndex !== -1 ? derivedIndex : initialActiveIndex);
+  const effectiveActiveIndex = derivedIndex !== -1 ? derivedIndex : (pathname === '/' ? initialActiveIndex : -1);
+  const [activeIndex, setActiveIndex] = useState<number>(effectiveActiveIndex);
   const [isReady, setIsReady] = useState<boolean>(false);
 
   const noise = (n = 1) => n / 2 - Math.random() * n;
@@ -173,15 +174,18 @@ export const GooeyNav: React.FC<GooeyNavProps> = ({
 
   // Sync active position on initial mount, route transitions, and browser back/forward
   useEffect(() => {
-    setActiveIndex(derivedIndex);
     if (!navRef.current) return;
 
     if (derivedIndex === -1) {
+      setActiveIndex(-1);
       updateEffectPosition(null);
       return;
     }
 
-    const activeLi = navRef.current.querySelectorAll('li')[derivedIndex] as HTMLElement;
+    const targetIdx = derivedIndex;
+    setActiveIndex(targetIdx);
+
+    const activeLi = navRef.current.querySelectorAll('li')[targetIdx] as HTMLElement;
     if (activeLi) {
       updateEffectPosition(activeLi);
       textRef.current?.classList.add('active');
@@ -200,7 +204,7 @@ export const GooeyNav: React.FC<GooeyNavProps> = ({
         isInitialMountRef.current = false;
       });
     }
-  }, [derivedIndex]);
+  }, [derivedIndex, pathname]);
 
   useEffect(() => {
     if (!navRef.current || !containerRef.current) return;
@@ -210,6 +214,8 @@ export const GooeyNav: React.FC<GooeyNavProps> = ({
         if (currentActiveLi) {
           updateEffectPosition(currentActiveLi);
         }
+      } else {
+        updateEffectPosition(null);
       }
     });
 
@@ -217,12 +223,14 @@ export const GooeyNav: React.FC<GooeyNavProps> = ({
     return () => resizeObserver.disconnect();
   }, [derivedIndex]);
 
+  const currentActive = derivedIndex !== -1 ? derivedIndex : (pathname === '/' ? 0 : -1);
+
   return (
     <div className={`gooey-nav-container ${isReady ? 'ready' : ''} ${className}`} ref={containerRef}>
       <nav role="tablist" aria-label="Clinical Navigation">
         <ul ref={navRef}>
           {items.map((item, index) => {
-            const isActive = activeIndex === index;
+            const isActive = currentActive === index;
             return (
               <li key={item.href} className={isActive ? 'active' : ''} role="presentation">
                 <Link
@@ -244,7 +252,7 @@ export const GooeyNav: React.FC<GooeyNavProps> = ({
       <span className="effect filter" ref={filterRef} aria-hidden="true" />
       <span className="effect text" ref={textRef} aria-hidden="true" />
 
-      {/* SVG Gooey Metaball Filter: Operates strictly on the alpha channel with zero black background bleed */}
+      {/* SVG Gooey Metaball Filter: Tightly bounded to active pill area, eliminating stray black blobs */}
       <svg
         className="pointer-events-none absolute -top-[9999px] -left-[9999px] h-0 w-0 opacity-0 overflow-hidden"
         aria-hidden="true"
@@ -253,17 +261,17 @@ export const GooeyNav: React.FC<GooeyNavProps> = ({
         <defs>
           <filter
             id="gooey-nav-filter"
-            x="-50%"
-            y="-50%"
-            width="200%"
-            height="200%"
+            x="-25%"
+            y="-25%"
+            width="150%"
+            height="150%"
             colorInterpolationFilters="sRGB"
           >
-            <feGaussianBlur in="SourceGraphic" stdDeviation="6" result="blur" />
+            <feGaussianBlur in="SourceGraphic" stdDeviation="4.5" result="blur" />
             <feColorMatrix
               in="blur"
               type="matrix"
-              values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 19 -8"
+              values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 18 -7"
               result="goo"
             />
             <feComposite in="SourceGraphic" in2="goo" operator="atop" />

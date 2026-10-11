@@ -139,35 +139,37 @@ export function Navbar() {
       .join("")
       .toUpperCase() || "ME";
 
+  const isHome = pathname === "/";
+
   return (
     <>
       {/* ============================================================ Floating Architectural Clinical Header */}
-      <header className="sticky top-0 z-50 w-full pt-4 sm:pt-5 pb-2 px-4 sm:px-8 pointer-events-none transition-all duration-300">
+      <header className={`${isHome ? "fixed" : "sticky"} top-0 left-0 right-0 z-50 w-full pt-3 sm:pt-5 pb-2 px-3 sm:px-8 pointer-events-none transition-all duration-300`}>
         <div
-          className="mx-auto flex h-[60px] sm:h-[64px] max-w-[1360px] items-center justify-between px-6 sm:px-8 rounded-2xl pointer-events-auto transition-all"
+          className="mx-auto flex h-[58px] sm:h-[64px] max-w-[1360px] items-center justify-between px-3.5 sm:px-8 rounded-2xl pointer-events-auto transition-all"
           style={{
-            background: "rgba(255, 255, 255, 0.78)",
+            background: "rgba(255, 255, 255, 0.96)",
             backdropFilter: "blur(20px)",
             WebkitBackdropFilter: "blur(20px)",
-            border: "1px solid rgba(255, 255, 255, 0.85)",
-            boxShadow: "0 10px 35px rgba(40, 70, 100, 0.06)",
+            border: "1px solid rgba(226, 232, 240, 0.9)",
+            boxShadow: "0 10px 35px rgba(0, 0, 0, 0.12)",
           }}
         >
           
           {/* Group 1: Brand Identity Anchor */}
-          <div className="flex items-center min-w-[200px]">
-            <Link href="/" className="flex items-center gap-2.5 group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 rounded-xl">
+          <div className="flex items-center min-w-0 sm:min-w-[180px] shrink-0">
+            <Link href="/" className="flex items-center gap-2 group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 rounded-xl">
               {/* 34px clinical icon with subtle waveform */}
-              <div className="w-[34px] h-[34px] rounded-xl bg-gradient-to-br from-cyan-500 to-teal-600 flex items-center justify-center text-white shadow-[0_2px_8px_rgba(6,182,212,0.25)] shrink-0 group-hover:scale-105 transition-transform">
+              <div className="w-[32px] sm:w-[34px] h-[32px] sm:h-[34px] rounded-xl bg-gradient-to-br from-cyan-500 to-teal-600 flex items-center justify-center text-white shadow-[0_2px_8px_rgba(6,182,212,0.25)] shrink-0 group-hover:scale-105 transition-transform">
                 <svg viewBox="0 0 24 24" className="w-4 h-4 text-white stroke-[2.2]" fill="none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round">
                   <path d="M3 13h3.5l2.5-6 3.5 12 3-8 2 4h3.5" />
                 </svg>
               </div>
               <div className="flex flex-col">
-                <span className="text-[15px] font-black tracking-tight text-slate-950 uppercase leading-none">
+                <span className="text-[14px] sm:text-[15px] font-black tracking-tight text-slate-950 uppercase leading-none">
                   MEDVOICE
                 </span>
-                <span className="font-mono text-[9px] font-bold text-cyan-600 tracking-[0.2em] uppercase mt-1">
+                <span className="font-mono text-[8.5px] sm:text-[9px] font-bold text-cyan-600 tracking-[0.2em] uppercase mt-1">
                   CLINICAL INTELLIGENCE
                 </span>
               </div>
@@ -190,7 +192,7 @@ export function Navbar() {
           </div>
 
           {/* Group 3: Right Action Area / Clinical HUD Account Menu */}
-          <div className="flex items-center justify-end min-w-[200px] gap-3">
+          <div className="flex items-center justify-end min-w-0 sm:min-w-[180px] gap-2 sm:gap-3 shrink-0">
             {mounted && isLoaded ? (
               isSignedIn ? (
                 /* Polished Clinical Account Capsule */

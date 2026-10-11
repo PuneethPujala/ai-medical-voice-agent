@@ -170,8 +170,8 @@
 .point {
   display: block;
   opacity: 0;
-  width: 14px;
-  height: 14px;
+  width: 8px;
+  height: 8px;
   border-radius: 100%;
   transform-origin: center;
 }
@@ -179,8 +179,8 @@
 .particle {
   --time: 5s;
   position: absolute;
-  top: calc(50% - 7px);
-  left: calc(50% - 7px);
+  top: calc(50% - 4px);
+  left: calc(50% - 4px);
   animation: particle calc(var(--time)) ease 1 -350ms;
 }
 
