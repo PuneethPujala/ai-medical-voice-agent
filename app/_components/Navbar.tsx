@@ -19,10 +19,9 @@ import {
   Clock,
   Bookmark,
   Mic,
-  Bell,
   Home,
 } from "lucide-react";
-import { GooeyNav, type GooeyNavItem } from "@/components/motion/GooeyNav";
+import { GooeyNav, type GooeyNavItem } from "@/components/GooeyNav";
 
 const NAV_LINKS: GooeyNavItem[] = [
   { href: "/", label: "Home" },
@@ -175,9 +174,19 @@ export function Navbar() {
             </Link>
           </div>
 
-          {/* Group 2: Centered Primary Navigation with Authentic GooeyNav */}
+          {/* Group 2: Centered Primary Navigation with Official React Bits GooeyNav */}
           <div className="hidden md:flex items-center justify-center flex-1">
-            <GooeyNav items={NAV_LINKS} />
+            <div className="rounded-full bg-slate-950 px-2 py-1 border border-slate-800 shadow-md">
+              <GooeyNav
+                items={NAV_LINKS}
+                particleCount={15}
+                particleDistances={[90, 10]}
+                particleR={100}
+                animationTime={600}
+                timeVariance={300}
+                colors={[1, 2, 3, 1, 2, 3, 1, 4]}
+              />
+            </div>
           </div>
 
           {/* Group 3: Right Action Area / Clinical HUD Account Menu */}
