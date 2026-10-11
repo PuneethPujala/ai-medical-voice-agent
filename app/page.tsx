@@ -32,7 +32,9 @@ import { AppFooter } from "./_components/AppFooter";
 import { CursorGrid } from "@/components/CursorGrid";
 import { MedicalHeroDashboardPreview } from "./_components/MedicalHeroDashboardPreview";
 import { SpotlightCard } from "@/components/motion/SpotlightCard";
-import { ScrollStack, ScrollStackCard } from "@/components/motion/ScrollStack";
+import Stepper, { Step } from "@/components/Stepper";
+import AnimatedContent from "@/components/AnimatedContent";
+import ScrollReveal from "@/components/ScrollReveal";
 import { OptionWheel, OptionWheelItem } from "@/components/navigation/OptionWheel";
 import StarBorder from "@/components/ui/StarBorder";
 
@@ -75,8 +77,20 @@ const HERO_SCENARIOS: OptionWheelItem[] = [
   },
 ];
 
-// Four Dedicated Clinical Stages for ScrollStack
-const SCROLL_STACK_CARDS: ScrollStackCard[] = [
+// Clinical Stage Card Interface
+interface ClinicalStageCard {
+  step: string;
+  tag: string;
+  title: string;
+  description: string;
+  highlightBadge: string;
+  badgeColor: string;
+  metric?: string;
+  content: React.ReactNode;
+}
+
+// Four Dedicated Clinical Stages for Stepper & AnimatedContent
+const CLINICAL_STAGE_CARDS: ClinicalStageCard[] = [
   {
     step: "01",
     tag: "LISTEN",
@@ -268,6 +282,91 @@ export default function HomePage() {
   const [openFaq, setOpenFaq] = useState<number | null>(0);
   const [selectedScenario, setSelectedScenario] = useState<string>("emergency");
   const [selectedHub, setSelectedHub] = useState<string>("Vijayawada");
+  const [activeStageStep, setActiveStageStep] = useState<number>(1);
+
+  const isProgrammaticScrollRef = React.useRef(false);
+  const scrollTimerRef = React.useRef<NodeJS.Timeout | null>(null);
+  const cardRefs = React.useRef<(HTMLDivElement | null)[]>([]);
+
+  const handleStageStepChange = (newStep: number) => {
+    setActiveStageStep(newStep);
+    const targetCard = cardRefs.current[newStep - 1];
+    if (targetCard) {
+      isProgrammaticScrollRef.current = true;
+      if (scrollTimerRef.current) {
+        clearTimeout(scrollTimerRef.current);
+      }
+      const rect = targetCard.getBoundingClientRect();
+      const scrollTop = window.scrollY || document.documentElement.scrollTop;
+      const targetY = scrollTop + rect.top - 120;
+      window.scrollTo({
+        top: targetY,
+        behavior: "smooth",
+      });
+      scrollTimerRef.current = setTimeout(() => {
+        isProgrammaticScrollRef.current = false;
+      }, 850);
+    }
+  };
+
+  React.useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    let rafId: number | null = null;
+
+    const updateActiveStep = () => {
+      if (isProgrammaticScrollRef.current) return;
+
+      const cards = cardRefs.current.filter(Boolean) as HTMLDivElement[];
+      if (cards.length === 0) return;
+
+      // Focal activation line below the floating navbar (~180px)
+      const focalLine = 180;
+      let activeIdx = 0;
+
+      for (let i = 0; i < cards.length; i++) {
+        const rect = cards[i].getBoundingClientRect();
+        if (rect.top <= focalLine && rect.bottom >= focalLine) {
+          activeIdx = i;
+          break;
+        }
+        if (i === 0 && rect.top > focalLine) {
+          activeIdx = 0;
+          break;
+        }
+        if (rect.bottom < focalLine) {
+          activeIdx = i;
+        }
+      }
+
+      const targetStep = activeIdx + 1;
+      setActiveStageStep((prev) => (prev !== targetStep ? targetStep : prev));
+    };
+
+    const handleScroll = () => {
+      if (isProgrammaticScrollRef.current) return;
+      if (rafId !== null) return;
+      rafId = requestAnimationFrame(() => {
+        rafId = null;
+        updateActiveStep();
+      });
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    window.addEventListener("resize", handleScroll, { passive: true });
+
+    // Initial evaluation
+    updateActiveStep();
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("resize", handleScroll);
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      if (scrollTimerRef.current) {
+        clearTimeout(scrollTimerRef.current);
+      }
+    };
+  }, []);
 
   const currentHubData = REGIONAL_HUBS.find((h) => h.city === selectedHub) || REGIONAL_HUBS[0];
 
@@ -592,7 +691,7 @@ export default function HomePage() {
         </section>
 
         {/* ================================================================ */}
-        {/* 3. FOUR CLINICAL STAGES: DEDICATED SCROLL STACK NARRATIVE        */}
+        {/* 3. FOUR CLINICAL STAGES: STEPPER & ANIMATED CONTENT PIPELINE     */}
         {/* ================================================================ */}
         <section id="clinical-stages" className="py-24 sm:py-32 bg-[#FAF9F6] border-b border-slate-200/80 relative overflow-hidden">
           {/* Soft Ambient Radial Gradient */}
@@ -600,11 +699,18 @@ export default function HomePage() {
 
           <div className="max-w-[1440px] mx-auto px-6 sm:px-8 lg:px-12 text-center relative z-10">
             
-            <div className="max-w-3xl mx-auto mb-20 space-y-4">
+            <div className="max-w-3xl mx-auto mb-14 space-y-4">
               <span className="font-mono text-xs font-bold uppercase tracking-[0.14em] text-cyan-800 bg-cyan-50 border border-cyan-200 px-3.5 py-1 rounded-full inline-block">
                 PROGRESSIVE CLINICAL PIPELINE
               </span>
-              <h2 className="text-3xl sm:text-5xl font-bold text-slate-950 tracking-tight leading-tight">
+
+              <ScrollReveal
+                baseRotation={0}
+                blurStrength={3}
+                enableBlur={true}
+                containerClassName="mx-auto my-0"
+                textClassName="text-3xl sm:text-5xl font-bold text-slate-950 tracking-tight leading-tight"
+              >
                 Four deterministic stages,{" "}
                 <span
                   style={{
@@ -616,19 +722,97 @@ export default function HomePage() {
                 >
                   every call.
                 </span>
-              </h2>
+              </ScrollReveal>
+
               <p className="text-base sm:text-lg text-slate-600 font-normal leading-relaxed">
                 As you scroll, observe each layer of the clinical decision process: from streaming speech intake to ICD-10 mining, deterministic ESI triage, and hospital network routing.
               </p>
             </div>
 
-            {/* Rock-solid ScrollStack with clinical light styling and controlled vertical stacking */}
-            <ScrollStack
-              cards={SCROLL_STACK_CARDS}
-              theme="light"
-              stackPosition={110}
-              className="pb-36 sm:pb-48"
-            />
+            {/* Official React Bits Stepper Navigation Bar */}
+            <div className="max-w-xl mx-auto mb-14">
+              <Stepper
+                step={activeStageStep}
+                onStepChange={handleStageStepChange}
+                theme="light"
+                accentColor="#0891b2"
+                width="100%"
+                hideContent
+                className="w-full shadow-xs"
+              >
+                <Step title="Listen" />
+                <Step title="Understand" />
+                <Step title="Assess" />
+                <Step title="Act" />
+              </Stepper>
+            </div>
+
+            {/* Vertically Scrolling Clinical Stage Cards wrapped in AnimatedContent */}
+            <div className="space-y-8 sm:space-y-10 max-w-4xl mx-auto text-left pb-16 sm:pb-24">
+              {CLINICAL_STAGE_CARDS.map((card, index) => (
+                <div
+                  key={card.step}
+                  id={`stage-card-${index + 1}`}
+                  ref={(el) => {
+                    cardRefs.current[index] = el;
+                  }}
+                  className="scroll-mt-28"
+                >
+                  <AnimatedContent
+                    distance={28}
+                    duration={0.6}
+                    threshold={0.15}
+                    ease="power3.out"
+                    className="w-full"
+                  >
+                    <div className="w-full rounded-3xl min-h-[340px] sm:min-h-[360px] p-6 sm:p-9 bg-white border border-slate-200/90 shadow-[0_20px_50px_-15px_rgba(15,23,42,0.08)]">
+                      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-center h-full">
+                        {/* Left Information Side */}
+                        <div className="lg:col-span-6 space-y-4 text-left">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-xs font-bold text-slate-400">
+                              {card.step}
+                            </span>
+                            <span className="text-slate-400">/</span>
+                            <span
+                              className={`font-mono text-xs font-bold uppercase tracking-wider px-3 py-1 rounded-full border ${card.badgeColor}`}
+                            >
+                              {card.tag}
+                            </span>
+                          </div>
+
+                          <h3 className="text-2xl sm:text-3xl font-extrabold tracking-tight leading-tight text-slate-950">
+                            {card.title}
+                          </h3>
+
+                          <p className="text-sm sm:text-base leading-relaxed font-normal text-slate-600">
+                            {card.description}
+                          </p>
+
+                          <div className="pt-2 flex flex-wrap items-center gap-3">
+                            <span className="font-mono text-xs font-semibold px-3 py-1.5 rounded-xl inline-block border text-cyan-800 bg-cyan-50 border-cyan-200">
+                              {card.highlightBadge}
+                            </span>
+                            {card.metric && (
+                              <span className="font-mono text-xs font-medium text-slate-500">
+                                {card.metric}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Right Visual Clinical Slate */}
+                        <div className="lg:col-span-6 w-full">
+                          <div className="w-full rounded-2xl p-5 font-mono text-xs shadow-2xs border bg-slate-50 border-slate-200/90 text-slate-800">
+                            {card.content}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </AnimatedContent>
+                </div>
+              ))}
+            </div>
 
           </div>
         </section>
