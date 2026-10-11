@@ -24,11 +24,11 @@ export interface GooeyNavProps {
 
 export const GooeyNav: React.FC<GooeyNavProps> = ({
   items,
-  animationTime = 600,
-  particleCount = 15,
-  particleDistances = [90, 10],
-  particleR = 100,
-  timeVariance = 300,
+  animationTime = 500,
+  particleCount = 12,
+  particleDistances = [38, 8],
+  particleR = 60,
+  timeVariance = 200,
   colors = [1, 2, 3, 1, 2, 3, 1, 4],
   initialActiveIndex = 0,
   className = ''
@@ -45,7 +45,9 @@ export const GooeyNav: React.FC<GooeyNavProps> = ({
   const navRef = useRef<HTMLUListElement>(null);
   const filterRef = useRef<HTMLSpanElement>(null);
   const textRef = useRef<HTMLSpanElement>(null);
+  const isInitialMountRef = useRef<boolean>(true);
   const [activeIndex, setActiveIndex] = useState<number>(derivedIndex !== -1 ? derivedIndex : initialActiveIndex);
+  const [isReady, setIsReady] = useState<boolean>(false);
 
   const noise = (n = 1) => n / 2 - Math.random() * n;
 
@@ -184,8 +186,19 @@ export const GooeyNav: React.FC<GooeyNavProps> = ({
       updateEffectPosition(activeLi);
       textRef.current?.classList.add('active');
       if (filterRef.current) {
-        makeParticles(filterRef.current);
+        if (!isInitialMountRef.current) {
+          makeParticles(filterRef.current);
+        } else {
+          filterRef.current.classList.add('active');
+        }
       }
+    }
+
+    if (isInitialMountRef.current) {
+      requestAnimationFrame(() => {
+        setIsReady(true);
+        isInitialMountRef.current = false;
+      });
     }
   }, [derivedIndex]);
 
@@ -205,7 +218,7 @@ export const GooeyNav: React.FC<GooeyNavProps> = ({
   }, [derivedIndex]);
 
   return (
-    <div className={`gooey-nav-container ${className}`} ref={containerRef}>
+    <div className={`gooey-nav-container ${isReady ? 'ready' : ''} ${className}`} ref={containerRef}>
       <nav role="tablist" aria-label="Clinical Navigation">
         <ul ref={navRef}>
           {items.map((item, index) => {
@@ -214,6 +227,7 @@ export const GooeyNav: React.FC<GooeyNavProps> = ({
               <li key={item.href} className={isActive ? 'active' : ''} role="presentation">
                 <Link
                   href={item.href}
+                  prefetch={true}
                   role="tab"
                   aria-selected={isActive}
                   tabIndex={isActive ? 0 : -1}

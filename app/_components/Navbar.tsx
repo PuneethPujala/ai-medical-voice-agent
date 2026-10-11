@@ -174,16 +174,16 @@ export function Navbar() {
             </Link>
           </div>
 
-          {/* Group 2: Centered Primary Navigation with Official React Bits GooeyNav */}
+          {/* Group 2: Centered Primary Navigation with Official React Bits GooeyNav (Clinical White-First Track) */}
           <div className="hidden md:flex items-center justify-center flex-1">
-            <div className="rounded-full bg-slate-950 px-2 py-1 border border-slate-800 shadow-md">
+            <div className="rounded-full bg-white px-1.5 py-1 border border-slate-200/90 shadow-[0_2px_10px_rgba(15,23,42,0.04)]">
               <GooeyNav
                 items={NAV_LINKS}
-                particleCount={15}
-                particleDistances={[90, 10]}
-                particleR={100}
-                animationTime={600}
-                timeVariance={300}
+                particleCount={12}
+                particleDistances={[38, 8]}
+                particleR={60}
+                animationTime={500}
+                timeVariance={200}
                 colors={[1, 2, 3, 1, 2, 3, 1, 4]}
               />
             </div>

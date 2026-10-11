@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
 import { StrandsBackground } from "@/components/StrandsBackground";
+import { Navbar } from "./_components/Navbar";
+import { PageTransition } from "@/components/navigation/PageTransition";
 import "./globals.css";
 
 const jakarta = Plus_Jakarta_Sans({
@@ -35,9 +37,10 @@ export default function RootLayout({
       >
         <body className="min-h-full flex flex-col font-sans bg-[#F7F9FC] text-slate-900 relative">
           <StrandsBackground />
-          <div className="relative z-10 flex-1 flex flex-col">
+          <Navbar />
+          <PageTransition>
             {children}
-          </div>
+          </PageTransition>
         </body>
       </html>
     </ClerkProvider>

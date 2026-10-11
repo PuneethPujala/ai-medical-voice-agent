@@ -25,15 +25,17 @@
     1.001 85%,
     1
   );
-  --color-1: #06b6d4;
-  --color-2: #38bdf8;
-  --color-3: #14b8a6;
-  --color-4: #8b5cf6;
+  /* Black active-state gooey particle palette */
+  --color-1: #090d16;
+  --color-2: #0f172a;
+  --color-3: #1e293b;
+  --color-4: #090d16;
 }
 
 .gooey-nav-container {
   position: relative;
   display: inline-flex;
+  align-items: center;
 }
 
 .gooey-nav-container nav {
@@ -44,13 +46,13 @@
 
 .gooey-nav-container nav ul {
   display: flex;
-  gap: 1.5em;
+  gap: 0.5em;
   list-style: none;
-  padding: 0 0.85em;
+  padding: 0 0.25em;
   margin: 0;
   position: relative;
   z-index: 3;
-  color: #94a3b8;
+  color: #475569;
 }
 
 .gooey-nav-container nav ul li {
@@ -58,30 +60,30 @@
   position: relative;
   cursor: pointer;
   transition:
-    background-color 0.25s ease,
-    color 0.25s ease,
-    box-shadow 0.25s ease;
+    color 0.2s ease,
+    box-shadow 0.2s ease;
   box-shadow: 0 0 0.5px 1.5px transparent;
-  color: #94a3b8;
+  color: #475569;
 }
 
 .gooey-nav-container nav ul li:hover {
-  color: #f8fafc;
+  color: #090d16;
 }
 
 .gooey-nav-container nav ul li a {
   display: inline-block;
-  padding: 0.5em 0.9em;
-  font-size: 0.875rem;
+  padding: 0.45em 0.85em;
+  font-size: 0.8125rem;
   font-weight: 600;
   color: inherit;
   text-decoration: none;
   outline: none;
   transition: color 0.2s ease;
+  letter-spacing: -0.01em;
 }
 
 .gooey-nav-container nav ul li:focus-within:has(:focus-visible) {
-  box-shadow: 0 0 0.5px 1.5px #06b6d4;
+  box-shadow: 0 0 0 2px #0284c7;
 }
 
 /* Eliminate duplicate static indicators: the animated .effect.filter pill is the sole authoritative background indicator */
@@ -93,8 +95,7 @@
 }
 
 .gooey-nav-container nav ul li.active {
-  color: #090d16;
-  text-shadow: none;
+  color: #ffffff;
 }
 
 /* Hide static label of active tab so effect.text is the sole visible label - preventing any duplicate/overlapping text */
@@ -115,20 +116,25 @@
   z-index: 1;
 }
 
+.gooey-nav-container.ready .effect {
+  transition: left 0.36s var(--linear-ease), width 0.36s var(--linear-ease);
+}
+
 .gooey-nav-container .effect.text {
-  color: #94a3b8;
-  transition: color 0.3s ease;
-  font-size: 0.875rem;
+  color: #475569;
+  transition: color 0.2s ease;
+  font-size: 0.8125rem;
   font-weight: 700;
-  padding: 0.5em 0.9em;
+  padding: 0.45em 0.85em;
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 2;
+  letter-spacing: -0.01em;
 }
 
 .gooey-nav-container .effect.text.active {
-  color: #090d16;
+  color: #ffffff;
 }
 
 /* True SVG Gooey Metaball Filter: Operates strictly on alpha without any black pseudo-elements or blend mode side effects */
@@ -141,11 +147,12 @@
   content: '';
   position: absolute;
   inset: 0;
-  background: white;
+  background: #090d16;
   transform: scale(0);
   opacity: 0;
   z-index: -1;
   border-radius: 100vw;
+  box-shadow: 0 2px 8px rgba(9, 13, 22, 0.2);
 }
 
 .gooey-nav-container .effect.active::after {
@@ -163,8 +170,8 @@
 .point {
   display: block;
   opacity: 0;
-  width: 20px;
-  height: 20px;
+  width: 14px;
+  height: 14px;
   border-radius: 100%;
   transform-origin: center;
 }
@@ -172,13 +179,13 @@
 .particle {
   --time: 5s;
   position: absolute;
-  top: calc(50% - 8px);
-  left: calc(50% - 8px);
+  top: calc(50% - 7px);
+  left: calc(50% - 7px);
   animation: particle calc(var(--time)) ease 1 -350ms;
 }
 
 .point {
-  background: var(--color);
+  background: var(--color, #090d16);
   opacity: 1;
   animation: point calc(var(--time)) ease 1 -350ms;
 }
@@ -238,3 +245,19 @@
     opacity: 0;
   }
 }
+
+@media (prefers-reduced-motion: reduce) {
+  .gooey-nav-container .effect {
+    transition: none !important;
+  }
+  .gooey-nav-container .effect.filter::after {
+    animation: none !important;
+    transform: scale(1) !important;
+    opacity: 1 !important;
+  }
+  .gooey-nav-container .particle {
+    display: none !important;
+    animation: none !important;
+  }
+}
+

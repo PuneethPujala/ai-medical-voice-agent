@@ -25,7 +25,6 @@ import {
   Star,
 } from "lucide-react";
 import { SpecialtyIcon } from "@/components/care/SpecialtyIcon";
-import { Navbar } from "../_components/Navbar";
 import { AppFooter } from "../_components/AppFooter";
 import { HospitalItem } from "../_components/InteractiveRouteMap";
 import { CardNav, RegionCardItem } from "@/components/navigation/CardNav";
@@ -652,8 +651,6 @@ export default function CarePage() {
 
   return (
     <div className="relative min-h-screen bg-[#FAF9F6] text-slate-900 font-sans flex flex-col justify-between selection:bg-cyan-500 selection:text-white">
-      <Navbar />
-
       <main className="relative z-10 flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 pt-6 sm:pt-8 pb-16 flex flex-col gap-6">
 
         {/* ========================================================================= */}

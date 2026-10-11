@@ -3,7 +3,6 @@
 import React from "react";
 import Link from "next/link";
 import { ArrowLeft, ShieldCheck, Lock, CheckCircle2, FileText, Key, Activity } from "lucide-react";
-import { Navbar } from "../_components/Navbar";
 import { AppFooter } from "../_components/AppFooter";
 import { ScrollExpand, ExpandItem } from "@/components/motion/ScrollExpand";
 import { ClinicalFlipCard } from "@/components/clinical/ClinicalFlipCard";
@@ -81,8 +80,6 @@ export default function PrivacyPolicyPage() {
   return (
     <div className="relative min-h-screen bg-[#FAF9F6] text-slate-900 font-sans flex flex-col justify-between selection:bg-cyan-500 selection:text-white">
       <div>
-        <Navbar />
-
         {/* HERO HEADER */}
         <section className="pt-16 pb-12 px-6 max-w-4xl mx-auto space-y-4">
           <Link

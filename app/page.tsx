@@ -30,7 +30,6 @@ import {
   Flame,
   Stethoscope
 } from "lucide-react";
-import { Navbar } from "./_components/Navbar";
 import { AppFooter } from "./_components/AppFooter";
 import { CursorGrid } from "@/components/CursorGrid";
 import { MedicalHeroDashboardPreview } from "./_components/MedicalHeroDashboardPreview";
@@ -311,11 +310,6 @@ export default function HomePage() {
     <div className="relative min-h-screen bg-[#FAF9F6] text-slate-900 font-sans flex flex-col justify-between selection:bg-cyan-500 selection:text-white">
       {/* React Bits Subtle Interactive Ambient Cursor Glow */}
       <GlowCursor color="rgba(6, 182, 212, 0.14)" size={380} blur={70} opacity={0.75} />
-
-      {/* ------------------------------------------------------------------ */}
-      {/* 1. FLOATING CLINICAL HEADER (PILL NAV INTEGRATED)                 */}
-      {/* ------------------------------------------------------------------ */}
-      <Navbar />
 
       <main className="w-full flex-1">
         {/* ================================================================ */}

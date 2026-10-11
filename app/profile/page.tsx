@@ -32,7 +32,6 @@ import {
   Smile,
   AlertCircle
 } from "lucide-react";
-import { Navbar } from "../_components/Navbar";
 import { AppFooter } from "../_components/AppFooter";
 import GradientText from "@/components/ui/GradientText";
 import { JellyRadio } from "@/components/ui/JellyRadio";
@@ -379,7 +378,6 @@ export default function PatientProfilePage() {
 
   return (
     <div className="relative min-h-screen bg-slate-50/50 text-slate-900 flex flex-col font-sans selection:bg-cyan-500 selection:text-white overflow-x-clip">
-      <Navbar />
 
       <main className="relative z-10 flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 pt-6 sm:pt-10 pb-24 flex flex-col gap-8">
         

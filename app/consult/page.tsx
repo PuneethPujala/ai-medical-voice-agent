@@ -41,7 +41,6 @@ import {
   AlertTriangle
 } from "lucide-react";
 import Link from "next/link";
-import { Navbar } from "../_components/Navbar";
 import { AppFooter } from "../_components/AppFooter";
 import { SoapReportModal } from "../_components/SoapReportModal";
 import { DOCTOR_PROFILES, DoctorProfile, getDoctorById } from "@/config/doctors";
@@ -2104,8 +2103,6 @@ export default function ConsultPage() {
     <div className="relative min-h-screen bg-transparent text-slate-900 flex flex-col font-sans selection:bg-cyan-500 selection:text-white overflow-x-clip">
       {/* React Bits Subtle Interactive Ambient Cursor Glow */}
       <GlowCursor color="rgba(6, 182, 212, 0.12)" size={350} blur={65} opacity={0.7} />
-
-      <Navbar />
 
       <main className="relative z-10 flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 pt-6 sm:pt-8 pb-16 flex flex-col gap-8">
         

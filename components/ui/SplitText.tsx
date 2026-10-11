@@ -109,7 +109,11 @@ export const SplitText: React.FC<SplitTextProps> = ({
         if (!targets.length) targets = self.chars || self.words || self.lines || [];
       };
 
+      let safetyTimer: ReturnType<typeof setTimeout> | undefined;
+
       try {
+        const inView = el.getBoundingClientRect().top < (window.innerHeight || 800) + 50;
+
         const splitInstance = new GSAPSplitText(el, {
           type: splitType,
           smartWrap: true,
@@ -120,38 +124,50 @@ export const SplitText: React.FC<SplitTextProps> = ({
           reduceWhiteSpace: false,
           onSplit: (self: GSAPSplitText) => {
             assignTargets(self);
-            return gsap.fromTo(
-              targets,
-              { ...from },
-              {
-                ...to,
-                duration,
-                ease,
-                stagger: delay / 1000,
-                scrollTrigger: {
-                  trigger: el,
-                  start,
-                  once: true,
-                  fastScrollEnd: true,
-                  anticipatePin: 0.4
-                },
-                onComplete: () => {
-                  animationCompletedRef.current = true;
-                  onCompleteRef.current?.();
-                },
-                willChange: 'transform, opacity',
-                force3D: true
+
+            safetyTimer = setTimeout(() => {
+              if (!animationCompletedRef.current && el) {
+                gsap.set(targets.length ? targets : el, { opacity: 1, y: 0, clearProps: 'transform' });
+                animationCompletedRef.current = true;
               }
-            );
+            }, Math.max(500, (duration + 0.3) * 1000));
+
+            const animVars: gsap.TweenVars = {
+              ...to,
+              duration,
+              ease,
+              stagger: delay / 1000,
+              onComplete: () => {
+                animationCompletedRef.current = true;
+                if (safetyTimer) clearTimeout(safetyTimer);
+                onCompleteRef.current?.();
+              },
+              willChange: 'transform, opacity',
+              force3D: true
+            };
+
+            if (!inView) {
+              animVars.scrollTrigger = {
+                trigger: el,
+                start,
+                once: true,
+                fastScrollEnd: true,
+                anticipatePin: 0.4
+              };
+            }
+
+            return gsap.fromTo(targets, { ...from }, animVars);
           }
         });
         el._rbsplitInstance = splitInstance;
       } catch (err) {
         // Fallback for environments where SplitText DOM manipulation is prevented
         gsap.fromTo(el, { ...from }, { ...to, duration, ease });
+        animationCompletedRef.current = true;
       }
 
       return () => {
+        if (safetyTimer) clearTimeout(safetyTimer);
         ScrollTrigger.getAll().forEach(st => {
           if (st.trigger === el) st.kill();
         });

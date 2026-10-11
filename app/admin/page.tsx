@@ -27,7 +27,6 @@ import {
   Eye,
   Key
 } from "lucide-react";
-import { Navbar } from "../_components/Navbar";
 import { AppFooter } from "../_components/AppFooter";
 
 interface AdminMetrics {
@@ -219,7 +218,6 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col selection:bg-cyan-500 selection:text-black">
-      <Navbar />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-28 pb-16">
         {/* Top Header */}

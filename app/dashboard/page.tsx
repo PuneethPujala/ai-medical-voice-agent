@@ -32,7 +32,6 @@ import {
   Send
 } from "lucide-react";
 import Link from "next/link";
-import { Navbar } from "../_components/Navbar";
 import { AppFooter } from "../_components/AppFooter";
 import { generateFHIRBundle } from "@/lib/fhir/bundle";
 import CountUp from "@/components/CountUp";
@@ -302,8 +301,6 @@ export default function DashboardPage() {
   return (
     <div className="relative min-h-screen bg-transparent text-slate-900 font-sans flex flex-col justify-between selection:bg-cyan-500 selection:text-white">
       <div>
-        <Navbar />
-
         {/* PAGE HEADER */}
         <section className="pt-14 pb-8 px-6 max-w-4xl mx-auto text-center space-y-3">
           <div className="flex items-center justify-center gap-2">
