@@ -8,11 +8,8 @@ export function AppFooter() {
   const currentYear = new Date().getFullYear();
 
   return (
-    <footer className="relative w-full mt-auto text-slate-400 text-xs overflow-hidden">
-      {/* 1. SOFT ATMOSPHERIC TRANSITION: Smoothly fades light background into deep slate */}
-      <div className="w-full h-16 sm:h-20 bg-gradient-to-b from-transparent via-slate-950/60 to-slate-950 pointer-events-none" />
-
-      {/* 2. MAIN FOOTER BODY */}
+    <footer className="relative w-full mt-auto text-slate-400 text-xs">
+      {/* MAIN FOOTER BODY */}
       <div className="w-full bg-slate-950 border-t border-slate-800/80 px-4 sm:px-8 pt-10 pb-8">
         <div className="mx-auto max-w-6xl flex flex-col gap-10">
           

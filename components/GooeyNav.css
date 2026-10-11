@@ -50,8 +50,7 @@
   margin: 0;
   position: relative;
   z-index: 3;
-  color: white;
-  text-shadow: 0 1px 1px hsl(205deg 30% 10% / 0.2);
+  color: #94a3b8;
 }
 
 .gooey-nav-container nav ul li {
@@ -59,11 +58,15 @@
   position: relative;
   cursor: pointer;
   transition:
-    background-color 0.3s ease,
-    color 0.3s ease,
-    box-shadow 0.3s ease;
+    background-color 0.25s ease,
+    color 0.25s ease,
+    box-shadow 0.25s ease;
   box-shadow: 0 0 0.5px 1.5px transparent;
-  color: white;
+  color: #94a3b8;
+}
+
+.gooey-nav-container nav ul li:hover {
+  color: #f8fafc;
 }
 
 .gooey-nav-container nav ul li a {
@@ -74,32 +77,24 @@
   color: inherit;
   text-decoration: none;
   outline: none;
+  transition: color 0.2s ease;
 }
 
 .gooey-nav-container nav ul li:focus-within:has(:focus-visible) {
-  box-shadow: 0 0 0.5px 1.5px white;
+  box-shadow: 0 0 0.5px 1.5px #06b6d4;
 }
 
-.gooey-nav-container nav ul li::after {
+/* Eliminate duplicate static indicators: the animated .effect.filter pill is the sole authoritative background indicator */
+.gooey-nav-container nav ul li::after,
+.gooey-nav-container nav ul li.active::after {
+  display: none;
   content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: 10px;
-  background: white;
   opacity: 0;
-  transform: scale(0);
-  transition: all 0.3s ease;
-  z-index: -1;
 }
 
 .gooey-nav-container nav ul li.active {
-  color: black;
+  color: #090d16;
   text-shadow: none;
-}
-
-.gooey-nav-container nav ul li.active::after {
-  opacity: 1;
-  transform: scale(1);
 }
 
 /* Hide static label of active tab so effect.text is the sole visible label - preventing any duplicate/overlapping text */
@@ -121,31 +116,25 @@
 }
 
 .gooey-nav-container .effect.text {
-  color: white;
+  color: #94a3b8;
   transition: color 0.3s ease;
   font-size: 0.875rem;
-  font-weight: 600;
+  font-weight: 700;
   padding: 0.5em 0.9em;
   display: flex;
   align-items: center;
   justify-content: center;
+  z-index: 2;
 }
 
 .gooey-nav-container .effect.text.active {
-  color: black;
+  color: #090d16;
 }
 
+/* True SVG Gooey Metaball Filter: Operates strictly on alpha without any black pseudo-elements or blend mode side effects */
 .gooey-nav-container .effect.filter {
-  filter: blur(7px) contrast(100) blur(0);
-  mix-blend-mode: lighten;
-}
-
-.gooey-nav-container .effect.filter::before {
-  content: '';
-  position: absolute;
-  inset: -75px;
-  z-index: -2;
-  background: black;
+  filter: url(#gooey-nav-filter);
+  z-index: 1;
 }
 
 .gooey-nav-container .effect.filter::after {

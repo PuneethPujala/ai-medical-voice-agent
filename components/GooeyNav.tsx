@@ -229,6 +229,33 @@ export const GooeyNav: React.FC<GooeyNavProps> = ({
       </nav>
       <span className="effect filter" ref={filterRef} aria-hidden="true" />
       <span className="effect text" ref={textRef} aria-hidden="true" />
+
+      {/* SVG Gooey Metaball Filter: Operates strictly on the alpha channel with zero black background bleed */}
+      <svg
+        className="pointer-events-none absolute -top-[9999px] -left-[9999px] h-0 w-0 opacity-0 overflow-hidden"
+        aria-hidden="true"
+        style={{ position: 'absolute', width: 0, height: 0, pointerEvents: 'none' }}
+      >
+        <defs>
+          <filter
+            id="gooey-nav-filter"
+            x="-50%"
+            y="-50%"
+            width="200%"
+            height="200%"
+            colorInterpolationFilters="sRGB"
+          >
+            <feGaussianBlur in="SourceGraphic" stdDeviation="6" result="blur" />
+            <feColorMatrix
+              in="blur"
+              type="matrix"
+              values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 19 -8"
+              result="goo"
+            />
+            <feComposite in="SourceGraphic" in2="goo" operator="atop" />
+          </filter>
+        </defs>
+      </svg>
     </div>
   );
 };
