@@ -651,7 +651,7 @@ export default function CarePage() {
     : "#";
 
   return (
-    <div className="relative min-h-screen bg-[#F6F5F1] text-[#172026] font-sans flex flex-col justify-between selection:bg-[#0F6B6D] selection:text-white">
+    <div className="relative min-h-screen bg-[#FAF9F6] text-slate-900 font-sans flex flex-col justify-between selection:bg-cyan-500 selection:text-white">
       <Navbar />
 
       <main className="relative z-10 flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 pt-6 sm:pt-8 pb-16 flex flex-col gap-6">
@@ -662,8 +662,8 @@ export default function CarePage() {
         {/* ========================================================================= */}
         {!userLocation && !isManualPicking ? (
           <section className="py-10 sm:py-20 max-w-2xl mx-auto w-full flex flex-col items-center text-center gap-6">
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#E8F3F3] text-[#0F6B6D] border border-[#C2DFDF] text-xs font-semibold">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#0F6B6D]" />
+            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-cyan-50/90 text-cyan-700 border border-cyan-200/90 text-xs font-semibold">
+              <span className="w-1.5 h-1.5 rounded-full bg-cyan-600" />
               <span>Care Network · 36+ Regions</span>
             </div>
 
@@ -671,7 +671,7 @@ export default function CarePage() {
               <SplitText
                 text="Find verified care near you"
                 tag="h1"
-                className="text-3xl sm:text-5xl font-semibold tracking-tight text-[#172026]"
+                className="text-3xl sm:text-5xl font-semibold tracking-tight text-slate-900"
               />
               <div className="pt-0.5">
                 <GradientText
@@ -681,23 +681,23 @@ export default function CarePage() {
                   Regional Trauma & Specialist Reachability Network
                 </GradientText>
               </div>
-              <p className="text-sm sm:text-base text-[#5A6B75] max-w-lg mx-auto leading-relaxed">
+              <p className="text-sm sm:text-base text-slate-600 max-w-lg mx-auto leading-relaxed">
                 Choose where you're starting from to calculate road reachability, emergency travel times, and specialist on-duty coverage.
               </p>
             </div>
 
             {/* NON-AUTHORITATIVE SAVED SUGGESTION (Requires explicit user confirmation) */}
             {savedSuggestion && (
-              <div className="w-full p-4 rounded-2xl bg-white border border-[#E5E3DC] shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-left">
+              <div className="w-full p-4 rounded-2xl bg-white border border-slate-200/90 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-left">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-9 h-9 rounded-xl bg-[#F6F5F1] border border-[#E5E3DC] flex items-center justify-center text-[#0F6B6D] shrink-0">
+                  <div className="w-9 h-9 rounded-xl bg-[#FAF9F6] border border-slate-200/90 flex items-center justify-center text-cyan-700 shrink-0">
                     <MapPin className="w-4 h-4" />
                   </div>
                   <div className="min-w-0">
-                    <span className="text-[11px] font-semibold text-[#6E9997] uppercase tracking-wide block">
+                    <span className="text-[11px] font-semibold text-cyan-700 uppercase tracking-wide block">
                       Last used location
                     </span>
-                    <span className="text-xs sm:text-sm font-semibold text-[#172026] truncate block">
+                    <span className="text-xs sm:text-sm font-semibold text-slate-900 truncate block">
                       {savedSuggestion.label}
                     </span>
                   </div>
@@ -705,13 +705,13 @@ export default function CarePage() {
                 <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
                   <button
                     onClick={handleApplySuggestion}
-                    className="px-3.5 py-1.5 rounded-xl bg-[#0F6B6D] hover:bg-[#0A5254] text-white text-xs font-semibold transition-colors cursor-pointer"
+                    className="px-3.5 py-1.5 rounded-xl bg-cyan-700 hover:bg-cyan-800 text-white text-xs font-semibold transition-colors cursor-pointer"
                   >
                     Use this location
                   </button>
                   <button
                     onClick={handleDismissSuggestion}
-                    className="px-2.5 py-1.5 text-xs text-[#5A6B75] hover:text-[#172026] transition-colors cursor-pointer"
+                    className="px-2.5 py-1.5 text-xs text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
                   >
                     Dismiss
                   </button>
@@ -728,7 +728,7 @@ export default function CarePage() {
                 color="#06b6d4"
                 duration={4}
                 theme="dark"
-                backgroundColor="#0F6B6D"
+                backgroundColor="#0891b2"
                 textColor="#ffffff"
                 radius={12}
                 className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 text-white font-semibold text-sm shadow-xs transition-colors cursor-pointer disabled:opacity-50 hover:shadow-cyan-500/20"
@@ -739,9 +739,9 @@ export default function CarePage() {
 
               <button
                 onClick={() => setIsChoosingCity(!isChoosingCity)}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-white hover:bg-[#F6F5F1] text-[#172026] font-semibold text-sm border border-[#E5E3DC] shadow-xs transition-colors cursor-pointer"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-white hover:bg-[#FAF9F6] text-slate-900 font-semibold text-sm border border-slate-200/90 shadow-xs transition-colors cursor-pointer"
               >
-                <Building2 className="w-4 h-4 text-[#6E9997]" />
+                <Building2 className="w-4 h-4 text-cyan-700" />
                 <span>{isChoosingCity ? "Hide city selector" : "Choose a city or region"}</span>
               </button>
             </div>
@@ -755,20 +755,20 @@ export default function CarePage() {
 
             {/* EXPANDABLE CITY & REGION SELECTOR */}
             {isChoosingCity && (
-              <div className="w-full p-5 sm:p-6 rounded-3xl bg-white border border-[#E5E3DC] shadow-xs flex flex-col gap-5 text-left animate-in fade-in duration-200">
-                <div className="flex items-center justify-between border-b border-[#E5E3DC] pb-3">
+              <div className="w-full p-5 sm:p-6 rounded-3xl bg-white border border-slate-200/90 shadow-xs flex flex-col gap-5 text-left animate-in fade-in duration-200">
+                <div className="flex items-center justify-between border-b border-slate-200/90 pb-3">
                   <div>
-                    <h3 className="text-sm font-semibold text-[#172026]">Select Region or Search Any City</h3>
-                    <p className="text-xs text-[#5A6B75]">Coverage across 36+ verified healthcare networks in India</p>
+                    <h3 className="text-sm font-semibold text-slate-900">Select Region or Search Any City</h3>
+                    <p className="text-xs text-slate-600">Coverage across 36+ verified healthcare networks in India</p>
                   </div>
                   <button
                     onClick={() => {
                       setIsChoosingCity(false);
                       setIsManualPicking(true);
                     }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[#E5E3DC] hover:bg-[#F6F5F1] text-xs font-semibold text-[#172026] transition-colors cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200/90 hover:bg-[#FAF9F6] text-xs font-semibold text-slate-900 transition-colors cursor-pointer"
                   >
-                    <Compass className="w-3.5 h-3.5 text-[#0F6B6D]" />
+                    <Compass className="w-3.5 h-3.5 text-cyan-700" />
                     <span>Pick on map</span>
                   </button>
                 </div>
@@ -776,30 +776,30 @@ export default function CarePage() {
                 {/* Autocomplete Input */}
                 <div className="relative">
                   <div className="relative flex items-center">
-                    <Search className="w-4 h-4 text-[#8C9AA2] absolute left-3.5 pointer-events-none" />
+                    <Search className="w-4 h-4 text-slate-400 absolute left-3.5 pointer-events-none" />
                     <input
                       type="text"
                       value={searchQuery}
                       onChange={handleSearchChange}
                       onFocus={() => searchResults.length > 0 && setShowDropdown(true)}
                       placeholder="Search any city, town, or pincode (e.g. Pune, Bangalore, Amaravati, Guntur)..."
-                      className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-white border border-[#E5E3DC] focus:border-[#0F6B6D] focus:ring-2 focus:ring-[#E8F3F3] text-xs sm:text-sm text-[#172026] placeholder:text-[#8C9AA2] transition-all outline-none"
+                      className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-white border border-slate-200/90 focus:border-cyan-600 focus:ring-2 focus:ring-cyan-50 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 transition-all outline-none"
                     />
                     {isSearching && (
-                      <div className="w-4 h-4 rounded-full border-2 border-[#0F6B6D] border-t-transparent animate-spin absolute right-3.5" />
+                      <div className="w-4 h-4 rounded-full border-2 border-cyan-600 border-t-transparent animate-spin absolute right-3.5" />
                     )}
                   </div>
 
                   {/* Dropdown */}
                   {showDropdown && searchResults.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl border border-[#E5E3DC] shadow-lg z-50 overflow-hidden">
+                    <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl border border-slate-200/90 shadow-lg z-50 overflow-hidden">
                       {searchResults.map((item, idx) => (
                         <button
                           key={idx}
                           onClick={() => handleSelectSearchResult(item)}
-                          className="w-full px-4 py-2.5 text-left text-xs text-[#172026] hover:bg-[#E8F3F3] hover:text-[#0F6B6D] flex items-center gap-2.5 transition-colors border-b border-[#E5E3DC] last:border-b-0 cursor-pointer"
+                          className="w-full px-4 py-2.5 text-left text-xs text-slate-900 hover:bg-cyan-50/90 hover:text-cyan-700 flex items-center gap-2.5 transition-colors border-b border-slate-200/90 last:border-b-0 cursor-pointer"
                         >
-                          <MapPin className="w-3.5 h-3.5 text-[#6E9997] shrink-0" />
+                          <MapPin className="w-3.5 h-3.5 text-cyan-700 shrink-0" />
                           <span className="truncate">{item.display_name}</span>
                         </button>
                       ))}
@@ -809,7 +809,7 @@ export default function CarePage() {
 
                 {/* Zone Filter */}
                 <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
-                  <span className="text-[11px] font-semibold text-[#8C9AA2] mr-1 shrink-0">Zone:</span>
+                  <span className="text-[11px] font-semibold text-slate-400 mr-1 shrink-0">Zone:</span>
                   {[
                     { id: "all", label: "All Regions (36+)" },
                     { id: "ap_tg", label: "AP & Telangana (15)" },
@@ -824,7 +824,7 @@ export default function CarePage() {
                       className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
                         selectedZone === zone.id
                           ? "bg-[#172026] text-white"
-                          : "bg-[#F6F5F1] hover:bg-[#E5E3DC] text-[#5A6B75]"
+                          : "bg-[#FAF9F6] hover:bg-[#E5E3DC] text-slate-600"
                       }`}
                     >
                       {zone.label}
@@ -840,7 +840,7 @@ export default function CarePage() {
                     <button
                       key={preset.name}
                       onClick={() => handleSelectPreset(preset)}
-                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[#F6F5F1] hover:bg-[#E8F3F3] hover:text-[#0F6B6D] text-[#172026] border border-[#E5E3DC] transition-colors cursor-pointer"
+                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[#FAF9F6] hover:bg-cyan-50/90 hover:text-cyan-700 text-slate-900 border border-slate-200/90 transition-colors cursor-pointer"
                     >
                       {preset.name}
                     </button>
@@ -858,47 +858,47 @@ export default function CarePage() {
             <header className="flex flex-col gap-2 pt-1 pb-1">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#E8F3F3] text-[#0F6B6D] border border-[#C2DFDF] text-xs font-semibold mb-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#0F6B6D]" />
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-50/90 text-cyan-700 border border-cyan-200/90 text-xs font-semibold mb-1.5">
+                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-600" />
                     <span>Care Network</span>
                   </div>
-                  <h1 className="text-2xl sm:text-4xl font-semibold tracking-tight text-[#172026]">
+                  <h1 className="text-2xl sm:text-4xl font-semibold tracking-tight text-slate-900">
                     Care Network
                   </h1>
-                  <p className="text-xs sm:text-sm text-[#5A6B75] mt-0.5 max-w-xl">
+                  <p className="text-xs sm:text-sm text-slate-600 mt-0.5 max-w-xl">
                     Verified healthcare facilities and reachable road routing from your departure point.
                   </p>
                 </div>
 
                 {/* Location Status Bar */}
                 <div className="flex items-center gap-2 flex-wrap text-xs">
-                  <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white border border-[#E5E3DC] shadow-xs">
+                  <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white border border-slate-200/90 shadow-xs">
                     {isDetectingGps ? (
-                      <div className="flex items-center gap-2 text-[#0F6B6D]">
-                        <span className="w-2 h-2 rounded-full border-2 border-[#0F6B6D] border-t-transparent animate-spin" />
+                      <div className="flex items-center gap-2 text-cyan-700">
+                        <span className="w-2 h-2 rounded-full border-2 border-cyan-600 border-t-transparent animate-spin" />
                         <span className="font-semibold">Locating with GPS...</span>
                       </div>
                     ) : userLocation ? (
                       <>
-                        <span className="w-2 h-2 rounded-full bg-[#0F6B6D]" />
-                        <span className="text-[#5A6B75] font-medium">Starting point:</span>
-                        <span className="text-[#172026] font-semibold truncate max-w-[180px] sm:max-w-[240px]">
+                        <span className="w-2 h-2 rounded-full bg-cyan-600" />
+                        <span className="text-slate-600 font-medium">Starting point:</span>
+                        <span className="text-slate-900 font-semibold truncate max-w-[180px] sm:max-w-[240px]">
                           {userLocation.label}
                         </span>
                         <button
                           onClick={handleResetLocation}
-                          className="ml-1 text-[11px] font-semibold text-[#0F6B6D] hover:underline cursor-pointer"
+                          className="ml-1 text-[11px] font-semibold text-cyan-700 hover:underline cursor-pointer"
                         >
                           Change
                         </button>
                       </>
                     ) : (
-                      <div className="flex items-center gap-2 text-[#5A6B75]">
+                      <div className="flex items-center gap-2 text-slate-600">
                         <span className="w-2 h-2 rounded-full bg-[#B79A63]" />
                         <span className="font-semibold">Placing pin on map...</span>
                         <button
                           onClick={handleResetLocation}
-                          className="ml-1 text-[11px] font-semibold text-[#5A6B75] hover:underline cursor-pointer"
+                          className="ml-1 text-[11px] font-semibold text-slate-600 hover:underline cursor-pointer"
                         >
                           Cancel
                         </button>
@@ -910,23 +910,23 @@ export default function CarePage() {
             </header>
 
             {/* DISCOVERY MODE TOGGLE */}
-            <div className="p-4 rounded-2xl bg-white border border-[#E5E3DC] shadow-xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+            <div className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
               <div>
-                <h3 className="text-xs sm:text-sm font-semibold text-[#172026]">
+                <h3 className="text-xs sm:text-sm font-semibold text-slate-900">
                   Hospital discovery mode
                 </h3>
-                <p className="text-[11px] sm:text-xs text-[#5A6B75]">
+                <p className="text-[11px] sm:text-xs text-slate-600">
                   Explore all accredited 24/7 facilities or filter by specific medical conditions.
                 </p>
               </div>
 
-              <div className="flex items-center gap-1.5 p-1 bg-[#F6F5F1] rounded-xl border border-[#E5E3DC] shrink-0">
+              <div className="flex items-center gap-1.5 p-1 bg-[#FAF9F6] rounded-xl border border-slate-200/90 shrink-0">
                 <button
                   onClick={() => handleSelectViewMode("all")}
                   className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                     viewMode === "all"
-                      ? "bg-white text-[#172026] shadow-xs border border-[#E5E3DC]"
-                      : "text-[#5A6B75] hover:text-[#172026]"
+                      ? "bg-white text-slate-900 shadow-xs border border-slate-200/90"
+                      : "text-slate-600 hover:text-slate-900"
                   }`}
                 >
                   All Hospitals & 24/7 ERs
@@ -936,8 +936,8 @@ export default function CarePage() {
                   onClick={() => handleSelectViewMode("issues")}
                   className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                     viewMode === "issues"
-                      ? "bg-white text-[#172026] shadow-xs border border-[#E5E3DC]"
-                      : "text-[#5A6B75] hover:text-[#172026]"
+                      ? "bg-white text-slate-900 shadow-xs border border-slate-200/90"
+                      : "text-slate-600 hover:text-slate-900"
                   }`}
                 >
                   Filter by Condition
@@ -947,18 +947,18 @@ export default function CarePage() {
 
             {/* CONDITION FILTER SECTION (Active when viewMode === 'issues') */}
             {viewMode === "issues" && (
-              <div className="p-5 rounded-2xl bg-white border border-[#E5E3DC] shadow-xs flex flex-col gap-3 animate-in fade-in duration-200">
+              <div className="p-5 rounded-2xl bg-white border border-slate-200/90 shadow-xs flex flex-col gap-3 animate-in fade-in duration-200">
                 <div className="flex items-center justify-between flex-wrap gap-2">
                   <div>
-                    <h2 className="text-xs sm:text-sm font-semibold text-[#172026]">
+                    <h2 className="text-xs sm:text-sm font-semibold text-slate-900">
                       Filter by medical condition
                     </h2>
-                    <p className="text-[11px] text-[#5A6B75]">
+                    <p className="text-[11px] text-slate-600">
                       Prioritizes facilities verified for the selected specialty
                     </p>
                   </div>
                   {specialtyFilter !== "all" && (
-                    <span className="text-[11px] font-semibold text-[#0F6B6D] bg-[#E8F3F3] px-2.5 py-0.5 rounded-full border border-[#C2DFDF]">
+                    <span className="text-[11px] font-semibold text-cyan-700 bg-cyan-50/90 px-2.5 py-0.5 rounded-full border border-cyan-200/90">
                       Active: {specialtyFilter}
                     </span>
                   )}
@@ -969,7 +969,7 @@ export default function CarePage() {
                     {specialtyFilter !== "all" ? (
                       <SpecialtyIcon id={specialtyFilter} className="w-4 h-4" />
                     ) : (
-                      <Activity className="w-4 h-4 text-[#0F6B6D]" />
+                      <Activity className="w-4 h-4 text-cyan-700" />
                     )}
                   </div>
                   <input
@@ -977,13 +977,13 @@ export default function CarePage() {
                     value={issueSearchText}
                     onChange={handleIssueInputChange}
                     placeholder="Search any condition (e.g. Heart, Stroke, Fracture, Ayurveda, Kidney, Maternity, Eye)..."
-                    className="w-full pl-10 pr-16 py-2.5 rounded-xl bg-white border border-[#E5E3DC] focus:border-[#0F6B6D] focus:ring-2 focus:ring-[#E8F3F3] text-xs sm:text-sm text-[#172026] placeholder:text-[#8C9AA2] transition-all outline-none"
+                    className="w-full pl-10 pr-16 py-2.5 rounded-xl bg-white border border-slate-200/90 focus:border-cyan-600 focus:ring-2 focus:ring-cyan-50 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 transition-all outline-none"
                   />
                   {issueSearchText && (
                     <button
                       type="button"
                       onClick={handleClearIssue}
-                      className="absolute right-3 px-2 py-0.5 text-[11px] font-semibold text-[#5A6B75] hover:text-[#172026] bg-[#F6F5F1] hover:bg-[#E5E3DC] rounded-md transition-colors cursor-pointer"
+                      className="absolute right-3 px-2 py-0.5 text-[11px] font-semibold text-slate-600 hover:text-slate-900 bg-[#FAF9F6] hover:bg-[#E5E3DC] rounded-md transition-colors cursor-pointer"
                     >
                       Clear
                     </button>
@@ -999,15 +999,15 @@ export default function CarePage() {
                         onClick={() => handleSelectSpecialty(item.id, item.label)}
                         className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col gap-0.5 ${
                           isActive
-                            ? "bg-[#E8F3F3] text-[#0F6B6D] border-[#0F6B6D] shadow-xs font-semibold"
-                            : "bg-white hover:bg-[#F6F5F1] text-[#172026] border-[#E5E3DC]"
+                            ? "bg-cyan-50/90 text-cyan-700 border-cyan-600 shadow-xs font-semibold"
+                            : "bg-white hover:bg-[#FAF9F6] text-slate-900 border-slate-200/90"
                         }`}
                       >
                         <div className="flex items-center gap-1.5 min-w-0">
                           <SpecialtyIcon id={item.id} className="w-4 h-4 shrink-0" />
                           <span className="text-xs font-semibold truncate">{item.label}</span>
                         </div>
-                        <span className={`text-[10px] truncate ${isActive ? "text-[#0F6B6D]" : "text-[#5A6B75]"}`}>
+                        <span className={`text-[10px] truncate ${isActive ? "text-cyan-700" : "text-slate-600"}`}>
                           {item.famousFor}
                         </span>
                       </button>
@@ -1021,7 +1021,7 @@ export default function CarePage() {
             <div id="care-map-section" className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch scroll-mt-24">
 
               {/* LEFT: Dominant Live Route Map (58% width on large screens) */}
-              <div className="lg:col-span-7 rounded-2xl overflow-hidden shadow-xs border border-[#E5E3DC] bg-white min-h-[480px] lg:min-h-[640px] flex flex-col">
+              <div className="lg:col-span-7 rounded-2xl overflow-hidden shadow-xs border border-slate-200/90 bg-white min-h-[480px] lg:min-h-[640px] flex flex-col">
                 <InteractiveRouteMap
                   patientCoords={userLocation ? { lat: userLocation.lat, lng: userLocation.lng } : null}
                   patientLocationName={userLocation?.label}
@@ -1039,7 +1039,7 @@ export default function CarePage() {
               </div>
 
               {/* RIGHT: Decoupled Current Destination + All Matching Facilities Rail (42% width) */}
-              <div className="lg:col-span-5 rounded-2xl bg-white border border-[#E5E3DC] shadow-xs p-4 sm:p-5 flex flex-col gap-3.5 max-h-[640px] lg:max-h-[680px] overflow-hidden">
+              <div className="lg:col-span-5 rounded-2xl bg-white border border-slate-200/90 shadow-xs p-4 sm:p-5 flex flex-col gap-3.5 max-h-[640px] lg:max-h-[680px] overflow-hidden">
 
                 {/* CATEGORY FALLBACK ALERT BANNER */}
                 {categoryFallback && fallbackBanner && (
@@ -1053,18 +1053,18 @@ export default function CarePage() {
                 )}
 
                 {/* SECTION 1: CURRENT DESTINATION CARD (Driven by selectedHospital) */}
-                <div className="rounded-xl bg-[#F6F5F1] border border-[#E5E3DC] p-3.5 flex flex-col gap-2.5 shrink-0 shadow-xs">
-                  <div className="flex items-center justify-between pb-2 border-b border-[#E5E3DC]">
+                <div className="rounded-xl bg-[#FAF9F6] border border-slate-200/90 p-3.5 flex flex-col gap-2.5 shrink-0 shadow-xs">
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-200/90">
                     <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-[#0F6B6D] animate-pulse" />
-                      <span className="text-[10.5px] font-bold text-[#172026] uppercase tracking-wider">
+                      <span className="w-2 h-2 rounded-full bg-cyan-600 animate-pulse" />
+                      <span className="text-[10.5px] font-bold text-slate-900 uppercase tracking-wider">
                         Current Destination
                       </span>
                     </div>
                     {selectedHospital && selectedHospital.id !== recommendedHospital?.id && (
                       <button
                         onClick={handleResetToRecommended}
-                        className="text-[11px] font-bold text-[#0F6B6D] hover:underline cursor-pointer flex items-center gap-1"
+                        className="text-[11px] font-bold text-cyan-700 hover:underline cursor-pointer flex items-center gap-1"
                       >
                         <span>Return to #1 Match</span>
                       </button>
@@ -1078,12 +1078,12 @@ export default function CarePage() {
                           <div className="flex items-center gap-2 flex-wrap mb-1">
                             <span
                               className={`w-6 h-6 rounded-md flex items-center justify-center font-bold text-xs text-white shrink-0 ${
-                                selectedHospital.id === recommendedHospital?.id ? "bg-[#0F6B6D]" : "bg-[#172026]"
+                                selectedHospital.id === recommendedHospital?.id ? "bg-cyan-600" : "bg-[#172026]"
                               }`}
                             >
                               #{selectedHospital.rank}
                             </span>
-                            <h4 className="text-xs sm:text-sm font-bold text-[#172026] truncate" title={selectedHospital.name}>
+                            <h4 className="text-xs sm:text-sm font-bold text-slate-900 truncate" title={selectedHospital.name}>
                               {selectedHospital.name}
                             </h4>
                           </div>
@@ -1094,7 +1094,7 @@ export default function CarePage() {
                                 Fallback · Nearest 24/7 ER
                               </span>
                             ) : (
-                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#E8F3F3] text-[#0F6B6D] border border-[#C2DFDF]">
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-cyan-50/90 text-cyan-700 border border-cyan-200/90">
                                 Matched: {selectedHospital.matchedCategory || categoryLabel} · {selectedHospital.matchTier === "verified" ? "Verified" : "Inferred"}
                               </span>
                             )}
@@ -1103,27 +1103,27 @@ export default function CarePage() {
                             </span>
                           </div>
 
-                          <p className="text-[11px] text-[#5A6B75] truncate mt-1">
+                          <p className="text-[11px] text-slate-600 truncate mt-1">
                             {selectedHospital.address}
                           </p>
                         </div>
 
                         <div className="flex flex-col items-end shrink-0 text-right">
-                          <span className="text-xs sm:text-sm font-bold text-[#172026]">
+                          <span className="text-xs sm:text-sm font-bold text-slate-900">
                             ~{liveRoadStats ? liveRoadStats.etaMinutes : (selectedHospital.etaMinutes || 12)} min
                           </span>
-                          <span className="text-[11px] text-[#5A6B75]">
+                          <span className="text-[11px] text-slate-600">
                             ~{liveRoadStats ? liveRoadStats.roadDistanceKm.toFixed(1) : selectedHospital.distanceKm.toFixed(1)} km by road
                           </span>
                         </div>
                       </div>
 
                       {/* Verified capability tags */}
-                      <div className="flex items-center gap-1.5 flex-wrap text-[10px] text-[#5A6B75]">
-                        <span className="px-2 py-0.5 rounded bg-white border border-[#E5E3DC]">
+                      <div className="flex items-center gap-1.5 flex-wrap text-[10px] text-slate-600">
+                        <span className="px-2 py-0.5 rounded bg-white border border-slate-200/90">
                           ✓ {selectedHospital.isEmergency24x7 ? "24/7 Emergency Care" : "Specialty OPD"}
                         </span>
-                        <span className="px-2 py-0.5 rounded bg-white border border-[#E5E3DC]">
+                        <span className="px-2 py-0.5 rounded bg-white border border-slate-200/90">
                           ✓ {(selectedHospital as any).ownership === "government" ? "Government" : "Private"}
                         </span>
                         {selectedHospital.acceptsPublicInsurance && (
@@ -1142,7 +1142,7 @@ export default function CarePage() {
                           <div className="flex flex-wrap gap-1">
                             {selectedHospital.matchReasons.map((reason, rIdx) => (
                               <span key={rIdx} className="inline-flex items-center gap-1 text-[10px]">
-                                <Check className="w-3 h-3 text-[#0F6B6D]" /> {reason}
+                                <Check className="w-3 h-3 text-cyan-700" /> {reason}
                               </span>
                             ))}
                           </div>
@@ -1155,7 +1155,7 @@ export default function CarePage() {
                           href={`tel:${selectedHospital.emergencyPhone || selectedHospital.phone || "108"}`}
                           className={`flex-1 inline-flex items-center justify-center gap-1.5 py-1.5 rounded-xl text-white font-semibold text-xs shadow-xs transition-colors cursor-pointer ${
                             selectedHospital.actionType === "call_hospital"
-                              ? "bg-[#0F6B6D] hover:bg-[#0A5254]"
+                              ? "bg-cyan-700 hover:bg-cyan-800"
                               : "bg-[#B42318] hover:bg-[#991B1B]"
                           }`}
                         >
@@ -1172,13 +1172,13 @@ export default function CarePage() {
                           rel="noopener noreferrer"
                           className="flex-1 inline-flex items-center justify-center gap-1.5 py-1.5 rounded-xl bg-[#172026] hover:bg-[#2C3840] text-white font-semibold text-xs shadow-xs transition-colors cursor-pointer"
                         >
-                          <Navigation className="w-3.5 h-3.5 text-[#6E9997]" />
+                          <Navigation className="w-3.5 h-3.5 text-cyan-700" />
                           <span>Directions</span>
                         </a>
                       </div>
                     </>
                   ) : (
-                    <div className="p-3 text-center text-xs text-[#5A6B75]">
+                    <div className="p-3 text-center text-xs text-slate-600">
                       No destination selected. Select any facility below or on the map.
                     </div>
                   )}
@@ -1186,12 +1186,12 @@ export default function CarePage() {
 
                 {/* SECTION 2: ALL MATCHING FACILITIES RAIL */}
                 <div className="flex flex-col gap-2 min-h-0 flex-1">
-                  <div className="flex items-center justify-between gap-2 pb-1.5 border-b border-[#E5E3DC] shrink-0">
+                  <div className="flex items-center justify-between gap-2 pb-1.5 border-b border-slate-200/90 shrink-0">
                     <div className="min-w-0">
-                      <h3 className="text-xs font-bold text-[#172026] uppercase tracking-wider truncate">
+                      <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider truncate">
                         {filteredAndSortedHospitals.length} Matching Facilities
                       </h3>
-                      <p className="text-[10.5px] text-[#5A6B75] truncate">
+                      <p className="text-[10.5px] text-slate-600 truncate">
                         Ranked for {categoryLabel} · Select any to route
                       </p>
                     </div>
@@ -1202,7 +1202,7 @@ export default function CarePage() {
                         setCurrentPage(1);
                       }}
                       aria-label="Sort order"
-                      className="text-xs font-semibold text-[#172026] bg-[#F6F5F1] border border-[#E5E3DC] rounded-lg px-2.5 py-1 focus:outline-none cursor-pointer shrink-0"
+                      className="text-xs font-semibold text-slate-900 bg-[#FAF9F6] border border-slate-200/90 rounded-lg px-2.5 py-1 focus:outline-none cursor-pointer shrink-0"
                     >
                       <option value="fastest">Best Match / Fastest</option>
                       <option value="government">Government First</option>
@@ -1213,14 +1213,14 @@ export default function CarePage() {
                   {/* SCROLLABLE LIST OF ALL FACILITIES */}
                   <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-2 min-h-0">
                     {loading ? (
-                      <div className="py-12 text-center text-xs text-[#5A6B75] flex items-center justify-center gap-2">
-                        <div className="w-4 h-4 rounded-full border-2 border-[#0F6B6D] border-t-transparent animate-spin" />
+                      <div className="py-12 text-center text-xs text-slate-600 flex items-center justify-center gap-2">
+                        <div className="w-4 h-4 rounded-full border-2 border-cyan-600 border-t-transparent animate-spin" />
                         <span>Evaluating verified facilities nearby...</span>
                       </div>
                     ) : filteredAndSortedHospitals.length === 0 ? (
-                      <div className="p-8 rounded-xl bg-[#F6F5F1] text-center flex flex-col items-center justify-center gap-2">
-                        <Building2 className="w-6 h-6 text-[#8C9AA2]" />
-                        <p className="text-xs font-semibold text-[#172026]">No facilities matching criteria</p>
+                      <div className="p-8 rounded-xl bg-[#FAF9F6] text-center flex flex-col items-center justify-center gap-2">
+                        <Building2 className="w-6 h-6 text-slate-400" />
+                        <p className="text-xs font-semibold text-slate-900">No facilities matching criteria</p>
                       </div>
                     ) : (
                       filteredAndSortedHospitals.map((hosp) => {
@@ -1237,8 +1237,8 @@ export default function CarePage() {
                             onClick={() => handleSelectHospital(hosp)}
                             className={`p-2.5 rounded-xl border transition-all cursor-pointer flex flex-col gap-1.5 ${
                               isSelected
-                                ? "bg-[#E8F3F3]/40 border-[#0F6B6D] shadow-xs ring-2 ring-[#0F6B6D]/30"
-                                : "bg-white hover:bg-[#FBF7EE]/40 border-[#E5E3DC] shadow-xs"
+                                ? "bg-cyan-50/90/40 border-cyan-600 shadow-xs ring-2 ring-[#0F6B6D]/30"
+                                : "bg-white hover:bg-[#FBF7EE]/40 border-slate-200/90 shadow-xs"
                             }`}
                           >
                             <div className="flex items-start justify-between gap-2">
@@ -1246,21 +1246,21 @@ export default function CarePage() {
                                 <div
                                   className={`w-5 h-5 rounded-md flex items-center justify-center font-bold text-[11px] shrink-0 ${
                                     isSelected
-                                      ? "bg-[#0F6B6D] text-white shadow-xs"
+                                      ? "bg-cyan-600 text-white shadow-xs"
                                       : isBest
-                                      ? "bg-[#E8F3F3] text-[#0F6B6D] border border-[#0F6B6D]"
-                                      : "bg-[#F6F5F1] text-[#172026] border border-[#E5E3DC]"
+                                      ? "bg-cyan-50/90 text-cyan-700 border border-cyan-600"
+                                      : "bg-[#FAF9F6] text-slate-900 border border-slate-200/90"
                                   }`}
                                 >
                                   #{hosp.rank}
                                 </div>
                                 <div className="min-w-0">
                                   <div className="flex items-center gap-1.5 flex-wrap">
-                                    <h4 className="text-xs font-bold text-[#172026] truncate" title={hosp.name}>
+                                    <h4 className="text-xs font-bold text-slate-900 truncate" title={hosp.name}>
                                       {hosp.name}
                                     </h4>
                                     {isSelected && (
-                                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-[#0F6B6D] text-white uppercase tracking-wider">
+                                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-cyan-600 text-white uppercase tracking-wider">
                                         Destination
                                       </span>
                                     )}
@@ -1269,7 +1269,7 @@ export default function CarePage() {
                                     <span className="text-[9.5px] font-semibold px-1.5 py-0.5 rounded bg-[#FBF7EE] text-[#8C6D32] border border-[#E7DBB8] truncate max-w-[160px]">
                                       {famousFor}
                                     </span>
-                                    <span className="text-[10px] text-[#5A6B75]">
+                                    <span className="text-[10px] text-slate-600">
                                       {hosp.isEmergency24x7 ? "24/7 ER" : "OPD"} · {isGovernment ? "Govt" : "Private"}
                                     </span>
                                   </div>
@@ -1277,10 +1277,10 @@ export default function CarePage() {
                               </div>
 
                               <div className="flex flex-col items-end shrink-0 text-right">
-                                <span className="text-xs font-bold text-[#172026]">
+                                <span className="text-xs font-bold text-slate-900">
                                   ~{durationNum}m
                                 </span>
-                                <span className="text-[10px] text-[#5A6B75]">
+                                <span className="text-[10px] text-slate-600">
                                   ~{distanceNum.toFixed(1)} km
                                 </span>
                               </div>
@@ -1298,11 +1298,11 @@ export default function CarePage() {
             {/* FILTER & SORT BAR */}
             <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-semibold text-[#172026]">
+                <span className="text-xs font-semibold text-slate-900">
                   {filteredAndSortedHospitals.length} facilities match criteria
                 </span>
                 {filteredAndSortedHospitals.length > 0 && (
-                  <span className="text-xs text-[#5A6B75]">
+                  <span className="text-xs text-slate-600">
                     · Showing {startIndex + 1}–{endIndex} of {filteredAndSortedHospitals.length}
                   </span>
                 )}
@@ -1310,8 +1310,8 @@ export default function CarePage() {
 
               <div className="flex items-center gap-2 text-xs flex-wrap">
                 {/* Sort */}
-                <div className="flex items-center gap-1 bg-white border border-[#E5E3DC] rounded-lg px-2.5 py-1">
-                  <ArrowUpDown className="w-3 h-3 text-[#8C9AA2]" />
+                <div className="flex items-center gap-1 bg-white border border-slate-200/90 rounded-lg px-2.5 py-1">
+                  <ArrowUpDown className="w-3 h-3 text-slate-400" />
                   <select
                     value={sortBy}
                     onChange={(e) => {
@@ -1319,7 +1319,7 @@ export default function CarePage() {
                       setCurrentPage(1);
                     }}
                     aria-label="Sort order"
-                    className="text-xs font-semibold text-[#172026] bg-transparent focus:outline-none cursor-pointer"
+                    className="text-xs font-semibold text-slate-900 bg-transparent focus:outline-none cursor-pointer"
                   >
                     <option value="fastest">Sort: Fastest / Closest</option>
                     <option value="government">Sort: Government First</option>
@@ -1335,7 +1335,7 @@ export default function CarePage() {
                     setCurrentPage(1);
                   }}
                   aria-label="Clinical capability filter"
-                  className="bg-white border border-[#E5E3DC] rounded-lg px-2.5 py-1 text-xs font-semibold text-[#172026] focus:outline-none cursor-pointer"
+                  className="bg-white border border-slate-200/90 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-900 focus:outline-none cursor-pointer"
                 >
                   <option value="all">All Specialties</option>
                   <option value="cardiology">Cardiology / Heart</option>
@@ -1352,7 +1352,7 @@ export default function CarePage() {
                     setCurrentPage(1);
                   }}
                   aria-label="Ownership filter"
-                  className="bg-white border border-[#E5E3DC] rounded-lg px-2.5 py-1 text-xs font-semibold text-[#172026] focus:outline-none cursor-pointer"
+                  className="bg-white border border-slate-200/90 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-900 focus:outline-none cursor-pointer"
                 >
                   <option value="all">All Ownership</option>
                   <option value="government">Government / Subsidized</option>
@@ -1364,15 +1364,15 @@ export default function CarePage() {
             {/* HOSPITAL RESULTS LIST */}
             <div className="flex flex-col gap-3">
               {loading ? (
-                <div className="py-12 text-center text-xs text-[#5A6B75] flex items-center justify-center gap-2">
-                  <div className="w-4 h-4 rounded-full border-2 border-[#0F6B6D] border-t-transparent animate-spin" />
+                <div className="py-12 text-center text-xs text-slate-600 flex items-center justify-center gap-2">
+                  <div className="w-4 h-4 rounded-full border-2 border-cyan-600 border-t-transparent animate-spin" />
                   <span>Evaluating verified facilities nearby...</span>
                 </div>
               ) : pageHospitals.length === 0 ? (
-                <div className="p-8 rounded-2xl bg-white border border-[#E5E3DC] text-center flex flex-col items-center justify-center gap-2">
-                  <Building2 className="w-8 h-8 text-[#8C9AA2]" />
-                  <p className="text-xs font-semibold text-[#172026]">No facilities matching current filters</p>
-                  <p className="text-[11px] text-[#5A6B75]">
+                <div className="p-8 rounded-2xl bg-white border border-slate-200/90 text-center flex flex-col items-center justify-center gap-2">
+                  <Building2 className="w-8 h-8 text-slate-400" />
+                  <p className="text-xs font-semibold text-slate-900">No facilities matching current filters</p>
+                  <p className="text-[11px] text-slate-600">
                     Try selecting "All Specialties" or broadening your search.
                   </p>
                 </div>
@@ -1393,14 +1393,14 @@ export default function CarePage() {
                       onClick={() => handleSelectHospital(hosp)}
                       className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col gap-3 ${
                         isSelected
-                          ? "bg-white border-[#0F6B6D] shadow-sm ring-1 ring-[#0F6B6D]/30"
-                          : "bg-white hover:bg-[#FBF7EE]/40 border-[#E5E3DC] shadow-xs"
+                          ? "bg-white border-cyan-600 shadow-sm ring-1 ring-[#0F6B6D]/30"
+                          : "bg-white hover:bg-[#FBF7EE]/40 border-slate-200/90 shadow-xs"
                       }`}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="flex flex-col min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-semibold text-[#172026] truncate">
+                            <span className="text-sm font-semibold text-slate-900 truncate">
                               {hosp.name}
                             </span>
                             <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-[#FBF7EE] text-[#8C6D32] border border-[#E7DBB8] inline-flex items-center gap-1">
@@ -1408,33 +1408,33 @@ export default function CarePage() {
                               <span>{hosp.famousFor || getHospitalFamousFor(hosp)}</span>
                             </span>
                             {isSpecMatch && (
-                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-[#E8F3F3] text-[#0F6B6D] border border-[#C2DFDF]">
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-cyan-50/90 text-cyan-700 border border-cyan-200/90">
                                 Verified {specialtyFilter}
                               </span>
                             )}
                             {hosp.acceptsPublicInsurance && (
-                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-[#F6F5F1] text-[#5A6B75] border border-[#E5E3DC]">
+                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-[#FAF9F6] text-slate-600 border border-slate-200/90">
                                 Ayushman / Aarogyasri
                               </span>
                             )}
                           </div>
-                          <span className="text-xs text-[#5A6B75] truncate mt-0.5">{hosp.address}</span>
+                          <span className="text-xs text-slate-600 truncate mt-0.5">{hosp.address}</span>
                         </div>
 
                         <div className="flex items-end flex-col shrink-0">
-                          <span className="text-xs font-semibold text-[#172026]">
+                          <span className="text-xs font-semibold text-slate-900">
                             ~{durationNum} min
                           </span>
-                          <span className="text-[11px] text-[#5A6B75]">
+                          <span className="text-[11px] text-slate-600">
                             ~{distanceNum.toFixed(1)} km
                           </span>
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between gap-2 flex-wrap pt-2 border-t border-[#E5E3DC] text-xs">
-                        <div className="flex items-center gap-2 text-[11px] text-[#5A6B75]">
-                          <span className="text-[#0F6B6D] font-medium flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-[#0F6B6D]" />
+                      <div className="flex items-center justify-between gap-2 flex-wrap pt-2 border-t border-slate-200/90 text-xs">
+                        <div className="flex items-center gap-2 text-[11px] text-slate-600">
+                          <span className="text-cyan-700 font-medium flex items-center gap-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-cyan-600" />
                             {hosp.isEmergency24x7 ? "24/7 Verified Emergency" : "Specialty Center"}
                           </span>
                           <span>•</span>
@@ -1459,23 +1459,23 @@ export default function CarePage() {
                             className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-[#172026] hover:bg-[#2C3840] text-white font-semibold text-xs transition-colors cursor-pointer"
                           >
                             <span>Directions</span>
-                            <ExternalLink className="w-3 h-3 text-[#6E9997]" />
+                            <ExternalLink className="w-3 h-3 text-cyan-700" />
                           </a>
                         </div>
                       </div>
 
                       {/* EXPANDED HOSPITAL & ROUTE INTELLIGENCE DETAILS */}
                       {isSelected && (
-                        <div className="pt-3 border-t border-[#E5E3DC] flex flex-col gap-3 animate-in fade-in duration-200">
+                        <div className="pt-3 border-t border-slate-200/90 flex flex-col gap-3 animate-in fade-in duration-200">
                           {/* Live route banner with scroll to map button */}
-                          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 p-3 rounded-xl bg-[#E8F3F3] border border-[#C2DFDF] text-xs">
+                          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 p-3 rounded-xl bg-cyan-50/90 border border-cyan-200/90 text-xs">
                             <div className="flex items-center gap-2">
-                              <span className="w-2.5 h-2.5 rounded-full bg-[#0F6B6D] animate-pulse shrink-0" />
+                              <span className="w-2.5 h-2.5 rounded-full bg-cyan-600 animate-pulse shrink-0" />
                               <div className="flex flex-col">
-                                <span className="font-bold text-[#0F6B6D]">
+                                <span className="font-bold text-cyan-700">
                                   Active Route: ~{distanceNum.toFixed(1)} km · ~{durationNum} min drive
                                 </span>
-                                <span className="text-[11px] text-[#5A6B75]">
+                                <span className="text-[11px] text-slate-600">
                                   Live road route calculated and plotted on map above
                                 </span>
                               </div>
@@ -1485,7 +1485,7 @@ export default function CarePage() {
                                 e.stopPropagation();
                                 handleSelectHospital(hosp, true);
                               }}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#0F6B6D] hover:bg-[#0A5254] text-white font-semibold text-xs transition-colors shadow-xs cursor-pointer shrink-0"
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-700 hover:bg-cyan-800 text-white font-semibold text-xs transition-colors shadow-xs cursor-pointer shrink-0"
                             >
                               <MapPin className="w-3.5 h-3.5" />
                               <span>View route on map</span>
@@ -1495,14 +1495,14 @@ export default function CarePage() {
                           {/* Specialties List */}
                           {hosp.specialty && hosp.specialty.length > 0 && (
                             <div>
-                              <span className="text-[10px] font-semibold uppercase tracking-wider text-[#5A6B75] block mb-1">
+                              <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-600 block mb-1">
                                 Clinical capabilities & departments
                               </span>
                               <div className="flex flex-wrap gap-1.5">
                                 {hosp.specialty.map((s, sIdx) => (
                                   <span
                                     key={sIdx}
-                                    className="text-[11px] font-medium px-2.5 py-1 rounded-lg bg-[#F6F5F1] text-[#172026] border border-[#E5E3DC]"
+                                    className="text-[11px] font-medium px-2.5 py-1 rounded-lg bg-[#FAF9F6] text-slate-900 border border-slate-200/90"
                                   >
                                     {s}
                                   </span>
@@ -1514,7 +1514,7 @@ export default function CarePage() {
                           {/* Match reasons */}
                           {hosp.matchReasons && hosp.matchReasons.length > 0 && (
                             <div>
-                              <span className="text-[10px] font-semibold uppercase tracking-wider text-[#5A6B75] block mb-1">
+                              <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-600 block mb-1">
                                 Why this facility
                               </span>
                               <div className="flex flex-wrap gap-1.5">
@@ -1532,7 +1532,7 @@ export default function CarePage() {
                           )}
 
                           {/* Contact details */}
-                          <div className="flex items-center justify-between text-xs text-[#5A6B75] pt-1">
+                          <div className="flex items-center justify-between text-xs text-slate-600 pt-1">
                             <div>
                               <span>Emergency ED: </span>
                               <a
@@ -1549,7 +1549,7 @@ export default function CarePage() {
                                 <a
                                   href={`tel:${hosp.phone}`}
                                   onClick={(e) => e.stopPropagation()}
-                                  className="font-semibold text-[#172026] hover:underline"
+                                  className="font-semibold text-slate-900 hover:underline"
                                 >
                                   {hosp.phone}
                                 </a>
@@ -1566,8 +1566,8 @@ export default function CarePage() {
 
             {/* PAGINATION CONTROLS */}
             {!loading && filteredAndSortedHospitals.length > PAGE_SIZE && (
-              <div className="pt-4 pb-4 border-t border-[#E5E3DC] flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
-                <span className="text-[#5A6B75]">
+              <div className="pt-4 pb-4 border-t border-slate-200/90 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+                <span className="text-slate-600">
                   Showing {startIndex + 1}–{endIndex} of {filteredAndSortedHospitals.length} facilities
                 </span>
 
@@ -1575,7 +1575,7 @@ export default function CarePage() {
                   <button
                     onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                     disabled={currentPage === 1}
-                    className="px-3 py-1.5 rounded-lg border border-[#E5E3DC] bg-white hover:bg-[#F6F5F1] disabled:opacity-35 disabled:cursor-not-allowed font-semibold text-[#172026] transition-colors cursor-pointer flex items-center gap-1"
+                    className="px-3 py-1.5 rounded-lg border border-slate-200/90 bg-white hover:bg-[#FAF9F6] disabled:opacity-35 disabled:cursor-not-allowed font-semibold text-slate-900 transition-colors cursor-pointer flex items-center gap-1"
                   >
                     <ChevronLeft className="w-3.5 h-3.5" />
                     <span>Previous</span>
@@ -1583,7 +1583,7 @@ export default function CarePage() {
 
                   {pageNumbers.map((p, idx) =>
                     p === -1 ? (
-                      <span key={`ellipsis-${idx}`} className="px-1 text-[#8C9AA2] font-bold">
+                      <span key={`ellipsis-${idx}`} className="px-1 text-slate-400 font-bold">
                         …
                       </span>
                     ) : (
@@ -1592,8 +1592,8 @@ export default function CarePage() {
                         onClick={() => setCurrentPage(p)}
                         className={`w-7 h-7 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
                           currentPage === p
-                            ? "bg-[#0F6B6D] text-white shadow-xs"
-                            : "bg-white hover:bg-[#F6F5F1] border border-[#E5E3DC] text-[#172026]"
+                            ? "bg-cyan-600 text-white shadow-xs"
+                            : "bg-white hover:bg-[#FAF9F6] border border-slate-200/90 text-slate-900"
                         }`}
                       >
                         {p}
@@ -1604,7 +1604,7 @@ export default function CarePage() {
                   <button
                     onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                     disabled={currentPage === totalPages}
-                    className="px-3 py-1.5 rounded-lg border border-[#E5E3DC] bg-white hover:bg-[#F6F5F1] disabled:opacity-35 disabled:cursor-not-allowed font-semibold text-[#172026] transition-colors cursor-pointer flex items-center gap-1"
+                    className="px-3 py-1.5 rounded-lg border border-slate-200/90 bg-white hover:bg-[#FAF9F6] disabled:opacity-35 disabled:cursor-not-allowed font-semibold text-slate-900 transition-colors cursor-pointer flex items-center gap-1"
                   >
                     <span>Next</span>
                     <ChevronRight className="w-3.5 h-3.5" />

@@ -31,7 +31,8 @@ import {
   Stethoscope
 } from "lucide-react";
 import { Navbar } from "./_components/Navbar";
-import { Footer } from "./_components/Footer";
+import { AppFooter } from "./_components/AppFooter";
+import { CursorGrid } from "@/components/CursorGrid";
 import { MedicalHeroDashboardPreview } from "./_components/MedicalHeroDashboardPreview";
 import RotatingText from "@/components/RotatingText";
 import CountUp from "@/components/CountUp";
@@ -320,15 +321,34 @@ export default function HomePage() {
         {/* ================================================================ */}
         {/* 2. HERO SECTION WITH OPTION WHEEL & CLINICAL PREVIEW             */}
         {/* ================================================================ */}
-        <section className="relative pt-8 pb-16 sm:pt-14 sm:pb-24 overflow-hidden">
-          <div className="max-w-[1440px] mx-auto px-6 sm:px-8 lg:px-12 text-center">
+        <section className="relative pt-20 pb-16 sm:pt-28 sm:pb-24 overflow-hidden">
+          {/* Distinctive geometric CursorGrid hero background */}
+          <div className="absolute inset-0 z-0 pointer-events-auto">
+            <CursorGrid
+              cellSize={68}
+              colors={["#00F0FF", "#3B82F6", "#8B5CF6", "#D946EF"]}
+              radius={150}
+              falloff="smooth"
+              holdTime={400}
+              fadeDuration={800}
+              lineWidth={1.2}
+              maxOpacity={0.85}
+              fillOpacity={0.05}
+              gridOpacity={0.04}
+              cellRadius={0}
+              clickPulse
+              pulseSpeed={600}
+            />
+          </div>
+
+          <div className="relative z-10 max-w-[1440px] mx-auto px-6 sm:px-8 lg:px-12 text-center pointer-events-none">
             
             {/* Super-title Badge */}
             <motion.div
               initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, delay: 0.1 }}
-              className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-cyan-50/90 border border-cyan-200/90 shadow-2xs mb-6"
+              className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-cyan-50/90 border border-cyan-200/90 shadow-2xs mb-6 pointer-events-auto"
             >
               <span className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
               <span className="font-mono text-xs font-bold uppercase tracking-[0.1em] text-cyan-800">
@@ -394,7 +414,7 @@ export default function HomePage() {
               initial={{ opacity: 0, y: 16 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.5, delay: 0.34 }}
-              className="flex flex-col sm:flex-row items-center justify-center gap-3.5 pt-2 pb-12"
+              className="flex flex-col sm:flex-row items-center justify-center gap-3.5 pt-2 pb-12 pointer-events-auto"
             >
               <StarBorder
                 as={Link}
@@ -434,7 +454,7 @@ export default function HomePage() {
             </motion.div>
 
             {/* HERO PRODUCT PREVIEW + OPTION WHEEL */}
-            <div className="w-full max-w-6xl mx-auto pt-2">
+            <div className="w-full max-w-6xl mx-auto pt-2 pointer-events-auto">
               <div className="flex flex-col lg:flex-row items-center lg:items-start gap-8 justify-center">
                 
                 {/* Left: Option Wheel Scenario Selector */}
@@ -770,9 +790,57 @@ export default function HomePage() {
       </main>
 
       {/* ================================================================ */}
-      {/* 9. FINAL PAYOFF BANNER (WITH CURSORGRID) & FOOTER                 */}
+      {/* 9. FINAL PAYOFF BANNER (WITH CURSORGRID) & UNIFIED CLINICAL FOOTER */}
       {/* ================================================================ */}
-      <Footer showPayoffBanner={true} />
+      <section className="relative border-b border-slate-800 bg-[#0B0F17] py-20 sm:py-28 px-6 text-center overflow-hidden">
+        {/* Interactive CursorGrid Background */}
+        <div className="absolute inset-0 z-0">
+          <CursorGrid
+            cellSize={70}
+            colors={["#00F0FF", "#3B82F6", "#8B5CF6", "#D946EF"]}
+            radius={140}
+            falloff="smooth"
+            holdTime={400}
+            fadeDuration={800}
+            lineWidth={1.2}
+            maxOpacity={1}
+            fillOpacity={0.08}
+            gridOpacity={0}
+            cellRadius={0}
+            clickPulse
+            pulseSpeed={600}
+          />
+        </div>
+
+        <div className="relative z-10 max-w-3xl mx-auto space-y-6 pointer-events-none">
+          <span className="text-xs font-mono font-bold uppercase tracking-widest text-cyan-400">
+            LISTEN · UNDERSTAND · ACT
+          </span>
+          <h2 className="text-3xl sm:text-5xl font-extrabold text-white tracking-tight leading-tight">
+            Start a Voice Consultation
+          </h2>
+          <p className="text-base sm:text-lg text-slate-300 max-w-xl mx-auto font-normal leading-relaxed">
+            Experience instant medical voice triage, continuous ICD-10 extraction, and automated SOAP clinical documentation.
+          </p>
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-4 pt-4">
+            <Link
+              href="/consult"
+              className="pointer-events-auto inline-flex items-center gap-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white px-7 py-3.5 text-sm font-bold shadow-lg transition-all cursor-pointer"
+            >
+              <span>Launch Voice Consult Room →</span>
+            </Link>
+            <Link
+              href="/care"
+              className="pointer-events-auto inline-flex items-center gap-2 text-slate-300 hover:text-white px-5 py-3 text-sm font-semibold transition-all cursor-pointer"
+            >
+              <span>Explore Care Network</span>
+            </Link>
+          </div>
+        </div>
+      </section>
+
+      {/* Unified Application Footer */}
+      <AppFooter />
     </div>
   );
 }

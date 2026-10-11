@@ -2669,24 +2669,24 @@ export default function ConsultPage() {
                 </div>
               )}
 
-              {/* Dynamic Live ThoughtLine Pipeline Status */}
+              {/* Compact React Bits ThoughtLine Micro-Interaction */}
               {(callActive || audioState !== "IDLE" || Boolean(triageData?.isEmergency)) && (
-                <div className="pt-2 pb-1 border-t border-slate-100">
+                <div className="pt-2 pb-1 border-t border-slate-100 flex items-center justify-between">
                   <ThoughtLine
                     label={
                       triageData?.isEmergency
-                        ? "Universal Emergency Protocol Override Active"
+                        ? "Emergency override active"
                         : audioState === "PATIENT_LISTENING"
-                        ? "Listening to Patient Utterance…"
+                        ? "Listening…"
                         : audioState === "PROCESSING_TRANSCRIPTION"
-                        ? "Transcribing Speech via Whisper…"
+                        ? "Transcribing…"
                         : audioState === "PROCESSING_CLINICAL"
-                        ? "Deliberating Clinical Action & Context Checks…"
+                        ? "Thinking…"
                         : audioState === "DOCTOR_SPEAKING"
-                        ? `${activeSpeaker?.name ? activeSpeaker.name.split(",")[0] : "Clinician"} Speaking…`
-                        : "Voice Session Active"
+                        ? "Speaking…"
+                        : "Listening…"
                     }
-                    doneLabel="Consultation In Sync"
+                    doneLabel="Clinical system ready"
                     working={
                       !triageData?.isEmergency &&
                       (audioState === "PATIENT_LISTENING" ||
@@ -2699,16 +2699,16 @@ export default function ConsultPage() {
                     isEmergency={Boolean(triageData?.isEmergency)}
                     emergencyDirective={
                       triageData?.isEmergency
-                        ? "Deterministic Safety Override: Red Flag Detected. Immediate Emergency Escalation."
+                        ? "Deterministic Red Flag Detected · Emergency Escalation Active"
                         : undefined
                     }
-                    steps={clinicalThoughtSteps}
-                    collapsible={true}
+                    steps={[]}
+                    collapsible={false}
+                    showTimer={false}
                     glyph={triageData?.isEmergency ? "none" : "sparkle"}
                     color="#0891b2"
                     glyphColor="#06b6d4"
-                    showTimer={true}
-                    className="w-full"
+                    className="w-full justify-between"
                   />
                 </div>
               )}

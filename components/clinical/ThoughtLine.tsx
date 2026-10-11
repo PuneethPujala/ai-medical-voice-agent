@@ -59,11 +59,11 @@ export const ThoughtLine: React.FC<ThoughtLineProps> = ({
   renderLabel,
   glyph = 'sparkle',
   steps = EMPTY_STEPS,
-  collapsible = true,
+  collapsible = false,
   collapseOnSettle = true,
   color = '#0891b2',
   glyphColor = '#06b6d4',
-  fontSize = 13,
+  fontSize = 12,
   breathPeriod = 1.6,
   breathDepth = 0.45,
   shimmer = true,
@@ -73,7 +73,7 @@ export const ThoughtLine: React.FC<ThoughtLineProps> = ({
   working = true,
   settleAfter = 0,
   elapsed,
-  showTimer = true,
+  showTimer = false,
   isEmergency = false,
   emergencyDirective,
   onSettle,
@@ -205,12 +205,12 @@ export const ThoughtLine: React.FC<ThoughtLineProps> = ({
   // If Emergency Escalation occurs, override ordinary thinking with Emergency Alert
   if (isEmergency) {
     return (
-      <div className={`p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-900 text-xs font-mono font-bold flex items-center justify-between shadow-2xs ${className}`}>
+      <div className={`px-3.5 py-2 rounded-xl bg-rose-600 text-white text-xs font-mono font-bold flex items-center justify-between shadow-xs ${className}`}>
         <div className="flex items-center gap-2">
-          <span className="w-2.5 h-2.5 rounded-full bg-rose-600 animate-ping" />
-          <span>EMERGENCY DISPATCH PROTOCOL ACTIVE</span>
+          <span className="w-2 h-2 rounded-full bg-white animate-ping shrink-0" />
+          <span>EMERGENCY OVERRIDE ACTIVE</span>
         </div>
-        <span className="text-[10px] text-rose-700 font-sans">
+        <span className="text-[11px] font-sans font-medium text-rose-100 truncate ml-2">
           {emergencyDirective || "Immediate Facility Referral Required"}
         </span>
       </div>
@@ -284,7 +284,7 @@ export const ThoughtLine: React.FC<ThoughtLineProps> = ({
 
   return (
     <div
-      className={`group inline-flex flex-col items-start leading-[1.2] font-medium [color:var(--tl-color)] rounded-2xl bg-white/95 border border-slate-200/90 p-3 shadow-xs font-mono text-xs ${className}`}
+      className={`group inline-flex ${hasTrace ? 'flex-col items-start p-3 rounded-2xl bg-white/95 border border-slate-200/90 shadow-xs' : 'items-center px-3.5 py-1.5 rounded-xl bg-slate-50/90 border border-slate-200/80 shadow-2xs'} leading-[1.2] font-medium [color:var(--tl-color)] font-mono text-xs ${className}`}
       data-working={isWorking ? '' : undefined}
       data-open={open && hasTrace ? '' : undefined}
       style={
