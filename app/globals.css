@@ -104,6 +104,15 @@
   transform: translateY(-2px);
 }
 
+/* Scrollbar Utilities */
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
 /* Restrained Page Content Transition (180ms continuous settle) */
 .page-transition-wrapper {
   animation: pageContentSettle 180ms cubic-bezier(0.16, 1, 0.3, 1) forwards;

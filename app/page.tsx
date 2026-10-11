@@ -38,6 +38,7 @@ import ScrollReveal from "@/components/ScrollReveal";
 import { OptionWheel, OptionWheelItem } from "@/components/navigation/OptionWheel";
 import StarBorder from "@/components/ui/StarBorder";
 
+
 // Clinical Scenarios for OptionWheel
 const HERO_SCENARIOS: OptionWheelItem[] = [
   {
@@ -45,35 +46,35 @@ const HERO_SCENARIOS: OptionWheelItem[] = [
     label: "Emergency ER Escalation",
     category: "CRITICAL TRIAGE",
     badge: "ESI Level 1-2",
-    badgeStyle: "bg-rose-50 text-rose-700 border-rose-200",
+    badgeStyle: "bg-slate-950 text-white border-slate-900",
   },
   {
     id: "pediatric",
     label: "Same-Day Pediatric Care",
     category: "URGENT INTAKE",
     badge: "Priority Outpatient",
-    badgeStyle: "bg-amber-50 text-amber-700 border-amber-200",
+    badgeStyle: "bg-slate-900 text-white border-slate-800",
   },
   {
     id: "cardiac",
     label: "Cardiology Deliberation",
     category: "SPECIALTY CLINICAL",
     badge: "Multi-Agent Board",
-    badgeStyle: "bg-cyan-50 text-cyan-700 border-cyan-200",
+    badgeStyle: "bg-slate-950 text-white border-slate-900",
   },
   {
     id: "refill",
     label: "Post-Op Rx Medication Refill",
     category: "AMBULATORY CARE",
     badge: "Automated Verification",
-    badgeStyle: "bg-emerald-50 text-emerald-700 border-emerald-200",
+    badgeStyle: "bg-slate-900 text-white border-slate-800",
   },
   {
     id: "telehealth",
     label: "Routine Telehealth Intake",
     category: "GENERAL PRACTICE",
     badge: "Standard ESI 4-5",
-    badgeStyle: "bg-indigo-50 text-indigo-700 border-indigo-200",
+    badgeStyle: "bg-slate-950 text-white border-slate-900",
   },
 ];
 
@@ -97,7 +98,7 @@ const CLINICAL_STAGE_CARDS: ClinicalStageCard[] = [
     title: "Local Whisper Speech Intake",
     description: "Captures natural patient speech via MediaRecorder and transcribes it locally using Whisper base.en. Background room acoustics and conversational hesitation are handled in transient memory with zero audio persistence.",
     highlightBadge: "Local base.en Engine · Ephemeral Buffer",
-    badgeColor: "text-cyan-800 bg-cyan-50 border-cyan-200",
+    badgeColor: "text-slate-900 bg-slate-100 border-slate-200",
     metric: "Local Whisper ASR (1.68s on CPU)",
     content: (
       <div className="space-y-3 font-mono text-xs">
@@ -111,8 +112,8 @@ const CLINICAL_STAGE_CARDS: ClinicalStageCard[] = [
         <p className="text-slate-900 italic font-sans text-sm font-medium leading-relaxed">
           &quot;I&apos;ve had severe crushing chest discomfort since morning radiating to my left arm with cold sweats and shortness of breath...&quot;
         </p>
-        <div className="flex items-center gap-2 pt-1 text-[11px] text-cyan-700">
-          <Radio className="w-3.5 h-3.5 animate-pulse text-cyan-600" />
+        <div className="flex items-center gap-2 pt-1 text-[11px] text-slate-900">
+          <Radio className="w-3.5 h-3.5 animate-pulse text-slate-950" />
           <span>Local Whisper ASR · Ephemeral Audio Scrub · In-Memory Buffer</span>
         </div>
       </div>
@@ -124,19 +125,19 @@ const CLINICAL_STAGE_CARDS: ClinicalStageCard[] = [
     title: "Structured Symptom & ICD-10 Extraction",
     description: "As dialogue unfolds, the clinical evidence extractor parses chief complaints, duration, severity, and explicit patient denials, cross-referencing candidate symptoms against standardized ICD-10-CM concepts.",
     highlightBadge: "ICD-10-Assisted Coding · Clause Negation Preservation",
-    badgeColor: "text-blue-800 bg-blue-50 border-blue-200",
+    badgeColor: "text-slate-900 bg-slate-100 border-slate-200",
     metric: "Multi-Clause Extraction Bus",
     content: (
       <div className="space-y-3 font-mono text-xs">
         <div className="flex items-center justify-between border-b border-slate-200 pb-2 text-slate-500">
           <span>CLINICAL EVIDENCE BUS</span>
-          <span className="text-cyan-700 font-bold">ICD-10-CM MAPPED</span>
+          <span className="text-slate-950 font-bold">ICD-10-CM MAPPED</span>
         </div>
         <div className="flex flex-wrap gap-1.5 pt-1">
           <span className="px-2.5 py-1 rounded-md bg-rose-50 text-rose-700 border border-rose-200 font-bold">
             R07.9 Chest Pain (Acute)
           </span>
-          <span className="px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 border border-blue-200 font-bold">
+          <span className="px-2.5 py-1 rounded-md bg-slate-100 text-slate-900 border border-slate-200 font-bold">
             R61 Diaphoresis
           </span>
           <span className="px-2.5 py-1 rounded-md bg-amber-50 text-amber-700 border border-amber-200 font-bold">
@@ -183,13 +184,13 @@ const CLINICAL_STAGE_CARDS: ClinicalStageCard[] = [
     title: "Emergency Care Network & ED Dispatch",
     description: "Filters regional medical centers by verified medical capabilities (such as 24/7 Level-1 Trauma or STEMI Cath Lab) and calculates canonical road travel times to coordinate pre-arrival notification.",
     highlightBadge: "Level-1 Trauma Routing · OSRM Road Reachability",
-    badgeColor: "text-emerald-800 bg-emerald-50 border-emerald-200",
+    badgeColor: "text-slate-900 bg-slate-100 border-slate-200",
     metric: "8.4 km · ~16 min ETA",
     content: (
       <div className="space-y-3 font-mono text-xs">
         <div className="flex items-center justify-between border-b border-slate-200 pb-2 text-slate-500">
           <span>CARE NETWORK COORDINATION</span>
-          <span className="text-emerald-700 font-bold">PRE-ARRIVAL TELEMETRY ACTIVE</span>
+          <span className="text-slate-950 font-bold">PRE-ARRIVAL TELEMETRY ACTIVE</span>
         </div>
         <div className="space-y-1.5 font-sans">
           <div className="text-xs font-bold text-slate-950">
@@ -198,8 +199,8 @@ const CLINICAL_STAGE_CARDS: ClinicalStageCard[] = [
           <p className="text-xs text-slate-600 font-mono">
             Vijayawada Hub · 24/7 STEMI Cath Lab & Comprehensive Stroke Center
           </p>
-          <div className="flex items-center gap-2 pt-1 font-mono text-[11px] text-cyan-700">
-            <Navigation className="w-3.5 h-3.5 text-cyan-600" />
+          <div className="flex items-center gap-2 pt-1 font-mono text-[11px] text-slate-900">
+            <Navigation className="w-3.5 h-3.5 text-slate-950" />
             <span>Canonical Road Distance: 8.4 km (~16 min drive time)</span>
           </div>
         </div>
@@ -407,10 +408,10 @@ export default function HomePage() {
               initial={{ opacity: 0, y: 14 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.4, delay: 0.1 }}
-              className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-cyan-50/90 border border-cyan-200/90 shadow-2xs mb-6 pointer-events-auto"
+              className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-slate-950 text-white shadow-xs mb-6 pointer-events-auto"
             >
-              <span className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
-              <span className="font-mono text-xs font-bold uppercase tracking-[0.12em] text-cyan-800">
+              <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+              <span className="font-mono text-xs font-bold uppercase tracking-[0.12em] text-white">
                 MEDVOICE · CLINICAL VOICE AI
               </span>
             </motion.div>
@@ -452,20 +453,20 @@ export default function HomePage() {
               transition={{ duration: 0.5, delay: 0.28 }}
               className="flex flex-wrap items-center justify-center gap-2 sm:gap-3 pt-6 pb-8"
             >
-              <span className="font-mono text-[11px] sm:text-xs font-semibold uppercase tracking-[0.08em] text-slate-700 bg-white/90 border border-slate-200/90 px-3.5 py-1.5 rounded-full inline-flex items-center gap-1.5 shadow-2xs">
-                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              <span className="font-mono text-[11px] sm:text-xs font-semibold uppercase tracking-[0.08em] text-slate-800 bg-white/90 border border-slate-200/90 px-3.5 py-1.5 rounded-full inline-flex items-center gap-1.5 shadow-2xs">
+                <ShieldCheck className="w-3.5 h-3.5 text-slate-950 shrink-0" />
                 DETERMINISTIC ESI ARBITER
               </span>
-              <span className="font-mono text-[11px] sm:text-xs font-semibold uppercase tracking-[0.08em] text-slate-700 bg-white/90 border border-slate-200/90 px-3.5 py-1.5 rounded-full inline-flex items-center gap-1.5 shadow-2xs">
-                <Zap className="w-3.5 h-3.5 text-cyan-600 shrink-0" />
+              <span className="font-mono text-[11px] sm:text-xs font-semibold uppercase tracking-[0.08em] text-slate-800 bg-white/90 border border-slate-200/90 px-3.5 py-1.5 rounded-full inline-flex items-center gap-1.5 shadow-2xs">
+                <Zap className="w-3.5 h-3.5 text-slate-950 shrink-0" />
                 LOCAL WHISPER ASR
               </span>
-              <span className="font-mono text-[11px] sm:text-xs font-semibold uppercase tracking-[0.08em] text-slate-700 bg-white/90 border border-slate-200/90 px-3.5 py-1.5 rounded-full inline-flex items-center gap-1.5 shadow-2xs">
-                <FileText className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+              <span className="font-mono text-[11px] sm:text-xs font-semibold uppercase tracking-[0.08em] text-slate-800 bg-white/90 border border-slate-200/90 px-3.5 py-1.5 rounded-full inline-flex items-center gap-1.5 shadow-2xs">
+                <FileText className="w-3.5 h-3.5 text-slate-950 shrink-0" />
                 HL7 FHIR R4 READY
               </span>
-              <span className="font-mono text-[11px] sm:text-xs font-semibold uppercase tracking-[0.08em] text-slate-700 bg-white/90 border border-slate-200/90 px-3.5 py-1.5 rounded-full inline-flex items-center gap-1.5 shadow-2xs">
-                <Lock className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              <span className="font-mono text-[11px] sm:text-xs font-semibold uppercase tracking-[0.08em] text-slate-800 bg-white/90 border border-slate-200/90 px-3.5 py-1.5 rounded-full inline-flex items-center gap-1.5 shadow-2xs">
+                <Lock className="w-3.5 h-3.5 text-slate-950 shrink-0" />
                 EPHEMERAL AUDIO SCRUB
               </span>
             </motion.div>
@@ -480,29 +481,29 @@ export default function HomePage() {
               <StarBorder
                 as={Link}
                 href="/consult"
-                color="#38bdf8"
+                color="#0f172a"
                 duration={3.5}
                 theme="light"
-                backgroundColor="linear-gradient(135deg, #0891b2 0%, #2563eb 50%, #7c3aed 100%)"
+                backgroundColor="linear-gradient(135deg, #090d16 0%, #0f172a 50%, #1e293b 100%)"
                 textColor="#ffffff"
-                borderColor="rgba(255, 255, 255, 0.4)"
+                borderColor="rgba(255, 255, 255, 0.25)"
                 radius={16}
-                className="cursor-pointer shadow-lg shadow-cyan-500/25 hover:shadow-cyan-500/40 hover:scale-[1.01] transition-all border border-cyan-400/40 w-full sm:w-auto"
+                className="cursor-pointer shadow-lg shadow-slate-950/20 hover:scale-[1.01] transition-all border border-slate-800 w-full sm:w-auto"
               >
                 <div className="flex items-center justify-center gap-2.5 text-sm font-bold text-white tracking-wide py-1">
-                  <div className="w-6 h-6 rounded-lg bg-white/20 border border-white/30 flex items-center justify-center">
+                  <div className="w-6 h-6 rounded-lg bg-white/10 border border-white/20 flex items-center justify-center">
                     <Mic className="w-3.5 h-3.5 text-white" />
                   </div>
                   <span>Start a Voice Consultation</span>
-                  <ArrowRight className="w-4 h-4 text-cyan-200 ml-0.5 group-hover:translate-x-1 transition-transform" />
+                  <ArrowRight className="w-4 h-4 text-slate-300 ml-0.5 group-hover:translate-x-1 transition-transform" />
                 </div>
               </StarBorder>
 
               <Link
                 href="/care"
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-800 hover:text-slate-950 px-6 py-3.5 text-sm font-semibold shadow-xs hover:border-slate-300 transition-all cursor-pointer"
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 rounded-2xl border border-slate-200/90 bg-white hover:bg-slate-50 text-slate-900 hover:text-slate-950 px-6 py-3.5 text-sm font-semibold shadow-xs hover:border-slate-300 transition-all cursor-pointer"
               >
-                <Navigation className="w-4 h-4 text-cyan-600" />
+                <Navigation className="w-4 h-4 text-slate-950" />
                 <span>Explore Care Network</span>
               </Link>
             </motion.div>
@@ -514,7 +515,7 @@ export default function HomePage() {
                 {/* Left: Option Wheel Scenario Selector */}
                 <div className="flex flex-col items-center lg:items-start space-y-3 lg:w-72 flex-shrink-0">
                   <div className="flex items-center gap-2 text-left font-mono">
-                    <span className="w-2 h-2 rounded-full bg-cyan-500" />
+                    <span className="w-2 h-2 rounded-full bg-slate-950" />
                     <span className="text-xs font-bold uppercase tracking-wider text-slate-900">
                       Select Clinical Scenario
                     </span>
@@ -562,7 +563,7 @@ export default function HomePage() {
           <div className="max-w-[1440px] mx-auto px-6 sm:px-8 lg:px-12 relative z-10">
             
             <div className="max-w-3xl mx-auto text-center mb-16 space-y-4">
-              <span className="font-mono text-xs font-bold uppercase tracking-[0.14em] text-cyan-800 bg-cyan-50 border border-cyan-200 px-3.5 py-1 rounded-full inline-block">
+              <span className="font-mono text-xs font-bold uppercase tracking-[0.14em] text-slate-900 bg-slate-100 border border-slate-200 px-3.5 py-1 rounded-full inline-block">
                 FROM SPOKEN COMPLAINT TO CLINICAL CONTEXT
               </span>
               <h2 className="text-3xl sm:text-5xl font-bold text-slate-950 tracking-tight leading-tight">
@@ -587,10 +588,10 @@ export default function HomePage() {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8">
               
               {/* Step A: Live Spoken Turn Input */}
-              <div className="rounded-3xl bg-white border border-slate-200/90 p-6 sm:p-7 flex flex-col justify-between shadow-[0_12px_36px_-8px_rgba(15,23,42,0.06)] hover:border-cyan-200 transition-all">
+              <div className="rounded-3xl bg-white border border-slate-200/90 p-6 sm:p-7 flex flex-col justify-between shadow-[0_12px_36px_-8px_rgba(15,23,42,0.06)] hover:border-slate-300 transition-all">
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <span className="font-mono text-xs font-bold text-cyan-700">01 / SPOKEN INTAKE</span>
+                    <span className="font-mono text-xs font-bold text-slate-900">01 / SPOKEN INTAKE</span>
                     <span className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
                   </div>
                   <h3 className="text-xl font-bold text-slate-950">
@@ -613,11 +614,11 @@ export default function HomePage() {
               </div>
 
               {/* Step B: Structured Extraction */}
-              <div className="rounded-3xl bg-white border border-slate-200/90 p-6 sm:p-7 flex flex-col justify-between shadow-[0_12px_36px_-8px_rgba(15,23,42,0.06)] hover:border-blue-200 transition-all">
+              <div className="rounded-3xl bg-white border border-slate-200/90 p-6 sm:p-7 flex flex-col justify-between shadow-[0_12px_36px_-8px_rgba(15,23,42,0.06)] hover:border-slate-300 transition-all">
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
-                    <span className="font-mono text-xs font-bold text-blue-700">02 / ENTITY MINING</span>
-                    <Activity className="w-4 h-4 text-blue-600" />
+                    <span className="font-mono text-xs font-bold text-slate-900">02 / ENTITY MINING</span>
+                    <Activity className="w-4 h-4 text-slate-950" />
                   </div>
                   <h3 className="text-xl font-bold text-slate-950">
                     Continuous ICD-10 Parsing
@@ -627,7 +628,7 @@ export default function HomePage() {
                       <span className="px-2.5 py-1 rounded-md bg-rose-50 text-rose-700 border border-rose-200 font-mono text-xs font-bold">
                         R07.9 Chest Pain
                       </span>
-                      <span className="px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 border border-blue-200 font-mono text-xs font-bold">
+                      <span className="px-2.5 py-1 rounded-md bg-slate-100 text-slate-900 border border-slate-200 font-mono text-xs font-bold">
                         R61 Diaphoresis
                       </span>
                     </div>
@@ -700,7 +701,7 @@ export default function HomePage() {
           <div className="max-w-[1440px] mx-auto px-6 sm:px-8 lg:px-12 text-center relative z-10">
             
             <div className="max-w-3xl mx-auto mb-14 space-y-4">
-              <span className="font-mono text-xs font-bold uppercase tracking-[0.14em] text-cyan-800 bg-cyan-50 border border-cyan-200 px-3.5 py-1 rounded-full inline-block">
+              <span className="font-mono text-xs font-bold uppercase tracking-[0.14em] text-slate-900 bg-slate-100 border border-slate-200 px-3.5 py-1 rounded-full inline-block">
                 PROGRESSIVE CLINICAL PIPELINE
               </span>
 
@@ -735,7 +736,7 @@ export default function HomePage() {
                 step={activeStageStep}
                 onStepChange={handleStageStepChange}
                 theme="light"
-                accentColor="#0891b2"
+                accentColor="#0f172a"
                 width="100%"
                 hideContent
                 className="w-full shadow-xs"
@@ -790,7 +791,7 @@ export default function HomePage() {
                           </p>
 
                           <div className="pt-2 flex flex-wrap items-center gap-3">
-                            <span className="font-mono text-xs font-semibold px-3 py-1.5 rounded-xl inline-block border text-cyan-800 bg-cyan-50 border-cyan-200">
+                            <span className="font-mono text-xs font-semibold px-3 py-1.5 rounded-xl inline-block border text-slate-900 bg-slate-100 border-slate-200">
                               {card.highlightBadge}
                             </span>
                             {card.metric && (
@@ -829,7 +830,7 @@ export default function HomePage() {
             
             {/* Header */}
             <div className="max-w-3xl space-y-3">
-              <span className="font-mono text-xs font-bold uppercase tracking-[0.14em] text-cyan-800 bg-cyan-50 border border-cyan-200 px-3.5 py-1 rounded-full inline-block">
+              <span className="font-mono text-xs font-bold uppercase tracking-[0.14em] text-slate-900 bg-slate-100 border border-slate-200 px-3.5 py-1 rounded-full inline-block">
                 CORE CLINICAL CAPABILITIES
               </span>
               <h2 className="text-3xl sm:text-5xl font-bold text-slate-950 tracking-tight leading-tight">
@@ -854,22 +855,25 @@ export default function HomePage() {
             {/* Layout 1: Split Text-Led Feature (Acoustic Privacy & In-Memory Scrub) */}
             <div className="grid grid-cols-1 lg:grid-cols-12 gap-10 items-center">
               <div className="lg:col-span-6 space-y-4">
-                <span className="font-mono text-xs font-bold uppercase tracking-wider text-cyan-700">
+                <span className="font-mono text-xs font-bold uppercase tracking-wider text-slate-900">
                   ACOUSTIC PRIVACY & ZERO PERSISTENCE
                 </span>
                 <h3 className="text-2xl sm:text-3xl font-bold text-slate-950 tracking-tight">
                   Audio processed in transient memory, discarded immediately.
                 </h3>
-                <p className="text-sm sm:text-base text-slate-600 leading-relaxed font-normal">
-                  MedVoice processes patient voice streams exclusively in transient server memory using local Whisper ASR models. Once clinical entities and SOAP documentation are synthesized, raw audio buffers are immediately purged. Voice recordings are never stored on disk, never shared, and never monetized.
+                <p className="text-slate-600 leading-relaxed text-sm sm:text-base">
+                  When a call terminates, the raw audio buffer is permanently scrubbed
+                  from RAM within milliseconds. No human listens to call recordings, and
+                  no audio files are ever persisted to disk or cloud object storage.
                 </p>
-                <div className="pt-2 flex flex-wrap gap-2">
-                  <span className="font-mono text-xs font-semibold text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-1.5 rounded-xl">
-                    45 CFR § 164.312 Technical Safeguards
-                  </span>
-                  <span className="font-mono text-xs font-semibold text-cyan-800 bg-cyan-50 border border-cyan-200 px-3 py-1.5 rounded-xl">
-                    Ephemeral Audio Scrub
-                  </span>
+                <div className="pt-2">
+                  <Link
+                    href="/privacy"
+                    className="inline-flex items-center gap-1.5 text-xs font-mono font-bold text-slate-900 hover:text-slate-700 transition-colors"
+                  >
+                    <span>Read Acoustic Invariant Whitepaper</span>
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </Link>
                 </div>
               </div>
 
@@ -886,7 +890,7 @@ export default function HomePage() {
                     </div>
                     <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between">
                       <span className="text-slate-600">Session Audit Hash:</span>
-                      <span className="text-cyan-700 font-bold">SHA-256 IMMUTABLE</span>
+                      <span className="text-slate-950 font-bold">SHA-256 IMMUTABLE</span>
                     </div>
                     <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center justify-between">
                       <span className="text-slate-600">Storage Footprint:</span>
@@ -944,7 +948,7 @@ export default function HomePage() {
                   <span className="font-mono text-xs font-semibold text-rose-800 bg-rose-50 border border-rose-200 px-3 py-1.5 rounded-xl">
                     ESI v4 Algorithmic Alignment
                   </span>
-                  <span className="font-mono text-xs font-semibold text-cyan-800 bg-cyan-50 border border-cyan-200 px-3 py-1.5 rounded-xl">
+                  <span className="font-mono text-xs font-semibold text-slate-900 bg-slate-100 border border-slate-200 px-3 py-1.5 rounded-xl">
                     100% Deterministic Safety Invariants
                   </span>
                 </div>
@@ -954,8 +958,8 @@ export default function HomePage() {
             {/* Layout 3: 3-Column Capabilities Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 sm:gap-8">
               
-              <div className="rounded-3xl bg-white border border-slate-200/90 p-6 sm:p-7 space-y-4 shadow-[0_12px_36px_-8px_rgba(15,23,42,0.06)] hover:border-cyan-200 transition-all">
-                <div className="p-2.5 rounded-xl bg-cyan-50 border border-cyan-200 w-fit text-cyan-700">
+              <div className="rounded-3xl bg-white border border-slate-200/90 p-6 sm:p-7 space-y-4 shadow-[0_12px_36px_-8px_rgba(15,23,42,0.06)] hover:border-slate-300 transition-all">
+                <div className="p-2.5 rounded-xl bg-slate-100 border border-slate-200/80 w-fit text-slate-950">
                   <FileText className="w-5 h-5" />
                 </div>
                 <h4 className="text-lg font-bold text-slate-950">
@@ -966,8 +970,8 @@ export default function HomePage() {
                 </p>
               </div>
 
-              <div className="rounded-3xl bg-white border border-slate-200/90 p-6 sm:p-7 space-y-4 shadow-[0_12px_36px_-8px_rgba(15,23,42,0.06)] hover:border-blue-200 transition-all">
-                <div className="p-2.5 rounded-xl bg-blue-50 border border-blue-200 w-fit text-blue-700">
+              <div className="rounded-3xl bg-white border border-slate-200/90 p-6 sm:p-7 space-y-4 shadow-[0_12px_36px_-8px_rgba(15,23,42,0.06)] hover:border-slate-300 transition-all">
+                <div className="p-2.5 rounded-xl bg-slate-100 border border-slate-200/80 w-fit text-slate-950">
                   <Database className="w-5 h-5" />
                 </div>
                 <h4 className="text-lg font-bold text-slate-950">
@@ -978,8 +982,8 @@ export default function HomePage() {
                 </p>
               </div>
 
-              <div className="rounded-3xl bg-white border border-slate-200/90 p-6 sm:p-7 space-y-4 shadow-[0_12px_36px_-8px_rgba(15,23,42,0.06)] hover:border-indigo-200 transition-all">
-                <div className="p-2.5 rounded-xl bg-indigo-50 border border-indigo-200 w-fit text-indigo-700">
+              <div className="rounded-3xl bg-white border border-slate-200/90 p-6 sm:p-7 space-y-4 shadow-[0_12px_36px_-8px_rgba(15,23,42,0.06)] hover:border-slate-300 transition-all">
+                <div className="p-2.5 rounded-xl bg-slate-100 border border-slate-200/80 w-fit text-slate-950">
                   <Stethoscope className="w-5 h-5" />
                 </div>
                 <h4 className="text-lg font-bold text-slate-950">
@@ -1006,7 +1010,7 @@ export default function HomePage() {
             
             <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-6">
               <div className="max-w-2xl space-y-3">
-                <span className="font-mono text-xs font-bold uppercase tracking-[0.14em] text-cyan-800 bg-cyan-50 border border-cyan-200 px-3.5 py-1 rounded-full inline-block">
+                <span className="font-mono text-xs font-bold uppercase tracking-[0.14em] text-slate-900 bg-slate-100 border border-slate-200 px-3.5 py-1 rounded-full inline-block">
                   CARE NETWORK COORDINATION
                 </span>
                 <h2 className="text-3xl sm:text-5xl font-bold text-slate-950 tracking-tight leading-tight">
@@ -1029,7 +1033,7 @@ export default function HomePage() {
 
               <Link
                 href="/care"
-                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-cyan-600 hover:bg-cyan-500 text-white px-6 py-3.5 text-sm font-bold shadow-md hover:shadow-cyan-500/20 transition-all cursor-pointer shrink-0"
+                className="inline-flex items-center justify-center gap-2 rounded-2xl bg-slate-950 hover:bg-slate-800 text-white px-6 py-3.5 text-sm font-bold shadow-xs active:scale-[0.98] transition-all cursor-pointer shrink-0 border border-slate-900"
               >
                 <Navigation className="w-4 h-4 text-white" />
                 <span>Open Full Interactive Map →</span>
@@ -1040,23 +1044,23 @@ export default function HomePage() {
             <div className="bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-8 shadow-[0_16px_40px_-10px_rgba(15,23,42,0.08)] flex flex-col lg:flex-row items-center justify-between gap-8">
               
               <div className="space-y-4 max-w-xl text-left">
-                <div className="flex items-center gap-2 text-xs font-mono text-emerald-800 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full inline-flex">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                <div className="flex items-center gap-2 text-xs font-mono text-slate-900 bg-slate-100 border border-slate-200 px-3 py-1 rounded-full inline-flex">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-slate-950" />
                   <span>24/7 VERIFIED EMERGENCY CAPABILITIES</span>
                 </div>
                 <h3 className="text-2xl font-bold text-slate-950">
                   {currentHubData.center}
                 </h3>
-                <p className="text-sm text-cyan-700 font-mono font-medium">
+                <p className="text-sm text-slate-700 font-mono font-medium">
                   {currentHubData.specialty}
                 </p>
                 <div className="flex items-center gap-4 pt-1 font-mono text-xs text-slate-600">
                   <div className="flex items-center gap-1.5">
-                    <Navigation className="w-3.5 h-3.5 text-cyan-600" />
+                    <Navigation className="w-3.5 h-3.5 text-slate-950" />
                     <span>Canonical Road Distance: <strong className="text-slate-950">{currentHubData.distance}</strong></span>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <Clock className="w-3.5 h-3.5 text-cyan-600" />
+                    <Clock className="w-3.5 h-3.5 text-slate-950" />
                     <span>Est. Drive Time: <strong className="text-slate-950">{currentHubData.eta}</strong></span>
                   </div>
                 </div>
@@ -1072,10 +1076,10 @@ export default function HomePage() {
                       onClick={() => setSelectedHub(hub.city)}
                       role="radio"
                       aria-checked={isActive}
-                      className={`font-mono text-xs font-semibold px-3.5 py-2 rounded-xl border transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 ${
+                      className={`font-mono text-xs px-4 py-2 rounded-xl border transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 active:scale-[0.97] ${
                         isActive
-                          ? "bg-cyan-600 text-white border-cyan-500 shadow-sm"
-                          : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-slate-100 hover:text-slate-950"
+                          ? "bg-slate-950 text-white border-slate-950 shadow-xs font-bold"
+                          : "bg-white/80 text-slate-700 border-slate-200/80 hover:bg-slate-100 hover:text-slate-950 font-semibold shadow-2xs"
                       }`}
                     >
                       {hub.city}
@@ -1124,19 +1128,19 @@ export default function HomePage() {
                   <div key={item.q} className="py-5 first:pt-2 last:pb-2">
                     <button
                       onClick={() => setOpenFaq(isOpen ? null : i)}
-                      className="w-full flex items-start justify-between gap-6 text-left cursor-pointer group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 rounded-xl"
+                      className="w-full flex items-start justify-between gap-6 text-left cursor-pointer group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 rounded-xl"
                       aria-expanded={isOpen}
                       aria-controls={`faq-ans-${i}`}
                     >
                       <span className="flex items-start gap-3.5">
-                        <span className="font-mono text-xs font-bold text-cyan-600 pt-1 tracking-widest shrink-0">
+                        <span className="font-mono text-xs font-bold text-slate-900 pt-1 tracking-widest shrink-0">
                           {String(i + 1).padStart(2, "0")}
                         </span>
-                        <span className="text-base sm:text-lg font-bold text-slate-900 group-hover:text-cyan-700 transition-colors">
+                        <span className="text-base sm:text-lg font-bold text-slate-950 group-hover:text-slate-700 transition-colors">
                           {item.q}
                         </span>
                       </span>
-                      <span className="shrink-0 pt-1 text-slate-400 group-hover:text-cyan-600 transition-colors">
+                      <span className="shrink-0 pt-1 text-slate-900 group-hover:text-slate-700 transition-colors">
                         {isOpen ? <Minus className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
                       </span>
                     </button>
@@ -1180,7 +1184,7 @@ export default function HomePage() {
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[300px] bg-gradient-to-r from-cyan-400/10 via-indigo-400/10 to-violet-400/10 blur-[100px] pointer-events-none" />
 
           <div className="relative z-10 max-w-3xl mx-auto space-y-6 pointer-events-none">
-            <span className="text-xs font-mono font-bold uppercase tracking-widest text-cyan-800 bg-cyan-50 border border-cyan-200 px-3.5 py-1 rounded-full inline-block">
+            <span className="text-xs font-mono font-bold uppercase tracking-widest text-slate-900 bg-slate-100 border border-slate-200 px-3.5 py-1 rounded-full inline-block">
               LISTEN · UNDERSTAND · ASSESS · ACT
             </span>
             <h2 className="text-3xl sm:text-5xl font-extrabold text-slate-950 tracking-tight leading-tight">

@@ -43,18 +43,18 @@ export function ClinicalFlipCard({
         <div className="absolute inset-0 w-full h-full [backface-visibility:hidden] rounded-3xl bg-white border border-slate-200/90 p-6 sm:p-7 shadow-xs hover:border-cyan-300 transition-all flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between mb-4">
-              <span className="font-mono text-xs font-bold uppercase tracking-wider text-cyan-800 bg-cyan-50 border border-cyan-200/90 px-3 py-1 rounded-full">
+              <span className="font-mono text-xs font-bold uppercase tracking-wider text-slate-900 bg-slate-100 border border-slate-200/90 px-3 py-1 rounded-full">
                 {category}
               </span>
               <div className="flex items-center gap-2">
                 <span className="text-[11px] font-mono text-slate-400 font-medium">Click to inspect</span>
-                <RotateCw className="w-3.5 h-3.5 text-slate-400 group-hover:text-cyan-600 transition-colors" />
+                <RotateCw className="w-3.5 h-3.5 text-slate-500 group-hover:text-slate-900 transition-colors" />
               </div>
             </div>
 
             <div className="flex items-start gap-3 my-2">
               {frontIcon && (
-                <div className="w-10 h-10 rounded-2xl bg-cyan-50 border border-cyan-200 flex items-center justify-center text-cyan-700 flex-shrink-0">
+                <div className="w-10 h-10 rounded-2xl bg-slate-100 border border-slate-200/90 flex items-center justify-center text-slate-950 flex-shrink-0">
                   {frontIcon}
                 </div>
               )}
@@ -74,7 +74,7 @@ export function ClinicalFlipCard({
             <span className="font-mono text-xs font-semibold text-slate-500">
               {frontBadge}
             </span>
-            <span className="inline-flex items-center gap-1 text-xs font-bold text-cyan-700 group-hover:text-cyan-800">
+            <span className="inline-flex items-center gap-1 text-xs font-bold text-slate-900 group-hover:text-slate-700">
               <span>View Schema</span>
               <ArrowRight className="w-3.5 h-3.5" />
             </span>
@@ -85,7 +85,7 @@ export function ClinicalFlipCard({
         <div className="absolute inset-0 w-full h-full [backface-visibility:hidden] [transform:rotateY(180deg)] rounded-3xl bg-slate-50/95 text-slate-900 border border-slate-200/90 p-6 sm:p-7 shadow-xs flex flex-col justify-between font-mono text-xs">
           <div>
             <div className="flex items-center justify-between border-b border-slate-200/80 pb-3 mb-4">
-              <span className="text-cyan-800 font-bold uppercase tracking-wider text-xs">
+              <span className="text-slate-950 font-bold uppercase tracking-wider text-xs">
                 {backTitle}
               </span>
               <button

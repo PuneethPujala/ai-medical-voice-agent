@@ -44,7 +44,7 @@ function ExpandCardItem({ item, idx }: { item: ExpandItem; idx: number }) {
             {item.num}
           </span>
           <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />
-          <span className="font-mono text-xs font-bold uppercase tracking-wider text-cyan-800 bg-cyan-50 border border-cyan-200 px-3 py-1 rounded-full">
+          <span className="font-mono text-xs font-bold uppercase tracking-wider text-slate-900 bg-slate-100 border border-slate-200 px-3 py-1 rounded-full">
             {item.tag}
           </span>
         </div>

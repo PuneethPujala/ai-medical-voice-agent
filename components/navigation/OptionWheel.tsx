@@ -72,21 +72,21 @@ export function OptionWheel({
               transition={{ type: "spring", stiffness: 420, damping: 32 }}
               className={`relative w-full text-left px-4 py-2.5 rounded-2xl transition-all flex items-center justify-between gap-3 cursor-pointer ${
                 isSelected
-                  ? "bg-[#E8F3F3] border border-[#C2DFDF] text-[#172026] shadow-xs"
+                  ? "bg-slate-950 border border-slate-900 text-white shadow-xs"
                   : isAdjacent
-                  ? "text-[#5A6B75] hover:bg-[#F6F5F1] hover:text-[#172026] opacity-75 border border-transparent"
+                  ? "text-slate-600 hover:bg-slate-100 hover:text-slate-950 opacity-80 border border-transparent"
                   : "hidden"
               }`}
             >
               <div className="flex flex-col min-w-0">
                 <span
                   className={`text-[9.5px] uppercase tracking-wider font-semibold ${
-                    isSelected ? "text-[#0F6B6D]" : "text-[#8C9AA2]"
+                    isSelected ? "text-slate-400" : "text-slate-400"
                   }`}
                 >
                   {opt.category}
                 </span>
-                <span className={`text-xs sm:text-sm font-semibold truncate ${isSelected ? "text-[#172026]" : "text-[#5A6B75]"}`}>
+                <span className={`text-xs sm:text-sm font-semibold truncate ${isSelected ? "text-white font-bold" : "text-slate-700"}`}>
                   {opt.label}
                 </span>
               </div>
@@ -94,10 +94,10 @@ export function OptionWheel({
               {isSelected ? (
                 <motion.span
                   layoutId="wheelSelectedDot"
-                  className="w-2 h-2 rounded-full bg-[#0F6B6D] flex-shrink-0"
+                  className="w-2 h-2 rounded-full bg-cyan-400 flex-shrink-0"
                 />
               ) : (
-                <span className="w-1.5 h-1.5 rounded-full bg-[#CBD5E1] flex-shrink-0" />
+                <span className="w-1.5 h-1.5 rounded-full bg-slate-300 flex-shrink-0" />
               )}
             </motion.button>
           );

@@ -31,7 +31,6 @@ import { CardNav, RegionCardItem } from "@/components/navigation/CardNav";
 import { MovingBorder } from "@/components/motion/MovingBorder";
 import SplitText from "@/components/ui/SplitText";
 import GradientText from "@/components/ui/GradientText";
-import StarBorder from "@/components/ui/StarBorder";
 import {
   ALL_REGION_PRESETS,
   RegionPresetItem,
@@ -702,13 +701,13 @@ export default function CarePage() {
                 <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
                   <button
                     onClick={handleApplySuggestion}
-                    className="px-3.5 py-1.5 rounded-xl bg-cyan-700 hover:bg-cyan-800 text-white text-xs font-semibold transition-colors cursor-pointer"
+                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-600 to-teal-600 hover:from-cyan-500 hover:to-teal-500 text-white text-xs font-bold shadow-2xs active:scale-[0.98] transition-all cursor-pointer"
                   >
                     Use this location
                   </button>
                   <button
                     onClick={handleDismissSuggestion}
-                    className="px-2.5 py-1.5 text-xs text-slate-600 hover:text-slate-900 transition-colors cursor-pointer"
+                    className="px-3 py-2 text-xs font-semibold text-slate-600 hover:text-slate-950 hover:bg-slate-100 rounded-xl transition-all cursor-pointer"
                   >
                     Dismiss
                   </button>
@@ -718,25 +717,23 @@ export default function CarePage() {
 
             {/* PRIMARY ONBOARDING ACTIONS */}
             <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
-              <StarBorder
-                as="button"
+              <button
                 onClick={() => handleDetectLiveLocation()}
                 disabled={isDetectingGps}
-                color="#06b6d4"
-                duration={4}
-                theme="dark"
-                backgroundColor="#0891b2"
-                textColor="#ffffff"
-                radius={12}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 text-white font-semibold text-sm shadow-xs transition-colors cursor-pointer disabled:opacity-50 hover:shadow-cyan-500/20"
+                style={{ backgroundImage: 'linear-gradient(to right, #0891b2, #0d9488, #0f766e)' }}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-cyan-600 hover:opacity-95 text-white font-bold text-sm shadow-[0_4px_16px_rgba(6,182,212,0.3)] hover:shadow-[0_6px_22px_rgba(6,182,212,0.4)] border border-teal-400/40 active:scale-[0.98] transition-all cursor-pointer disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
               >
                 <LocateFixed className={`w-4 h-4 ${isDetectingGps ? "animate-spin" : ""}`} />
                 <span>{isDetectingGps ? "Locating..." : "Use my live location"}</span>
-              </StarBorder>
+              </button>
 
               <button
                 onClick={() => setIsChoosingCity(!isChoosingCity)}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-white hover:bg-[#FAF9F6] text-slate-900 font-semibold text-sm border border-slate-200/90 shadow-xs transition-colors cursor-pointer"
+                className={`w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl text-sm border shadow-2xs hover:shadow-xs active:scale-[0.98] transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 ${
+                  isChoosingCity
+                    ? "bg-slate-100 text-slate-950 font-bold border-cyan-500/50 ring-2 ring-cyan-500/20"
+                    : "bg-white hover:bg-slate-50 text-slate-800 hover:text-slate-950 font-semibold border-slate-200/90 hover:border-slate-300"
+                }`}
               >
                 <Building2 className="w-4 h-4 text-cyan-700" />
                 <span>{isChoosingCity ? "Hide city selector" : "Choose a city or region"}</span>
@@ -763,7 +760,7 @@ export default function CarePage() {
                       setIsChoosingCity(false);
                       setIsManualPicking(true);
                     }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200/90 hover:bg-[#FAF9F6] text-xs font-semibold text-slate-900 transition-colors cursor-pointer"
+                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-slate-200/90 bg-white hover:bg-slate-50 text-slate-800 hover:text-slate-950 text-xs font-semibold shadow-2xs active:scale-[0.98] transition-all cursor-pointer"
                   >
                     <Compass className="w-3.5 h-3.5 text-cyan-700" />
                     <span>Pick on map</span>
@@ -818,10 +815,11 @@ export default function CarePage() {
                     <button
                       key={zone.id}
                       onClick={() => setSelectedZone(zone.id)}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-semibold whitespace-nowrap transition-all cursor-pointer ${
+                      style={selectedZone === zone.id ? { backgroundImage: 'linear-gradient(to right, #0891b2, #0d9488)' } : undefined}
+                      className={`px-3 py-1.5 rounded-lg text-xs transition-all cursor-pointer border active:scale-[0.98] ${
                         selectedZone === zone.id
-                          ? "bg-[#172026] text-white"
-                          : "bg-[#FAF9F6] hover:bg-[#E5E3DC] text-slate-600"
+                          ? "bg-cyan-600 text-white font-bold border-cyan-500/80 shadow-[0_2px_8px_rgba(6,182,212,0.25)]"
+                          : "bg-white text-slate-700 border-slate-200/90 hover:bg-slate-50 hover:text-slate-950 font-semibold shadow-2xs"
                       }`}
                     >
                       {zone.label}
@@ -837,7 +835,7 @@ export default function CarePage() {
                     <button
                       key={preset.name}
                       onClick={() => handleSelectPreset(preset)}
-                      className="px-3 py-1.5 rounded-lg text-xs font-medium bg-[#FAF9F6] hover:bg-cyan-50/90 hover:text-cyan-700 text-slate-900 border border-slate-200/90 transition-colors cursor-pointer"
+                      className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-white hover:bg-slate-50 hover:text-slate-950 text-slate-700 border border-slate-200/90 hover:border-slate-300 shadow-2xs active:scale-[0.97] transition-all cursor-pointer"
                     >
                       {preset.name}
                     </button>
@@ -917,13 +915,14 @@ export default function CarePage() {
                 </p>
               </div>
 
-              <div className="flex items-center gap-1.5 p-1 bg-[#FAF9F6] rounded-xl border border-slate-200/90 shrink-0">
+              <div className="flex items-center gap-1.5 p-1.5 bg-slate-100/90 rounded-2xl border border-slate-200/90 shrink-0">
                 <button
                   onClick={() => handleSelectViewMode("all")}
-                  className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  style={viewMode === "all" ? { backgroundImage: 'linear-gradient(to right, #0891b2, #0d9488)' } : undefined}
+                  className={`px-4 py-2 rounded-xl text-xs transition-all cursor-pointer ${
                     viewMode === "all"
-                      ? "bg-white text-slate-900 shadow-xs border border-slate-200/90"
-                      : "text-slate-600 hover:text-slate-900"
+                      ? "bg-cyan-600 text-white font-bold shadow-[0_2px_8px_rgba(6,182,212,0.25)] border border-cyan-500/60"
+                      : "bg-transparent text-slate-700 hover:text-slate-950 font-semibold"
                   }`}
                 >
                   All Hospitals & 24/7 ERs
@@ -931,10 +930,11 @@ export default function CarePage() {
 
                 <button
                   onClick={() => handleSelectViewMode("issues")}
-                  className={`px-3.5 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                  style={viewMode === "issues" ? { backgroundImage: 'linear-gradient(to right, #0891b2, #0d9488)' } : undefined}
+                  className={`px-4 py-2 rounded-xl text-xs transition-all cursor-pointer ${
                     viewMode === "issues"
-                      ? "bg-white text-slate-900 shadow-xs border border-slate-200/90"
-                      : "text-slate-600 hover:text-slate-900"
+                      ? "bg-cyan-600 text-white font-bold shadow-[0_2px_8px_rgba(6,182,212,0.25)] border border-cyan-500/60"
+                      : "bg-transparent text-slate-700 hover:text-slate-950 font-semibold"
                   }`}
                 >
                   Filter by Condition
@@ -994,17 +994,17 @@ export default function CarePage() {
                       <button
                         key={item.id}
                         onClick={() => handleSelectSpecialty(item.id, item.label)}
-                        className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col gap-0.5 ${
+                        className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col gap-0.5 active:scale-[0.98] ${
                           isActive
-                            ? "bg-cyan-50/90 text-cyan-700 border-cyan-600 shadow-xs font-semibold"
-                            : "bg-white hover:bg-[#FAF9F6] text-slate-900 border-slate-200/90"
+                            ? "bg-gradient-to-br from-cyan-50/95 to-teal-50/95 text-cyan-950 border-cyan-500 shadow-xs font-bold ring-1 ring-cyan-500/30"
+                            : "bg-white hover:bg-slate-50 text-slate-800 border-slate-200/90 hover:border-slate-300 font-medium shadow-2xs"
                         }`}
                       >
                         <div className="flex items-center gap-1.5 min-w-0">
                           <SpecialtyIcon id={item.id} className="w-4 h-4 shrink-0" />
                           <span className="text-xs font-semibold truncate">{item.label}</span>
                         </div>
-                        <span className={`text-[10px] truncate ${isActive ? "text-cyan-700" : "text-slate-600"}`}>
+                        <span className={`text-[10px] truncate ${isActive ? "text-cyan-800 font-semibold" : "text-slate-600"}`}>
                           {item.famousFor}
                         </span>
                       </button>
@@ -1150,10 +1150,10 @@ export default function CarePage() {
                       <div className="flex items-center gap-2 pt-0.5">
                         <a
                           href={`tel:${selectedHospital.emergencyPhone || selectedHospital.phone || "108"}`}
-                          className={`flex-1 inline-flex items-center justify-center gap-1.5 py-1.5 rounded-xl text-white font-semibold text-xs shadow-xs transition-colors cursor-pointer ${
+                          className={`flex-1 inline-flex items-center justify-center gap-1.5 py-2 rounded-xl text-white font-bold text-xs shadow-xs active:scale-[0.98] transition-all cursor-pointer ${
                             selectedHospital.actionType === "call_hospital"
-                              ? "bg-cyan-700 hover:bg-cyan-800"
-                              : "bg-[#B42318] hover:bg-[#991B1B]"
+                              ? "bg-gradient-to-r from-cyan-600 to-teal-600 hover:from-cyan-500 hover:to-teal-500 shadow-[0_2px_8px_rgba(6,182,212,0.25)]"
+                              : "bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-500 hover:to-rose-600 shadow-[0_2px_8px_rgba(244,63,94,0.25)]"
                           }`}
                         >
                           <PhoneCall className="w-3.5 h-3.5" />
@@ -1167,7 +1167,7 @@ export default function CarePage() {
                           }
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex-1 inline-flex items-center justify-center gap-1.5 py-1.5 rounded-xl bg-[#172026] hover:bg-[#2C3840] text-white font-semibold text-xs shadow-xs transition-colors cursor-pointer"
+                          className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-900 font-semibold text-xs border border-slate-200/90 hover:border-slate-300 shadow-2xs active:scale-[0.98] transition-all cursor-pointer"
                         >
                           <Navigation className="w-3.5 h-3.5 text-cyan-700" />
                           <span>Directions</span>

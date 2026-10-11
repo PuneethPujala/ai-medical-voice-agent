@@ -2,12 +2,26 @@
 
 import React from "react";
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { ArrowLeft, ShieldCheck, Lock, CheckCircle2, FileText, Key, Activity } from "lucide-react";
 import { AppFooter } from "../_components/AppFooter";
 import { ScrollExpand, ExpandItem } from "@/components/motion/ScrollExpand";
 import { ClinicalFlipCard } from "@/components/clinical/ClinicalFlipCard";
 import SplitText from "@/components/ui/SplitText";
 import GradientText from "@/components/ui/GradientText";
+
+const ClinicalDataLifecycle3D = dynamic(
+  () => import("@/components/clinical/ClinicalDataLifecycle3D"),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="w-full h-[480px] rounded-3xl bg-[#090D16] border border-slate-800 p-8 flex flex-col items-center justify-center gap-4 animate-pulse">
+        <div className="w-10 h-10 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin" />
+        <span className="font-mono text-xs text-slate-400">Initializing 3D Data Lifecycle Instrument...</span>
+      </div>
+    ),
+  }
+);
 
 const EXPAND_SAFEGUARDS: ExpandItem[] = [
   {
@@ -91,7 +105,7 @@ export default function PrivacyPolicyPage() {
           </Link>
 
           <div className="space-y-2 pt-2">
-            <span className="font-mono text-xs font-bold uppercase tracking-[0.1em] text-cyan-800 bg-cyan-50 border border-cyan-200 px-3.5 py-1 rounded-full inline-block">
+            <span className="font-mono text-xs font-bold uppercase tracking-[0.1em] text-slate-900 bg-slate-100 border border-slate-200 px-3.5 py-1 rounded-full inline-block">
               SECURITY & COMPLIANCE ARCHITECTURE
             </span>
             <div className="space-y-1">
@@ -113,6 +127,23 @@ export default function PrivacyPolicyPage() {
               MedVoice AI is engineered around strict zero voice-retention policies, end-to-end encryption, and verifiable cryptographic compliance logs.
             </p>
           </div>
+        </section>
+
+        {/* 3D INTERACTIVE DATA LIFECYCLE INSTRUMENT */}
+        <section className="pb-16 px-4 sm:px-6 max-w-5xl lg:max-w-6xl mx-auto space-y-5">
+          <div className="space-y-1">
+            <span className="font-mono text-xs font-bold uppercase tracking-[0.1em] text-slate-900 block">
+              SYSTEM ARCHITECTURE & DATA FLOW
+            </span>
+            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-950 tracking-tight">
+              Clinical Data Lifecycle & Boundary Visualization
+            </h2>
+            <p className="text-sm text-slate-600 max-w-2xl leading-relaxed">
+              Inspect where raw audio is processed locally, where cloud LLM reasoning begins, how transient memory buffers are purged, and how cryptographic audit metadata is generated separately.
+            </p>
+          </div>
+
+          <ClinicalDataLifecycle3D />
         </section>
 
         {/* PROGRESSIVE DISCLOSURE: SCROLL EXPAND SAFEGUARDS */}

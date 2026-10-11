@@ -110,7 +110,9 @@ export const GooeyNav: React.FC<GooeyNavProps> = ({
     }
   };
 
-  const updateEffectPosition = (element: HTMLElement | null) => {
+  const lastClickedIndexRef = useRef<number>(-1);
+
+  const updateEffectPosition = (element: HTMLElement | null, explicitText?: string) => {
     if (!containerRef.current || !filterRef.current || !textRef.current) return;
     if (!element) {
       filterRef.current.style.opacity = '0';
@@ -129,15 +131,16 @@ export const GooeyNav: React.FC<GooeyNavProps> = ({
     };
     Object.assign(filterRef.current.style, styles);
     Object.assign(textRef.current.style, styles);
-    textRef.current.innerText = element.innerText;
+    textRef.current.innerText = explicitText || element.innerText || element.textContent?.trim() || '';
   };
 
   const handleClick = (e: React.MouseEvent<HTMLAnchorElement>, index: number) => {
     const liEl = e.currentTarget.parentElement || e.currentTarget;
     if (activeIndex === index) return;
 
+    lastClickedIndexRef.current = index;
     setActiveIndex(index);
-    updateEffectPosition(liEl);
+    updateEffectPosition(liEl, items[index]?.label);
 
     if (filterRef.current) {
       const particles = filterRef.current.querySelectorAll('.particle');
@@ -187,16 +190,17 @@ export const GooeyNav: React.FC<GooeyNavProps> = ({
 
     const activeLi = navRef.current.querySelectorAll('li')[targetIdx] as HTMLElement;
     if (activeLi) {
-      updateEffectPosition(activeLi);
+      updateEffectPosition(activeLi, items[targetIdx]?.label);
       textRef.current?.classList.add('active');
       if (filterRef.current) {
-        if (!isInitialMountRef.current) {
+        if (!isInitialMountRef.current && lastClickedIndexRef.current !== targetIdx) {
           makeParticles(filterRef.current);
         } else {
           filterRef.current.classList.add('active');
         }
       }
     }
+    lastClickedIndexRef.current = -1;
 
     if (isInitialMountRef.current) {
       requestAnimationFrame(() => {
@@ -204,7 +208,7 @@ export const GooeyNav: React.FC<GooeyNavProps> = ({
         isInitialMountRef.current = false;
       });
     }
-  }, [derivedIndex, pathname]);
+  }, [derivedIndex, pathname, items]);
 
   useEffect(() => {
     if (!navRef.current || !containerRef.current) return;

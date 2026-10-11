@@ -259,8 +259,8 @@ export function MedicalHeroDashboardPreview({
                 onClick={() => handleSelectScenario(s.id)}
                 className={`px-2.5 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
                   isActive
-                    ? "bg-white text-slate-950 font-bold shadow-xs"
-                    : "text-slate-600 hover:text-slate-900"
+                    ? "bg-slate-950 text-white font-bold shadow-xs"
+                    : "text-slate-600 hover:text-slate-950 hover:bg-white/60"
                 }`}
               >
                 {s.title.split(" ")[0]}
@@ -276,7 +276,7 @@ export function MedicalHeroDashboardPreview({
         {/* CALLER PROFILE & STATUS BAR */}
         <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-200/80 shadow-2xs">
           <div className="flex items-center gap-3.5">
-            <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-cyan-500 to-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-2xs">
+            <div className="w-10 h-10 rounded-xl bg-slate-950 text-white flex items-center justify-center font-bold text-sm shadow-xs">
               <User className="w-5 h-5 text-white" />
             </div>
             <div>
@@ -305,17 +305,17 @@ export function MedicalHeroDashboardPreview({
             >
               {isMuted ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
             </button>
-            <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-cyan-50 border border-cyan-200/90 text-cyan-900 text-xs font-semibold shadow-2xs">
-              <Volume2 className="w-4 h-4 text-cyan-600 animate-pulse" />
+            <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-950 text-white text-xs font-semibold shadow-xs">
+              <Volume2 className="w-4 h-4 text-cyan-400 animate-pulse" />
               <span>Voice Stream Active ({scenario.duration})</span>
             </div>
           </div>
         </div>
 
         {/* AI VOICE WAVEFORM VISUALIZER ORB */}
-        <div className="relative py-6 bg-gradient-to-b from-slate-50/80 via-cyan-50/25 to-slate-100/70 rounded-2xl p-6 shadow-2xs flex flex-col items-center justify-center gap-4 overflow-hidden border border-slate-200/90">
+        <div className="relative py-6 bg-gradient-to-b from-slate-50/80 via-slate-100/50 to-slate-100/70 rounded-2xl p-6 shadow-2xs flex flex-col items-center justify-center gap-4 overflow-hidden border border-slate-200/90">
           {/* Subtle Ambient Radial Glow */}
-          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(6,182,212,0.12),transparent_70%)] pointer-events-none" />
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,rgba(15,23,42,0.06),transparent_70%)] pointer-events-none" />
 
           {/* Dynamic Audio Waveform Bars */}
           <div className="flex items-center justify-center gap-1.5 h-16 w-full max-w-md px-4">
@@ -339,8 +339,8 @@ export function MedicalHeroDashboardPreview({
           </div>
 
           <div className="flex items-center gap-2 text-xs text-slate-600 font-mono">
-            <Radio className="w-3.5 h-3.5 text-cyan-600 animate-pulse" />
-            <span className="font-semibold text-slate-700">Local Whisper base.en ASR · Kokoro-82M Neural Synthesis</span>
+            <Radio className="w-3.5 h-3.5 text-slate-900 animate-pulse" />
+            <span className="font-semibold text-slate-900">Local Whisper base.en ASR · Kokoro-82M Neural Synthesis</span>
           </div>
         </div>
 
@@ -360,9 +360,9 @@ export function MedicalHeroDashboardPreview({
           <div className="p-3.5 rounded-xl bg-white border border-slate-200/90 shadow-2xs flex flex-col justify-between">
             <div className="flex items-center justify-between text-[11px] font-mono text-slate-500 mb-1">
               <span>ICD-10 ENTITY</span>
-              <Activity className="w-3.5 h-3.5 text-cyan-600" />
+              <Activity className="w-3.5 h-3.5 text-slate-900" />
             </div>
-            <div className="text-xs font-bold text-cyan-900 font-mono">{scenario.icd10.code}</div>
+            <div className="text-xs font-bold text-slate-950 font-mono">{scenario.icd10.code}</div>
             <div className="text-[11px] text-slate-500 truncate mt-1">{scenario.icd10.label}</div>
           </div>
 
@@ -370,7 +370,7 @@ export function MedicalHeroDashboardPreview({
           <div className="p-3.5 rounded-xl bg-white border border-slate-200/90 shadow-2xs flex flex-col justify-between">
             <div className="flex items-center justify-between text-[11px] font-mono text-slate-500 mb-1">
               <span>NETWORK ROUTING</span>
-              <Navigation className="w-3.5 h-3.5 text-emerald-600" />
+              <Navigation className="w-3.5 h-3.5 text-slate-900" />
             </div>
             <div className="text-xs font-bold text-slate-900 truncate">{scenario.actionPill}</div>
             <div className="text-[11px] text-slate-500 mt-1">Real-time canonical road travel</div>
@@ -398,19 +398,19 @@ export function MedicalHeroDashboardPreview({
                   className={`p-4 rounded-xl text-sm leading-relaxed ${
                     item.speaker === "Patient"
                       ? "bg-white border border-slate-200/90 text-slate-800 shadow-2xs"
-                      : "bg-cyan-50/70 border border-cyan-200/70 text-slate-900 font-medium"
+                      : "bg-slate-100/80 border border-slate-200 text-slate-950 font-medium"
                   }`}
                 >
                   <div className="flex items-center justify-between mb-1">
                     <span
                       className={`text-xs font-bold flex items-center gap-1.5 ${
-                        item.speaker === "Patient" ? "text-slate-700" : "text-cyan-800"
+                        item.speaker === "Patient" ? "text-slate-700" : "text-slate-950"
                       }`}
                     >
                       {item.speaker === "Patient" ? (
                         <User className="w-3.5 h-3.5 text-slate-500" />
                       ) : (
-                        <Sparkles className="w-3.5 h-3.5 text-cyan-600" />
+                        <Sparkles className="w-3.5 h-3.5 text-slate-950" />
                       )}
                       {item.speaker === "Patient" ? scenario.patientName.split(" ")[0] : "MedVoice AI"}
                     </span>
@@ -432,9 +432,9 @@ export function MedicalHeroDashboardPreview({
             {scenario.outcomes.map((outcome, i) => (
               <span
                 key={i}
-                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 text-slate-700 text-xs font-semibold border border-slate-200"
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-100 text-slate-800 text-xs font-semibold border border-slate-200"
               >
-                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                <CheckCircle2 className="w-3.5 h-3.5 text-slate-900" />
                 {outcome}
               </span>
             ))}
