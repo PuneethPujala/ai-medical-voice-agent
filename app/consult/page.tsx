@@ -56,6 +56,8 @@ import { GlowingBorder } from "@/components/ui/glowing-border";
 import { MovingBorder } from "@/components/ui/moving-border";
 import GlowCursor from "@/components/ui/GlowCursor";
 import { AnimatedContent } from "@/components/ui/animated-content";
+import SplitText from "@/components/ui/SplitText";
+import GradientText from "@/components/ui/GradientText";
 import { VoicePill, VoicePillState } from "@/components/clinical/VoicePill";
 import { ThoughtLine, ThoughtStep } from "@/components/clinical/ThoughtLine";
 import { PulseHeart } from "@/components/clinical/PulseHeart";
@@ -2128,9 +2130,21 @@ export default function ConsultPage() {
                     MEDVOICE · VOICE CLINICAL CONSULTATION
                   </span>
                 </div>
-                <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black text-slate-950 tracking-tight leading-[1.08]">
-                  Ready when you are.
-                </h1>
+                <div className="space-y-1">
+                  <SplitText
+                    text="Ready when you are."
+                    tag="h1"
+                    className="text-4xl sm:text-5xl lg:text-6xl font-black text-slate-950 tracking-tight leading-[1.08]"
+                  />
+                  <div className="pt-0.5">
+                    <GradientText
+                      colors={["#0891b2", "#06b6d4", "#0e7490"]}
+                      className="text-xs sm:text-sm font-bold uppercase tracking-wider font-mono"
+                    >
+                      Real-Time Clinical Voice Intelligence
+                    </GradientText>
+                  </div>
+                </div>
                 <p className="text-base sm:text-lg text-slate-600 max-w-2xl font-normal leading-relaxed">
                   Choose who you&apos;d like to consult with. Your symptoms will be carefully reviewed, with safety checks running continuously in the background.
                 </p>
@@ -2652,6 +2666,50 @@ export default function ConsultPage() {
                     <span className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
                     <span className="italic">Formulating response...</span>
                   </div>
+                </div>
+              )}
+
+              {/* Dynamic Live ThoughtLine Pipeline Status */}
+              {(callActive || audioState !== "IDLE" || Boolean(triageData?.isEmergency)) && (
+                <div className="pt-2 pb-1 border-t border-slate-100">
+                  <ThoughtLine
+                    label={
+                      triageData?.isEmergency
+                        ? "Universal Emergency Protocol Override Active"
+                        : audioState === "PATIENT_LISTENING"
+                        ? "Listening to Patient Utterance…"
+                        : audioState === "PROCESSING_TRANSCRIPTION"
+                        ? "Transcribing Speech via Whisper…"
+                        : audioState === "PROCESSING_CLINICAL"
+                        ? "Deliberating Clinical Action & Context Checks…"
+                        : audioState === "DOCTOR_SPEAKING"
+                        ? `${activeSpeaker?.name ? activeSpeaker.name.split(",")[0] : "Clinician"} Speaking…`
+                        : "Voice Session Active"
+                    }
+                    doneLabel="Consultation In Sync"
+                    working={
+                      !triageData?.isEmergency &&
+                      (audioState === "PATIENT_LISTENING" ||
+                        audioState === "PROCESSING_TRANSCRIPTION" ||
+                        audioState === "PROCESSING_CLINICAL" ||
+                        audioState === "BARGE_IN_DETECTED" ||
+                        audioState === "PROCESSING_INTERRUPTION" ||
+                        Boolean(pendingDoctorMessage))
+                    }
+                    isEmergency={Boolean(triageData?.isEmergency)}
+                    emergencyDirective={
+                      triageData?.isEmergency
+                        ? "Deterministic Safety Override: Red Flag Detected. Immediate Emergency Escalation."
+                        : undefined
+                    }
+                    steps={clinicalThoughtSteps}
+                    collapsible={true}
+                    glyph={triageData?.isEmergency ? "none" : "sparkle"}
+                    color="#0891b2"
+                    glyphColor="#06b6d4"
+                    showTimer={true}
+                    className="w-full"
+                  />
                 </div>
               )}
 

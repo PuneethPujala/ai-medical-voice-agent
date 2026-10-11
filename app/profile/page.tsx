@@ -35,7 +35,19 @@ import {
 import { Navbar } from "../_components/Navbar";
 import { AppFooter } from "../_components/AppFooter";
 import GradientText from "@/components/ui/GradientText";
+import { JellyRadio } from "@/components/ui/JellyRadio";
+import { GlideSelect } from "@/components/ui/GlideSelect";
+import SplitText from "@/components/ui/SplitText";
+import StarBorder from "@/components/ui/StarBorder";
 import { PatientProfile, PatientMedication, DrugAllergy } from "@/lib/clinical-knowledge/types";
+
+const JELLY_RELATIONSHIP_ITEMS = [
+  { value: "self", label: "Myself" },
+  { value: "parent", label: "Parent" },
+  { value: "child", label: "Child" },
+  { value: "spouse", label: "Spouse" },
+  { value: "other", label: "Other" }
+];
 
 const COMMON_CONDITIONS = [
   "Hypertension",
@@ -387,9 +399,21 @@ export default function PatientProfilePage() {
             </span>
           </div>
 
-          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-black text-slate-950 tracking-tight leading-[1.1]">
-            Patient Health Profile
-          </h1>
+          <div className="space-y-1">
+            <SplitText
+              text="Patient Health Profile"
+              tag="h1"
+              className="text-3xl sm:text-4xl lg:text-5xl font-black text-slate-950 tracking-tight leading-[1.1]"
+            />
+            <div className="pt-1">
+              <GradientText
+                colors={["#0891b2", "#06b6d4", "#0e7490"]}
+                className="text-xs sm:text-sm font-bold uppercase tracking-wider font-mono"
+              >
+                Comprehensive Longitudinal Pre-Hospital Baseline
+              </GradientText>
+            </div>
+          </div>
 
           <p className="text-sm sm:text-base text-slate-600 max-w-2xl font-normal leading-relaxed">
             Optionally maintain your clinical background so MedVoice can personalize consultations, avoid repeated questions, and account for your medical history. All fields are completely optional.
@@ -427,27 +451,18 @@ export default function PatientProfilePage() {
             </div>
           </div>
 
-          {/* Relationship Selector Pills */}
-          <div className="flex items-center gap-1.5 flex-wrap justify-center">
-            {RELATIONSHIPS.map((rel) => {
-              const isSelected = selectedRelationship === rel.value;
-              const hasSaved = profiles.some((p) => (p.relationshipToUser || "self") === rel.value);
-              return (
-                <button
-                  key={rel.value}
-                  type="button"
-                  onClick={() => handleSelectRelationship(rel.value)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer inline-flex items-center gap-1.5 ${
-                    isSelected
-                      ? "bg-slate-950 text-white shadow-xs"
-                      : "bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200"
-                  }`}
-                >
-                  {hasSaved && <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? "bg-cyan-400" : "bg-emerald-500"}`} />}
-                  <span>{rel.label.split(" ")[0]}</span>
-                </button>
-              );
-            })}
+          {/* Authentic React Bits JellyRadio Relationship Switcher */}
+          <div className="flex items-center justify-center">
+            <JellyRadio
+              items={JELLY_RELATIONSHIP_ITEMS}
+              value={selectedRelationship}
+              onChange={(val) => handleSelectRelationship(val)}
+              activeColor="#020617"
+              chipColor="#f8fafc"
+              textColor="#475569"
+              activeTextColor="#ffffff"
+              ariaLabel="Select active patient relationship"
+            />
           </div>
         </motion.div>
 
@@ -579,17 +594,13 @@ export default function PatientProfilePage() {
                     <span>Preferred Language</span>
                     <span className="text-[10px] text-slate-400 font-normal">Consultation style</span>
                   </label>
-                  <select
+                  <GlideSelect
+                    options={LANGUAGES.map((l) => ({ value: l.value, label: l.label }))}
                     value={formData.language || "en"}
-                    onChange={(e) => setFormData({ ...formData, language: e.target.value })}
-                    className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 bg-slate-50/50"
-                  >
-                    {LANGUAGES.map((l) => (
-                      <option key={l.value} value={l.value}>
-                        {l.label}
-                      </option>
-                    ))}
-                  </select>
+                    onChange={(val) => setFormData((prev) => ({ ...prev, language: val }))}
+                    menuWidth={260}
+                    className="w-full"
+                  />
                 </div>
 
                 {/* Blood Group */}
@@ -1103,13 +1114,20 @@ export default function PatientProfilePage() {
                 Return to Consult
               </Link>
 
-              <button
+              <StarBorder
+                as="button"
                 type="submit"
                 disabled={saveStatus === "saving"}
+                color="#06b6d4"
+                duration={4}
+                theme="dark"
+                backgroundColor="#020617"
+                textColor="#ffffff"
+                radius={12}
                 className={`flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-xs font-bold text-white shadow-sm transition-all cursor-pointer ${
                   saveStatus === "saving"
-                    ? "bg-slate-400 cursor-not-allowed"
-                    : "bg-slate-950 hover:bg-slate-800 active:scale-98"
+                    ? "bg-slate-400 cursor-not-allowed opacity-60"
+                    : "bg-slate-950 hover:shadow-cyan-500/20 active:scale-98"
                 }`}
               >
                 {saveStatus === "saving" ? (
@@ -1123,7 +1141,7 @@ export default function PatientProfilePage() {
                     <span>Save Profile Details</span>
                   </>
                 )}
-              </button>
+              </StarBorder>
             </div>
           </motion.div>
 

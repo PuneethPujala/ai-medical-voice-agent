@@ -74,16 +74,7 @@ export function Navbar() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Focus first item when dropdown opens
-  useEffect(() => {
-    if (dropdownOpen) {
-      const timer = setTimeout(() => {
-        const items = menuItemRefs.current.filter(Boolean);
-        items[0]?.focus();
-      }, 50);
-      return () => clearTimeout(timer);
-    }
-  }, [dropdownOpen]);
+
 
   // Lock body scroll when drawer is open
   useEffect(() => {
@@ -270,10 +261,20 @@ export function Navbar() {
                           tabIndex={-1}
                           ref={(el) => { menuItemRefs.current[0] = el; }}
                           onClick={() => setDropdownOpen(false)}
-                          className="flex items-center gap-2.5 px-2.5 py-2 rounded-xl hover:bg-slate-50 text-xs font-semibold text-slate-800 transition-colors group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 focus:bg-slate-50"
+                          aria-current={pathname === "/consult" ? "page" : undefined}
+                          className={`flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold transition-all group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 ${
+                            pathname === "/consult"
+                              ? "bg-cyan-50/90 text-cyan-950 font-bold border border-cyan-200/90 shadow-2xs"
+                              : "text-slate-700 hover:text-slate-950 hover:bg-slate-50"
+                          }`}
                         >
-                          <Stethoscope className="w-4 h-4 text-cyan-600 shrink-0" />
-                          <span className="truncate">Voice Consultation</span>
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <Stethoscope className={`w-4 h-4 shrink-0 ${pathname === "/consult" ? "text-cyan-700" : "text-cyan-600"}`} />
+                            <span className="truncate">Voice Consultation</span>
+                          </div>
+                          {pathname === "/consult" && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-cyan-600 shadow-[0_0_6px_rgba(6,182,212,0.8)] shrink-0" />
+                          )}
                         </Link>
 
                         <Link
@@ -282,10 +283,20 @@ export function Navbar() {
                           tabIndex={-1}
                           ref={(el) => { menuItemRefs.current[1] = el; }}
                           onClick={() => setDropdownOpen(false)}
-                          className="flex items-center gap-2.5 px-2.5 py-2 rounded-xl hover:bg-slate-50 text-xs font-semibold text-slate-800 transition-colors group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 focus:bg-slate-50"
+                          aria-current={pathname === "/profile" ? "page" : undefined}
+                          className={`flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold transition-all group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-teal-500 ${
+                            pathname === "/profile"
+                              ? "bg-teal-50/90 text-teal-950 font-bold border border-teal-200/90 shadow-2xs"
+                              : "text-slate-700 hover:text-slate-950 hover:bg-slate-50"
+                          }`}
                         >
-                          <User className="w-4 h-4 text-teal-600 shrink-0" />
-                          <span className="truncate">Patient Profile & History</span>
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <User className={`w-4 h-4 shrink-0 ${pathname === "/profile" ? "text-teal-700" : "text-teal-600"}`} />
+                            <span className="truncate">Patient Profile & History</span>
+                          </div>
+                          {pathname === "/profile" && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-teal-600 shadow-[0_0_6px_rgba(20,184,166,0.8)] shrink-0" />
+                          )}
                         </Link>
 
                         <Link
@@ -294,10 +305,20 @@ export function Navbar() {
                           tabIndex={-1}
                           ref={(el) => { menuItemRefs.current[2] = el; }}
                           onClick={() => setDropdownOpen(false)}
-                          className="flex items-center gap-2.5 px-2.5 py-2 rounded-xl hover:bg-slate-50 text-xs font-semibold text-slate-800 transition-colors group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 focus:bg-slate-50"
+                          aria-current={pathname === "/dashboard" ? "page" : undefined}
+                          className={`flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold transition-all group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500 ${
+                            pathname === "/dashboard"
+                              ? "bg-indigo-50/90 text-indigo-950 font-bold border border-indigo-200/90 shadow-2xs"
+                              : "text-slate-700 hover:text-slate-950 hover:bg-slate-50"
+                          }`}
                         >
-                          <FileText className="w-4 h-4 text-indigo-600 shrink-0" />
-                          <span className="truncate">SOAP Charts & History</span>
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <FileText className={`w-4 h-4 shrink-0 ${pathname === "/dashboard" ? "text-indigo-700" : "text-indigo-600"}`} />
+                            <span className="truncate">SOAP Charts & History</span>
+                          </div>
+                          {pathname === "/dashboard" && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 shadow-[0_0_6px_rgba(99,102,241,0.8)] shrink-0" />
+                          )}
                         </Link>
                       </div>
 
@@ -313,10 +334,20 @@ export function Navbar() {
                           tabIndex={-1}
                           ref={(el) => { menuItemRefs.current[3] = el; }}
                           onClick={() => setDropdownOpen(false)}
-                          className="flex items-center gap-2.5 px-2.5 py-2 rounded-xl hover:bg-slate-50 text-xs font-semibold text-slate-800 transition-colors group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 focus:bg-slate-50"
+                          aria-current={pathname === "/care" ? "page" : undefined}
+                          className={`flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold transition-all group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
+                            pathname === "/care"
+                              ? "bg-emerald-50/90 text-emerald-950 font-bold border border-emerald-200/90 shadow-2xs"
+                              : "text-slate-700 hover:text-slate-950 hover:bg-slate-50"
+                          }`}
                         >
-                          <Building2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                          <span className="truncate">Hospital Routing</span>
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <Building2 className={`w-4 h-4 shrink-0 ${pathname === "/care" ? "text-emerald-700" : "text-emerald-600"}`} />
+                            <span className="truncate">Hospital Routing</span>
+                          </div>
+                          {pathname === "/care" && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 shadow-[0_0_6px_rgba(16,185,129,0.8)] shrink-0" />
+                          )}
                         </Link>
 
                         <Link
@@ -325,10 +356,20 @@ export function Navbar() {
                           tabIndex={-1}
                           ref={(el) => { menuItemRefs.current[4] = el; }}
                           onClick={() => setDropdownOpen(false)}
-                          className="flex items-center gap-2.5 px-2.5 py-2 rounded-xl hover:bg-slate-50 text-xs font-semibold text-slate-800 transition-colors group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 focus:bg-slate-50"
+                          aria-current={pathname === "/privacy" ? "page" : undefined}
+                          className={`flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold transition-all group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-500 ${
+                            pathname === "/privacy"
+                              ? "bg-slate-100 text-slate-950 font-bold border border-slate-300/80 shadow-2xs"
+                              : "text-slate-700 hover:text-slate-950 hover:bg-slate-50"
+                          }`}
                         >
-                          <ShieldCheck className="w-4 h-4 text-slate-600 shrink-0" />
-                          <span className="truncate">Privacy & Technical Safeguards</span>
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <ShieldCheck className={`w-4 h-4 shrink-0 ${pathname === "/privacy" ? "text-slate-800" : "text-slate-600"}`} />
+                            <span className="truncate">Privacy & Technical Safeguards</span>
+                          </div>
+                          {pathname === "/privacy" && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-slate-700 shrink-0" />
+                          )}
                         </Link>
 
                         {user?.publicMetadata?.role === "admin" && (
@@ -338,10 +379,20 @@ export function Navbar() {
                             tabIndex={-1}
                             ref={(el) => { menuItemRefs.current[5] = el; }}
                             onClick={() => setDropdownOpen(false)}
-                            className="flex items-center gap-2.5 px-2.5 py-2 rounded-xl hover:bg-purple-50 text-xs font-semibold text-purple-900 transition-colors group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 focus:bg-purple-50"
+                            aria-current={pathname === "/admin" ? "page" : undefined}
+                            className={`flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold transition-all group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-purple-500 ${
+                              pathname === "/admin"
+                                ? "bg-purple-50 text-purple-950 font-bold border border-purple-200/90 shadow-2xs"
+                                : "text-slate-700 hover:text-slate-950 hover:bg-purple-50/50"
+                            }`}
                           >
-                            <ShieldCheck className="w-4 h-4 text-purple-600 shrink-0" />
-                            <span className="truncate">Governance & Audit</span>
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <ShieldCheck className={`w-4 h-4 shrink-0 ${pathname === "/admin" ? "text-purple-700" : "text-purple-600"}`} />
+                              <span className="truncate">Governance & Audit</span>
+                            </div>
+                            {pathname === "/admin" && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-purple-600 shrink-0" />
+                            )}
                           </Link>
                         )}
                       </div>

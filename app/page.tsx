@@ -44,6 +44,8 @@ import { ClinicalStepper, StepItem } from "@/components/clinical/ClinicalStepper
 import PremiumButton from "@/components/PremiumButton";
 import GlowCursor from "@/components/ui/GlowCursor";
 import StarBorder from "@/components/ui/StarBorder";
+import SplitText from "@/components/ui/SplitText";
+import GradientText from "@/components/ui/GradientText";
 
 const ROTATING_TOPICS = [
   "Emergency Triage",
@@ -529,9 +531,11 @@ export default function HomePage() {
               <span className="font-mono text-xs font-bold uppercase tracking-[0.1em] text-cyan-800 bg-cyan-50 border border-cyan-200 px-3 py-1 rounded-full inline-block">
                 PROGRESSIVE PIPELINE
               </span>
-              <h2 className="text-3xl sm:text-4xl lg:text-[42px] font-bold text-slate-950 tracking-tight leading-tight">
-                Watch MedVoice assemble clinical intelligence in real time.
-              </h2>
+              <SplitText
+                text="Watch MedVoice assemble clinical intelligence in real time."
+                tag="h2"
+                className="text-3xl sm:text-4xl lg:text-[42px] font-bold text-slate-950 tracking-tight leading-tight"
+              />
               <p className="text-lg sm:text-xl text-slate-600 font-normal leading-relaxed">
                 As you scroll, experience each layer of the clinical decision process: from streaming speech intake to ICD-10 extraction, ESI scoring, and hospital routing.
               </p>
@@ -553,9 +557,11 @@ export default function HomePage() {
               <span className="font-mono text-xs font-bold uppercase tracking-[0.1em] text-cyan-800 bg-cyan-50 border border-cyan-200 px-3 py-1 rounded-full inline-block">
                 CLINICAL STEPPER
               </span>
-              <h2 className="text-3xl sm:text-4xl lg:text-[42px] font-bold text-slate-950 tracking-tight leading-tight">
-                Four deterministic stages, every call.
-              </h2>
+              <SplitText
+                text="Four deterministic stages, every call."
+                tag="h2"
+                className="text-3xl sm:text-4xl lg:text-[42px] font-bold text-slate-950 tracking-tight leading-tight"
+              />
               <p className="text-lg sm:text-xl text-slate-600 font-normal leading-relaxed">
                 Interactive clinical workflow connecting intake, extraction, triage classification, and facility coordination.
               </p>
@@ -582,9 +588,11 @@ export default function HomePage() {
               <span className="font-mono text-xs font-bold uppercase tracking-[0.1em] text-cyan-800 bg-cyan-50 border border-cyan-200 px-3 py-1 rounded-full inline-block">
                 CLINICAL SPECIFICATIONS · FLIP TO INSPECT
               </span>
-              <h2 className="text-3xl sm:text-4xl lg:text-[42px] font-bold text-slate-950 tracking-tight leading-tight">
-                Medical standards engineered with precision.
-              </h2>
+              <SplitText
+                text="Medical standards engineered with precision."
+                tag="h2"
+                className="text-3xl sm:text-4xl lg:text-[42px] font-bold text-slate-950 tracking-tight leading-tight"
+              />
               <p className="text-lg sm:text-xl text-slate-600 font-normal leading-relaxed">
                 Click any card to flip between clinical workflow narrative and underlying data schemas.
               </p>

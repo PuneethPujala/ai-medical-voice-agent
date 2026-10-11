@@ -37,8 +37,11 @@ import { AppFooter } from "../_components/AppFooter";
 import { generateFHIRBundle } from "@/lib/fhir/bundle";
 import CountUp from "@/components/CountUp";
 import { ClinicalSwipeRow, SoapSection } from "@/components/clinical/ClinicalSwipeRow";
-import { ClinicalFlipCard } from "@/components/clinical/ClinicalFlipCard";
 import { SpotlightCard } from "@/components/motion/SpotlightCard";
+import { ClinicalFlipCard } from "@/components/clinical/ClinicalFlipCard";
+import SplitText from "@/components/ui/SplitText";
+import GradientText from "@/components/ui/GradientText";
+import StarBorder from "@/components/ui/StarBorder";
 
 interface ConsultationRecord {
   id: string;
@@ -312,9 +315,21 @@ export default function DashboardPage() {
               <span>HL7 FHIR R4 & ED DISPATCH</span>
             </span>
           </div>
-          <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-slate-950">
-            SOAP Clinical Reports & Records
-          </h1>
+          <div className="space-y-1">
+            <SplitText
+              text="SOAP Clinical Reports & Records"
+              tag="h1"
+              className="text-4xl sm:text-5xl font-extrabold tracking-tight text-slate-950"
+            />
+            <div className="pt-0.5">
+              <GradientText
+                colors={["#0891b2", "#06b6d4", "#0e7490"]}
+                className="text-xs sm:text-sm font-bold uppercase tracking-wider font-mono"
+              >
+                Structured Clinical Encounters & Interoperability
+              </GradientText>
+            </div>
+          </div>
           <p className="text-base text-slate-600 max-w-2xl mx-auto leading-relaxed font-medium">
             Review automated SOAP documentation, export interoperable HL7 FHIR R4 JSON bundles, and simulate emergency hospital pre-arrival telemetry dispatch.
           </p>
@@ -513,15 +528,22 @@ export default function DashboardPage() {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
-                      {/* HL7 FHIR EXPORT BUTTON */}
-                      <button
+                      {/* HL7 FHIR EXPORT BUTTON WITH STAR BORDER */}
+                      <StarBorder
+                        as="button"
                         onClick={handleOpenFhirModal}
-                        className="inline-flex items-center gap-1.5 bg-cyan-50 hover:bg-cyan-100/80 border border-cyan-200 text-cyan-800 px-3 py-2 rounded-xl text-xs font-bold transition-all"
+                        color="#06b6d4"
+                        duration={3.5}
+                        theme="light"
+                        backgroundColor="#ecfeff"
+                        textColor="#0e7490"
+                        radius={12}
+                        className="inline-flex items-center gap-1.5 border border-cyan-200 px-3 py-2 text-xs font-bold transition-all shadow-2xs hover:shadow-cyan-500/20"
                         title="Inspect or download HL7 FHIR R4 Bundle"
                       >
                         <FileCode className="w-3.5 h-3.5 text-cyan-700" />
                         <span>FHIR R4</span>
-                      </button>
+                      </StarBorder>
 
                       <button
                         onClick={handlePrint}

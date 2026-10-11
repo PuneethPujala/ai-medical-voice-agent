@@ -7,6 +7,8 @@ import { Navbar } from "../_components/Navbar";
 import { AppFooter } from "../_components/AppFooter";
 import { ScrollExpand, ExpandItem } from "@/components/motion/ScrollExpand";
 import { ClinicalFlipCard } from "@/components/clinical/ClinicalFlipCard";
+import SplitText from "@/components/ui/SplitText";
+import GradientText from "@/components/ui/GradientText";
 
 const EXPAND_SAFEGUARDS: ExpandItem[] = [
   {
@@ -95,9 +97,21 @@ export default function PrivacyPolicyPage() {
             <span className="font-mono text-xs font-bold uppercase tracking-[0.1em] text-cyan-800 bg-cyan-50 border border-cyan-200 px-3.5 py-1 rounded-full inline-block">
               SECURITY & COMPLIANCE ARCHITECTURE
             </span>
-            <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-slate-950 leading-tight">
-              Privacy Policy & Technical Safeguards
-            </h1>
+            <div className="space-y-1">
+              <SplitText
+                text="Privacy Policy & Technical Safeguards"
+                tag="h1"
+                className="text-4xl sm:text-5xl font-extrabold tracking-tight text-slate-950 leading-tight"
+              />
+              <div className="pt-0.5">
+                <GradientText
+                  colors={["#0891b2", "#06b6d4", "#0e7490"]}
+                  className="text-xs sm:text-sm font-bold uppercase tracking-wider font-mono"
+                >
+                  Zero Voice Retention & Cryptographic Audit Trails
+                </GradientText>
+              </div>
+            </div>
             <p className="text-base text-slate-600 font-normal leading-relaxed max-w-2xl">
               MedVoice AI is engineered around strict zero voice-retention policies, end-to-end encryption, and verifiable cryptographic compliance logs.
             </p>

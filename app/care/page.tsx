@@ -30,6 +30,9 @@ import { AppFooter } from "../_components/AppFooter";
 import { HospitalItem } from "../_components/InteractiveRouteMap";
 import { CardNav, RegionCardItem } from "@/components/navigation/CardNav";
 import { MovingBorder } from "@/components/motion/MovingBorder";
+import SplitText from "@/components/ui/SplitText";
+import GradientText from "@/components/ui/GradientText";
+import StarBorder from "@/components/ui/StarBorder";
 import {
   ALL_REGION_PRESETS,
   RegionPresetItem,
@@ -665,9 +668,19 @@ export default function CarePage() {
             </div>
 
             <div className="space-y-2">
-              <h1 className="text-3xl sm:text-5xl font-semibold tracking-tight text-[#172026]">
-                Find verified care near you
-              </h1>
+              <SplitText
+                text="Find verified care near you"
+                tag="h1"
+                className="text-3xl sm:text-5xl font-semibold tracking-tight text-[#172026]"
+              />
+              <div className="pt-0.5">
+                <GradientText
+                  colors={["#0F6B6D", "#06b6d4", "#0A5254"]}
+                  className="text-xs sm:text-sm font-bold uppercase tracking-wider font-mono"
+                >
+                  Regional Trauma & Specialist Reachability Network
+                </GradientText>
+              </div>
               <p className="text-sm sm:text-base text-[#5A6B75] max-w-lg mx-auto leading-relaxed">
                 Choose where you're starting from to calculate road reachability, emergency travel times, and specialist on-duty coverage.
               </p>
@@ -708,14 +721,21 @@ export default function CarePage() {
 
             {/* PRIMARY ONBOARDING ACTIONS */}
             <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
-              <button
+              <StarBorder
+                as="button"
                 onClick={() => handleDetectLiveLocation()}
                 disabled={isDetectingGps}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 rounded-xl bg-[#0F6B6D] hover:bg-[#0A5254] text-white font-semibold text-sm shadow-xs transition-colors cursor-pointer disabled:opacity-50"
+                color="#06b6d4"
+                duration={4}
+                theme="dark"
+                backgroundColor="#0F6B6D"
+                textColor="#ffffff"
+                radius={12}
+                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 text-white font-semibold text-sm shadow-xs transition-colors cursor-pointer disabled:opacity-50 hover:shadow-cyan-500/20"
               >
                 <LocateFixed className={`w-4 h-4 ${isDetectingGps ? "animate-spin" : ""}`} />
                 <span>{isDetectingGps ? "Locating..." : "Use my live location"}</span>
-              </button>
+              </StarBorder>
 
               <button
                 onClick={() => setIsChoosingCity(!isChoosingCity)}
