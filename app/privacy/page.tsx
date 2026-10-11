@@ -9,6 +9,7 @@ import { ScrollExpand, ExpandItem } from "@/components/motion/ScrollExpand";
 import { ClinicalFlipCard } from "@/components/clinical/ClinicalFlipCard";
 import SplitText from "@/components/ui/SplitText";
 import GradientText from "@/components/ui/GradientText";
+import { AmbientPageBackground } from "@/components/ui/AmbientPageBackground";
 
 const ClinicalDataLifecycle3D = dynamic(
   () => import("@/components/clinical/ClinicalDataLifecycle3D"),
@@ -92,13 +93,13 @@ const EXPAND_SAFEGUARDS: ExpandItem[] = [
 
 export default function PrivacyPolicyPage() {
   return (
-    <div className="relative min-h-screen bg-[#FAF9F6] text-slate-900 font-sans flex flex-col justify-between selection:bg-cyan-500 selection:text-white">
+    <AmbientPageBackground>
       <div>
         {/* HERO HEADER */}
         <section className="pt-16 pb-12 px-6 max-w-4xl mx-auto space-y-4">
           <Link
             href="/"
-            className="inline-flex items-center gap-2 text-xs font-mono font-bold text-slate-500 hover:text-slate-900 transition-colors"
+            className="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 hover:text-slate-950 bg-white hover:bg-slate-50 border border-slate-200/90 hover:border-slate-300 px-3.5 py-1.5 rounded-xl shadow-2xs transition-all w-fit cursor-pointer"
           >
             <ArrowLeft className="w-3.5 h-3.5" />
             <span>Back to Home</span>
@@ -199,6 +200,6 @@ export default function PrivacyPolicyPage() {
       </div>
 
       <AppFooter />
-    </div>
+    </AmbientPageBackground>
   );
 }

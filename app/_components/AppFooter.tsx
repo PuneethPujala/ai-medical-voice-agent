@@ -2,18 +2,32 @@
 
 import React from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { PhoneCall } from "lucide-react";
 
-export function AppFooter() {
+export interface AppFooterProps {
+  ambient?: boolean;
+  className?: string;
+}
+
+export function AppFooter({ ambient, className = "" }: AppFooterProps) {
   const currentYear = new Date().getFullYear();
+  const pathname = usePathname();
+  const isAmbientRoute = ambient ?? (pathname === "/care" || pathname === "/privacy");
 
   return (
-    <footer className="relative w-full mt-auto text-slate-600 text-xs overflow-hidden">
+    <footer className={`relative w-full mt-auto text-slate-600 text-xs overflow-hidden ${className}`}>
       {/* Subtle Ambient Light Gradient Underlay */}
       <div className="absolute inset-0 bg-gradient-to-r from-cyan-50/40 via-blue-50/25 to-indigo-50/30 pointer-events-none" />
 
       {/* MAIN FOOTER BODY */}
-      <div className="relative z-10 w-full bg-white/90 backdrop-blur-xl border-t border-slate-200/90 px-4 sm:px-8 pt-12 pb-10">
+      <div
+        className={`relative z-10 w-full backdrop-blur-xl border-t px-4 sm:px-8 pt-12 pb-10 transition-colors ${
+          isAmbientRoute
+            ? "bg-white/40 border-slate-200/50"
+            : "bg-white/90 border-slate-200/90"
+        }`}
+      >
         <div className="mx-auto max-w-6xl flex flex-col gap-10">
           
           {/* Main Grid: Brand statement + Real application navigation columns */}

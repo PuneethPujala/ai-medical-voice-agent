@@ -20,6 +20,7 @@ import {
   Activity,
   Sparkles,
 } from 'lucide-react';
+import StarBorder from '@/components/ui/StarBorder';
 
 export interface LifecycleStage {
   id: string;
@@ -574,14 +575,28 @@ export function ClinicalDataLifecycle3D({
           </h3>
         </div>
 
-        {/* Boundary status badge */}
-        <div
-          style={{ backgroundColor: '#070C18' }}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-full border border-slate-700/80 font-mono text-xs text-slate-300 shrink-0"
+        {/* Interactive 3D Stage Inspector Trigger with StarBorder */}
+        <StarBorder
+          as="button"
+          onClick={() => {
+            const curIdx = LIFECYCLE_STAGES.findIndex((s) => s.id === selectedStage.id);
+            const nextIdx = (curIdx + 1) % LIFECYCLE_STAGES.length;
+            setSelectedStage(LIFECYCLE_STAGES[nextIdx]);
+          }}
+          color="#38bdf8"
+          duration={3.5}
+          theme="dark"
+          backgroundColor="#070C18"
+          textColor="#ffffff"
+          borderColor="rgba(255, 255, 255, 0.15)"
+          radius={9999}
+          className="px-3.5 py-1.5 text-xs font-mono text-slate-200 hover:text-white transition-all cursor-pointer shadow-xs border border-slate-700/80 active:scale-[0.98] shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400"
         >
-          <Terminal className="w-3.5 h-3.5 text-cyan-400" />
-          <span>Interactive 3D Stage Inspector</span>
-        </div>
+          <div className="flex items-center gap-2">
+            <Terminal className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Interactive 3D Stage Inspector</span>
+          </div>
+        </StarBorder>
       </div>
 
       {/* Stage Selector HUD Strip (Clean, Professional Tabs) */}
@@ -600,11 +615,10 @@ export function ClinicalDataLifecycle3D({
               <button
                 key={st.id}
                 onClick={() => setSelectedStage(st)}
-                style={isSel ? { backgroundColor: '#1E293B', borderColor: '#22D3EE' } : { backgroundColor: '#0F172A', borderColor: '#334155' }}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-xl font-mono text-xs font-semibold transition-all cursor-pointer border active:scale-[0.98] ${
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-xl font-mono text-xs transition-all cursor-pointer border active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-400 ${
                   isSel
-                    ? 'text-white shadow-[0_0_12px_rgba(6,182,212,0.35)] font-bold'
-                    : 'text-slate-300 hover:text-white hover:border-slate-500'
+                    ? 'bg-slate-900 text-white border-cyan-400/80 shadow-sm ring-1 ring-cyan-400/30 font-bold'
+                    : 'bg-slate-950/90 text-slate-300 hover:text-white border-slate-800 hover:border-slate-700 hover:bg-slate-900/60 font-semibold'
                 }`}
               >
                 <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: st.color }} />

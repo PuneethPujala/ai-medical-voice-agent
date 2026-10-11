@@ -22,7 +22,6 @@ import {
   Activity,
   Sparkles,
   Check,
-  Star,
 } from "lucide-react";
 import { SpecialtyIcon } from "@/components/care/SpecialtyIcon";
 import { AppFooter } from "../_components/AppFooter";
@@ -31,6 +30,8 @@ import { CardNav, RegionCardItem } from "@/components/navigation/CardNav";
 import { MovingBorder } from "@/components/motion/MovingBorder";
 import SplitText from "@/components/ui/SplitText";
 import GradientText from "@/components/ui/GradientText";
+import { AmbientPageBackground } from "@/components/ui/AmbientPageBackground";
+import StarBorder from "@/components/ui/StarBorder";
 import {
   ALL_REGION_PRESETS,
   RegionPresetItem,
@@ -649,7 +650,7 @@ export default function CarePage() {
     : "#";
 
   return (
-    <div className="relative min-h-screen bg-[#FAF9F6] text-slate-900 font-sans flex flex-col justify-between selection:bg-cyan-500 selection:text-white">
+    <AmbientPageBackground>
       <main className="relative z-10 flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 pt-6 sm:pt-8 pb-16 flex flex-col gap-6">
 
         {/* ========================================================================= */}
@@ -671,7 +672,7 @@ export default function CarePage() {
               />
               <div className="pt-0.5">
                 <GradientText
-                  colors={["#0F6B6D", "#06b6d4", "#0A5254"]}
+                  colors={["#0284c7", "#06b6d4", "#0f172a"]}
                   className="text-xs sm:text-sm font-bold uppercase tracking-wider font-mono"
                 >
                   Regional Trauma & Specialist Reachability Network
@@ -701,13 +702,13 @@ export default function CarePage() {
                 <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
                   <button
                     onClick={handleApplySuggestion}
-                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-cyan-600 to-teal-600 hover:from-cyan-500 hover:to-teal-500 text-white text-xs font-bold shadow-2xs active:scale-[0.98] transition-all cursor-pointer"
+                    className="px-4 py-2 rounded-xl bg-slate-950 hover:bg-slate-900 text-white text-xs font-semibold shadow-xs border border-slate-800 active:scale-[0.98] transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900"
                   >
                     Use this location
                   </button>
                   <button
                     onClick={handleDismissSuggestion}
-                    className="px-3 py-2 text-xs font-semibold text-slate-600 hover:text-slate-950 hover:bg-slate-100 rounded-xl transition-all cursor-pointer"
+                    className="px-3.5 py-2 text-xs font-semibold text-slate-700 hover:text-slate-950 bg-white hover:bg-slate-50 border border-slate-200/90 hover:border-slate-300 rounded-xl shadow-2xs transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900"
                   >
                     Dismiss
                   </button>
@@ -717,25 +718,34 @@ export default function CarePage() {
 
             {/* PRIMARY ONBOARDING ACTIONS */}
             <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
-              <button
+              <StarBorder
+                as="button"
                 onClick={() => handleDetectLiveLocation()}
                 disabled={isDetectingGps}
-                style={{ backgroundImage: 'linear-gradient(to right, #0891b2, #0d9488, #0f766e)' }}
-                className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl bg-cyan-600 hover:opacity-95 text-white font-bold text-sm shadow-[0_4px_16px_rgba(6,182,212,0.3)] hover:shadow-[0_6px_22px_rgba(6,182,212,0.4)] border border-teal-400/40 active:scale-[0.98] transition-all cursor-pointer disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
+                color="#38bdf8"
+                duration={3.5}
+                theme="dark"
+                backgroundColor="#090D16"
+                textColor="#ffffff"
+                borderColor="rgba(255, 255, 255, 0.15)"
+                radius={12}
+                className="w-full sm:w-auto cursor-pointer shadow-xs border border-slate-800 hover:bg-slate-900 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 text-sm font-semibold px-6 py-3.5"
               >
-                <LocateFixed className={`w-4 h-4 ${isDetectingGps ? "animate-spin" : ""}`} />
-                <span>{isDetectingGps ? "Locating..." : "Use my live location"}</span>
-              </button>
+                <div className="flex items-center justify-center gap-2">
+                  <LocateFixed className={`w-4 h-4 text-cyan-400 ${isDetectingGps ? "animate-spin" : ""}`} />
+                  <span>{isDetectingGps ? "Locating..." : "Use my live location"}</span>
+                </div>
+              </StarBorder>
 
               <button
                 onClick={() => setIsChoosingCity(!isChoosingCity)}
-                className={`w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl text-sm border shadow-2xs hover:shadow-xs active:scale-[0.98] transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 ${
+                className={`w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl text-sm font-semibold border shadow-2xs hover:shadow-xs active:scale-[0.98] transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 ${
                   isChoosingCity
-                    ? "bg-slate-100 text-slate-950 font-bold border-cyan-500/50 ring-2 ring-cyan-500/20"
-                    : "bg-white hover:bg-slate-50 text-slate-800 hover:text-slate-950 font-semibold border-slate-200/90 hover:border-slate-300"
+                    ? "bg-slate-950 text-white border-slate-900 shadow-xs"
+                    : "bg-white hover:bg-slate-50 text-slate-800 hover:text-slate-950 border border-slate-200/90 hover:border-slate-300"
                 }`}
               >
-                <Building2 className="w-4 h-4 text-cyan-700" />
+                <Building2 className={`w-4 h-4 ${isChoosingCity ? "text-cyan-400" : "text-cyan-700"}`} />
                 <span>{isChoosingCity ? "Hide city selector" : "Choose a city or region"}</span>
               </button>
             </div>
@@ -815,10 +825,9 @@ export default function CarePage() {
                     <button
                       key={zone.id}
                       onClick={() => setSelectedZone(zone.id)}
-                      style={selectedZone === zone.id ? { backgroundImage: 'linear-gradient(to right, #0891b2, #0d9488)' } : undefined}
-                      className={`px-3 py-1.5 rounded-lg text-xs transition-all cursor-pointer border active:scale-[0.98] ${
+                      className={`px-3 py-1.5 rounded-xl text-xs transition-all cursor-pointer border active:scale-[0.98] ${
                         selectedZone === zone.id
-                          ? "bg-cyan-600 text-white font-bold border-cyan-500/80 shadow-[0_2px_8px_rgba(6,182,212,0.25)]"
+                          ? "bg-slate-950 text-white font-bold border-slate-900 shadow-xs"
                           : "bg-white text-slate-700 border-slate-200/90 hover:bg-slate-50 hover:text-slate-950 font-semibold shadow-2xs"
                       }`}
                     >
@@ -831,15 +840,22 @@ export default function CarePage() {
                 <div className="flex items-center gap-1.5 flex-wrap text-xs">
                   {ALL_REGION_PRESETS.filter(
                     (p) => selectedZone === "all" || p.zone === selectedZone
-                  ).map((preset) => (
-                    <button
-                      key={preset.name}
-                      onClick={() => handleSelectPreset(preset)}
-                      className="px-3.5 py-1.5 rounded-xl text-xs font-semibold bg-white hover:bg-slate-50 hover:text-slate-950 text-slate-700 border border-slate-200/90 hover:border-slate-300 shadow-2xs active:scale-[0.97] transition-all cursor-pointer"
-                    >
-                      {preset.name}
-                    </button>
-                  ))}
+                  ).map((preset) => {
+                    const isSelected = savedSuggestion?.label === preset.name;
+                    return (
+                      <button
+                        key={preset.name}
+                        onClick={() => handleSelectPreset(preset)}
+                        className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer active:scale-[0.97] ${
+                          isSelected
+                            ? "bg-slate-950 text-white font-bold border border-slate-900 shadow-xs"
+                            : "bg-white hover:bg-slate-50 hover:text-slate-950 text-slate-700 border border-slate-200/90 hover:border-slate-300 shadow-2xs"
+                        }`}
+                      >
+                        {preset.name}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             )}
@@ -889,7 +905,7 @@ export default function CarePage() {
                       </>
                     ) : (
                       <div className="flex items-center gap-2 text-slate-600">
-                        <span className="w-2 h-2 rounded-full bg-[#B79A63]" />
+                        <span className="w-2 h-2 rounded-full bg-amber-500" />
                         <span className="font-semibold">Placing pin on map...</span>
                         <button
                           onClick={handleResetLocation}
@@ -918,10 +934,9 @@ export default function CarePage() {
               <div className="flex items-center gap-1.5 p-1.5 bg-slate-100/90 rounded-2xl border border-slate-200/90 shrink-0">
                 <button
                   onClick={() => handleSelectViewMode("all")}
-                  style={viewMode === "all" ? { backgroundImage: 'linear-gradient(to right, #0891b2, #0d9488)' } : undefined}
                   className={`px-4 py-2 rounded-xl text-xs transition-all cursor-pointer ${
                     viewMode === "all"
-                      ? "bg-cyan-600 text-white font-bold shadow-[0_2px_8px_rgba(6,182,212,0.25)] border border-cyan-500/60"
+                      ? "bg-slate-950 text-white font-bold shadow-xs border border-slate-900"
                       : "bg-transparent text-slate-700 hover:text-slate-950 font-semibold"
                   }`}
                 >
@@ -930,10 +945,9 @@ export default function CarePage() {
 
                 <button
                   onClick={() => handleSelectViewMode("issues")}
-                  style={viewMode === "issues" ? { backgroundImage: 'linear-gradient(to right, #0891b2, #0d9488)' } : undefined}
                   className={`px-4 py-2 rounded-xl text-xs transition-all cursor-pointer ${
                     viewMode === "issues"
-                      ? "bg-cyan-600 text-white font-bold shadow-[0_2px_8px_rgba(6,182,212,0.25)] border border-cyan-500/60"
+                      ? "bg-slate-950 text-white font-bold shadow-xs border border-slate-900"
                       : "bg-transparent text-slate-700 hover:text-slate-950 font-semibold"
                   }`}
                 >
@@ -980,7 +994,7 @@ export default function CarePage() {
                     <button
                       type="button"
                       onClick={handleClearIssue}
-                      className="absolute right-3 px-2 py-0.5 text-[11px] font-semibold text-slate-600 hover:text-slate-900 bg-[#FAF9F6] hover:bg-[#E5E3DC] rounded-md transition-colors cursor-pointer"
+                      className="absolute right-3 px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:text-slate-950 bg-white hover:bg-slate-50 border border-slate-200/90 rounded-xl shadow-2xs transition-colors cursor-pointer"
                     >
                       Clear
                     </button>
@@ -996,7 +1010,7 @@ export default function CarePage() {
                         onClick={() => handleSelectSpecialty(item.id, item.label)}
                         className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col gap-0.5 active:scale-[0.98] ${
                           isActive
-                            ? "bg-gradient-to-br from-cyan-50/95 to-teal-50/95 text-cyan-950 border-cyan-500 shadow-xs font-bold ring-1 ring-cyan-500/30"
+                            ? "bg-slate-950 text-white border-slate-900 shadow-xs font-bold"
                             : "bg-white hover:bg-slate-50 text-slate-800 border-slate-200/90 hover:border-slate-300 font-medium shadow-2xs"
                         }`}
                       >
@@ -1004,7 +1018,7 @@ export default function CarePage() {
                           <SpecialtyIcon id={item.id} className="w-4 h-4 shrink-0" />
                           <span className="text-xs font-semibold truncate">{item.label}</span>
                         </div>
-                        <span className={`text-[10px] truncate ${isActive ? "text-cyan-800 font-semibold" : "text-slate-600"}`}>
+                        <span className={`text-[10px] truncate ${isActive ? "text-cyan-400 font-semibold" : "text-slate-600"}`}>
                           {item.famousFor}
                         </span>
                       </button>
@@ -1050,18 +1064,18 @@ export default function CarePage() {
                 )}
 
                 {/* SECTION 1: CURRENT DESTINATION CARD (Driven by selectedHospital) */}
-                <div className="rounded-xl bg-[#FAF9F6] border border-slate-200/90 p-3.5 flex flex-col gap-2.5 shrink-0 shadow-xs">
+                <div className="rounded-2xl bg-white border border-slate-200/90 p-4 flex flex-col gap-3 shrink-0 shadow-xs">
                   <div className="flex items-center justify-between pb-2 border-b border-slate-200/90">
                     <div className="flex items-center gap-2">
                       <span className="w-2 h-2 rounded-full bg-cyan-600 animate-pulse" />
-                      <span className="text-[10.5px] font-bold text-slate-900 uppercase tracking-wider">
+                      <span className="text-[10.5px] font-bold text-slate-900 uppercase tracking-wider font-mono">
                         Current Destination
                       </span>
                     </div>
                     {selectedHospital && selectedHospital.id !== recommendedHospital?.id && (
                       <button
                         onClick={handleResetToRecommended}
-                        className="text-[11px] font-bold text-cyan-700 hover:underline cursor-pointer flex items-center gap-1"
+                        className="px-2.5 py-1 rounded-xl bg-white hover:bg-slate-50 text-slate-800 hover:text-slate-950 border border-slate-200/90 text-xs font-medium shadow-2xs transition-colors cursor-pointer flex items-center gap-1"
                       >
                         <span>Return to #1 Match</span>
                       </button>
@@ -1075,7 +1089,7 @@ export default function CarePage() {
                           <div className="flex items-center gap-2 flex-wrap mb-1">
                             <span
                               className={`w-6 h-6 rounded-md flex items-center justify-center font-bold text-xs text-white shrink-0 ${
-                                selectedHospital.id === recommendedHospital?.id ? "bg-cyan-600" : "bg-[#172026]"
+                                selectedHospital.id === recommendedHospital?.id ? "bg-slate-950" : "bg-slate-800"
                               }`}
                             >
                               #{selectedHospital.rank}
@@ -1085,22 +1099,22 @@ export default function CarePage() {
                             </h4>
                           </div>
 
-                          <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                          <div className="flex items-center gap-1.5 flex-wrap mt-1">
                             {selectedHospital.isFallback ? (
-                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-900 border border-amber-300">
+                              <span className="bg-rose-50 text-rose-800 border border-rose-200 rounded-lg text-xs font-mono font-semibold px-2.5 py-1">
                                 Fallback · Nearest 24/7 ER
                               </span>
                             ) : (
-                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-cyan-50/90 text-cyan-700 border border-cyan-200/90">
+                              <span className="bg-cyan-50 text-cyan-800 border border-cyan-200 rounded-lg text-xs font-mono font-semibold px-2.5 py-1">
                                 Matched: {selectedHospital.matchedCategory || categoryLabel} · {selectedHospital.matchTier === "verified" ? "Verified" : "Inferred"}
                               </span>
                             )}
-                            <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-[#FBF7EE] text-[#8C6D32] border border-[#E7DBB8] truncate max-w-[190px]">
+                            <span className="bg-slate-100 text-slate-800 border border-slate-200/80 rounded-lg text-xs font-mono font-medium px-2.5 py-1 truncate max-w-[200px]">
                               {selectedHospital.famousFor || getHospitalFamousFor(selectedHospital)}
                             </span>
                           </div>
 
-                          <p className="text-[11px] text-slate-600 truncate mt-1">
+                          <p className="text-[11px] text-slate-600 truncate mt-1.5">
                             {selectedHospital.address}
                           </p>
                         </div>
@@ -1116,15 +1130,21 @@ export default function CarePage() {
                       </div>
 
                       {/* Verified capability tags */}
-                      <div className="flex items-center gap-1.5 flex-wrap text-[10px] text-slate-600">
-                        <span className="px-2 py-0.5 rounded bg-white border border-slate-200/90">
-                          ✓ {selectedHospital.isEmergency24x7 ? "24/7 Emergency Care" : "Specialty OPD"}
-                        </span>
-                        <span className="px-2 py-0.5 rounded bg-white border border-slate-200/90">
+                      <div className="flex items-center gap-1.5 flex-wrap text-xs">
+                        {selectedHospital.isEmergency24x7 ? (
+                          <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-mono font-semibold px-2.5 py-1">
+                            ✓ 24/7 Verified Emergency
+                          </span>
+                        ) : (
+                          <span className="bg-slate-100 text-slate-800 border border-slate-200/80 rounded-lg text-xs font-mono font-medium px-2.5 py-1">
+                            Specialty OPD
+                          </span>
+                        )}
+                        <span className="bg-slate-100 text-slate-800 border border-slate-200/80 rounded-lg text-xs font-mono font-medium px-2.5 py-1">
                           ✓ {(selectedHospital as any).ownership === "government" ? "Government" : "Private"}
                         </span>
                         {selectedHospital.acceptsPublicInsurance && (
-                          <span className="px-2 py-0.5 rounded bg-[#FBF7EE] text-[#8C6D32] border border-[#E7DBB8]">
+                          <span className="bg-slate-100 text-slate-800 border border-slate-200/80 rounded-lg text-xs font-mono font-medium px-2.5 py-1">
                             ✓ Ayushman / PM-JAY
                           </span>
                         )}
@@ -1132,14 +1152,14 @@ export default function CarePage() {
 
                       {/* Why Ranked #1 Box (when #1 is selected) */}
                       {selectedHospital.id === recommendedHospital?.id && selectedHospital.matchReasons && selectedHospital.matchReasons.length > 0 && (
-                        <div className="p-2.5 rounded-lg bg-[#FBF7EE] border border-[#E7DBB8] text-[10.5px] text-[#8C6D32] flex flex-col gap-1">
-                          <span className="font-bold flex items-center gap-1 text-[#8C6D32]">
-                            <Sparkles className="w-3 h-3" /> Why ranked #1:
+                        <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-xs text-slate-800 flex flex-col gap-1.5">
+                          <span className="font-bold flex items-center gap-1 text-slate-900">
+                            <Sparkles className="w-3.5 h-3.5 text-cyan-600" /> Why ranked #1:
                           </span>
-                          <div className="flex flex-wrap gap-1">
+                          <div className="flex flex-wrap gap-1.5">
                             {selectedHospital.matchReasons.map((reason, rIdx) => (
-                              <span key={rIdx} className="inline-flex items-center gap-1 text-[10px]">
-                                <Check className="w-3 h-3 text-cyan-700" /> {reason}
+                              <span key={rIdx} className="bg-slate-100 text-slate-800 border border-slate-200/80 rounded-lg px-2.5 py-1 text-xs font-mono font-medium inline-flex items-center gap-1.5">
+                                <Check className="w-3 h-3 text-emerald-600" /> {reason}
                               </span>
                             ))}
                           </div>
@@ -1150,10 +1170,10 @@ export default function CarePage() {
                       <div className="flex items-center gap-2 pt-0.5">
                         <a
                           href={`tel:${selectedHospital.emergencyPhone || selectedHospital.phone || "108"}`}
-                          className={`flex-1 inline-flex items-center justify-center gap-1.5 py-2 rounded-xl text-white font-bold text-xs shadow-xs active:scale-[0.98] transition-all cursor-pointer ${
+                          className={`flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-white font-semibold text-xs shadow-xs active:scale-[0.98] transition-all cursor-pointer ${
                             selectedHospital.actionType === "call_hospital"
-                              ? "bg-gradient-to-r from-cyan-600 to-teal-600 hover:from-cyan-500 hover:to-teal-500 shadow-[0_2px_8px_rgba(6,182,212,0.25)]"
-                              : "bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-500 hover:to-rose-600 shadow-[0_2px_8px_rgba(244,63,94,0.25)]"
+                              ? "bg-slate-950 hover:bg-slate-900"
+                              : "bg-rose-600 hover:bg-rose-700"
                           }`}
                         >
                           <PhoneCall className="w-3.5 h-3.5" />
@@ -1167,9 +1187,9 @@ export default function CarePage() {
                           }
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 rounded-xl bg-white hover:bg-slate-50 text-slate-900 font-semibold text-xs border border-slate-200/90 hover:border-slate-300 shadow-2xs active:scale-[0.98] transition-all cursor-pointer"
+                          className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-white hover:bg-slate-50 text-slate-800 font-medium text-xs border border-slate-200/90 shadow-2xs active:scale-[0.98] transition-all cursor-pointer"
                         >
-                          <Navigation className="w-3.5 h-3.5 text-cyan-700" />
+                          <Navigation className="w-3.5 h-3.5 text-slate-500" />
                           <span>Directions</span>
                         </a>
                       </div>
@@ -1199,7 +1219,7 @@ export default function CarePage() {
                         setCurrentPage(1);
                       }}
                       aria-label="Sort order"
-                      className="text-xs font-semibold text-slate-900 bg-[#FAF9F6] border border-slate-200/90 rounded-lg px-2.5 py-1 focus:outline-none cursor-pointer shrink-0"
+                      className="text-xs font-medium text-slate-800 bg-white hover:bg-slate-50 border border-slate-200/90 shadow-2xs rounded-xl px-2.5 py-1.5 focus:outline-none transition-all cursor-pointer shrink-0"
                     >
                       <option value="fastest">Best Match / Fastest</option>
                       <option value="government">Government First</option>
@@ -1215,7 +1235,7 @@ export default function CarePage() {
                         <span>Evaluating verified facilities nearby...</span>
                       </div>
                     ) : filteredAndSortedHospitals.length === 0 ? (
-                      <div className="p-8 rounded-xl bg-[#FAF9F6] text-center flex flex-col items-center justify-center gap-2">
+                      <div className="p-8 rounded-2xl bg-white border border-slate-200/90 text-center flex flex-col items-center justify-center gap-2 shadow-xs">
                         <Building2 className="w-6 h-6 text-slate-400" />
                         <p className="text-xs font-semibold text-slate-900">No facilities matching criteria</p>
                       </div>
@@ -1234,8 +1254,8 @@ export default function CarePage() {
                             onClick={() => handleSelectHospital(hosp)}
                             className={`p-2.5 rounded-xl border transition-all cursor-pointer flex flex-col gap-1.5 ${
                               isSelected
-                                ? "bg-cyan-50/90/40 border-cyan-600 shadow-xs ring-2 ring-[#0F6B6D]/30"
-                                : "bg-white hover:bg-[#FBF7EE]/40 border-slate-200/90 shadow-xs"
+                                ? "bg-slate-950/5 border-slate-900 shadow-xs ring-1 ring-slate-900/20"
+                                : "bg-white hover:bg-slate-50 border border-slate-200/90 shadow-xs"
                             }`}
                           >
                             <div className="flex items-start justify-between gap-2">
@@ -1243,10 +1263,10 @@ export default function CarePage() {
                                 <div
                                   className={`w-5 h-5 rounded-md flex items-center justify-center font-bold text-[11px] shrink-0 ${
                                     isSelected
-                                      ? "bg-cyan-600 text-white shadow-xs"
+                                      ? "bg-slate-950 text-white shadow-xs"
                                       : isBest
-                                      ? "bg-cyan-50/90 text-cyan-700 border border-cyan-600"
-                                      : "bg-[#FAF9F6] text-slate-900 border border-slate-200/90"
+                                      ? "bg-cyan-50 text-cyan-800 border border-cyan-300"
+                                      : "bg-slate-100 text-slate-700 border border-slate-200"
                                   }`}
                                 >
                                   #{hosp.rank}
@@ -1257,13 +1277,13 @@ export default function CarePage() {
                                       {hosp.name}
                                     </h4>
                                     {isSelected && (
-                                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-cyan-600 text-white uppercase tracking-wider">
+                                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-slate-950 text-white uppercase tracking-wider">
                                         Destination
                                       </span>
                                     )}
                                   </div>
                                   <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
-                                    <span className="text-[9.5px] font-semibold px-1.5 py-0.5 rounded bg-[#FBF7EE] text-[#8C6D32] border border-[#E7DBB8] truncate max-w-[160px]">
+                                    <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded-lg bg-slate-100 text-slate-800 border border-slate-200/80 truncate max-w-[160px]">
                                       {famousFor}
                                     </span>
                                     <span className="text-[10px] text-slate-600">
@@ -1307,7 +1327,7 @@ export default function CarePage() {
 
               <div className="flex items-center gap-2 text-xs flex-wrap">
                 {/* Sort */}
-                <div className="flex items-center gap-1 bg-white border border-slate-200/90 rounded-lg px-2.5 py-1">
+                <div className="flex items-center gap-1 bg-white hover:bg-slate-50 border border-slate-200/90 shadow-2xs rounded-xl px-2.5 py-1.5 transition-all">
                   <ArrowUpDown className="w-3 h-3 text-slate-400" />
                   <select
                     value={sortBy}
@@ -1316,7 +1336,7 @@ export default function CarePage() {
                       setCurrentPage(1);
                     }}
                     aria-label="Sort order"
-                    className="text-xs font-semibold text-slate-900 bg-transparent focus:outline-none cursor-pointer"
+                    className="text-xs font-medium text-slate-800 bg-transparent focus:outline-none cursor-pointer"
                   >
                     <option value="fastest">Sort: Fastest / Closest</option>
                     <option value="government">Sort: Government First</option>
@@ -1332,7 +1352,7 @@ export default function CarePage() {
                     setCurrentPage(1);
                   }}
                   aria-label="Clinical capability filter"
-                  className="bg-white border border-slate-200/90 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-900 focus:outline-none cursor-pointer"
+                  className="bg-white hover:bg-slate-50 border border-slate-200/90 shadow-2xs rounded-xl px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:outline-none transition-all cursor-pointer"
                 >
                   <option value="all">All Specialties</option>
                   <option value="cardiology">Cardiology / Heart</option>
@@ -1349,7 +1369,7 @@ export default function CarePage() {
                     setCurrentPage(1);
                   }}
                   aria-label="Ownership filter"
-                  className="bg-white border border-slate-200/90 rounded-lg px-2.5 py-1 text-xs font-semibold text-slate-900 focus:outline-none cursor-pointer"
+                  className="bg-white hover:bg-slate-50 border border-slate-200/90 shadow-2xs rounded-xl px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:outline-none transition-all cursor-pointer"
                 >
                   <option value="all">All Ownership</option>
                   <option value="government">Government / Subsidized</option>
@@ -1390,8 +1410,8 @@ export default function CarePage() {
                       onClick={() => handleSelectHospital(hosp)}
                       className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col gap-3 ${
                         isSelected
-                          ? "bg-white border-cyan-600 shadow-sm ring-1 ring-[#0F6B6D]/30"
-                          : "bg-white hover:bg-[#FBF7EE]/40 border-slate-200/90 shadow-xs"
+                          ? "bg-white border-slate-900 shadow-sm ring-1 ring-slate-900/20"
+                          : "bg-white hover:bg-slate-50 border border-slate-200/90 shadow-xs"
                       }`}
                     >
                       <div className="flex items-start justify-between gap-3">
@@ -1400,17 +1420,16 @@ export default function CarePage() {
                             <span className="text-sm font-semibold text-slate-900 truncate">
                               {hosp.name}
                             </span>
-                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-[#FBF7EE] text-[#8C6D32] border border-[#E7DBB8] inline-flex items-center gap-1">
-                              <Star className="w-2.5 h-2.5 text-amber-500 fill-amber-400 shrink-0" />
+                            <span className="bg-slate-100 text-slate-800 border border-slate-200/80 rounded-lg text-xs font-mono font-medium px-2.5 py-1 inline-flex items-center">
                               <span>{hosp.famousFor || getHospitalFamousFor(hosp)}</span>
                             </span>
                             {isSpecMatch && (
-                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-cyan-50/90 text-cyan-700 border border-cyan-200/90">
+                              <span className="bg-cyan-50 text-cyan-800 border border-cyan-200 rounded-lg text-xs font-mono font-semibold px-2.5 py-1">
                                 Verified {specialtyFilter}
                               </span>
                             )}
                             {hosp.acceptsPublicInsurance && (
-                              <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-[#FAF9F6] text-slate-600 border border-slate-200/90">
+                              <span className="bg-slate-100 text-slate-800 border border-slate-200/80 rounded-lg text-xs font-mono font-medium px-2.5 py-1">
                                 Ayushman / Aarogyasri
                               </span>
                             )}
@@ -1429,20 +1448,26 @@ export default function CarePage() {
                       </div>
 
                       <div className="flex items-center justify-between gap-2 flex-wrap pt-2 border-t border-slate-200/90 text-xs">
-                        <div className="flex items-center gap-2 text-[11px] text-slate-600">
-                          <span className="text-cyan-700 font-medium flex items-center gap-1">
-                            <span className="w-1.5 h-1.5 rounded-full bg-cyan-600" />
-                            {hosp.isEmergency24x7 ? "24/7 Verified Emergency" : "Specialty Center"}
-                          </span>
-                          <span>•</span>
-                          <span>{isGovernment ? "Government" : "Private"}</span>
+                        <div className="flex items-center gap-2">
+                          {hosp.isEmergency24x7 ? (
+                            <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-mono font-semibold px-2.5 py-1 inline-flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
+                              24/7 Emergency & Trauma
+                            </span>
+                          ) : (
+                            <span className="bg-slate-100 text-slate-800 border border-slate-200/80 rounded-lg text-xs font-mono font-medium px-2.5 py-1">
+                              Specialty Center
+                            </span>
+                          )}
+                          <span className="text-slate-300">•</span>
+                          <span className="text-slate-600 text-[11px] font-mono">{isGovernment ? "Government" : "Private"}</span>
                         </div>
 
                         <div className="flex items-center gap-2">
                           <a
                             href={`tel:${hosp.emergencyPhone || hosp.phone}`}
                             onClick={(e) => e.stopPropagation()}
-                            className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-[#B42318] hover:bg-[#991B1B] text-white font-semibold text-xs transition-colors cursor-pointer"
+                            className="inline-flex items-center gap-1 px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs shadow-xs transition-all cursor-pointer"
                           >
                             <PhoneCall className="w-3 h-3" />
                             <span>Call ED</span>
@@ -1453,10 +1478,10 @@ export default function CarePage() {
                             target="_blank"
                             rel="noopener noreferrer"
                             onClick={(e) => e.stopPropagation()}
-                            className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-[#172026] hover:bg-[#2C3840] text-white font-semibold text-xs transition-colors cursor-pointer"
+                            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-800 font-medium text-xs border border-slate-200/90 shadow-2xs transition-all cursor-pointer active:scale-[0.98]"
                           >
                             <span>Directions</span>
-                            <ExternalLink className="w-3 h-3 text-cyan-700" />
+                            <ExternalLink className="w-3 h-3 text-slate-500" />
                           </a>
                         </div>
                       </div>
@@ -1465,11 +1490,11 @@ export default function CarePage() {
                       {isSelected && (
                         <div className="pt-3 border-t border-slate-200/90 flex flex-col gap-3 animate-in fade-in duration-200">
                           {/* Live route banner with scroll to map button */}
-                          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 p-3 rounded-xl bg-cyan-50/90 border border-cyan-200/90 text-xs">
+                          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 p-3 rounded-2xl bg-cyan-50/70 border border-cyan-200/80 text-xs">
                             <div className="flex items-center gap-2">
                               <span className="w-2.5 h-2.5 rounded-full bg-cyan-600 animate-pulse shrink-0" />
                               <div className="flex flex-col">
-                                <span className="font-bold text-cyan-700">
+                                <span className="font-bold text-cyan-800">
                                   Active Route: ~{distanceNum.toFixed(1)} km · ~{durationNum} min drive
                                 </span>
                                 <span className="text-[11px] text-slate-600">
@@ -1482,9 +1507,9 @@ export default function CarePage() {
                                 e.stopPropagation();
                                 handleSelectHospital(hosp, true);
                               }}
-                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-700 hover:bg-cyan-800 text-white font-semibold text-xs transition-colors shadow-xs cursor-pointer shrink-0"
+                              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-950 hover:bg-slate-900 text-white font-semibold text-xs shadow-xs transition-all cursor-pointer shrink-0 active:scale-[0.98]"
                             >
-                              <MapPin className="w-3.5 h-3.5" />
+                              <MapPin className="w-3.5 h-3.5 text-cyan-400" />
                               <span>View route on map</span>
                             </button>
                           </div>
@@ -1492,14 +1517,14 @@ export default function CarePage() {
                           {/* Specialties List */}
                           {hosp.specialty && hosp.specialty.length > 0 && (
                             <div>
-                              <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-600 block mb-1">
+                              <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 block mb-1.5 font-mono">
                                 Clinical capabilities & departments
                               </span>
                               <div className="flex flex-wrap gap-1.5">
                                 {hosp.specialty.map((s, sIdx) => (
                                   <span
                                     key={sIdx}
-                                    className="text-[11px] font-medium px-2.5 py-1 rounded-lg bg-[#FAF9F6] text-slate-900 border border-slate-200/90"
+                                    className="bg-slate-100 text-slate-800 border border-slate-200/80 rounded-lg text-xs font-mono font-medium px-2.5 py-1"
                                   >
                                     {s}
                                   </span>
@@ -1511,16 +1536,16 @@ export default function CarePage() {
                           {/* Match reasons */}
                           {hosp.matchReasons && hosp.matchReasons.length > 0 && (
                             <div>
-                              <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-600 block mb-1">
+                              <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 block mb-1.5 font-mono">
                                 Why this facility
                               </span>
                               <div className="flex flex-wrap gap-1.5">
                                 {hosp.matchReasons.map((reason, rIdx) => (
                                   <span
                                     key={rIdx}
-                                    className="text-[11px] font-medium px-2.5 py-1 rounded-lg bg-[#FBF7EE] text-[#8C6D32] border border-[#E7DBB8] flex items-center gap-1.5"
+                                    className="bg-slate-100 text-slate-800 border border-slate-200/80 rounded-lg text-xs font-mono font-medium px-2.5 py-1 flex items-center gap-1.5"
                                   >
-                                    <Check className="w-3.5 h-3.5 text-[#8C6D32]" />
+                                    <Check className="w-3.5 h-3.5 text-emerald-600" />
                                     <span>{reason}</span>
                                   </span>
                                 ))}
@@ -1535,7 +1560,7 @@ export default function CarePage() {
                               <a
                                 href={`tel:${hosp.emergencyPhone || hosp.phone || "108"}`}
                                 onClick={(e) => e.stopPropagation()}
-                                className="font-bold text-[#B42318] hover:underline"
+                                className="font-bold text-rose-600 hover:text-rose-700 hover:underline"
                               >
                                 {hosp.emergencyPhone || hosp.phone || "108"}
                               </a>
@@ -1572,7 +1597,7 @@ export default function CarePage() {
                   <button
                     onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
                     disabled={currentPage === 1}
-                    className="px-3 py-1.5 rounded-lg border border-slate-200/90 bg-white hover:bg-[#FAF9F6] disabled:opacity-35 disabled:cursor-not-allowed font-semibold text-slate-900 transition-colors cursor-pointer flex items-center gap-1"
+                    className="px-3 py-1.5 rounded-xl border border-slate-200/90 hover:border-slate-300 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-medium text-slate-800 hover:text-slate-950 shadow-2xs transition-all cursor-pointer flex items-center gap-1"
                   >
                     <ChevronLeft className="w-3.5 h-3.5" />
                     <span>Previous</span>
@@ -1587,10 +1612,10 @@ export default function CarePage() {
                       <button
                         key={p}
                         onClick={() => setCurrentPage(p)}
-                        className={`w-7 h-7 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
+                        className={`w-8 h-8 rounded-xl text-xs transition-all cursor-pointer ${
                           currentPage === p
-                            ? "bg-cyan-600 text-white shadow-xs"
-                            : "bg-white hover:bg-[#FAF9F6] border border-slate-200/90 text-slate-900"
+                            ? "bg-slate-950 text-white font-bold border border-slate-900 shadow-xs"
+                            : "bg-white hover:bg-slate-50 border border-slate-200/90 hover:border-slate-300 text-slate-800 font-medium shadow-2xs"
                         }`}
                       >
                         {p}
@@ -1601,7 +1626,7 @@ export default function CarePage() {
                   <button
                     onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
                     disabled={currentPage === totalPages}
-                    className="px-3 py-1.5 rounded-lg border border-slate-200/90 bg-white hover:bg-[#FAF9F6] disabled:opacity-35 disabled:cursor-not-allowed font-semibold text-slate-900 transition-colors cursor-pointer flex items-center gap-1"
+                    className="px-3 py-1.5 rounded-xl border border-slate-200/90 hover:border-slate-300 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-medium text-slate-800 hover:text-slate-950 shadow-2xs transition-all cursor-pointer flex items-center gap-1"
                   >
                     <span>Next</span>
                     <ChevronRight className="w-3.5 h-3.5" />
@@ -1615,6 +1640,6 @@ export default function CarePage() {
       </main>
 
       <AppFooter />
-    </div>
+    </AmbientPageBackground>
   );
 }
