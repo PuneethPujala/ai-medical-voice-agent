@@ -729,7 +729,7 @@ export default function CarePage() {
                 textColor="#ffffff"
                 borderColor="rgba(255, 255, 255, 0.15)"
                 radius={12}
-                className="w-full sm:w-auto cursor-pointer shadow-xs border border-slate-800 hover:bg-slate-900 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 text-sm font-semibold px-6 py-3.5"
+                className="w-full sm:w-auto cursor-pointer shadow-xs border border-slate-800 bg-slate-950 text-white hover:bg-slate-900 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 text-sm font-semibold px-6 py-3.5"
               >
                 <div className="flex items-center justify-center gap-2">
                   <LocateFixed className={`w-4 h-4 text-cyan-400 ${isDetectingGps ? "animate-spin" : ""}`} />

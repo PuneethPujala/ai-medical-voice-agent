@@ -21,13 +21,7 @@ export function AppFooter({ ambient, className = "" }: AppFooterProps) {
       <div className="absolute inset-0 bg-gradient-to-r from-cyan-50/40 via-blue-50/25 to-indigo-50/30 pointer-events-none" />
 
       {/* MAIN FOOTER BODY */}
-      <div
-        className={`relative z-10 w-full backdrop-blur-xl border-t px-4 sm:px-8 pt-12 pb-10 transition-colors ${
-          isAmbientRoute
-            ? "bg-white/40 border-slate-200/50"
-            : "bg-white/90 border-slate-200/90"
-        }`}
-      >
+      <div className="relative z-10 w-full bg-white/95 backdrop-blur-xl border-t border-slate-200/90 shadow-[0_-4px_24px_-4px_rgba(0,0,0,0.03)] px-4 sm:px-8 pt-12 pb-10 transition-colors">
         <div className="mx-auto max-w-6xl flex flex-col gap-10">
           
           {/* Main Grid: Brand statement + Real application navigation columns */}
