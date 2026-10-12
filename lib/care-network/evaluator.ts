@@ -221,6 +221,11 @@ export function isPlaceholderOrGenericHospitalName(name: string | null | undefin
 
   const lower = trimmed.toLowerCase();
 
+  // Exclude veterinary / animal facilities (MedVoice is strictly for human emergency & clinical care)
+  if (/\b(animal|veterinary|veterinarian|vet|pashu|pet|cattle|zoological)\b/i.test(lower)) {
+    return true;
+  }
+
   // Known exact placeholder tokens
   const genericExact = new Set([
     "hospital",

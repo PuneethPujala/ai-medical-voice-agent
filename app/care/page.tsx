@@ -663,7 +663,7 @@ export default function CarePage() {
 
   return (
     <AmbientPageBackground>
-      <main className="relative z-10 flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 pt-6 sm:pt-8 pb-16 flex flex-col gap-6">
+      <main className="relative z-10 flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 pt-24 sm:pt-28 pb-16 flex flex-col gap-6">
 
         {/* ========================================================================= */}
         {/* CASE 1: LOCATION UNKNOWN — CALM, QUIET LUXURY FIRST IMPRESSION            */}
@@ -1041,7 +1041,7 @@ export default function CarePage() {
             )}
 
             {/* DOMINANT WORKSPACE: LIVE MAP + RANKED FACILITIES LIST */}
-            <div id="care-map-section" className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch scroll-mt-24">
+            <div id="care-map-section" className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch scroll-mt-32">
 
               {/* LEFT: Dominant Live Route Map + Dedicated Selected Hospital Card (58% width on large screens) */}
               <div className="lg:col-span-7 flex flex-col gap-4">
@@ -1145,38 +1145,40 @@ export default function CarePage() {
 
                     {/* ACTION BUTTONS ROW - Responsive wrapping with zero overlap */}
                     {(() => {
-                      const directPhone = selectedHospital.emergencyPhone || selectedHospital.phone;
-                      const hasPhone = isValidHospitalPhoneNumber(directPhone);
+                      let directPhone = "";
+                      if (selectedHospital.emergencyPhone && selectedHospital.emergencyPhone !== "108" && selectedHospital.emergencyPhone !== "112") {
+                        directPhone = selectedHospital.emergencyPhone.trim();
+                      } else if (selectedHospital.phone && selectedHospital.phone !== "108" && selectedHospital.phone !== "112") {
+                        directPhone = selectedHospital.phone.trim();
+                      }
+                      const hasDirectPhone = isValidHospitalPhoneNumber(directPhone);
                       const mapsUrl = userLocation
                         ? `https://www.google.com/maps/dir/?api=1&origin=${userLocation.lat},${userLocation.lng}&destination=${selectedHospital.latitude},${selectedHospital.longitude}&travelmode=driving`
                         : `https://www.google.com/maps/search/?api=1&query=${selectedHospital.latitude},${selectedHospital.longitude}`;
 
                       return (
                         <div className="flex items-center gap-2.5 pt-0.5 flex-wrap">
-                          {hasPhone ? (
+                          {hasDirectPhone ? (
                             <a
                               href={`tel:${directPhone}`}
-                              className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-white font-semibold text-xs shadow-xs active:scale-[0.98] transition-all cursor-pointer bg-rose-600 hover:bg-rose-700"
-                              title={`Call ${selectedHospital.actionType === "call_hospital" ? "Hospital" : "Emergency Department"}: ${directPhone}`}
+                              className={`flex-1 min-w-[140px] inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-white font-semibold text-xs shadow-xs active:scale-[0.98] transition-all cursor-pointer ${
+                                selectedHospital.isEmergency24x7 ? "bg-rose-600 hover:bg-rose-700" : "bg-slate-950 hover:bg-slate-900"
+                              }`}
+                              title={`Call direct facility line: ${directPhone}`}
                             >
                               <PhoneCall className="w-3.5 h-3.5" />
-                              <span>{selectedHospital.actionType === "call_hospital" ? "Call Hospital" : "Call ED"}</span>
+                              <span>{selectedHospital.actionType === "call_hospital" ? "Call Hospital" : "Call Hospital ED"}</span>
                               <span className="text-[10.5px] opacity-80 font-mono font-normal">({directPhone})</span>
                             </a>
-                          ) : selectedHospital.isEmergency24x7 ? (
+                          ) : (
                             <a
                               href="tel:108"
                               className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-white font-semibold text-xs shadow-xs active:scale-[0.98] transition-all cursor-pointer bg-rose-600 hover:bg-rose-700"
                               title="Call 108 Emergency Ambulance Dispatch"
                             >
                               <PhoneCall className="w-3.5 h-3.5" />
-                              <span>Call 108 Emergency</span>
+                              <span>Call 108 Ambulance (Emergency Dispatch)</span>
                             </a>
-                          ) : (
-                            <div className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-xl text-xs text-slate-500 bg-slate-100 border border-slate-200">
-                              <PhoneCall className="w-3.5 h-3.5 text-slate-400" />
-                              <span>No direct phone listed</span>
-                            </div>
                           )}
 
                           <a
@@ -1201,7 +1203,7 @@ export default function CarePage() {
               </div>
 
               {/* RIGHT: Decoupled Matching Facilities Rail + Animated List */}
-              <div className="lg:col-span-5 rounded-2xl bg-white border border-slate-200/90 shadow-xs p-4 sm:p-5 flex flex-col gap-3 h-[700px] sm:h-[720px] max-h-[720px] overflow-hidden">
+              <div className="lg:col-span-5 rounded-2xl bg-white border border-slate-200/90 shadow-xs p-4 sm:p-5 flex flex-col gap-3 h-[740px] sm:h-[760px] lg:h-[780px] max-h-[780px] overflow-hidden">
 
                 {/* CATEGORY FALLBACK ALERT BANNER */}
                 {categoryFallback && fallbackBanner && (
@@ -1266,7 +1268,7 @@ export default function CarePage() {
                   </div>
                 </div>
 
-                {/* 2. KEY MATCH FACTORS & RECOMMENDATION RATIONALE (Clean & compact, as in Picture 2) */}
+                {/* 2. KEY MATCH FACTORS & RECOMMENDATION RATIONALE (Collapsible & compact) */}
                 {selectedHospital && (() => {
                   const isRecommended = selectedHospital.id === recommendedHospital?.id;
                   const isGovernment = (selectedHospital as any).ownership === "government";
@@ -1275,47 +1277,59 @@ export default function CarePage() {
                   const famousFor = selectedHospital.famousFor || getHospitalFamousFor(selectedHospital);
 
                   return (
-                    <div className="p-3 rounded-xl bg-slate-50/90 border border-slate-200/90 flex flex-col gap-2 shrink-0 shadow-2xs">
-                      <div className="flex items-center justify-between gap-2">
+                    <div className="rounded-xl bg-slate-50/90 border border-slate-200/90 shrink-0 shadow-2xs overflow-hidden transition-all">
+                      <button
+                        type="button"
+                        onClick={() => setIsRationaleExpanded(!isRationaleExpanded)}
+                        className="w-full px-3 py-2 flex items-center justify-between gap-2 text-left hover:bg-slate-100/70 transition-colors cursor-pointer"
+                      >
                         <div className="flex items-center gap-1.5 min-w-0">
                           <Sparkles className="w-3.5 h-3.5 text-cyan-600 shrink-0" />
                           <span className="text-xs font-bold text-slate-900 truncate">
                             {isRecommended ? "Why Ranked #1 · Key Match Factors" : `Match Rationale · #${selectedHospital.rank}`}
                           </span>
                         </div>
-                        <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-cyan-50 text-cyan-800 border border-cyan-200 shrink-0">
-                          ~{etaMinutes}m drive
-                        </span>
-                      </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-cyan-50 text-cyan-800 border border-cyan-200">
+                            ~{etaMinutes}m drive
+                          </span>
+                          <span className="text-[10.5px] font-semibold text-slate-500">
+                            {isRationaleExpanded ? "Hide" : "Factors"}
+                          </span>
+                          {isRationaleExpanded ? <ChevronUp className="w-3 h-3 text-slate-400" /> : <ChevronDown className="w-3 h-3 text-slate-400" />}
+                        </div>
+                      </button>
 
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px] text-slate-700">
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                          <span className="truncate">{selectedHospital.isEmergency24x7 ? "24/7 Verified Emergency Care" : "Specialized Care"}</span>
+                      {isRationaleExpanded && (
+                        <div className="px-3 pb-3 pt-1 border-t border-slate-200/80 grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px] text-slate-700 animate-in fade-in duration-150">
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                            <span className="truncate">{selectedHospital.isEmergency24x7 ? "24/7 Verified Emergency Care" : "Specialized Care"}</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                            <span className="truncate">
+                              {selectedHospital.sourceType === "official_registry"
+                                ? "State Health Authority Accredited"
+                                : "Verified Care Provider"}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                            <span className="truncate">~{distanceKm.toFixed(1)} km away · ~{etaMinutes}m drive</span>
+                          </div>
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                            <span className="truncate">
+                              {selectedHospital.acceptsPublicInsurance
+                                ? "Ayushman / PM-JAY Cashless"
+                                : isGovernment
+                                ? "Government Hospital"
+                                : famousFor}
+                            </span>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                          <span className="truncate">
-                            {selectedHospital.sourceType === "official_registry"
-                              ? "State Health Authority Accredited"
-                              : "Verified Care Provider"}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                          <span className="truncate">~{distanceKm.toFixed(1)} km away · ~{etaMinutes}m drive</span>
-                        </div>
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                          <span className="truncate">
-                            {selectedHospital.acceptsPublicInsurance
-                              ? "Ayushman / PM-JAY Cashless"
-                              : isGovernment
-                              ? "Government Hospital"
-                              : famousFor}
-                          </span>
-                        </div>
-                      </div>
+                      )}
                     </div>
                   );
                 })()}
@@ -1347,55 +1361,70 @@ export default function CarePage() {
                         const famousFor = hosp.famousFor || getHospitalFamousFor(hosp);
 
                         return (
-                          <div className="w-full flex items-start justify-between gap-2.5">
-                            {/* Left side: Rank + Hospital Name & Badges */}
-                            <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                          <div className="w-full flex items-start justify-between gap-3 py-0.5">
+                            {/* Left side: Rank + Hospital Name (up to 2 lines) + Specialty + Clean Badges */}
+                            <div className="flex items-start gap-3 min-w-0 flex-1">
                               {/* Rank Badge */}
                               <span
-                                className={`font-mono font-bold text-[11px] px-1.5 py-0.5 rounded-md shrink-0 ${
+                                className={`font-mono font-bold text-xs w-6 h-6 rounded-md flex items-center justify-center shrink-0 mt-0.5 transition-colors ${
                                   isSelected
                                     ? "bg-slate-950 text-white shadow-xs"
                                     : isBest
-                                    ? "bg-cyan-100 text-cyan-900 border border-cyan-300"
+                                    ? "bg-cyan-100 text-cyan-900 border border-cyan-300 font-extrabold"
                                     : "bg-slate-100 text-slate-700 border border-slate-200"
                                 }`}
                               >
                                 #{hosp.rank}
                               </span>
 
-                              {/* Main Info */}
-                              <div className="min-w-0 flex-1">
-                                {/* Top line: Hospital Name + DESTINATION badge */}
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <h4 className="text-xs sm:text-[13px] font-bold text-slate-900 truncate" title={hosp.name}>
-                                    {hosp.name}
-                                  </h4>
+                              {/* Content Column */}
+                              <div className="min-w-0 flex-1 flex flex-col gap-1">
+                                {/* Hospital Name: Wraps up to 2 lines cleanly without aggressive truncation */}
+                                <h4
+                                  className="text-xs sm:text-[13px] font-bold text-slate-900 leading-snug line-clamp-2"
+                                  title={hosp.name}
+                                >
+                                  {hosp.name}
+                                </h4>
+
+                                {/* Specialty or service category */}
+                                <p className="text-[11px] text-slate-600 line-clamp-1 font-medium">
+                                  {famousFor}
+                                </p>
+
+                                {/* Clean, restrained status tags: max 1 or 2 */}
+                                <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
                                   {isSelected && (
                                     <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-slate-950 text-white uppercase tracking-wider shrink-0">
-                                      DESTINATION
+                                      Selected destination
                                     </span>
                                   )}
-                                </div>
-
-                                {/* Second line: Specialty Chip Tag + ER & Ownership info */}
-                                <div className="flex items-center gap-1.5 flex-wrap mt-1">
-                                  <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 border border-slate-200/80 truncate max-w-[160px] inline-block">
-                                    {famousFor}
-                                  </span>
-                                  <span className="text-[10.5px] text-slate-500 font-normal">
-                                    {hosp.isEmergency24x7 ? "24/7 ER" : "OPD"} · {isGovernment ? "Govt" : "Private"}
-                                  </span>
+                                  {hosp.sourceType === "official_registry" && (
+                                    <span className="text-[10px] font-medium text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/80">
+                                      ✓ Verified registry
+                                    </span>
+                                  )}
+                                  {hosp.isEmergency24x7 && (
+                                    <span className="text-[10px] font-medium text-rose-800 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200/80">
+                                      24/7 ER
+                                    </span>
+                                  )}
+                                  {isGovernment && (
+                                    <span className="text-[10px] font-medium text-blue-800 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200/80">
+                                      Govt
+                                    </span>
+                                  )}
                                 </div>
                               </div>
                             </div>
 
-                            {/* Right side: ETA + Distance by road */}
-                            <div className="flex flex-col items-end shrink-0 text-right">
-                              <span className="text-xs sm:text-[13px] font-bold text-slate-900 leading-tight">
-                                ~{durationNum}m
+                            {/* Right side: Drive Metrics Area (Dedicated column, aligned) */}
+                            <div className="flex flex-col items-end shrink-0 text-right pl-2 pr-1 min-w-[78px]">
+                              <span className="text-xs sm:text-[13px] font-extrabold text-slate-950 font-mono tracking-tight leading-tight">
+                                ~{durationNum} min
                               </span>
-                              <span className="text-[10px] text-slate-500 font-mono leading-tight mt-0.5">
-                                ~{distanceNum.toFixed(1)} km{isSelected ? " by road" : ""}
+                              <span className="text-[10.5px] text-slate-500 font-mono leading-tight mt-0.5">
+                                {distanceNum.toFixed(1)} km by road
                               </span>
                             </div>
                           </div>
@@ -1404,14 +1433,14 @@ export default function CarePage() {
                       animation="pop"
                       stagger={0.03}
                       showGradients={true}
-                      fadeSize={24}
+                      fadeSize={20}
                       displayScrollbar={true}
                       frame={false}
                       theme="light"
                       radius={12}
-                      gap={8}
+                      gap={10}
                       width="100%"
-                      maxHeight={520}
+                      maxHeight={isRationaleExpanded ? 580 : 620}
                       className="w-full"
                     />
                   )}

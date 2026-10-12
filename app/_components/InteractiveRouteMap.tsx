@@ -187,7 +187,7 @@ export function InteractiveRouteMap({
     const famousFor = hosp.famousFor || getHospitalFamousFor(hosp);
     const shortName = hosp.name.split("-")[0].split("(")[0].trim();
     const effectiveRank = hosp.rank ?? rank;
-    const isTopRanked = typeof effectiveRank === "number" && effectiveRank >= 1 && effectiveRank <= 10;
+    const isTopRanked = typeof effectiveRank === "number" && effectiveRank >= 1 && effectiveRank <= 5;
 
     if (isSelected) {
       const pinColor = hosp.isEmergency24x7 ? "#e11d48" : "#020617";
@@ -197,11 +197,11 @@ export function InteractiveRouteMap({
         className: "custom-hospital-marker",
         html: `
           <div style="position:relative; width:44px; height:44px; display:flex; align-items:center; justify-content:center; cursor:pointer; z-index:1000;">
-            <div style="position:absolute; width:44px; height:44px; border-radius:50%; background:${hosp.isEmergency24x7 ? "rgba(225,29,72,0.22)" : "rgba(2,6,23,0.22)"}; animation:pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;"></div>
-            <div style="position:relative; width:34px; height:34px; border-radius:10px; background:${pinColor}; border:2.5px solid #FFFFFF; box-shadow:0 4px 14px rgba(2,6,23,0.32); display:flex; align-items:center; justify-content:center; color:#FFFFFF; font-weight:800; font-size:13px; font-family:system-ui,-apple-system,sans-serif;">
+            <div style="position:absolute; width:44px; height:44px; border-radius:50%; background:${hosp.isEmergency24x7 ? "rgba(225,29,72,0.25)" : "rgba(2,6,23,0.25)"}; animation:pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;"></div>
+            <div style="position:relative; width:34px; height:34px; border-radius:10px; background:${pinColor}; border:2.5px solid #FFFFFF; box-shadow:0 4px 14px rgba(2,6,23,0.4); display:flex; align-items:center; justify-content:center; color:#FFFFFF; font-weight:800; font-size:13px; font-family:system-ui,-apple-system,sans-serif;">
               ${effectiveRank ? `#${effectiveRank}` : `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`}
             </div>
-            <div style="position:absolute; bottom:42px; left:50%; transform:translateX(-50%); white-space:nowrap; background:#ffffff; color:#0f172a; font-family:system-ui,-apple-system,sans-serif; padding:4px 9px; border-radius:10px; box-shadow:0 4px 14px rgba(2,6,23,0.12); z-index:9999; border:1px solid #e2e8f0; pointer-events:none;">
+            <div style="position:absolute; bottom:42px; left:50%; transform:translateX(-50%); white-space:nowrap; background:#ffffff; color:#0f172a; font-family:system-ui,-apple-system,sans-serif; padding:4px 9px; border-radius:10px; box-shadow:0 4px 14px rgba(2,6,23,0.15); z-index:9999; border:1px solid #cbd5e1; pointer-events:none;">
               <div style="font-size:11px; font-weight:700; color:#0f172a; display:flex; align-items:center; gap:4px; line-height:1.2;">
                 ${shortName} <span style="color:#0284c7; font-weight:600;">(${hosp.distanceKm} km · ~${etaNum}m)</span>
               </div>
@@ -217,37 +217,37 @@ export function InteractiveRouteMap({
     }
 
     if (isTopRanked) {
-      // Pins 1-10: Numbered circular badges matching list rank
+      // Pins 1-5: Numbered circular badges matching list rank
       const isFirst = effectiveRank === 1;
-      const borderCol = isFirst ? "#020617" : isEligible ? "#0284c7" : "#94a3b8";
+      const borderCol = isFirst ? "#020617" : isEligible ? "#0284c7" : "#64748b";
       const bgCol = isFirst ? "#020617" : isEligible ? "#f0f9ff" : "#FFFFFF";
       const textCol = isFirst ? "#FFFFFF" : isEligible ? "#0369a1" : "#0f172a";
 
       return L.divIcon({
         className: "custom-hospital-marker",
         html: `
-          <div style="position:relative; width:${isFirst ? "34px" : "28px"}; height:${isFirst ? "34px" : "28px"}; display:flex; align-items:center; justify-content:center; cursor:pointer;">
+          <div style="position:relative; width:${isFirst ? "32px" : "26px"}; height:${isFirst ? "32px" : "26px"}; display:flex; align-items:center; justify-content:center; cursor:pointer;">
             ${isFirst ? `<div style="position:absolute; top:-14px; background:#020617; color:#FFFFFF; font-size:8px; font-weight:800; padding:1px 5px; border-radius:4px; white-space:nowrap; letter-spacing:0.3px; box-shadow:0 1px 4px rgba(2,6,23,0.35);">RECOMMENDED</div>` : ""}
-            <div style="width:${isFirst ? "26px" : "24px"}; height:${isFirst ? "26px" : "24px"}; border-radius:50%; background:${bgCol}; border:${isFirst ? "2.5px" : "2px"} solid ${borderCol}; box-shadow:0 2px 6px rgba(0,0,0,0.18); display:flex; align-items:center; justify-content:center; color:${textCol}; font-weight:800; font-size:11px; font-family:system-ui,-apple-system,sans-serif;">
+            <div style="width:${isFirst ? "26px" : "22px"}; height:${isFirst ? "26px" : "22px"}; border-radius:50%; background:${bgCol}; border:${isFirst ? "2.5px" : "2px"} solid ${borderCol}; box-shadow:0 2px 6px rgba(0,0,0,0.18); display:flex; align-items:center; justify-content:center; color:${textCol}; font-weight:800; font-size:10px; font-family:system-ui,-apple-system,sans-serif;">
               ${effectiveRank}
             </div>
           </div>
         `,
-        iconSize: [isFirst ? 34 : 28, isFirst ? 34 : 28],
-        iconAnchor: [isFirst ? 17 : 14, isFirst ? 17 : 14],
+        iconSize: [isFirst ? 32 : 26, isFirst ? 32 : 26],
+        iconAnchor: [isFirst ? 16 : 13, isFirst ? 16 : 13],
       });
     }
 
-    // Rank > 10: Subtle small dot (14px)
+    // Rank > 5: Subtle small clean dot (10px) to prevent map clutter
     return L.divIcon({
       className: "custom-hospital-marker",
       html: `
-        <div style="position:relative; width:14px; height:14px; display:flex; align-items:center; justify-content:center; cursor:pointer; opacity:0.75;">
-          <div style="width:10px; height:10px; border-radius:50%; background:#CBD5E1; border:1.5px solid #64748B;"></div>
+        <div style="position:relative; width:12px; height:12px; display:flex; align-items:center; justify-content:center; cursor:pointer;">
+          <div style="width:8px; height:8px; border-radius:50%; background:#94a3b8; border:1.5px solid #ffffff; box-shadow:0 1px 3px rgba(0,0,0,0.25);"></div>
         </div>
       `,
-      iconSize: [14, 14],
-      iconAnchor: [7, 7],
+      iconSize: [12, 12],
+      iconAnchor: [6, 6],
     });
   }
 
@@ -260,11 +260,22 @@ export function InteractiveRouteMap({
     const googleMapsUrl = origin
       ? `https://www.google.com/maps/dir/?api=1&origin=${origin.lat},${origin.lng}&destination=${hosp.latitude},${hosp.longitude}&travelmode=driving`
       : `https://www.google.com/maps/search/?api=1&query=${hosp.latitude},${hosp.longitude}`;
-    const emergencyNum = hosp.emergencyPhone || hosp.phone || "108";
+    let directPhone = "";
+    if (hosp.emergencyPhone && hosp.emergencyPhone !== "108" && hosp.emergencyPhone !== "112") {
+      directPhone = hosp.emergencyPhone.trim();
+    } else if (hosp.phone && hosp.phone !== "108" && hosp.phone !== "112") {
+      directPhone = hosp.phone.trim();
+    }
+    const hasDirectPhone = directPhone.length >= 5;
+    const emergencyNum = hasDirectPhone ? directPhone : "108";
     const isCallHospital = hosp.actionType === "call_hospital";
-    const actionLabel = isCallHospital ? "Call hospital" : "Call ED";
-    const actionColor = isCallHospital ? "#020617" : "#e11d48";
-    const actionClass = isCallHospital
+    const actionLabel = hasDirectPhone
+      ? isCallHospital
+        ? "Call hospital"
+        : "Call ED"
+      : "Call 108 Dispatch";
+    const actionColor = hasDirectPhone && isCallHospital ? "#020617" : "#e11d48";
+    const actionClass = hasDirectPhone && isCallHospital
       ? "bg-slate-950 hover:bg-slate-900"
       : "bg-rose-600 hover:bg-rose-700";
 
@@ -594,8 +605,8 @@ export function InteractiveRouteMap({
         if (found) onSelectHospital(found);
       };
 
-      // 2. HOSPITAL DESTINATION MARKERS (Restrained, low noise, selected is primary)
-      allHospitals.forEach((hosp, idx) => {
+      // 2. HOSPITAL DESTINATION MARKERS (Restrained, low noise, selected is primary, clustered at low zoom)
+      const renderHospitalMarker = (hosp: HospitalItem, idx: number) => {
         const hLat = hosp.latitude;
         const hLng = hosp.longitude;
         if (!hLat || !hLng) return;
@@ -642,10 +653,101 @@ export function InteractiveRouteMap({
 
         hospitalMarkersMapRef.current.set(hosp.id, { marker, hosp });
         markersLayerRef.current.addLayer(marker);
-      });
+      };
+
+      const currentZoom = typeof map.getZoom === "function" ? map.getZoom() : 14;
+      const shouldCluster = currentZoom < 13 && allHospitals.length > 6;
+
+      if (!shouldCluster) {
+        allHospitals.forEach((hosp, idx) => renderHospitalMarker(hosp, idx));
+      } else {
+        const clusters: { center: [number, number]; hospitals: HospitalItem[] }[] = [];
+        const individualHospitals: { hosp: HospitalItem; originalIdx: number }[] = [];
+
+        allHospitals.forEach((hosp, idx) => {
+          if (!hosp.latitude || !hosp.longitude) return;
+          // Always keep the selected destination separate and distinct
+          if (selectedHospital?.id === hosp.id) {
+            individualHospitals.push({ hosp, originalIdx: idx });
+            return;
+          }
+
+          const pt = map.latLngToLayerPoint([hosp.latitude, hosp.longitude]);
+          let added = false;
+
+          for (const cl of clusters) {
+            const clPt = map.latLngToLayerPoint(cl.center);
+            if (pt.distanceTo(clPt) < 48) {
+              cl.hospitals.push(hosp);
+              const count = cl.hospitals.length;
+              cl.center = [
+                (cl.center[0] * (count - 1) + hosp.latitude) / count,
+                (cl.center[1] * (count - 1) + hosp.longitude) / count,
+              ];
+              added = true;
+              break;
+            }
+          }
+
+          if (!added) {
+            clusters.push({
+              center: [hosp.latitude, hosp.longitude],
+              hospitals: [hosp],
+            });
+          }
+        });
+
+        clusters.forEach((cl) => {
+          if (cl.hospitals.length === 1) {
+            const singleHosp = cl.hospitals[0];
+            const origIdx = allHospitals.findIndex((h) => h.id === singleHosp.id);
+            individualHospitals.push({ hosp: singleHosp, originalIdx: origIdx >= 0 ? origIdx : 0 });
+          } else {
+            const clusterCount = cl.hospitals.length;
+            const clusterIcon = L.divIcon({
+              className: "custom-cluster-marker",
+              html: `
+                <div style="position:relative; width:34px; height:34px; display:flex; align-items:center; justify-content:center; cursor:pointer;">
+                  <div style="position:absolute; width:34px; height:34px; border-radius:50%; background:rgba(2,6,23,0.15);"></div>
+                  <div style="width:28px; height:28px; border-radius:50%; background:#020617; border:2px solid #38bdf8; box-shadow:0 2px 8px rgba(0,0,0,0.3); display:flex; align-items:center; justify-content:center; color:#ffffff; font-weight:800; font-size:11px; font-family:system-ui,-apple-system,sans-serif;">
+                    ${clusterCount}
+                  </div>
+                </div>
+              `,
+              iconSize: [34, 34],
+              iconAnchor: [17, 17],
+            });
+
+            const clusterMarker = L.marker(cl.center, {
+              icon: clusterIcon,
+              zIndexOffset: 300,
+            });
+
+            clusterMarker.bindTooltip(
+              `<div style="font-family:system-ui,-apple-system,sans-serif; font-size:11px; font-weight:600; padding:2px 4px;">${clusterCount} facilities · Click to zoom</div>`,
+              { direction: "top", offset: [0, -14] }
+            );
+
+            clusterMarker.on("click", (e: any) => {
+              if (L.DomEvent) L.DomEvent.stopPropagation(e);
+              const bounds = L.latLngBounds(cl.hospitals.map((h) => [h.latitude, h.longitude]));
+              map.fitBounds(bounds, { padding: [60, 60], maxZoom: 15 });
+            });
+
+            markersLayerRef.current.addLayer(clusterMarker);
+          }
+        });
+
+        individualHospitals.forEach(({ hosp, originalIdx }) => {
+          renderHospitalMarker(hosp, originalIdx);
+        });
+      }
     },
-    [patientCoords?.lat, patientCoords?.lng, patientLocationName, isManualPicking, allHospitals, onSelectHospital]
+    [patientCoords?.lat, patientCoords?.lng, patientLocationName, isManualPicking, allHospitals, onSelectHospital, selectedHospital?.id]
   );
+
+  const renderMarkersRef = useRef(renderMarkers);
+  renderMarkersRef.current = renderMarkers;
 
   // Initialize Leaflet Map on Mount
   useEffect(() => {
@@ -725,6 +827,12 @@ export function InteractiveRouteMap({
       }, 100);
 
       renderMarkers(L, map);
+
+      map.on("zoomend", () => {
+        if (leafletRef.current && mapInstanceRef.current) {
+          renderMarkersRef.current(leafletRef.current, mapInstanceRef.current);
+        }
+      });
 
       if (
         selectedHospital &&
