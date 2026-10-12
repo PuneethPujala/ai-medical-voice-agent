@@ -250,7 +250,11 @@ export function InteractiveRouteMap({
     });
   }
 
-  function createPopupHtml(hosp: HospitalItem, origin?: { lat: number; lng: number } | null) {
+  function createPopupHtml(
+    hosp: HospitalItem,
+    origin?: { lat: number; lng: number } | null,
+    isSelectedHospital?: boolean
+  ) {
     const famousFor = hosp.famousFor || getHospitalFamousFor(hosp);
     const googleMapsUrl = origin
       ? `https://www.google.com/maps/dir/?api=1&origin=${origin.lat},${origin.lng}&destination=${hosp.latitude},${hosp.longitude}&travelmode=driving`
@@ -290,32 +294,42 @@ export function InteractiveRouteMap({
     const etaNum = hosp.etaMinutes || calculateCalibratedDriveTime(hosp.distanceKm);
 
     return `
-      <div style="font-family:system-ui,-apple-system,sans-serif; padding:10px 8px; line-height:1.4; max-width:270px; color:#0f172a;">
-        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
-          <b style="font-size:13px; font-weight:700; color:#0f172a; line-height:1.3;">${hosp.rank ? `#${hosp.rank} ` : ""}${hosp.name}</b>
+      <div style="font-family:system-ui,-apple-system,sans-serif; padding:14px 14px 12px 14px; line-height:1.4; width:275px; color:#0f172a; box-sizing:border-box;">
+        <div style="display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:5px; padding-right:18px;">
+          <b style="font-size:13.5px; font-weight:700; color:#0f172a; line-height:1.3; display:block;">${hosp.rank ? `#${hosp.rank} ` : ""}${hosp.name}</b>
         </div>
-        <div class="${matchBadgeClass} rounded-lg text-xs font-mono font-semibold px-2.5 py-1 inline-flex items-center mb-1.5" style="display:inline-flex; align-items:center; margin-bottom:6px; ${badgeStyle} font-family:monospace; font-size:10px; font-weight:600; padding:2.5px 8px; border-radius:8px;">
+        <div class="${matchBadgeClass} rounded-lg text-xs font-mono font-semibold px-2.5 py-1 inline-flex items-center mb-1.5" style="display:inline-flex; align-items:center; margin-bottom:8px; ${badgeStyle} font-family:monospace; font-size:10px; font-weight:600; padding:2.5px 8px; border-radius:8px;">
           ${matchBadgeText}
         </div>
-        <div style="display:flex; align-items:center; gap:6px; font-size:11px; font-weight:600; margin-bottom:4px; color:#0f172a;">
+        <div style="display:flex; align-items:center; gap:6px; font-size:11.5px; font-weight:600; margin-bottom:5px; color:#0f172a;">
           <span>${hosp.distanceKm} km by road</span>
           <span style="color:#94a3b8;">•</span>
           <span style="color:#0284c7;">~${etaNum} min</span>
         </div>
-        <div style="color:#64748b; font-size:10.5px; line-height:1.35; margin-bottom:10px;">${hosp.address}</div>
-        <button
-          onclick="window.medvoiceSelectHospitalById && window.medvoiceSelectHospitalById('${hosp.id}')"
-          class="bg-slate-950 hover:bg-slate-900 text-white font-semibold shadow-xs rounded-xl transition-all cursor-pointer"
-          style="width:100%; text-align:center; background:#020617; color:#ffffff; font-weight:600; font-size:11.5px; padding:8px 12px; border-radius:12px; border:1px solid #0f172a; cursor:pointer; margin-bottom:6px; display:flex; align-items:center; justify-content:center; gap:5px; box-shadow:0 1px 2px rgba(0,0,0,0.05); transition:all 0.15s ease;"
-        >
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg>
-          Select as Destination
-        </button>
-        <div style="display:flex; gap:6px;">
+        <div style="color:#64748b; font-size:11px; line-height:1.35; margin-bottom:12px;">${hosp.address}</div>
+        
+        ${isSelectedHospital ? `
+          <div
+            style="width:100%; text-align:center; background:#f1f5f9; color:#0f172a; font-weight:600; font-size:11.5px; padding:8.5px 12px; border-radius:12px; border:1px solid #cbd5e1; margin-bottom:8px; display:flex; align-items:center; justify-content:center; gap:5px; box-sizing:border-box;"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#059669" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+            Active Destination
+          </div>
+        ` : `
+          <button
+            onclick="window.medvoiceSelectHospitalById && window.medvoiceSelectHospitalById('${hosp.id}')"
+            class="bg-slate-950 hover:bg-slate-900 text-white font-semibold shadow-xs rounded-xl transition-all cursor-pointer"
+            style="width:100%; text-align:center; background:#020617; color:#ffffff; font-weight:600; font-size:11.5px; padding:9px 12px; border-radius:12px; border:1px solid #0f172a; cursor:pointer; margin-bottom:8px; display:flex; align-items:center; justify-content:center; gap:5px; box-shadow:0 1px 2px rgba(0,0,0,0.06); transition:all 0.15s ease; box-sizing:border-box;"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 4.993-5.539 10.193-7.399 11.799a1 1 0 0 1-1.202 0C9.539 20.193 4 14.993 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></svg>
+            Select as Destination
+          </button>
+        `}
+        <div style="display:flex; gap:7px;">
           <a
             href="tel:${emergencyNum}"
             class="${actionClass} text-white font-semibold shadow-xs rounded-xl transition-all"
-            style="flex:1; text-align:center; background:${actionColor}; color:#ffffff; font-weight:600; font-size:11px; padding:7px 8px; border-radius:12px; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; gap:4px; box-shadow:0 1px 2px rgba(0,0,0,0.05); transition:all 0.15s ease;"
+            style="flex:1; text-align:center; background:${actionColor}; color:#ffffff; font-weight:600; font-size:11px; padding:7.5px 8px; border-radius:12px; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; gap:4px; box-shadow:0 1px 2px rgba(0,0,0,0.05); transition:all 0.15s ease; box-sizing:border-box;"
           >
             ${actionLabel}
           </a>
@@ -324,7 +338,7 @@ export function InteractiveRouteMap({
             target="_blank"
             rel="noopener noreferrer"
             class="bg-white hover:bg-slate-50 text-slate-800 border border-slate-200/90 shadow-2xs rounded-xl font-medium transition-all"
-            style="flex:1; text-align:center; background:#ffffff; color:#1e293b; font-weight:500; font-size:11px; padding:7px 8px; border-radius:12px; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; gap:4px; border:1px solid #e2e8f0; box-shadow:0 1px 2px rgba(0,0,0,0.03); transition:all 0.15s ease;"
+            style="flex:1; text-align:center; background:#ffffff; color:#1e293b; font-weight:500; font-size:11px; padding:7.5px 8px; border-radius:12px; text-decoration:none; display:inline-flex; align-items:center; justify-content:center; gap:4px; border:1px solid #e2e8f0; box-shadow:0 1px 2px rgba(0,0,0,0.03); transition:all 0.15s ease; box-sizing:border-box;"
           >
             Directions
           </a>
@@ -417,7 +431,12 @@ export function InteractiveRouteMap({
           [destination.lat, destination.lng],
         ]);
         if (bounds.isValid()) {
-          map.fitBounds(bounds, { padding: [60, 60], maxZoom: 15, animate: true });
+          map.fitBounds(bounds, {
+            paddingTopLeft: [40, 160],
+            paddingBottomRight: [50, 50],
+            maxZoom: 15,
+            animate: true,
+          });
         }
       }
 
@@ -487,7 +506,12 @@ export function InteractiveRouteMap({
               if (map.invalidateSize) map.invalidateSize();
               const roadBounds = L.latLngBounds(roadPoints);
               if (roadBounds.isValid()) {
-                map.fitBounds(roadBounds, { padding: [60, 60], maxZoom: 15, animate: true });
+                map.fitBounds(roadBounds, {
+                  paddingTopLeft: [40, 160],
+                  paddingBottomRight: [50, 50],
+                  maxZoom: 15,
+                  animate: true,
+                });
               }
             }
 
@@ -600,13 +624,19 @@ export function InteractiveRouteMap({
           { direction: "top", offset: [0, -16], opacity: 0.96 }
         );
 
-        // Click popup
-        marker.bindPopup(createPopupHtml(hosp, patientCoords));
+        // Click popup with autoPan padding so it never collides with the HUD card
+        marker.bindPopup(createPopupHtml(hosp, patientCoords, isSelected), {
+          autoPan: true,
+          autoPanPaddingTopLeft: [30, 160],
+          autoPanPaddingBottomRight: [30, 30],
+          className: "custom-leaflet-popup",
+        });
 
-        // Clicking marker immediately selects this hospital and changes route
+        // Clicking marker immediately selects this hospital, updates route, and opens polished popup
         marker.on("click", (e: any) => {
           if (L.DomEvent) L.DomEvent.stopPropagation(e);
           onSelectHospital(hosp);
+          marker.openPopup();
         });
 
         hospitalMarkersMapRef.current.set(hosp.id, { marker, hosp });
@@ -746,9 +776,7 @@ export function InteractiveRouteMap({
       const isSelected = selectedHospital?.id === hosp.id;
       marker.setIcon(createHospitalIcon(L, hosp, isSelected, hosp.rank));
       marker.setZIndexOffset(isSelected ? 1400 : hosp.isEligible ? 400 : 100);
-      if (isSelected) {
-        marker.openPopup();
-      }
+      marker.setPopupContent(createPopupHtml(hosp, patientCoords, isSelected));
     });
 
     // 2. Draw route
@@ -879,11 +907,11 @@ export function InteractiveRouteMap({
       {/* ============================================================ COMPACT LIVE ROUTE PILL */}
       {/* ============================================================ MODERN NAVIGATION HUD (Apple Maps / Google Maps style) */}
       {!isManualPicking && patientCoords && selectedHospital && (
-        <div className="absolute top-3.5 left-3.5 z-10 max-w-[320px] sm:max-w-[340px] rounded-2xl bg-white/95 backdrop-blur-md border border-slate-200/90 shadow-lg p-3.5 text-xs text-slate-900 pointer-events-auto transition-all animate-in fade-in duration-200">
+        <div className="absolute top-3.5 left-3.5 z-20 max-w-[330px] sm:max-w-[350px] rounded-2xl bg-white/95 backdrop-blur-md border border-slate-200/90 shadow-lg p-4 text-xs text-slate-900 pointer-events-auto transition-all animate-in fade-in duration-200">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1.5 min-w-0">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
-              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 font-mono">
                 Active Route
               </span>
             </div>
@@ -907,20 +935,20 @@ export function InteractiveRouteMap({
             {selectedHospital.famousFor || getHospitalFamousFor(selectedHospital)}
           </div>
 
-          <div className="flex items-center justify-between text-xs mt-2.5 pt-2 border-t border-slate-200/90">
+          <div className="flex items-center justify-between text-xs mt-3 pt-2.5 border-t border-slate-200/90">
             <div className="flex items-center gap-1.5 font-bold text-slate-900">
               <Navigation className="w-3.5 h-3.5 text-slate-900" />
               <span>{routeInfo.distanceKm} km</span>
               <span className="text-slate-300 font-normal">·</span>
               <span className="text-slate-900">~{routeInfo.etaMinutes} min</span>
             </div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-2">
               <a
                 href={`tel:${selectedHospital.emergencyPhone || selectedHospital.phone || "108"}`}
                 title="Call Emergency"
-                className="inline-flex items-center gap-1 text-[11px] font-semibold text-white bg-rose-600 hover:bg-rose-700 shadow-xs px-2.5 py-1.5 rounded-xl transition-all cursor-pointer"
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-rose-600 hover:bg-rose-700 shadow-xs px-3 py-1.5 rounded-xl transition-all cursor-pointer active:scale-[0.98]"
               >
-                <PhoneCall className="w-3 h-3" />
+                <PhoneCall className="w-3.5 h-3.5" />
                 <span>Call ED</span>
               </a>
               <a
@@ -928,10 +956,10 @@ export function InteractiveRouteMap({
                 target="_blank"
                 rel="noopener noreferrer"
                 title="Open in Google Maps"
-                className="inline-flex items-center gap-1 text-[11px] font-semibold text-white bg-slate-950 hover:bg-slate-900 shadow-xs px-2.5 py-1.5 rounded-xl transition-all cursor-pointer"
+                className="inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-slate-950 hover:bg-slate-900 shadow-xs px-3 py-1.5 rounded-xl transition-all cursor-pointer active:scale-[0.98]"
               >
                 <span>Nav</span>
-                <ExternalLink className="w-3 h-3" />
+                <ExternalLink className="w-3.5 h-3.5" />
               </a>
             </div>
           </div>
