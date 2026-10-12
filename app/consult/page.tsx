@@ -41,7 +41,6 @@ import {
   AlertTriangle
 } from "lucide-react";
 import Link from "next/link";
-import { Navbar } from "../_components/Navbar";
 import { AppFooter } from "../_components/AppFooter";
 import { SoapReportModal } from "../_components/SoapReportModal";
 import { DOCTOR_PROFILES, DoctorProfile, getDoctorById } from "@/config/doctors";
@@ -54,7 +53,10 @@ import AccordionGallery from "@/components/AccordionGallery";
 import { SpotlightCard } from "@/components/ui/spotlight-card";
 import { GlowingBorder } from "@/components/ui/glowing-border";
 import { MovingBorder } from "@/components/ui/moving-border";
+import GlowCursor from "@/components/ui/GlowCursor";
 import { AnimatedContent } from "@/components/ui/animated-content";
+import SplitText from "@/components/ui/SplitText";
+import GradientText from "@/components/ui/GradientText";
 import { VoicePill, VoicePillState } from "@/components/clinical/VoicePill";
 import { ThoughtLine, ThoughtStep } from "@/components/clinical/ThoughtLine";
 import { PulseHeart } from "@/components/clinical/PulseHeart";
@@ -400,7 +402,25 @@ export type ConsultSessionMode = "CONSULT_LOBBY" | "ACTIVE_CONSULTATION" | "CONS
 
 export default function ConsultPage() {
   const { user } = useUser();
-  const patientDisplayName = user?.fullName || user?.firstName || "Patient";
+  const [activeProfile, setActiveProfile] = useState<any>(null);
+  const [userProfiles, setUserProfiles] = useState<any[]>([]);
+
+  useEffect(() => {
+    if (user?.id) {
+      fetch("/api/patient/profile?all=true")
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success && data.profiles?.length > 0) {
+            setUserProfiles(data.profiles);
+            const defaultProfile = data.profiles.find((p: any) => p.relationshipToUser === "self") || data.profiles[0];
+            setActiveProfile(defaultProfile);
+          }
+        })
+        .catch((err) => console.warn("Failed to load patient profiles:", err));
+    }
+  }, [user?.id]);
+
+  const patientDisplayName = activeProfile?.name || user?.fullName || user?.firstName || "Patient";
 
   const [sessionMode, setSessionMode] = useState<ConsultSessionMode>("CONSULT_LOBBY");
   const [selectedDoctor, setSelectedDoctor] = useState<DoctorProfile>(DOCTOR_PROFILES[0]);
@@ -514,6 +534,12 @@ export default function ConsultPage() {
   const [showSoapModal, setShowSoapModal] = useState<boolean>(false);
   const [showRatingModal, setShowRatingModal] = useState<boolean>(false);
   const [clinicalToasts, setClinicalToasts] = useState<Array<{ id: string; type: "success" | "warning" | "info"; title: string; description: string }>>([]);
+
+  // Encounter Persistence & Review State Machine
+  const stableEncounterIdRef = useRef<string>("");
+  const [currentEncounterId, setCurrentEncounterId] = useState<string>("");
+  const [persistenceStatus, setPersistenceStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [persistenceError, setPersistenceError] = useState<string | null>(null);
 
   const voicePillState: VoicePillState = 
     audioState === "PATIENT_LISTENING"
@@ -1790,6 +1816,90 @@ export default function ConsultPage() {
     });
   };
 
+  // Persist consultation record to primary archive (State machine: completed_pending_review)
+  const persistEncounterRecord = async (
+    encId: string,
+    durationSecs: number,
+    statusOverride: "completed_pending_review" | "approved" = "completed_pending_review"
+  ) => {
+    setPersistenceStatus("saving");
+    setPersistenceError(null);
+
+    const patientUtterances = messages.filter((m) => m.role === "patient");
+    const chiefConcern = patientUtterances.length > 0
+      ? patientUtterances[0].text.replace(/^"|"$/g, "")
+      : triageData?.detectedSymptoms?.length
+      ? triageData.detectedSymptoms.join(", ")
+      : "Clinical voice intake consultation";
+
+    const payload = {
+      id: encId,
+      patientName: patientDisplayName || "Anonymous Patient",
+      patientAge: activeProfile?.age != null ? String(activeProfile.age) : undefined,
+      patientGender: activeProfile?.gender || undefined,
+      doctorId: selectedDoctor.id,
+      doctorName: selectedDoctor.name,
+      specialty: selectedDoctor.department || selectedDoctor.specialty,
+      chiefComplaint: chiefConcern,
+      transcript: messages.map((m) => ({
+        role: m.role,
+        text: m.text,
+        timestamp: m.timestamp,
+      })),
+      triageLevel: triageData?.triageLevel || (boardData?.phase === "decided" ? "priority" : "routine"),
+      triageTitle: triageData?.triageTitle || "Clinical Voice Consultation Evaluation",
+      esiScore: triageData?.esiScore ?? null,
+      icd10Codes: triageData?.icdCodes || [],
+      detectedSymptoms: triageData?.detectedSymptoms || [],
+      soapSubjective: triageData?.soap?.subjective || "",
+      soapObjective: triageData?.soap?.objective || "",
+      soapAssessment: triageData?.soap?.assessment || "",
+      soapPlan: triageData?.soap?.plan || "",
+      recommendedSpecialists: selectedDoctor?.department ? [selectedDoctor.department] : [],
+      recommendedAction: triageData?.recommendedAction || "Consultation complete.",
+      durationSeconds: durationSecs,
+      status: statusOverride,
+    };
+
+    try {
+      const res = await fetch("/api/consultations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (res.ok) {
+        setPersistenceStatus("saved");
+        setPersistenceError(null);
+        // Immediate hygiene cleanup: Purge transient recovery buffer upon verified server persistence
+        if (typeof window !== "undefined" && window.sessionStorage) {
+          try {
+            window.sessionStorage.removeItem(`medvoice_transient_draft_${encId}`);
+          } catch {}
+        }
+      } else {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to persist consultation to clinical archive.");
+      }
+    } catch (err: any) {
+      console.error("Auto-persist encounter error:", err);
+      setPersistenceStatus("error");
+      setPersistenceError(err?.message || "Encounter sync failed.");
+      // Strict PHI hygiene: Store in sessionStorage (tab-isolated, non-persistent across browser sessions)
+      // with a strict 15-minute Time-To-Live (TTL) to prevent data accumulation.
+      if (typeof window !== "undefined" && window.sessionStorage) {
+        try {
+          const recoveryRecord = {
+            payload,
+            savedAt: Date.now(),
+            expiresAt: Date.now() + 15 * 60 * 1000,
+          };
+          window.sessionStorage.setItem(`medvoice_transient_draft_${encId}`, JSON.stringify(recoveryRecord));
+        } catch {}
+      }
+    }
+  };
+
   // End consultation session
   const endConsultation = () => {
     playbackSessionTokenRef.current += 1;
@@ -1815,7 +1925,17 @@ export default function ConsultPage() {
     if (timerRef.current) {
       clearInterval(timerRef.current);
     }
+
+    if (!stableEncounterIdRef.current) {
+      const genId = `ENC-${Date.now().toString().slice(-6)}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
+      stableEncounterIdRef.current = genId;
+      setCurrentEncounterId(genId);
+    }
+
     setSessionMode("CONSULT_COMPLETE");
+
+    // Automatically persist completed consultation as pending review
+    persistEncounterRecord(stableEncounterIdRef.current, elapsedSeconds, "completed_pending_review");
   };
 
   // Return to lobby and start new consultation
@@ -1823,6 +1943,11 @@ export default function ConsultPage() {
     playbackSessionTokenRef.current += 1;
     setPendingDoctorMessage(null);
     stopSpeechRecognitionListening();
+    if (typeof window !== "undefined" && window.sessionStorage && stableEncounterIdRef.current) {
+      try {
+        window.sessionStorage.removeItem(`medvoice_transient_draft_${stableEncounterIdRef.current}`);
+      } catch {}
+    }
     consultationStartedAtRef.current = null;
     consultationCompletedAtRef.current = null;
     setMessages([]);
@@ -1835,6 +1960,10 @@ export default function ConsultPage() {
     setTypedInput("");
     setInterviewState(null);
     setAudioState("IDLE");
+    stableEncounterIdRef.current = "";
+    setCurrentEncounterId("");
+    setPersistenceStatus("idle");
+    setPersistenceError(null);
     setSessionMode("CONSULT_LOBBY");
   };
 
@@ -1876,6 +2005,10 @@ export default function ConsultPage() {
           message: cleanUserText,
           conversationHistory: [...messages, userMessage],
           patientName: patientDisplayName,
+          patientAge: activeProfile?.age != null ? String(activeProfile.age) : undefined,
+          patientId: activeProfile?.id,
+          patientRelationship: activeProfile?.relationshipToUser || "self",
+          patientProfile: activeProfile || undefined,
           userId: user?.id,
           isInterruption: isBargeIn,
           interruptedAgent: selectedDoctor.name,
@@ -2077,7 +2210,8 @@ export default function ConsultPage() {
 
   return (
     <div className="relative min-h-screen bg-transparent text-slate-900 flex flex-col font-sans selection:bg-cyan-500 selection:text-white overflow-x-clip">
-      <Navbar />
+      {/* React Bits Subtle Interactive Ambient Cursor Glow */}
+      <GlowCursor color="rgba(6, 182, 212, 0.12)" size={350} blur={65} opacity={0.7} />
 
       <main className="relative z-10 flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 pt-6 sm:pt-8 pb-16 flex flex-col gap-8">
         
@@ -2102,12 +2236,74 @@ export default function ConsultPage() {
                     MEDVOICE · VOICE CLINICAL CONSULTATION
                   </span>
                 </div>
-                <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black text-slate-950 tracking-tight leading-[1.08]">
-                  Ready when you are.
-                </h1>
+                <div className="space-y-1">
+                  <SplitText
+                    text="Ready when you are."
+                    tag="h1"
+                    className="text-4xl sm:text-5xl lg:text-6xl font-black text-slate-950 tracking-tight leading-[1.08]"
+                  />
+                  <div className="pt-0.5">
+                    <GradientText
+                      colors={["#0891b2", "#06b6d4", "#0e7490"]}
+                      className="text-xs sm:text-sm font-bold uppercase tracking-wider font-mono"
+                    >
+                      Real-Time Clinical Voice Intelligence
+                    </GradientText>
+                  </div>
+                </div>
                 <p className="text-base sm:text-lg text-slate-600 max-w-2xl font-normal leading-relaxed">
                   Choose who you&apos;d like to consult with. Your symptoms will be carefully reviewed, with safety checks running continuously in the background.
                 </p>
+
+                {/* Linked Patient Profile Context Banner */}
+                <div className="pt-1">
+                  {activeProfile ? (
+                    <div className="inline-flex items-center gap-2.5 px-4 py-2 rounded-2xl bg-white border border-slate-200/90 shadow-2xs text-xs">
+                      <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981]" />
+                      <span className="text-slate-500 font-medium">Consulting for:</span>
+                      <strong className="text-slate-900 font-bold">{activeProfile.name || (activeProfile.relationshipToUser === "self" ? "Myself" : activeProfile.relationshipToUser)}</strong>
+                      {activeProfile.age ? (
+                        <span className="text-slate-500 font-mono text-[11px]">({activeProfile.age}y)</span>
+                      ) : null}
+                      {activeProfile.knownConditions?.length ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-800 text-[10px] font-bold">
+                          {activeProfile.knownConditions.length} condition{activeProfile.knownConditions.length > 1 ? "s" : ""}
+                        </span>
+                      ) : null}
+                      {userProfiles.length > 1 ? (
+                        <select
+                          aria-label="Switch patient profile"
+                          value={activeProfile.id}
+                          onChange={(e) => {
+                            const chosen = userProfiles.find((p) => p.id === e.target.value);
+                            if (chosen) setActiveProfile(chosen);
+                          }}
+                          className="text-[11px] font-semibold text-slate-700 bg-slate-100 rounded-lg px-2 py-0.5 border border-slate-200 cursor-pointer ml-1"
+                        >
+                          {userProfiles.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name || (p.relationshipToUser === "self" ? "Myself (Self)" : p.relationshipToUser)}
+                            </option>
+                          ))}
+                        </select>
+                      ) : null}
+                      <Link
+                        href="/profile"
+                        className="ml-2 font-semibold text-cyan-700 hover:text-cyan-900 text-[11px] underline"
+                      >
+                        Edit Profile
+                      </Link>
+                    </div>
+                  ) : (
+                    <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/90 border border-slate-200/80 text-xs text-slate-500 shadow-2xs">
+                      <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />
+                      <span>No medical profile attached.</span>
+                      <Link href="/profile" className="text-cyan-700 hover:text-cyan-900 font-semibold text-[11px] underline">
+                        Add Details (Optional)
+                      </Link>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Active Clinical Team Quick Roster Rail */}
@@ -2579,6 +2775,50 @@ export default function ConsultPage() {
                 </div>
               )}
 
+              {/* Compact React Bits ThoughtLine Micro-Interaction */}
+              {(callActive || audioState !== "IDLE" || Boolean(triageData?.isEmergency)) && (
+                <div className="pt-2 pb-1 border-t border-slate-100 flex items-center justify-between">
+                  <ThoughtLine
+                    label={
+                      triageData?.isEmergency
+                        ? "Emergency override active"
+                        : audioState === "PATIENT_LISTENING"
+                        ? "Listening…"
+                        : audioState === "PROCESSING_TRANSCRIPTION"
+                        ? "Transcribing…"
+                        : audioState === "PROCESSING_CLINICAL"
+                        ? "Thinking…"
+                        : audioState === "DOCTOR_SPEAKING"
+                        ? "Speaking…"
+                        : "Listening…"
+                    }
+                    doneLabel="Clinical system ready"
+                    working={
+                      !triageData?.isEmergency &&
+                      (audioState === "PATIENT_LISTENING" ||
+                        audioState === "PROCESSING_TRANSCRIPTION" ||
+                        audioState === "PROCESSING_CLINICAL" ||
+                        audioState === "BARGE_IN_DETECTED" ||
+                        audioState === "PROCESSING_INTERRUPTION" ||
+                        Boolean(pendingDoctorMessage))
+                    }
+                    isEmergency={Boolean(triageData?.isEmergency)}
+                    emergencyDirective={
+                      triageData?.isEmergency
+                        ? "Deterministic Red Flag Detected · Emergency Escalation Active"
+                        : undefined
+                    }
+                    steps={[]}
+                    collapsible={false}
+                    showTimer={false}
+                    glyph={triageData?.isEmergency ? "none" : "sparkle"}
+                    color="#0891b2"
+                    glyphColor="#06b6d4"
+                    className="w-full justify-between"
+                  />
+                </div>
+              )}
+
             </div>
 
             {/* SPEAKING INDICATOR */}
@@ -2699,65 +2939,53 @@ export default function ConsultPage() {
                   </div>
                 </div>
 
-                {/* React Bits MovingBorder Segmented Tab Navigation */}
-                <div className="flex items-center gap-2 p-1.5 rounded-2xl bg-slate-100/90 border border-slate-200/70 text-sm font-semibold">
-                  <div className="flex-1">
-                    <MovingBorder active={activeRightTab === "board"} borderRadius="12px" duration={3.5}>
-                      <button
-                        type="button"
-                        onClick={() => setActiveRightTab("board")}
-                        className={`w-full py-2.5 px-4 rounded-xl transition-all cursor-pointer text-center ${
-                          activeRightTab === "board"
-                            ? "text-slate-950 font-bold shadow-2xs"
-                            : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
-                        }`}
-                      >
-                        Review
-                      </button>
-                    </MovingBorder>
-                  </div>
+                {/* Clinical Segmented Tab Navigation */}
+                <div className="flex items-center gap-1.5 p-1.5 rounded-2xl bg-slate-100/90 border border-slate-200/70 text-sm font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => setActiveRightTab("board")}
+                    className={`flex-1 py-2.5 px-4 rounded-xl transition-all cursor-pointer text-center text-xs sm:text-sm ${
+                      activeRightTab === "board"
+                        ? "bg-white text-slate-950 font-bold shadow-xs border border-slate-200/80"
+                        : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+                    }`}
+                  >
+                    Review
+                  </button>
 
-                  <div className="flex-1">
-                    <MovingBorder active={activeRightTab === "context"} borderRadius="12px" duration={3.5}>
-                      <button
-                        type="button"
-                        onClick={() => setActiveRightTab("context")}
-                        className={`w-full py-2.5 px-4 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 ${
-                          activeRightTab === "context"
-                            ? "text-slate-950 font-bold shadow-2xs"
-                            : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
-                        }`}
-                      >
-                        <span>Context</span>
-                        {hasContextFacts && (
-                          <span className="px-2 py-0.5 rounded-full text-xs font-mono bg-teal-100 text-teal-800 font-bold">
-                            {contextKnownFacts.length}
-                          </span>
-                        )}
-                      </button>
-                    </MovingBorder>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveRightTab("context")}
+                    className={`flex-1 py-2.5 px-4 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 text-xs sm:text-sm ${
+                      activeRightTab === "context"
+                        ? "bg-white text-slate-950 font-bold shadow-xs border border-slate-200/80"
+                        : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+                    }`}
+                  >
+                    <span>Context</span>
+                    {hasContextFacts && (
+                      <span className="px-2 py-0.5 rounded-full text-xs font-mono bg-teal-100 text-teal-800 font-bold">
+                        {contextKnownFacts.length}
+                      </span>
+                    )}
+                  </button>
 
-                  <div className="flex-1">
-                    <MovingBorder active={activeRightTab === "care"} borderRadius="12px" duration={3.5}>
-                      <button
-                        type="button"
-                        onClick={() => setActiveRightTab("care")}
-                        className={`w-full py-2.5 px-4 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-2 ${
-                          activeRightTab === "care"
-                            ? "text-slate-950 font-bold shadow-2xs"
-                            : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
-                        }`}
-                      >
-                        <span>Care Options</span>
-                        {nearbyHospitals && nearbyHospitals.length > 0 && (
-                          <span className="px-2 py-0.5 rounded-full text-xs font-mono bg-emerald-100 text-emerald-800 font-bold">
-                            {nearbyHospitals.length}
-                          </span>
-                        )}
-                      </button>
-                    </MovingBorder>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setActiveRightTab("care")}
+                    className={`flex-1 py-2.5 px-4 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 text-xs sm:text-sm ${
+                      activeRightTab === "care"
+                        ? "bg-white text-slate-950 font-bold shadow-xs border border-slate-200/80"
+                        : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+                    }`}
+                  >
+                    <span>Care Options</span>
+                    {nearbyHospitals && nearbyHospitals.length > 0 && (
+                      <span className="px-2 py-0.5 rounded-full text-xs font-mono bg-emerald-100 text-emerald-800 font-bold">
+                        {nearbyHospitals.length}
+                      </span>
+                    )}
+                  </button>
                 </div>
 
                 {/* TAB: DELIBERATION STREAM (HUMAN-SCALE AGENT CARDS + REACT BITS ANIMATION) */}
@@ -3593,6 +3821,36 @@ export default function ConsultPage() {
                   Your clinical history has been recorded and your assessment is ready to review.
                 </p>
 
+                {/* Real-time Persistence Status Indicator */}
+                <div className="pt-0.5">
+                  {persistenceStatus === "saving" && (
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-50 border border-cyan-200 text-xs font-mono text-cyan-800">
+                      <span className="w-2 h-2 rounded-full bg-cyan-500 animate-ping" />
+                      <span>Syncing encounter to clinical archive...</span>
+                    </div>
+                  )}
+                  {persistenceStatus === "saved" && (
+                    <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-xs font-mono font-bold text-emerald-800">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Archived to Record · Pending Clinician Review</span>
+                      {currentEncounterId && <span className="text-slate-400 font-normal">({currentEncounterId})</span>}
+                    </div>
+                  )}
+                  {persistenceStatus === "error" && (
+                    <div className="inline-flex items-center gap-3 px-3.5 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                      <span>Sync pending: {persistenceError}</span>
+                      <button
+                        type="button"
+                        onClick={() => persistEncounterRecord(stableEncounterIdRef.current, callDuration)}
+                        className="px-2.5 py-0.5 rounded-lg bg-amber-700 hover:bg-amber-800 text-white font-bold text-[11px] cursor-pointer"
+                      >
+                        Retry Sync
+                      </button>
+                    </div>
+                  )}
+                </div>
+
                 {/* Clean 3-Card Summary Grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 w-full max-w-2xl pt-2">
                   {/* Card 1: Consultation Duration */}
@@ -3791,7 +4049,7 @@ export default function ConsultPage() {
         isOpen={showSoapModal}
         onClose={() => setShowSoapModal(false)}
         encounter={{
-          id: `ENC-${Date.now().toString().slice(-6)}`,
+          id: currentEncounterId || stableEncounterIdRef.current || `ENC-${Date.now().toString().slice(-6)}`,
           patientName: patientDisplayName,
           doctorId: selectedDoctor.id,
           doctorName: selectedDoctor.name,
@@ -3816,6 +4074,9 @@ export default function ConsultPage() {
           },
           auditSha256: boardData?.trace?.audit_sha256,
           userId: user?.id,
+        }}
+        onSaveSuccess={() => {
+          setPersistenceStatus("saved");
         }}
       />
 

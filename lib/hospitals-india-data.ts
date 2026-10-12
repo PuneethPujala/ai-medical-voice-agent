@@ -16,7 +16,7 @@ export interface Hospital {
   acceptsPublicInsurance?: boolean;
   affordabilityNotes?: string;
   source: string;
-  sourceType: "official_registry" | "verified_hospital_portal";
+  sourceType: "official_registry" | "verified_hospital_portal" | "osm_discovery";
   lastVerified: string;
   cancerSpecialistsAvailable?: boolean;
   capabilities?: string[];

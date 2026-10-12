@@ -1,12 +1,27 @@
 "use client";
 
 import React from "react";
-import Link from "next/link";
-import { ArrowLeft, ShieldCheck, Lock, CheckCircle2, FileText, Key, Activity } from "lucide-react";
-import { Navbar } from "../_components/Navbar";
+import dynamic from "next/dynamic";
+import { ShieldCheck, Lock, CheckCircle2, FileText, Key, Activity } from "lucide-react";
 import { AppFooter } from "../_components/AppFooter";
 import { ScrollExpand, ExpandItem } from "@/components/motion/ScrollExpand";
 import { ClinicalFlipCard } from "@/components/clinical/ClinicalFlipCard";
+import SplitText from "@/components/ui/SplitText";
+import GradientText from "@/components/ui/GradientText";
+import { AmbientPageBackground } from "@/components/ui/AmbientPageBackground";
+
+const ClinicalDataLifecycle3D = dynamic(
+  () => import("@/components/clinical/ClinicalDataLifecycle3D"),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="w-full h-[480px] rounded-3xl bg-[#090D16] border border-slate-800 p-8 flex flex-col items-center justify-center gap-4 animate-pulse">
+        <div className="w-10 h-10 rounded-full border-2 border-cyan-400 border-t-transparent animate-spin" />
+        <span className="font-mono text-xs text-slate-400">Initializing 3D Data Lifecycle Instrument...</span>
+      </div>
+    ),
+  }
+);
 
 const EXPAND_SAFEGUARDS: ExpandItem[] = [
   {
@@ -77,31 +92,25 @@ const EXPAND_SAFEGUARDS: ExpandItem[] = [
 
 export default function PrivacyPolicyPage() {
   return (
-    <div className="relative min-h-screen bg-[#FAF9F6] text-slate-900 font-sans flex flex-col justify-between selection:bg-cyan-500 selection:text-white">
+    <AmbientPageBackground>
       <div>
-        <Navbar />
-
-        {/* HERO HEADER */}
-        <section className="pt-16 pb-12 px-6 max-w-4xl mx-auto space-y-4">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 text-xs font-mono font-bold text-slate-500 hover:text-slate-900 transition-colors"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Back to Home</span>
-          </Link>
-
-          <div className="space-y-2 pt-2">
-            <span className="font-mono text-xs font-bold uppercase tracking-[0.1em] text-cyan-800 bg-cyan-50 border border-cyan-200 px-3.5 py-1 rounded-full inline-block">
-              SECURITY & COMPLIANCE ARCHITECTURE
-            </span>
-            <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-slate-950 leading-tight">
-              Privacy Policy & Technical Safeguards
-            </h1>
-            <p className="text-base text-slate-600 font-normal leading-relaxed max-w-2xl">
-              MedVoice AI is engineered around strict zero voice-retention policies, end-to-end encryption, and verifiable cryptographic compliance logs.
-            </p>
+        {/* HERO SECTION WITH CENTERPIECE 3D INSTRUMENT */}
+        <section className="pt-24 sm:pt-28 pb-16 px-4 sm:px-6 max-w-5xl lg:max-w-6xl mx-auto space-y-8 scroll-mt-24">
+          <div className="space-y-4">
+            <div className="space-y-3">
+              <span className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-slate-500 block">
+                MEDVOICE / ARCHITECTURE & PRIVACY
+              </span>
+              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-slate-950 leading-[1.1]">
+                Your clinical data has a clear path.
+              </h1>
+              <p className="text-base sm:text-lg text-slate-600 font-normal leading-relaxed max-w-3xl">
+                Explore how voice streams, clinical reasoning, cloud boundaries, and cryptographic audit records are isolated and protected throughout every consultation.
+              </p>
+            </div>
           </div>
+
+          <ClinicalDataLifecycle3D />
         </section>
 
         {/* PROGRESSIVE DISCLOSURE: SCROLL EXPAND SAFEGUARDS */}
@@ -157,6 +166,6 @@ export default function PrivacyPolicyPage() {
       </div>
 
       <AppFooter />
-    </div>
+    </AmbientPageBackground>
   );
 }

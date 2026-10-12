@@ -266,6 +266,7 @@ Information Sources: Patient-reported · AI-inferred · Zero fabricated vitals
         soapPlan: plan,
         recommendedAction: encounter.recommendedAction,
         durationSeconds: encounter.callDuration,
+        status: "approved",
       };
 
       const res = await fetch("/api/consultations", {
@@ -627,7 +628,7 @@ Information Sources: Patient-reported · AI-inferred · Zero fabricated vitals
               disabled={isSaving || saveSuccess}
               icon={saveSuccess ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <Save className="w-4 h-4" />}
             >
-              {isSaving ? "Saving..." : saveSuccess ? "Saved to Record" : "Approve & Save"}
+              {isSaving ? "Saving..." : saveSuccess ? "Clinician Approved" : "Approve & Sign Note"}
             </PremiumButton>
           </div>
         </div>

@@ -1,11 +1,11 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/config/db";
 import { consultationsTable } from "@/config/schema";
-import { desc, eq } from "drizzle-orm";
+import { and, desc, eq, ne } from "drizzle-orm";
 import { getAuthContext, hasPermission } from "@/lib/auth/rbac";
 import { logAuditEventAsync } from "@/lib/audit/audit-logger";
 
-// Fallback in-memory store if database is initializing or during local evaluation
+// Baseline synthetic clinical demonstration encounters (strictly segregated from production patient queries)
 export const memoryConsultations: any[] = [
   {
     id: "MED-2026-ACS-8841",
@@ -28,6 +28,9 @@ export const memoryConsultations: any[] = [
     recommendedSpecialists: ["Interventional Cardiology", "Emergency Medicine"],
     recommendedAction: "Proceed immediately to the nearest Emergency Department equipped with 24/7 Cardiac Cath Lab / PCI.",
     durationSeconds: 142,
+    status: "approved",
+    approvedAt: new Date(Date.now() - 3500000).toISOString(),
+    approvedBy: "dr-sarah-chen",
     createdAt: new Date(Date.now() - 3600000).toISOString(),
     transcript: [
       { role: "doctor", text: "Hello Marcus, I am Dr. Sarah Chen. How are you feeling today?", timestamp: "11:00 AM" },
@@ -58,6 +61,9 @@ export const memoryConsultations: any[] = [
     recommendedSpecialists: ["Neurology & Stroke Care", "Emergency Medicine"],
     recommendedAction: "Immediate ambulance dispatch to certified Primary Stroke Center.",
     durationSeconds: 98,
+    status: "approved",
+    approvedAt: new Date(Date.now() - 7100000).toISOString(),
+    approvedBy: "dr-marcus-vance",
     createdAt: new Date(Date.now() - 7200000).toISOString(),
     transcript: [
       { role: "doctor", text: "Hello Elena, Dr. Marcus Vance here. What symptoms brought you in?", timestamp: "10:15 AM" },
@@ -86,6 +92,7 @@ export const memoryConsultations: any[] = [
     recommendedSpecialists: ["Primary Care & Internal Medicine"],
     recommendedAction: "Schedule visit with primary care physician or walk-in outpatient clinic.",
     durationSeconds: 110,
+    status: "completed_pending_review",
     createdAt: new Date(Date.now() - 86400000).toISOString(),
     transcript: [
       { role: "doctor", text: "Hello David, how can I help you today?", timestamp: "09:00 AM" },
@@ -101,9 +108,26 @@ export async function GET(request: Request) {
     const auth = await getAuthContext(request);
     const { searchParams } = new URL(request.url);
     const userIdParam = searchParams.get("userId");
+    const datasetParam = searchParams.get("dataset");
+    const isSyntheticDemo = datasetParam === "synthetic_demo" || searchParams.get("demo") === "true";
 
-    // RBAC: Patients can only view their own consultations.
-    // Platform administrators have permission to query platform records for maintenance.
+    // 1. Explicit Synthetic Demonstration Dataset Mode
+    // Synthetic records are strictly segregated and watermarked. They are never mixed into production queries.
+    if (isSyntheticDemo) {
+      return NextResponse.json({
+        success: true,
+        isSyntheticDataset: true,
+        warning: "SYNTHETIC DEMONSTRATION DATASET · FOR EVALUATION ONLY · NOT REAL PATIENT RECORDS",
+        consultations: memoryConsultations.map((c) => ({
+          ...c,
+          isSynthetic: true,
+          syntheticWatermark: "DEMO / SYNTHETIC",
+        })),
+      });
+    }
+
+    // 2. RBAC & Tenant Isolation: Patients can only view their own consultations.
+    // Platform administrators have authority to inspect platform records for maintenance.
     const canReadAll = auth.role === "admin";
     if (!canReadAll && userIdParam && userIdParam !== auth.userId) {
       await logAuditEventAsync({
@@ -128,8 +152,8 @@ export async function GET(request: Request) {
       );
     }
 
-    // Determine target user scope based on RBAC permissions
-    const targetUserId = canReadAll ? userIdParam : auth.userId;
+    // Determine target user scope based on verified server-side identity (never trust client userId)
+    const targetUserId = canReadAll ? (userIdParam || null) : auth.userId;
 
     await logAuditEventAsync({
       actorId: auth.userId,
@@ -141,9 +165,8 @@ export async function GET(request: Request) {
       metadata: { targetUserId: targetUserId || "all", canReadAll },
     });
 
-    // Try fetching from Neon database
+    // 3. Fetch from primary database (Neon PostgreSQL)
     const dbClient = getDb();
-    let dbErrorOccurred = false;
     if (dbClient) {
       try {
         let results;
@@ -153,22 +176,33 @@ export async function GET(request: Request) {
             .from(consultationsTable)
             .where(eq(consultationsTable.userId, targetUserId))
             .orderBy(desc(consultationsTable.createdAt))
-            .limit(20);
+            .limit(50);
         } else {
           results = await dbClient
             .select()
             .from(consultationsTable)
             .orderBy(desc(consultationsTable.createdAt))
-            .limit(20);
+            .limit(50);
         }
-        return NextResponse.json({ success: true, consultations: results });
+        return NextResponse.json({
+          success: true,
+          consultations: results,
+          isSyntheticDataset: false,
+        });
       } catch (dbErr) {
-        dbErrorOccurred = true;
-        console.warn("Neon DB query error:", dbErr);
+        console.error("Neon DB query error:", dbErr);
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Clinical datastore query failure. Unable to retrieve authorized records.",
+            code: "SERVICE_UNAVAILABLE",
+          },
+          { status: 503 }
+        );
       }
     }
 
-    // In production, database failure must never fall back to synthetic clinical records
+    // In production, database absence must return 503 Service Unavailable (never synthetic fallback)
     if (process.env.NODE_ENV === "production") {
       return NextResponse.json(
         {
@@ -180,15 +214,28 @@ export async function GET(request: Request) {
       );
     }
 
-    // Fallback to local memory store strictly for development and test environments
-    const filtered = targetUserId
-      ? memoryConsultations.filter((c) => c.userId === targetUserId)
-      : memoryConsultations;
+    // Fallback strictly for local automated test runners (NODE_ENV === 'test' with test harness secret)
+    if (auth.isDemoMode && process.env.NODE_ENV === "test") {
+      const filtered = targetUserId
+        ? memoryConsultations.filter((c) => c.userId === targetUserId)
+        : memoryConsultations;
 
-    return NextResponse.json({
-      success: true,
-      consultations: filtered.slice().reverse(),
-    });
+      return NextResponse.json({
+        success: true,
+        consultations: filtered.slice().reverse(),
+        isSyntheticDataset: false,
+      });
+    }
+
+    // When DB is unconfigured in development, return 503 rather than silent fake records
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Database unconfigured. Real clinical datastore required.",
+        code: "DATABASE_UNCONFIGURED",
+      },
+      { status: 503 }
+    );
   } catch (error: any) {
     console.error("[ConsultationsGetError]", error);
     return NextResponse.json(
@@ -202,7 +249,7 @@ export async function POST(request: Request) {
   try {
     const auth = await getAuthContext(request);
 
-    // RBAC: Verify permission to create clinical consultation
+    // 1. RBAC: Verify permission to record clinical consultations
     if (!hasPermission(auth.role, "consultations:create")) {
       await logAuditEventAsync({
         actorId: auth.userId,
@@ -220,10 +267,26 @@ export async function POST(request: Request) {
       );
     }
 
+    // 2. Derive authoritative user identity from server session
+    // Never trust client-supplied userId to establish ownership
+    if (auth.userId === "unauthenticated" && !auth.isDemoMode) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Unauthorized: Authentication required to persist consultation records.",
+          code: "UNAUTHORIZED",
+        },
+        { status: 401 }
+      );
+    }
+
     const body = await request.json();
+    // Authoritative tenant/patient isolation: server identity strictly enforced.
+    // Client-supplied userId is discarded unless caller possesses verified administrator role.
+    const effectiveUserId = auth.role === "admin" && body.userId ? body.userId : auth.userId;
+
     const {
-      id = `MED-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
-      userId,
+      id,
       patientName = "Anonymous Patient",
       patientAge,
       patientGender,
@@ -243,11 +306,234 @@ export async function POST(request: Request) {
       recommendedSpecialists = [],
       recommendedAction = "",
       durationSeconds = 0,
+      status: requestedStatus,
     } = body;
 
-    // In demo mode allow the simulated client userId; otherwise enforce the verified session userId
-    const effectiveUserId = auth.isDemoMode && userId ? userId : auth.userId;
+    if (!id || typeof id !== "string") {
+      return NextResponse.json(
+        { success: false, error: "Invalid consultation: Stable encounter 'id' is required." },
+        { status: 400 }
+      );
+    }
 
+    const dbClient = getDb();
+    if (!dbClient && process.env.NODE_ENV === "production") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Database configuration unavailable in production environment.",
+          code: "DATABASE_UNCONFIGURED",
+        },
+        { status: 503 }
+      );
+    }
+
+    // Clinical signing authority validation:
+    // Only clinicians and administrators possess authority to create or transition a consultation to approved.
+    const isApprovingRequested = requestedStatus === "approved";
+    if (isApprovingRequested && !hasPermission(auth.role, "consultations:approve")) {
+      await logAuditEventAsync({
+        actorId: auth.userId,
+        actorRole: auth.role,
+        action: "ACCESS_DENIED",
+        resourceType: "consultation",
+        resourceId: id,
+        status: "DENIED",
+        metadata: {
+          reason: "Unauthorized attempt to create or mark consultation as approved without clinical signing authority",
+          userRole: auth.role,
+        },
+      });
+
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Forbidden: Clinical signing authority required to approve medical records. Only clinicians and administrators may sign notes.",
+          code: "FORBIDDEN_SIGNING_AUTHORITY",
+        },
+        { status: 403 }
+      );
+    }
+
+    // 3. Check for existing consultation (Idempotent persistence & state transition)
+    let existingRecord: any = null;
+    if (dbClient) {
+      try {
+        const existingList = await dbClient
+          .select()
+          .from(consultationsTable)
+          .where(eq(consultationsTable.id, id))
+          .limit(1);
+        if (existingList.length > 0) {
+          existingRecord = existingList[0];
+        }
+      } catch (dbErr) {
+        console.error("Neon DB existence check error:", dbErr);
+        return NextResponse.json(
+          { success: false, error: "Failed to access clinical datastore.", code: "PERSISTENCE_FAILURE" },
+          { status: 503 }
+        );
+      }
+    } else {
+      existingRecord = memoryConsultations.find((c) => c.id === id);
+    }
+
+    // 4. If record exists: verify ownership and perform idempotent update
+    if (existingRecord) {
+      if (existingRecord.userId !== effectiveUserId && auth.role !== "admin") {
+        await logAuditEventAsync({
+          actorId: auth.userId,
+          actorRole: auth.role,
+          action: "ACCESS_DENIED",
+          resourceType: "consultation",
+          resourceId: id,
+          status: "DENIED",
+          metadata: {
+            reason: "IDOR attempt: User attempted to modify another patient's consultation",
+            recordOwner: existingRecord.userId,
+            attemptedBy: effectiveUserId,
+          },
+        });
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Forbidden: You are not authorized to update another patient's consultation record.",
+            code: "FORBIDDEN",
+          },
+          { status: 403 }
+        );
+      }
+
+      // STATE MACHINE RULE 1: Stale Downgrade Rejection
+      // If a consultation is already approved, it can NEVER be downgraded to pending review or draft.
+      if (existingRecord.status === "approved" && requestedStatus && requestedStatus !== "approved") {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Conflict: Consultation record is already approved and signed. Stale draft updates and status downgrades are prohibited.",
+            code: "STATUS_CONFLICT",
+          },
+          { status: 409 }
+        );
+      }
+
+      // STATE MACHINE RULE 2: Stale Draft Protection on Already Approved Records
+      // If the record is already approved, and the incoming request is a delayed retry of an unapproved draft,
+      // return the existing approved record idempotently without overwriting signed clinical content.
+      if (existingRecord.status === "approved" && !isApprovingRequested) {
+        return NextResponse.json({
+          success: true,
+          consultation: existingRecord,
+          isExisting: true,
+          message: "Idempotent retry: Existing approved clinical record preserved.",
+        });
+      }
+
+      const isTransitioningToApproved = isApprovingRequested && existingRecord.status !== "approved";
+      const finalStatus = isApprovingRequested ? "approved" : (requestedStatus || existingRecord.status || "completed_pending_review");
+
+      const updateData: any = {
+        patientName,
+        patientAge: patientAge ? String(patientAge) : existingRecord.patientAge,
+        patientGender: patientGender ?? existingRecord.patientGender,
+        doctorId,
+        doctorName,
+        specialty,
+        chiefComplaint: chiefComplaint || existingRecord.chiefComplaint,
+        transcript: transcript.length > 0 ? transcript : existingRecord.transcript,
+        triageLevel: triageLevel || existingRecord.triageLevel,
+        triageTitle: triageTitle || existingRecord.triageTitle,
+        icd10Codes: icd10Codes.length > 0 ? icd10Codes : existingRecord.icd10Codes,
+        detectedSymptoms: detectedSymptoms.length > 0 ? detectedSymptoms : existingRecord.detectedSymptoms,
+        soapSubjective: soapSubjective || existingRecord.soapSubjective,
+        soapObjective: soapObjective || existingRecord.soapObjective,
+        soapAssessment: soapAssessment || existingRecord.soapAssessment,
+        soapPlan: soapPlan || existingRecord.soapPlan,
+        recommendedSpecialists: recommendedSpecialists.length > 0 ? recommendedSpecialists : existingRecord.recommendedSpecialists,
+        recommendedAction: recommendedAction || existingRecord.recommendedAction,
+        durationSeconds: durationSeconds || existingRecord.durationSeconds,
+        status: finalStatus,
+      };
+
+      if (isTransitioningToApproved) {
+        updateData.approvedAt = new Date();
+        updateData.approvedBy = auth.userId;
+      }
+
+      if (dbClient) {
+        try {
+          await dbClient
+            .update(consultationsTable)
+            .set(updateData)
+            .where(
+              and(
+                eq(consultationsTable.id, id),
+                auth.role === "admin" ? undefined : eq(consultationsTable.userId, effectiveUserId)
+              )
+            );
+        } catch (dbErr) {
+          console.error("Neon DB update error:", dbErr);
+          return NextResponse.json(
+            { success: false, error: "Failed to persist consultation update.", code: "PERSISTENCE_FAILURE" },
+            { status: 503 }
+          );
+        }
+      } else {
+        Object.assign(existingRecord, updateData);
+      }
+
+      try {
+        await logAuditEventAsync({
+          actorId: auth.userId,
+          actorRole: auth.role,
+          action: isApprovingRequested ? "CONSULTATION_APPROVED" : "CONSULTATION_UPDATED",
+          resourceType: "consultation",
+          resourceId: id,
+          status: "SUCCESS",
+          metadata: {
+            previousStatus: existingRecord.status,
+            newStatus: finalStatus,
+            effectiveUserId,
+          },
+        });
+      } catch (auditErr: any) {
+        console.error("Critical: Audit ledger write failure during consultation update:", auditErr);
+        if (dbClient) {
+          try {
+            await dbClient
+              .update(consultationsTable)
+              .set({
+                status: existingRecord.status,
+                approvedAt: existingRecord.approvedAt || null,
+                approvedBy: existingRecord.approvedBy || null,
+              })
+              .where(eq(consultationsTable.id, id));
+          } catch {}
+        }
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Audit ledger persistence failure. Operation aborted to preserve compliance integrity.",
+            code: "AUDIT_FAILURE",
+          },
+          { status: 500 }
+        );
+      }
+
+      const updatedRecord = {
+        ...existingRecord,
+        ...updateData,
+      };
+
+      return NextResponse.json({
+        success: true,
+        consultation: updatedRecord,
+        isExisting: true,
+      });
+    }
+
+    // 5. If record does not exist: perform initial insertion
+    const initialStatus = requestedStatus || "completed_pending_review";
     const newRecord = {
       id,
       userId: effectiveUserId,
@@ -270,62 +556,90 @@ export async function POST(request: Request) {
       recommendedSpecialists,
       recommendedAction,
       durationSeconds,
+      status: initialStatus,
+      approvedAt: initialStatus === "approved" ? new Date() : null,
+      approvedBy: initialStatus === "approved" ? auth.userId : null,
       createdAt: new Date(),
     };
 
-    // Append to tamper-evident cryptographic audit ledger
-    await logAuditEventAsync({
-      actorId: auth.userId,
-      actorRole: auth.role,
-      action: "CONSULTATION_CREATED",
-      resourceType: "consultation",
-      resourceId: id,
-      status: "SUCCESS",
-      metadata: {
-        triageLevel,
-        specialty,
-        effectiveUserId,
-        icd10Count: icd10Codes.length,
-      },
-    });
-
-    // Store in Neon DB if configured
-    const dbClient = getDb();
     if (dbClient) {
       try {
         await dbClient.insert(consultationsTable).values(newRecord as any);
-        return NextResponse.json({ success: true, consultation: newRecord });
-      } catch (dbErr) {
-        console.error("Neon DB insert error:", dbErr);
-        if (process.env.NODE_ENV === "production") {
-          return NextResponse.json(
-            {
-              success: false,
-              error: "Failed to persist consultation record to primary clinical datastore.",
-              code: "PERSISTENCE_FAILURE",
-            },
-            { status: 503 }
-          );
+      } catch (dbErr: any) {
+        const isUniqueViolation =
+          dbErr?.code === "23505" ||
+          dbErr?.cause?.code === "23505" ||
+          dbErr?.message?.toLowerCase().includes("unique") ||
+          dbErr?.message?.toLowerCase().includes("duplicate key") ||
+          dbErr?.cause?.message?.toLowerCase().includes("unique") ||
+          dbErr?.cause?.message?.toLowerCase().includes("duplicate key");
+
+        if (isUniqueViolation) {
+          console.log(`Concurrent insert race resolved for encounter ${id}`);
+          const reFetched = await dbClient
+            .select()
+            .from(consultationsTable)
+            .where(eq(consultationsTable.id, id))
+            .limit(1);
+          if (reFetched.length > 0) {
+            return NextResponse.json({
+              success: true,
+              consultation: reFetched[0],
+              isExisting: true,
+            });
+          }
         }
+        console.error("Neon DB insert error:", dbErr);
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Failed to persist consultation record to primary clinical datastore.",
+            code: "PERSISTENCE_FAILURE",
+          },
+          { status: 503 }
+        );
       }
-    } else if (process.env.NODE_ENV === "production") {
+    } else {
+      memoryConsultations.push(newRecord);
+    }
+
+    try {
+      await logAuditEventAsync({
+        actorId: auth.userId,
+        actorRole: auth.role,
+        action: initialStatus === "approved" ? "CONSULTATION_APPROVED" : "CONSULTATION_CREATED",
+        resourceType: "consultation",
+        resourceId: id,
+        status: "SUCCESS",
+        metadata: {
+          triageLevel,
+          specialty,
+          effectiveUserId,
+          status: initialStatus,
+          icd10Count: icd10Codes.length,
+        },
+      });
+    } catch (auditErr: any) {
+      console.error("Critical: Audit ledger write failure during initial consultation creation:", auditErr);
+      if (dbClient) {
+        try {
+          await dbClient.delete(consultationsTable).where(eq(consultationsTable.id, id));
+        } catch {}
+      }
       return NextResponse.json(
         {
           success: false,
-          error: "Database configuration unavailable in production environment.",
-          code: "DATABASE_UNCONFIGURED",
+          error: "Audit ledger persistence failure. Encounter creation aborted to preserve compliance integrity.",
+          code: "AUDIT_FAILURE",
         },
-        { status: 503 }
+        { status: 500 }
       );
     }
-
-    // Save to memory store strictly for development and test environments
-    memoryConsultations.push(newRecord);
 
     return NextResponse.json({
       success: true,
       consultation: newRecord,
-      note: "Saved to clinical consultation session buffer with tamper-evident audit record.",
+      isExisting: false,
     });
   } catch (error: any) {
     console.error("[ConsultationsPostError]", error);

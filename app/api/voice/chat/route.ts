@@ -11,6 +11,8 @@ import { hospitalRagService } from "@/lib/care-network/hospital-rag";
 import { buildProvenanceEvidenceFromClinicalState } from "@/lib/agents/provenance";
 import { extractSubfieldState } from "@/lib/triage/clinical-state";
 import { evaluatePreArbiter } from "@/lib/triage/pre-arbiter";
+import { PatientProfileService } from "@/lib/patient/patient-profile-service";
+import { CallerProfile, PatientProfile } from "@/lib/clinical-knowledge/types";
 
 import {
   checkRateLimit,
@@ -39,6 +41,10 @@ export async function POST(request: Request) {
       conversationHistory = [],
       patientName = "Patient",
       patientAge,
+      patientId: requestedPatientId,
+      patientRelationship,
+      patientProfile: inputProfile,
+      userId: bodyUserId,
       audioMetrics,
       isInterruption = false,
       interruptedAgent = "",
@@ -181,12 +187,25 @@ export async function POST(request: Request) {
       isLiveDsp: audioMetrics?.isLiveDsp,
     });
 
+    // Resolve target patient profile and subject attribution (self vs mother vs child vs other)
+    const { profile: resolvedProfile, inferredSubject } = await PatientProfileService.resolveTargetPatientProfile(
+      bodyUserId,
+      cleanMsg,
+      requestedPatientId,
+      patientRelationship
+    );
+    const activeProfile: PatientProfile | null = inputProfile || resolvedProfile;
+
     let ageNum: number | null = null;
     let ageSource: "patient_reported" | "profile" | "unknown" = "unknown";
     let ageGroup: "infant" | "pediatric" | "adult" | "geriatric" | "unknown" = "unknown";
 
     if (patientAge && !isNaN(parseInt(patientAge, 10))) {
       ageNum = parseInt(patientAge, 10);
+      ageSource = "profile";
+      ageGroup = ageNum < 1 ? "infant" : ageNum < 18 ? "pediatric" : ageNum > 65 ? "geriatric" : "adult";
+    } else if (activeProfile?.age != null && !isNaN(activeProfile.age) && activeProfile.age >= 0) {
+      ageNum = activeProfile.age;
       ageSource = "profile";
       ageGroup = ageNum < 1 ? "infant" : ageNum < 18 ? "pediatric" : ageNum > 65 ? "geriatric" : "adult";
     } else {
@@ -211,11 +230,17 @@ export async function POST(request: Request) {
     }
 
     // 2. Stateful Clinical Conversation Manager Turn Execution
-    const turnResult = await conversationManager.processTurn(cleanMsg, body.interviewState, {
-      age: ageNum ?? undefined,
-      age_group: ageGroup === "unknown" ? "adult" : ageGroup,
-      age_source: ageSource
-    });
+    const turnResult = await conversationManager.processTurn(
+      cleanMsg,
+      body.interviewState,
+      {
+        age: ageNum ?? undefined,
+        age_group: ageGroup === "unknown" ? "adult" : ageGroup,
+        age_source: ageSource
+      },
+      undefined,
+      { patientProfile: activeProfile || undefined }
+    );
 
     const knownFactsCount = turnResult.state.slots.known_facts.length;
     const slots = turnResult.state.slots;
@@ -392,7 +417,13 @@ export async function POST(request: Request) {
       }
     }
 
-    // 3. Generative Clinical Turn Response (NVIDIA NIM LLM with Pre-Arbiter Emergency Invariant)
+    // 3. Generative Clinical Turn Response (NVIDIA NIM / Groq LLM with Pre-Arbiter Emergency Invariant)
+    const callerProfile: CallerProfile = {
+      id: bodyUserId || "caller-session",
+      name: patientName,
+      relationshipToPatient: inferredSubject === "mother" ? "child" : inferredSubject === "child" ? "parent" : "self",
+    };
+
     const llmResult = await generateDoctorTurnResponse({
       patientUtterance: cleanMsg,
       conversationHistory,
@@ -403,6 +434,9 @@ export async function POST(request: Request) {
       missingDimensions: missingDims,
       fallbackReply: turnResult.doctorReply,
       careNetworkSummary,
+      callerProfile,
+      patientProfile: activeProfile || undefined,
+      targetSubject: inferredSubject,
     });
 
     const activeDoctorReply = turnResult.action === "CLARIFY" ? turnResult.doctorReply : (llmResult.reply || turnResult.doctorReply);
@@ -555,6 +589,17 @@ export async function POST(request: Request) {
           recommendedAction: "Clinical history in progress. Triage disposition will lock once evidence is sufficient.",
           soap: null,
         },
+        patientProfile: activeProfile ? {
+          id: activeProfile.id,
+          name: activeProfile.name,
+          relationshipToUser: activeProfile.relationshipToUser,
+          age: activeProfile.age,
+          knownConditions: activeProfile.knownConditions,
+          currentMedications: activeProfile.currentMedications,
+          allergyStatus: activeProfile.allergyStatus,
+          drugAllergies: activeProfile.drugAllergies,
+        } : null,
+        targetSubject: inferredSubject,
       });
     }
 
@@ -744,6 +789,17 @@ export async function POST(request: Request) {
         recommendedAction: boardOutput.post_arbiter.final_disposition,
         soap: boardOutput.soap_note,
       },
+      patientProfile: activeProfile ? {
+        id: activeProfile.id,
+        name: activeProfile.name,
+        relationshipToUser: activeProfile.relationshipToUser,
+        age: activeProfile.age,
+        knownConditions: activeProfile.knownConditions,
+        currentMedications: activeProfile.currentMedications,
+        allergyStatus: activeProfile.allergyStatus,
+        drugAllergies: activeProfile.drugAllergies,
+      } : null,
+      targetSubject: inferredSubject,
     });
   } catch (error: any) {
     console.error("[VoiceChatError]", error);

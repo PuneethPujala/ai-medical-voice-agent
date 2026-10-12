@@ -207,6 +207,86 @@ export function normalizeHospitalName(name: string): string {
   return n;
 }
 
+/**
+ * Validates whether a hospital name is genuine rather than a generic tag or placeholder.
+ * Rejects entries like "#hospital", "Hospital", "hospital", "Local Hospital", "Dispensary", etc.
+ */
+export function isPlaceholderOrGenericHospitalName(name: string | null | undefined): boolean {
+  if (!name || typeof name !== "string") return true;
+  const trimmed = name.trim();
+  if (trimmed.length < 2) return true;
+
+  // Starts with hashtags, symbols, or invalid prefixes (e.g. #hospital)
+  if (/^[#@$%&*^~_+=!/?]/.test(trimmed)) return true;
+
+  const lower = trimmed.toLowerCase();
+
+  // Exclude veterinary / animal facilities (MedVoice is strictly for human emergency & clinical care)
+  if (/\b(animal|veterinary|veterinarian|vet|pashu|pet|cattle|zoological)\b/i.test(lower)) {
+    return true;
+  }
+
+  // Known exact placeholder tokens
+  const genericExact = new Set([
+    "hospital",
+    "hospitals",
+    "#hospital",
+    "clinic",
+    "clinics",
+    "dispensary",
+    "nursing home",
+    "health care",
+    "healthcare",
+    "health centre",
+    "health center",
+    "primary health centre",
+    "community health centre",
+    "medical centre",
+    "medical center",
+    "medical college",
+    "local hospital",
+    "general hospital",
+    "district hospital",
+    "government hospital",
+    "private hospital",
+    "unknown",
+    "null",
+    "undefined",
+    "test",
+    "test hospital",
+    "sample",
+    "dummy",
+    "placeholder",
+    "temp",
+    "rmp hospital",
+    "hospital jyo",
+  ]);
+
+  if (genericExact.has(lower)) return true;
+
+  // Canonical name must leave at least 2 distinct characters
+  // e.g. "Hospital" -> "" (invalid)
+  // "Super Speciality Hospital" -> "" (invalid)
+  const canon = normalizeHospitalName(trimmed);
+  if (!canon || canon.length < 2) return true;
+
+  // Pure digits
+  if (/^\d+$/.test(canon)) return true;
+
+  return false;
+}
+
+/**
+ * Validates whether a hospital phone number is genuine rather than a placeholder.
+ */
+export function isValidHospitalPhoneNumber(phone?: string | null): boolean {
+  if (!phone || typeof phone !== "string") return false;
+  const trimmed = phone.trim();
+  if (trimmed.length < 3) return false;
+  if (trimmed.includes("8000 000 000") || trimmed.includes("0000000000") || trimmed === "0000") return false;
+  return true;
+}
+
 
 // ─── 2. Multi-Signal Deduplication ──────────────────────────────────────────
 
@@ -217,26 +297,26 @@ export function normalizeHospitalName(name: string): string {
  * 2. **Geo proximity** — haversine distance ≤ 350 meters
  *
  * Both signals must match for a pair to be considered duplicates.
- *
- * When merging, the **curated** record (official_registry / has accreditation / has
- * a real phone number) is preferred as the base, with OSM-discovered fields filling gaps.
+ * Also filters out any generic or placeholder hospital entries.
  */
 export function deduplicateAndMergeHospitals<T extends Hospital>(hospitals: T[]): T[] {
-  if (hospitals.length <= 1) return hospitals;
+  // First, strip out all placeholder and generic records
+  const validHospitals = hospitals.filter((h) => !isPlaceholderOrGenericHospitalName(h.name));
+  if (validHospitals.length <= 1) return validHospitals;
 
   const result: T[] = [];
   const consumed = new Set<number>();
 
-  for (let i = 0; i < hospitals.length; i++) {
+  for (let i = 0; i < validHospitals.length; i++) {
     if (consumed.has(i)) continue;
 
-    let best = hospitals[i];
+    let best = validHospitals[i];
     const bestCanon = normalizeHospitalName(best.name);
 
-    for (let j = i + 1; j < hospitals.length; j++) {
+    for (let j = i + 1; j < validHospitals.length; j++) {
       if (consumed.has(j)) continue;
 
-      const other = hospitals[j];
+      const other = validHospitals[j];
       const otherCanon = normalizeHospitalName(other.name);
 
       // Both signals must agree: same canonical name AND within 350m
@@ -382,7 +462,7 @@ export function evaluateAndRankForSpecialty<T extends EvaluableHospital>(
       matchTier = "fallback";
     } else if (
       h.sourceType === "official_registry" ||
-      (h.accreditation && h.accreditation.length > 0)
+      (h.accreditation && h.accreditation.length > 0 && h.sourceType !== "osm_discovery")
     ) {
       matchTier = "verified";
     }

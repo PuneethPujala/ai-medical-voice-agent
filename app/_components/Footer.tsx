@@ -7,9 +7,6 @@ import CursorGrid from "@/components/CursorGrid";
 export function Footer({ showPayoffBanner = false }: { showPayoffBanner?: boolean }) {
   return (
     <footer className="relative w-full text-slate-400 text-xs overflow-hidden">
-      {/* ATMOSPHERIC AURORA BRIDGE: Softly transitions light background into dark footer */}
-      <div className="w-full h-36 sm:h-52 bg-linear-to-b from-transparent via-slate-950/60 to-slate-950 pointer-events-none" />
-
       {/* Optional Marketing Payoff Banner */}
       {showPayoffBanner && (
         <div className="relative border-b border-slate-800 bg-[#0B0F17] py-24 sm:py-32 px-6 text-center overflow-hidden">

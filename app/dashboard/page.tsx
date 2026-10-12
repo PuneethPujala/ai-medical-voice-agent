@@ -32,13 +32,15 @@ import {
   Send
 } from "lucide-react";
 import Link from "next/link";
-import { Navbar } from "../_components/Navbar";
 import { AppFooter } from "../_components/AppFooter";
 import { generateFHIRBundle } from "@/lib/fhir/bundle";
 import CountUp from "@/components/CountUp";
 import { ClinicalSwipeRow, SoapSection } from "@/components/clinical/ClinicalSwipeRow";
-import { ClinicalFlipCard } from "@/components/clinical/ClinicalFlipCard";
 import { SpotlightCard } from "@/components/motion/SpotlightCard";
+import { ClinicalFlipCard } from "@/components/clinical/ClinicalFlipCard";
+import SplitText from "@/components/ui/SplitText";
+import GradientText from "@/components/ui/GradientText";
+import StarBorder from "@/components/ui/StarBorder";
 
 interface ConsultationRecord {
   id: string;
@@ -59,6 +61,11 @@ interface ConsultationRecord {
   soapPlan?: string;
   recommendedAction?: string;
   durationSeconds?: number;
+  status?: "in_progress" | "completed_pending_review" | "approved";
+  approvedAt?: string;
+  approvedBy?: string;
+  isSynthetic?: boolean;
+  syntheticWatermark?: string;
   createdAt: string;
   transcript?: Array<{ role: string; text: string; timestamp: string }>;
 }
@@ -89,9 +96,13 @@ async function computeSha256Hex(message: string): Promise<string> {
 export default function DashboardPage() {
   const [consultations, setConsultations] = useState<ConsultationRecord[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [fetchError, setFetchError] = useState<string | null>(null);
   const [selectedReport, setSelectedReport] = useState<ConsultationRecord | null>(null);
   const [filterSeverity, setFilterSeverity] = useState<string>("all");
+  const [filterStatus, setFilterStatus] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [isSyntheticDataset, setIsSyntheticDataset] = useState<boolean>(false);
+  const [isApprovingRecord, setIsApprovingRecord] = useState<boolean>(false);
 
   // HL7 FHIR Modal State
   const [showFhirModal, setShowFhirModal] = useState<boolean>(false);
@@ -106,26 +117,70 @@ export default function DashboardPage() {
   const [currentRecordHash, setCurrentRecordHash] = useState<string>("");
   const [copiedHash, setCopiedHash] = useState<boolean>(false);
 
-  useEffect(() => {
-    async function loadConsultations() {
-      setIsLoading(true);
-      try {
-        const res = await fetch("/api/consultations");
-        if (res.ok) {
-          const data = await res.json();
-          if (data.consultations && data.consultations.length > 0) {
-            setConsultations(data.consultations);
-            setSelectedReport(data.consultations[0]);
-          }
+  const fetchRecords = async (datasetMode: "genuine" | "synthetic" = "genuine") => {
+    setIsLoading(true);
+    setFetchError(null);
+    try {
+      const url = datasetMode === "synthetic" ? "/api/consultations?dataset=synthetic_demo" : "/api/consultations";
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        setIsSyntheticDataset(Boolean(data.isSyntheticDataset));
+        const list: ConsultationRecord[] = data.consultations || [];
+        setConsultations(list);
+        setSelectedReport(list.length > 0 ? list[0] : null);
+      } else {
+        const errJson = await res.json().catch(() => ({}));
+        if (res.status === 503) {
+          setFetchError("Clinical datastore temporarily unavailable. Please retry in a few moments.");
+        } else {
+          setFetchError(errJson.error || "Failed to load clinical records.");
         }
-      } catch (err) {
-        console.error("Failed to load consultations:", err);
-      } finally {
-        setIsLoading(false);
+        setConsultations([]);
+        setSelectedReport(null);
       }
+    } catch (err: any) {
+      console.error("Failed to load consultations:", err);
+      setFetchError("Network connection error. Unable to connect to clinical datastore.");
+      setConsultations([]);
+      setSelectedReport(null);
+    } finally {
+      setIsLoading(false);
     }
-    loadConsultations();
+  };
+
+  useEffect(() => {
+    fetchRecords("genuine");
   }, []);
+
+  const handleApproveReport = async (reportId: string) => {
+    if (!reportId || isApprovingRecord) return;
+    setIsApprovingRecord(true);
+    try {
+      const res = await fetch(`/api/consultations/${reportId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "approve" }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const updated = data.consultation;
+        setConsultations((prev) =>
+          prev.map((c) => (c.id === reportId ? { ...c, ...updated, status: "approved" } : c))
+        );
+        if (selectedReport?.id === reportId) {
+          setSelectedReport((prev) => (prev ? { ...prev, ...updated, status: "approved" } : null));
+        }
+      } else {
+        const errJson = await res.json().catch(() => ({}));
+        alert(errJson.error || "Clinical signing authority required to approve medical records. Clinician credentials required.");
+      }
+    } catch (err) {
+      console.error("Error approving report:", err);
+    } finally {
+      setIsApprovingRecord(false);
+    }
+  };
 
   // Compute cryptographic SHA-256 hash whenever selected report changes
   useEffect(() => {
@@ -146,11 +201,16 @@ export default function DashboardPage() {
 
   const filteredConsultations = consultations.filter((c) => {
     const matchesSeverity = filterSeverity === "all" || c.triageLevel === filterSeverity;
+    const matchesStatus =
+      filterStatus === "all" ||
+      (filterStatus === "approved" && c.status === "approved") ||
+      (filterStatus === "pending" && c.status !== "approved");
     const matchesSearch =
       c.doctorName.toLowerCase().includes(searchQuery.toLowerCase()) ||
       c.specialty.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      (c.patientName && c.patientName.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (c.chiefComplaint && c.chiefComplaint.toLowerCase().includes(searchQuery.toLowerCase()));
-    return matchesSeverity && matchesSearch;
+    return matchesSeverity && matchesStatus && matchesSearch;
   });
 
   const handlePrint = () => {
@@ -299,8 +359,6 @@ export default function DashboardPage() {
   return (
     <div className="relative min-h-screen bg-transparent text-slate-900 font-sans flex flex-col justify-between selection:bg-cyan-500 selection:text-white">
       <div>
-        <Navbar />
-
         {/* PAGE HEADER */}
         <section className="pt-14 pb-8 px-6 max-w-4xl mx-auto text-center space-y-3">
           <div className="flex items-center justify-center gap-2">
@@ -312,9 +370,21 @@ export default function DashboardPage() {
               <span>HL7 FHIR R4 & ED DISPATCH</span>
             </span>
           </div>
-          <h1 className="text-4xl sm:text-5xl font-extrabold tracking-tight text-slate-950">
-            SOAP Clinical Reports & Records
-          </h1>
+          <div className="space-y-1">
+            <SplitText
+              text="SOAP Clinical Reports & Records"
+              tag="h1"
+              className="text-4xl sm:text-5xl font-extrabold tracking-tight text-slate-950"
+            />
+            <div className="pt-0.5">
+              <GradientText
+                colors={["#0891b2", "#06b6d4", "#0e7490"]}
+                className="text-xs sm:text-sm font-bold uppercase tracking-wider font-mono"
+              >
+                Structured Clinical Encounters & Interoperability
+              </GradientText>
+            </div>
+          </div>
           <p className="text-base text-slate-600 max-w-2xl mx-auto leading-relaxed font-medium">
             Review automated SOAP documentation, export interoperable HL7 FHIR R4 JSON bundles, and simulate emergency hospital pre-arrival telemetry dispatch.
           </p>
@@ -372,21 +442,60 @@ export default function DashboardPage() {
             </SpotlightCard>
           </div>
 
+          {/* SYNTHETIC DEMONSTRATION DATASET WATERMARK BANNER */}
+          {isSyntheticDataset && (
+            <div className="mb-6 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-900">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                <span className="font-mono font-bold tracking-wide">
+                  SYNTHETIC DEMONSTRATION DATASET · FOR EVALUATION ONLY · NOT REAL PATIENT RECORDS
+                </span>
+              </div>
+              <button
+                onClick={() => fetchRecords("genuine")}
+                className="px-3 py-1.5 rounded-xl bg-slate-900 text-white font-bold text-xs hover:bg-slate-800 transition-all cursor-pointer w-fit"
+              >
+                Return to My Records
+              </button>
+            </div>
+          )}
+
           {/* Action & Filter Bar */}
-          <div className="bg-white border border-slate-200/90 rounded-2xl p-4 mb-6 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-            <div className="flex items-center gap-2 overflow-x-auto pb-1 sm:pb-0">
-              <span className="text-xs font-mono font-bold text-slate-500 mr-2 uppercase">Filter By:</span>
+          <div className="bg-white border border-slate-200/90 rounded-2xl p-4 mb-6 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-mono font-bold text-slate-500 mr-1 uppercase">Severity:</span>
               {["all", "emergency", "priority", "routine"].map((lvl) => (
                 <button
                   key={lvl}
                   onClick={() => setFilterSeverity(lvl)}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-bold font-mono uppercase transition-all ${
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold font-mono uppercase transition-all cursor-pointer ${
                     filterSeverity === lvl
                       ? "bg-slate-950 text-white shadow-sm"
                       : "bg-slate-100 text-slate-600 hover:bg-slate-200/70"
                   }`}
                 >
                   {lvl}
+                </button>
+              ))}
+
+              <div className="h-4 w-px bg-slate-200 mx-1 hidden sm:block" />
+
+              <span className="text-xs font-mono font-bold text-slate-500 mr-1 uppercase">Review:</span>
+              {[
+                { key: "all", label: "All" },
+                { key: "approved", label: "Approved" },
+                { key: "pending", label: "Pending" },
+              ].map((st) => (
+                <button
+                  key={st.key}
+                  onClick={() => setFilterStatus(st.key)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-bold font-mono uppercase transition-all cursor-pointer ${
+                    filterStatus === st.key
+                      ? "bg-cyan-700 text-white shadow-sm"
+                      : "bg-slate-100 text-slate-600 hover:bg-slate-200/70"
+                  }`}
+                >
+                  {st.label}
                 </button>
               ))}
             </div>
@@ -402,6 +511,17 @@ export default function DashboardPage() {
                   className="bg-slate-50 border border-slate-200 focus:border-slate-400 focus:bg-white rounded-xl pl-9 pr-4 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none w-full transition-all"
                 />
               </div>
+
+              {!isSyntheticDataset && (
+                <button
+                  onClick={() => fetchRecords("synthetic")}
+                  className="inline-flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200/80 text-slate-700 border border-slate-200/90 px-3 py-2 rounded-xl text-xs font-bold transition-all flex-shrink-0 cursor-pointer"
+                  title="Preview synthetic clinical demonstration dataset"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-cyan-700" />
+                  <span>Demo Dataset</span>
+                </button>
+              )}
 
               <Link
                 href="/consult"
@@ -429,22 +549,44 @@ export default function DashboardPage() {
                 <div className="p-8 text-center bg-white rounded-2xl border border-slate-200 text-xs text-slate-500 shadow-sm">
                   Loading clinical consultation history...
                 </div>
+              ) : fetchError ? (
+                <div className="p-8 text-center bg-white rounded-2xl border border-rose-200 space-y-3 shadow-sm text-xs text-rose-800">
+                  <AlertTriangle className="w-6 h-6 mx-auto text-rose-600" />
+                  <div className="font-bold">{fetchError}</div>
+                  <button
+                    onClick={() => fetchRecords(isSyntheticDataset ? "synthetic" : "genuine")}
+                    className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold cursor-pointer transition-all"
+                  >
+                    Retry Connection
+                  </button>
+                </div>
               ) : filteredConsultations.length === 0 ? (
                 <div className="p-8 text-center bg-white rounded-2xl border border-slate-200 space-y-3 shadow-sm">
                   <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-400">
                     <ClipboardList className="w-6 h-6" />
                   </div>
-                  <div className="text-sm font-bold text-slate-900">No Consultation Reports Found</div>
-                  <p className="text-xs text-slate-500 max-w-xs mx-auto">
-                    Start a voice consultation with an AI Doctor to generate your first clinical SOAP note.
+                  <div className="text-sm font-bold text-slate-900">No Clinical Consultations Found</div>
+                  <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
+                    You have not completed any clinical consultations yet under this account. All voice encounters conducted on MedVoice will be permanently archived here.
                   </p>
-                  <Link
-                    href="/consult"
-                    className="inline-flex items-center gap-2 text-xs font-bold text-cyan-700 hover:text-cyan-800"
-                  >
-                    <span>Launch Voice Room</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </Link>
+                  <div className="flex flex-col sm:flex-row items-center justify-center gap-2 pt-2">
+                    <Link
+                      href="/consult"
+                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-bold transition-all shadow-2xs"
+                    >
+                      <Mic className="w-3.5 h-3.5" />
+                      <span>Start Voice Consultation</span>
+                    </Link>
+                    {!isSyntheticDataset && (
+                      <button
+                        onClick={() => fetchRecords("synthetic")}
+                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 text-cyan-700" />
+                        <span>Preview Demo Dataset</span>
+                      </button>
+                    )}
+                  </div>
                 </div>
               ) : (
                 <div className="space-y-2.5 max-h-[720px] overflow-y-auto pr-1">
@@ -458,7 +600,7 @@ export default function DashboardPage() {
                       <button
                         key={item.id}
                         onClick={() => setSelectedReport(item)}
-                        className={`w-full text-left p-4 rounded-2xl border transition-all ${
+                        className={`w-full text-left p-4 rounded-2xl border transition-all cursor-pointer ${
                           isSelected
                             ? "bg-white border-cyan-500 shadow-md ring-2 ring-cyan-500/10"
                             : "bg-white border-slate-200/90 hover:border-slate-300 shadow-sm"
@@ -466,9 +608,20 @@ export default function DashboardPage() {
                       >
                         <div className="flex items-center justify-between mb-2">
                           <span className="font-extrabold text-slate-900 text-sm truncate">{item.doctorName}</span>
-                          <span className={`text-[10px] font-mono font-bold px-2.5 py-0.5 rounded-full border uppercase ${getUrgencyBadge(item.triageLevel)}`}>
-                            {item.triageLevel}
-                          </span>
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            {item.status === "approved" ? (
+                              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase">
+                                Approved
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 uppercase">
+                                Pending
+                              </span>
+                            )}
+                            <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border uppercase ${getUrgencyBadge(item.triageLevel)}`}>
+                              {item.triageLevel}
+                            </span>
+                          </div>
                         </div>
 
                         <p className="text-xs text-slate-600 line-clamp-2 mb-3 font-medium">
@@ -510,18 +663,59 @@ export default function DashboardPage() {
                       <p className="text-xs text-slate-500 mt-0.5 font-medium">
                         Evaluating Physician: <span className="text-slate-900 font-bold">{selectedReport.doctorName}</span> ({selectedReport.specialty})
                       </p>
+
+                      <div className="flex flex-wrap items-center gap-2 mt-2.5">
+                        {selectedReport.status === "approved" ? (
+                          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-xs font-mono font-bold text-emerald-800">
+                            <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>CLINICIAN APPROVED & SIGNED</span>
+                            {selectedReport.approvedAt && (
+                              <span className="text-slate-400 font-normal">
+                                · {new Date(selectedReport.approvedAt).toLocaleDateString()}
+                              </span>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-xs font-mono font-bold text-amber-800">
+                              <Clock className="w-3.5 h-3.5 text-amber-600" />
+                              <span>PENDING CLINICIAN REVIEW</span>
+                            </span>
+                            <button
+                              onClick={() => handleApproveReport(selectedReport.id)}
+                              disabled={isApprovingRecord}
+                              className="px-3 py-1 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer flex items-center gap-1.5"
+                            >
+                              <CheckCircle className="w-3 h-3 text-emerald-400" />
+                              <span>{isApprovingRecord ? "Signing..." : "Approve & Sign Note"}</span>
+                            </button>
+                          </div>
+                        )}
+                        {selectedReport.isSynthetic && (
+                          <span className="text-[10px] font-mono font-bold bg-amber-100 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full">
+                            SYNTHETIC DATA
+                          </span>
+                        )}
+                      </div>
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
-                      {/* HL7 FHIR EXPORT BUTTON */}
-                      <button
+                      {/* HL7 FHIR EXPORT BUTTON WITH STAR BORDER */}
+                      <StarBorder
+                        as="button"
                         onClick={handleOpenFhirModal}
-                        className="inline-flex items-center gap-1.5 bg-cyan-50 hover:bg-cyan-100/80 border border-cyan-200 text-cyan-800 px-3 py-2 rounded-xl text-xs font-bold transition-all"
+                        color="#06b6d4"
+                        duration={3.5}
+                        theme="light"
+                        backgroundColor="#ecfeff"
+                        textColor="#0e7490"
+                        radius={12}
+                        className="inline-flex items-center gap-1.5 border border-cyan-200 px-3 py-2 text-xs font-bold transition-all shadow-2xs hover:shadow-cyan-500/20"
                         title="Inspect or download HL7 FHIR R4 Bundle"
                       >
                         <FileCode className="w-3.5 h-3.5 text-cyan-700" />
                         <span>FHIR R4</span>
-                      </button>
+                      </StarBorder>
 
                       <button
                         onClick={handlePrint}

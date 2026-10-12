@@ -378,21 +378,46 @@ export function PillNav({
     }
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLElement>) => {
+    let nextIdx = -1;
+    if (e.key === "ArrowRight") {
+      nextIdx = (committed.current + 1) % items.length;
+    } else if (e.key === "ArrowLeft") {
+      nextIdx = (committed.current - 1 + items.length) % items.length;
+    } else if (e.key === "Home") {
+      nextIdx = 0;
+    } else if (e.key === "End") {
+      nextIdx = items.length - 1;
+    }
+
+    if (nextIdx >= 0) {
+      e.preventDefault();
+      const from = committed.current;
+      committed.current = nextIdx;
+      travel(from, nextIdx);
+      itemRefs.current[nextIdx]?.focus();
+      if (items[nextIdx] && items[nextIdx].href !== pathname) {
+        router.push(items[nextIdx].href);
+      }
+    }
+  };
+
   return (
     <nav
       ref={trackRef}
       role="tablist"
       aria-label="Clinical Navigation"
-      className={`relative inline-flex items-center gap-1 select-none ${className}`}
+      onKeyDown={handleKeyDown}
+      className={`relative inline-flex items-center gap-1 select-none p-1 rounded-2xl ${className}`}
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerCancel={handlePointerCancel}
       onMouseLeave={() => setHoveredIdx(null)}
       style={{ touchAction: "pan-y" }}
     >
-      {/* 1. ELASTIC RUBBER THUMB CAPSULE (Morphs, Stretches across gap, and Squashes onto slot) */}
+      {/* 1. GOOEY MORPHING ACTIVE THUMB CAPSULE */}
       <motion.div
-        className="absolute top-0 bottom-0 rounded-xl bg-cyan-500/[0.08] border border-cyan-500/22 shadow-[0_2px_12px_-2px_rgba(6,182,212,0.14)] pointer-events-none z-0"
+        className="absolute top-1 bottom-1 rounded-xl bg-cyan-500/[0.09] border border-cyan-500/25 shadow-[0_2px_14px_-2px_rgba(6,182,212,0.18)] pointer-events-none z-0 transition-colors"
         style={{
           left: edgeL,
           width: thumbWidth,
@@ -412,20 +437,23 @@ export function PillNav({
             ref={(el) => {
               itemRefs.current[index] = el;
             }}
+            role="tab"
+            aria-selected={isActive}
+            tabIndex={isActive ? 0 : -1}
             onClick={(e) => handleLinkClick(e, index)}
             onPointerDown={(e) => handlePointerDown(e, index)}
             onMouseEnter={() => setHoveredIdx(index)}
-            className={`relative px-4 py-2 text-sm font-semibold tracking-normal rounded-xl transition-colors duration-150 z-10 flex items-center gap-2 ${
+            className={`relative px-4 py-2 text-sm font-semibold tracking-normal rounded-xl transition-all duration-150 z-10 flex items-center gap-2 focus:outline-none focus:ring-2 focus:ring-cyan-500/30 ${
               isActive && draggable
-                ? "cursor-grab active:cursor-grabbing"
-                : "cursor-pointer"
-            } text-slate-600 hover:text-slate-950`}
+                ? "cursor-grab active:cursor-grabbing text-cyan-950 font-bold"
+                : "cursor-pointer text-slate-600 hover:text-slate-950"
+            }`}
           >
             {/* Subtle Hover Highlight */}
             {isHovered && (
               <motion.span
                 layoutId="hoverNavPill"
-                className="absolute inset-0 rounded-xl bg-slate-100/50 -z-10"
+                className="absolute inset-0 rounded-xl bg-slate-100/60 -z-10"
                 transition={{ type: "spring", stiffness: 450, damping: 35 }}
               />
             )}

@@ -1,4 +1,5 @@
 import { Hospital, calculateDistanceKm, getHospitalFamousFor } from "../hospitals-india-data";
+import { isPlaceholderOrGenericHospitalName, isValidHospitalPhoneNumber } from "./evaluator";
 
 interface DiscoveryCacheEntry {
   hospitals: Hospital[];
@@ -80,7 +81,7 @@ async function queryOverpassHospitals(
 
         const tags = el.tags || {};
         const rawName = tags["name:en"] || tags.name || tags.operator || "";
-        if (!rawName || rawName.trim().length < 2) continue;
+        if (!rawName || isPlaceholderOrGenericHospitalName(rawName)) continue;
 
         const lowerName = rawName.toLowerCase();
 
@@ -151,7 +152,8 @@ async function queryOverpassHospitals(
           lowerName.includes("multispeciality") ||
           lowerName.includes("super specialty");
 
-        const phone = tags.phone || tags["contact:phone"] || (isGovernment ? "108" : "+91 8000 000 000");
+        const rawPhone = tags.phone || tags["contact:phone"] || "";
+        const phone = isValidHospitalPhoneNumber(rawPhone) ? rawPhone.trim() : (isGovernment ? "108" : "");
 
         const hospitalObj: Hospital = {
           id: `osm-${el.type}-${el.id}`,
@@ -165,15 +167,15 @@ async function queryOverpassHospitals(
           latitude: hLat,
           longitude: hLng,
           isEmergency24x7: isEmergency,
-          rating: isGovernment ? 4.3 : 4.6,
-          accreditation: isGovernment ? ["NABH / Govt Recognized"] : ["State Health Authority"],
+          rating: isGovernment ? 4.3 : 4.4,
+          accreditation: tags.accreditation ? [tags.accreditation] : [],
           ownership: isGovernment ? "government" : "private",
           acceptsPublicInsurance: isGovernment,
           affordabilityNotes: isGovernment
             ? "Public healthcare facility; Ayushman Bharat / PM-JAY & State health scheme eligible."
             : "Private facility; standard tariffs apply.",
           source: "OpenStreetMap Global Care Discovery",
-          sourceType: "official_registry",
+          sourceType: "osm_discovery",
           lastVerified: new Date().toISOString().slice(0, 10),
           cancerSpecialistsAvailable: specialties.includes("Oncology / Cancer"),
         };
@@ -235,7 +237,8 @@ async function queryNominatimFallback(
       const dist = calculateDistanceKm(lat, lng, hLat, hLng);
       if (dist > radiusKm * 1.25) continue;
 
-      const rawName = item.namedetails?.name || item.display_name.split(",")[0]?.trim() || "Local Hospital";
+      const rawName = item.namedetails?.name || item.display_name.split(",")[0]?.trim() || "";
+      if (!rawName || isPlaceholderOrGenericHospitalName(rawName)) continue;
       const parts = item.display_name.split(",").map((p: string) => p.trim());
       const lowerName = rawName.toLowerCase();
 
@@ -263,6 +266,9 @@ async function queryNominatimFallback(
       if (lowerName.includes("lung") || lowerName.includes("pulmo")) specs.push("Pulmonology");
       if (lowerName.includes("dental") || lowerName.includes("tooth")) specs.push("Dental Care");
 
+      const rawPhone = item.extratags?.phone || item.extratags?.["contact:phone"] || "";
+      const phone = isValidHospitalPhoneNumber(rawPhone) ? rawPhone.trim() : (isGovernment ? "108" : "");
+
       const nomHosp: Hospital = {
         id: `nom-${item.osm_id || Math.abs(Math.round(hLat * 10000 + hLng * 10000))}`,
         name: rawName,
@@ -270,20 +276,20 @@ async function queryNominatimFallback(
         city,
         state: parts[parts.length - 2] || "India",
         address: parts.slice(0, 3).join(", "),
-        phone: isGovernment ? "108" : "+91 8000 000 000",
-        emergencyPhone: "108",
+        phone,
+        emergencyPhone: isGovernment ? "108" : phone,
         latitude: hLat,
         longitude: hLng,
         isEmergency24x7: true,
-        rating: isGovernment ? 4.2 : 4.5,
-        accreditation: isGovernment ? ["NABH / Govt Certified"] : ["Registered Healthcare Provider"],
+        rating: isGovernment ? 4.2 : 4.4,
+        accreditation: [],
         ownership: isGovernment ? "government" : "private",
         acceptsPublicInsurance: isGovernment,
         affordabilityNotes: isGovernment
-          ? "Government institution; Ayushman Bharat / Aarogyasri accepted."
+          ? "Government institution; Ayushman Bharat / State health scheme accepted."
           : "Standard hospital rates apply.",
         source: "OpenStreetMap Nominatim Discovery",
-        sourceType: "verified_hospital_portal",
+        sourceType: "osm_discovery",
         lastVerified: new Date().toISOString().slice(0, 10),
       };
       nomHosp.famousFor = getHospitalFamousFor(nomHosp);

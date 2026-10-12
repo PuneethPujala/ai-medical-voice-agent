@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useState } from "react";
-import { Navbar } from "../../_components/Navbar";
 import { AppFooter } from "../../_components/AppFooter";
 import { CLINICAL_VERIFICATION_SCENARIOS, ClinicalScenario } from "@/lib/testing/clinical-scenarios";
 import {
@@ -67,7 +66,6 @@ export default function ClinicalVerificationDevPage() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans flex flex-col">
-      <Navbar />
 
       <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 pt-8 pb-16 flex flex-col gap-6">
         

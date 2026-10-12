@@ -90,6 +90,9 @@ export const consultationsTable = pgTable("consultations", {
   recommendedAction: text("recommended_action"),
   
   durationSeconds: integer("duration_seconds").default(0),
+  status: varchar("status", { length: 64 }).default("completed_pending_review"), // "in_progress" | "completed_pending_review" | "approved"
+  approvedAt: timestamp("approved_at"),
+  approvedBy: varchar("approved_by", { length: 128 }),
   createdAt: timestamp("created_at").defaultNow()
 });
 
