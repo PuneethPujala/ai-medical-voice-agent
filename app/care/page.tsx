@@ -1041,7 +1041,7 @@ export default function CarePage() {
             )}
 
             {/* DOMINANT WORKSPACE: LIVE MAP + RANKED FACILITIES LIST */}
-            <div id="care-map-section" className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch scroll-mt-24">
+            <div id="care-map-section" className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start scroll-mt-24">
 
               {/* LEFT: Dominant Live Route Map + Dedicated Selected Hospital Card (58% width on large screens) */}
               <div className="lg:col-span-7 flex flex-col gap-4">
@@ -1201,7 +1201,7 @@ export default function CarePage() {
               </div>
 
               {/* RIGHT: Decoupled Matching Facilities Rail + Animated List */}
-              <div className="lg:col-span-5 rounded-2xl bg-white border border-slate-200/90 shadow-xs p-4 sm:p-5 flex flex-col gap-3 h-[680px] sm:h-[720px] max-h-[720px] overflow-hidden">
+              <div className="lg:col-span-5 rounded-2xl bg-white border border-slate-200/90 shadow-xs p-4 sm:p-5 flex flex-col gap-3 min-h-[680px]">
 
                 {/* CATEGORY FALLBACK ALERT BANNER */}
                 {categoryFallback && fallbackBanner && (
@@ -1476,9 +1476,9 @@ export default function CarePage() {
                       frame={false}
                       theme="light"
                       radius={12}
-                      gap={8}
+                      gap={10}
                       width="100%"
-                      maxHeight={isRationaleExpanded ? 310 : 450}
+                      maxHeight={480}
                       className="w-full"
                     />
                   )}
