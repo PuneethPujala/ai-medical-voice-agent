@@ -5,7 +5,7 @@ async function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function getWsUrl(port = 9490) {
+async function getWsUrl(port = 9491) {
   for (let i = 0; i < 40; i++) {
     try {
       const res = await fetch(`http://127.0.0.1:${port}/json/list`);
@@ -28,9 +28,9 @@ async function run() {
     chromePath,
     [
       '--headless=new',
-      '--remote-debugging-port=9490',
+      '--remote-debugging-port=9491',
       '--remote-allow-origins=*',
-      '--user-data-dir=c:\\dev\\Capstone\\.tmp_chrome_verify_privacy_editorial',
+      '--user-data-dir=c:\\dev\\Capstone\\.tmp_chrome_verify_privacy_sculptural',
       '--disable-gpu',
       '--window-size=1440,1100',
       '--no-sandbox',
@@ -40,7 +40,7 @@ async function run() {
   );
 
   try {
-    const wsUrl = await getWsUrl(9490);
+    const wsUrl = await getWsUrl(9491);
     const ws = new WebSocket(wsUrl);
     await new Promise((r) => (ws.onopen = r));
 
@@ -64,7 +64,7 @@ async function run() {
     await send('Page.navigate', { url: 'http://localhost:3000/privacy' });
     await wait(4000);
 
-    // 1. Capture top of page showing navbar clearance and editorial hero
+    // 1. Capture Desktop 1440px side-by-side view
     await send('Emulation.setDeviceMetricsOverride', {
       width: 1440,
       height: 950,
@@ -73,25 +73,31 @@ async function run() {
     });
     await wait(1000);
 
-    const shotTop = await send('Page.captureScreenshot', { format: 'png' });
-    fs.writeFileSync('c:\\dev\\Capstone\\verify-editorial-desktop-top.png', Buffer.from(shotTop.data, 'base64'));
-    console.log('Saved verify-editorial-desktop-top.png');
+    // 1. Capture Desktop 1440px natural top view (proving zero navbar overlap at scrollTo(0,0))
+    await send('Runtime.evaluate', { expression: `window.scrollTo(0, 0);` });
+    await wait(1000);
 
-    // 2. Scroll to center the 3D instrument
+    const shotTop = await send('Page.captureScreenshot', { format: 'png' });
+    fs.writeFileSync('c:\\dev\\Capstone\\verify-sculptural-top-clearance.png', Buffer.from(shotTop.data, 'base64'));
+    console.log('Saved verify-sculptural-top-clearance.png');
+
+    // 2. Scroll to position the sculptural instrument centered in viewport
     await send('Runtime.evaluate', {
       expression: `(() => {
-        const el = document.querySelector('h1');
-        if (el) {
-          el.scrollIntoView({ behavior: 'instant', block: 'start' });
+        const h2 = Array.from(document.querySelectorAll('h2')).find(h => h.textContent && h.textContent.includes('Interactive Clinical Data Lifecycle'));
+        if (h2) {
+          h2.scrollIntoView({ behavior: 'instant', block: 'start' });
           window.scrollBy(0, -90);
+        } else {
+          window.scrollBy(0, 220);
         }
       })()`,
     });
-    await wait(2000);
+    await wait(2200);
 
-    const shotInstrument = await send('Page.captureScreenshot', { format: 'png' });
-    fs.writeFileSync('c:\\dev\\Capstone\\verify-editorial-instrument-view.png', Buffer.from(shotInstrument.data, 'base64'));
-    console.log('Saved verify-editorial-instrument-view.png');
+    const shotDesktop = await send('Page.captureScreenshot', { format: 'png' });
+    fs.writeFileSync('c:\\dev\\Capstone\\verify-sculptural-desktop.png', Buffer.from(shotDesktop.data, 'base64'));
+    console.log('Saved verify-sculptural-desktop.png');
 
     // 3. Click stage "04 Cloud LLM"
     await send('Runtime.evaluate', {
@@ -100,13 +106,13 @@ async function run() {
         if (btn) btn.click();
       })()`,
     });
-    await wait(1500);
+    await wait(1800);
 
     const shotStage4 = await send('Page.captureScreenshot', { format: 'png' });
-    fs.writeFileSync('c:\\dev\\Capstone\\verify-editorial-stage4-selected.png', Buffer.from(shotStage4.data, 'base64'));
-    console.log('Saved verify-editorial-stage4-selected.png');
+    fs.writeFileSync('c:\\dev\\Capstone\\verify-sculptural-stage4.png', Buffer.from(shotStage4.data, 'base64'));
+    console.log('Saved verify-sculptural-stage4.png');
 
-    // 4. Mobile 375px test
+    // 3. Mobile 375px test
     await send('Emulation.setDeviceMetricsOverride', {
       width: 375,
       height: 812,
@@ -117,18 +123,20 @@ async function run() {
 
     await send('Runtime.evaluate', {
       expression: `(() => {
-        const el = document.querySelector('h1');
-        if (el) {
-          el.scrollIntoView({ behavior: 'instant', block: 'start' });
+        const btn = Array.from(document.querySelectorAll('button')).find(b => b.textContent && b.textContent.includes('Ingest'));
+        if (btn) btn.click();
+        const h2 = Array.from(document.querySelectorAll('h2')).find(h => h.textContent && h.textContent.includes('Interactive Clinical Data Lifecycle'));
+        if (h2) {
+          h2.scrollIntoView({ behavior: 'instant', block: 'start' });
           window.scrollBy(0, -70);
         }
       })()`,
     });
-    await wait(1500);
+    await wait(2200);
 
     const shotMobile = await send('Page.captureScreenshot', { format: 'png' });
-    fs.writeFileSync('c:\\dev\\Capstone\\verify-editorial-mobile-375.png', Buffer.from(shotMobile.data, 'base64'));
-    console.log('Saved verify-editorial-mobile-375.png');
+    fs.writeFileSync('c:\\dev\\Capstone\\verify-sculptural-mobile.png', Buffer.from(shotMobile.data, 'base64'));
+    console.log('Saved verify-sculptural-mobile.png');
 
     ws.close();
   } finally {
