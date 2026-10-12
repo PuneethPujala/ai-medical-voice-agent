@@ -1,22 +1,22 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import * as THREE from 'three';
-import { Canvas, useFrame, useThree } from '@react-three/fiber';
+import React, { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
-  ArrowRight,
-  ShieldCheck,
+  Mic,
   Cpu,
-  Layers,
+  ShieldCheck,
   Cloud,
   Trash2,
   Database,
-  Mic,
-  Lock,
-  Clock,
-  ChevronRight,
+  ArrowRight,
   Info,
+  CheckCircle2,
+  Lock,
+  Flame,
+  FileText,
+  Activity,
+  Layers,
 } from 'lucide-react';
 
 export interface LifecycleStage {
@@ -34,7 +34,6 @@ export interface LifecycleStage {
   voiceIsolationDetail: string;
   retentionDetail: string;
   vendorNotice?: string;
-  coords: [number, number, number];
   isDisposal?: boolean;
 }
 
@@ -55,7 +54,6 @@ export const LIFECYCLE_STAGES: LifecycleStage[] = [
       'Captured via standard MediaRecorder and streamed to /api/voice/stt over HTTPS. Audio is held strictly in volatile server RAM during transcription.',
     retentionDetail:
       'Ephemeral RAM allocation. Never committed to permanent server disk storage or relational database.',
-    coords: [-2.25, 0.55, 0],
   },
   {
     id: 'local_whisper',
@@ -73,7 +71,6 @@ export const LIFECYCLE_STAGES: LifecycleStage[] = [
       'Speech decoding executes 100% locally on the FastAPI container. Voice waveforms are converted to text without streaming audio to external cloud providers.',
     retentionDetail:
       'Temporary audio files are unlinked immediately inside audio_service.py in an explicit finally: os.remove() block.',
-    coords: [-0.75, 0.55, 0],
   },
   {
     id: 'clinical_context',
@@ -91,7 +88,6 @@ export const LIFECYCLE_STAGES: LifecycleStage[] = [
       'Evaluates strict deterministic safety invariants for ACS, stroke, airway compromise, and pediatric vitals. Emergency acuity states cannot be downgraded.',
     retentionDetail:
       'Encounter state is held in active memory during dialogue and committed to the consultation ledger upon session completion.',
-    coords: [0.75, 0.55, 0],
   },
   {
     id: 'cloud_inference',
@@ -111,7 +107,6 @@ export const LIFECYCLE_STAGES: LifecycleStage[] = [
       'Ephemeral API request. Clinical prompt context is discarded post-inference.',
     vendorNotice:
       'Pilot Notice: Enterprise zero-retention contracts and dedicated BAA agreements remain under active pilot legal review.',
-    coords: [2.25, 0.55, 0],
   },
   {
     id: 'audio_disposal',
@@ -129,7 +124,6 @@ export const LIFECYCLE_STAGES: LifecycleStage[] = [
       'Codebase verification: audio_service.py executes explicit os.remove() in a finally block immediately after the local Whisper pass concludes.',
     retentionDetail:
       'ZERO persistent voice retention on server disk or database after call turn.',
-    coords: [-0.75, -0.95, 0],
     isDisposal: true,
   },
   {
@@ -148,544 +142,403 @@ export const LIFECYCLE_STAGES: LifecycleStage[] = [
       'Stores cryptographic verification hashes, caller roles, and UTC timestamps. Does NOT store raw clinical audio.',
     retentionDetail:
       'Durable immutable ledger entries for regulatory compliance and tamper-evident audit verification.',
-    coords: [1.5, -0.95, 0],
   },
 ];
 
-// Dual-Rail Connecting Bus Highway
-function DataHighway({
-  start,
-  end,
-  dashed = false,
-  color = '#2e2e38',
-}: {
-  start: [number, number, number];
-  end: [number, number, number];
-  dashed?: boolean;
-  color?: string;
-}) {
-  const lineObj = useMemo(() => {
-    const p0 = new THREE.Vector3(...start);
-    const p3 = new THREE.Vector3(...end);
-    const midX = (p0.x + p3.x) / 2;
-    const p1 = new THREE.Vector3(midX, p0.y, 0.04);
-    const p2 = new THREE.Vector3(midX, p3.y, 0.04);
-    const curve = new THREE.CubicBezierCurve3(p0, p1, p2, p3);
-    const points = curve.getPoints(40);
-    const geo = new THREE.BufferGeometry().setFromPoints(points);
-    const mat = new THREE.LineBasicMaterial({
-      color: dashed ? new THREE.Color('#3f3f4e') : new THREE.Color(color),
-      transparent: true,
-      opacity: dashed ? 0.6 : 0.9,
-      linewidth: 2,
-    });
-    return new THREE.Line(geo, mat);
-  }, [start, end, dashed, color]);
-
-  return <primitive object={lineObj} />;
+// Helper to get corresponding Lucide icon for each stage
+function getStageIcon(stageId: string, className = 'w-6 h-6') {
+  switch (stageId) {
+    case 'audio_buffer':
+      return <Mic className={className} />;
+    case 'local_whisper':
+      return <Cpu className={className} />;
+    case 'clinical_context':
+      return <ShieldCheck className={className} />;
+    case 'cloud_inference':
+      return <Cloud className={className} />;
+    case 'audio_disposal':
+      return <Trash2 className={className} />;
+    case 'audit_ledger':
+      return <Database className={className} />;
+    default:
+      return <Activity className={className} />;
+  }
 }
 
-// Directional Photon Signal Packets
-function SignalPhoton({
-  start,
-  end,
-  color = '#67E8F9',
-  speed = 0.85,
-  offset = 0,
-}: {
-  start: [number, number, number];
-  end: [number, number, number];
-  color?: string;
-  speed?: number;
-  offset?: number;
-}) {
-  const meshRef = useRef<THREE.Mesh>(null);
-  const p0 = useMemo(() => new THREE.Vector3(...start), [start]);
-  const p3 = useMemo(() => new THREE.Vector3(...end), [end]);
-  const curve = useMemo(() => {
-    const midX = (p0.x + p3.x) / 2;
-    const p1 = new THREE.Vector3(midX, p0.y, 0.06);
-    const p2 = new THREE.Vector3(midX, p3.y, 0.06);
-    return new THREE.CubicBezierCurve3(p0, p1, p2, p3);
-  }, [p0, p3]);
+// Stage visual metadata
+const STAGE_VISUAL_CONFIG: Record<
+  string,
+  {
+    accentColor: string;
+    lightBg: string;
+    borderColor: string;
+    activeRing: string;
+    tagLabel: string;
+    subLabel: string;
+  }
+> = {
+  audio_buffer: {
+    accentColor: '#0891b2', // cyan-600
+    lightBg: 'bg-cyan-50/70',
+    borderColor: 'border-cyan-300',
+    activeRing: 'ring-cyan-400',
+    tagLabel: '01 INGEST',
+    subLabel: '16kHz Audio',
+  },
+  local_whisper: {
+    accentColor: '#0284c7', // sky-600
+    lightBg: 'bg-sky-50/70',
+    borderColor: 'border-sky-300',
+    activeRing: 'ring-sky-400',
+    tagLabel: '02 LOCAL ASR',
+    subLabel: 'Neural STT',
+  },
+  clinical_context: {
+    accentColor: '#0d9488', // teal-600
+    lightBg: 'bg-teal-50/70',
+    borderColor: 'border-teal-300',
+    activeRing: 'ring-teal-400',
+    tagLabel: '03 ARBITER',
+    subLabel: 'Safety Gate',
+  },
+  cloud_inference: {
+    accentColor: '#2563eb', // blue-600
+    lightBg: 'bg-blue-50/70',
+    borderColor: 'border-blue-300',
+    activeRing: 'ring-blue-400',
+    tagLabel: '04 CLOUD LLM',
+    subLabel: 'Reasoning API',
+  },
+  audio_disposal: {
+    accentColor: '#059669', // emerald-600
+    lightBg: 'bg-emerald-50/70',
+    borderColor: 'border-emerald-300',
+    activeRing: 'ring-emerald-400',
+    tagLabel: '05A PURGE',
+    subLabel: 'RAM Zeroized',
+  },
+  audit_ledger: {
+    accentColor: '#7c3aed', // violet-600
+    lightBg: 'bg-violet-50/70',
+    borderColor: 'border-violet-300',
+    activeRing: 'ring-violet-400',
+    tagLabel: '05B LEDGER',
+    subLabel: 'SHA-256 Hash',
+  },
+};
 
-  useFrame(({ clock }) => {
-    if (!meshRef.current) return;
-    const elapsed = clock.getElapsedTime() * speed + offset;
-    const t = (elapsed % 2.4) / 2.4;
-    const pt = curve.getPoint(t);
-    meshRef.current.position.copy(pt);
-  });
-
-  return (
-    <mesh ref={meshRef}>
-      <sphereGeometry args={[0.048, 16, 16]} />
-      <meshBasicMaterial color={color} transparent opacity={0.95} />
-    </mesh>
-  );
-}
-
-// Sculptural 3D Architectural Processing Module (Titanium Chassis, Wireframe Chamfers, Glass Deck, Station Core)
-function ProcessingModule3D({
-  stage,
-  isSelected,
-  isHovered,
-  onPointerOver,
-  onPointerOut,
-  onClick,
-}: {
-  stage: LifecycleStage;
-  isSelected: boolean;
-  isHovered: boolean;
-  onPointerOver: () => void;
-  onPointerOut: () => void;
-  onClick: () => void;
-}) {
-  const groupRef = useRef<THREE.Group>(null);
-  const haloRef = useRef<THREE.Mesh>(null);
-
-  const boxGeo = useMemo(() => new THREE.BoxGeometry(1.05, 0.78, 0.16), []);
-  const edgesGeo = useMemo(() => new THREE.EdgesGeometry(boxGeo), [boxGeo]);
-
-  useFrame(({ clock }) => {
-    if (groupRef.current) {
-      // Elevate active module along Z towards camera (+0.22 units)
-      const targetZ = isSelected ? 0.22 : isHovered ? 0.09 : 0;
-      const targetScale = isSelected ? 1.05 : isHovered ? 1.02 : 1.0;
-      groupRef.current.position.z = THREE.MathUtils.lerp(groupRef.current.position.z, targetZ, 0.1);
-      groupRef.current.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.1);
-    }
-    if (haloRef.current && isSelected) {
-      const pulse = 1 + Math.sin(clock.getElapsedTime() * 2.8) * 0.025;
-      haloRef.current.scale.set(pulse, pulse, 1);
-    }
-  });
-
-  const isDisposal = stage.isDisposal;
-  const isAudit = stage.category === 'audit';
-  const activeColor = isDisposal ? '#34d399' : isAudit ? '#38bdf8' : '#67E8F9';
-  const rimTrimColor = isSelected ? activeColor : isHovered ? '#64748b' : '#383846';
-
-  return (
-    <group
-      ref={groupRef}
-      position={stage.coords}
-      onPointerOver={(e) => {
-        e.stopPropagation();
-        onPointerOver();
-      }}
-      onPointerOut={() => onPointerOut()}
-      onClick={(e) => {
-        e.stopPropagation();
-        onClick();
-      }}
-    >
-      {/* 1. Active Laser Reticle Frame */}
-      {isSelected && (
-        <mesh ref={haloRef} position={[0, 0, -0.015]}>
-          <ringGeometry args={[0.55, 0.575, 48]} />
-          <meshBasicMaterial color={activeColor} transparent opacity={0.85} />
-        </mesh>
-      )}
-
-      {/* 2. Base Platform Chassis (Architectural Slate/Titanium Solid Block) */}
-      <mesh position={[0, 0, 0]}>
-        <primitive object={boxGeo} attach="geometry" />
-        <meshStandardMaterial
-          color={isHovered ? '#323242' : isSelected ? '#2b2b38' : '#22222d'}
-          roughness={0.35}
-          metalness={0.75}
-        />
-      </mesh>
-
-      {/* 3. Razor-Sharp Precision Wireframe Chamfer Edges */}
-      <lineSegments position={[0, 0, 0]}>
-        <primitive object={edgesGeo} attach="geometry" />
-        <lineBasicMaterial
-          color={isSelected ? activeColor : isHovered ? '#818cf8' : '#47475c'}
-          transparent
-          opacity={isSelected ? 0.95 : isHovered ? 0.8 : 0.6}
-        />
-      </lineSegments>
-
-      {/* 4. Outer Perimeter Bezel Trim */}
-      <mesh position={[0, 0, 0.082]}>
-        <boxGeometry args={[0.99, 0.72, 0.012]} />
-        <meshStandardMaterial
-          color={rimTrimColor}
-          roughness={0.2}
-          metalness={0.85}
-          emissive={isSelected ? activeColor : '#000000'}
-          emissiveIntensity={isSelected ? 0.35 : 0}
-        />
-      </mesh>
-
-      {/* 5. Translucent Obsidian Glass Deck */}
-      <mesh position={[0, 0, 0.09]}>
-        <boxGeometry args={[0.92, 0.65, 0.02]} />
-        <meshStandardMaterial
-          color="#0d0d12"
-          roughness={0.15}
-          metalness={0.9}
-        />
-      </mesh>
-
-      {/* 6. Station Architectural Hardware Badging */}
-      <mesh position={[-0.34, 0.23, 0.105]}>
-        <boxGeometry args={[0.18, 0.07, 0.01]} />
-        <meshBasicMaterial color={isSelected ? activeColor : '#3e3e52'} />
-      </mesh>
-
-      {/* 7. Internal Station Architecture Core */}
-      {stage.id === 'audio_buffer' && (
-        /* Acoustic Sensor Core */
-        <group position={[0, 0, 0.11]}>
-          <mesh>
-            <cylinderGeometry args={[0.2, 0.2, 0.04, 32]} />
-            <meshStandardMaterial
-              color={isSelected ? '#67E8F9' : '#22222e'}
-              emissive={isSelected ? '#67E8F9' : '#0e1726'}
-              emissiveIntensity={isSelected ? 1.6 : 0.2}
-              metalness={0.5}
-            />
-          </mesh>
-          <mesh position={[0, 0, 0.025]}>
-            <ringGeometry args={[0.1, 0.13, 24]} />
-            <meshBasicMaterial color={isSelected ? '#ffffff' : '#38bdf8'} />
-          </mesh>
-        </group>
-      )}
-
-      {stage.id === 'local_whisper' && (
-        /* Neural ASR Silicon Core */
-        <group position={[0, 0, 0.11]}>
-          <mesh>
-            <boxGeometry args={[0.34, 0.34, 0.05]} />
-            <meshStandardMaterial
-              color={isSelected ? '#67E8F9' : '#262634'}
-              emissive={isSelected ? '#67E8F9' : '#082f49'}
-              emissiveIntensity={isSelected ? 1.7 : 0.25}
-              roughness={0.2}
-              metalness={0.6}
-            />
-          </mesh>
-          {/* Micro Pin Contacts */}
-          <mesh position={[0, 0, 0.03]}>
-            <boxGeometry args={[0.16, 0.16, 0.01]} />
-            <meshBasicMaterial color={isSelected ? '#ffffff' : '#94a3b8'} />
-          </mesh>
-        </group>
-      )}
-
-      {stage.id === 'clinical_context' && (
-        /* Safety Arbiter Diamond Shield */
-        <group position={[0, 0, 0.11]} rotation={[0, 0, Math.PI / 4]}>
-          <mesh>
-            <boxGeometry args={[0.28, 0.28, 0.05]} />
-            <meshStandardMaterial
-              color={isSelected ? '#67E8F9' : '#222230'}
-              emissive={isSelected ? '#67E8F9' : '#0e243a'}
-              emissiveIntensity={isSelected ? 1.8 : 0.3}
-              roughness={0.2}
-              metalness={0.7}
-            />
-          </mesh>
-        </group>
-      )}
-
-      {stage.id === 'cloud_inference' && (
-        /* Cloud LLM Dual Cluster */
-        <group position={[0, 0, 0.11]}>
-          <mesh position={[-0.1, 0, 0]}>
-            <boxGeometry args={[0.14, 0.3, 0.05]} />
-            <meshStandardMaterial
-              color={isSelected ? '#67E8F9' : '#222230'}
-              emissive={isSelected ? '#67E8F9' : '#1e1b4b'}
-              emissiveIntensity={isSelected ? 1.7 : 0.2}
-            />
-          </mesh>
-          <mesh position={[0.1, 0, 0]}>
-            <boxGeometry args={[0.14, 0.3, 0.05]} />
-            <meshStandardMaterial
-              color={isSelected ? '#67E8F9' : '#222230'}
-              emissive={isSelected ? '#67E8F9' : '#1e1b4b'}
-              emissiveIntensity={isSelected ? 1.7 : 0.2}
-            />
-          </mesh>
-        </group>
-      )}
-
-      {stage.id === 'audio_disposal' && (
-        /* Zeroize / Purge Chamber Core */
-        <group position={[0, 0, 0.11]}>
-          <mesh>
-            <boxGeometry args={[0.34, 0.34, 0.05]} />
-            <meshStandardMaterial
-              color={isSelected ? '#34d399' : '#10b981'}
-              emissive={isSelected ? '#34d399' : '#064e3b'}
-              emissiveIntensity={isSelected ? 1.9 : 0.6}
-            />
-          </mesh>
-          <mesh position={[0, 0, 0.03]}>
-            <circleGeometry args={[0.07, 16]} />
-            <meshBasicMaterial color="#ffffff" />
-          </mesh>
-        </group>
-      )}
-
-      {stage.id === 'audit_ledger' && (
-        /* Chained Block Ledger Core */
-        <group position={[0, 0, 0.11]}>
-          <mesh position={[-0.08, -0.04, 0]}>
-            <boxGeometry args={[0.18, 0.18, 0.05]} />
-            <meshStandardMaterial
-              color={isSelected ? '#38bdf8' : '#252536'}
-              emissive={isSelected ? '#38bdf8' : '#0c4a6e'}
-              emissiveIntensity={isSelected ? 1.6 : 0.3}
-            />
-          </mesh>
-          <mesh position={[0.08, 0.04, 0.02]}>
-            <boxGeometry args={[0.18, 0.18, 0.05]} />
-            <meshStandardMaterial
-              color={isSelected ? '#67e8f9' : '#2d2d3e'}
-              emissive={isSelected ? '#67e8f9' : '#075985'}
-              emissiveIntensity={isSelected ? 1.6 : 0.3}
-            />
-          </mesh>
-        </group>
-      )}
-
-      {/* 8. Active Laser Pin Bead */}
-      {isSelected && (
-        <mesh position={[0, 0, 0.17]}>
-          <sphereGeometry args={[0.045, 16, 16]} />
-          <meshBasicMaterial color="#ffffff" />
-        </mesh>
-      )}
-    </group>
-  );
-}
-
-// Responsive Camera Controller with Stable Framing
-function SceneCameraController({
-  reducedMotion,
-}: {
-  reducedMotion: boolean;
-}) {
-  const { camera, size } = useThree();
-  const mouseRef = useRef({ x: 0, y: 0 });
-
-  useEffect(() => {
-    if (reducedMotion) return;
-    const handleMouseMove = (e: MouseEvent) => {
-      mouseRef.current.x = (e.clientX / window.innerWidth) * 2 - 1;
-      mouseRef.current.y = -(e.clientY / window.innerHeight) * 2 + 1;
-    };
-    window.addEventListener('mousemove', handleMouseMove);
-    return () => window.removeEventListener('mousemove', handleMouseMove);
-  }, [reducedMotion]);
-
-  useFrame(() => {
-    const aspect = size.width / Math.max(size.height, 1);
-    // Smooth camera Z adaptation:
-    // Wide desktop aspect (~1.5+ in side-by-side) -> baseZ is 5.8 (cleanly frames width 4.5)
-    // Mobile / square aspect (<1.15) -> baseZ scales to 13.5 so full architectural pipeline fits comfortably inside portrait viewport
-    const baseZ =
-      aspect < 1.15
-        ? 13.5
-        : aspect < 1.55
-        ? Math.max(5.8, 5.5 * (1.45 / Math.max(aspect, 0.65)))
-        : 5.8;
-
-    if (reducedMotion) {
-      camera.position.set(0, -0.15, baseZ);
-      camera.lookAt(0, -0.15, 0);
-      return;
-    }
-
-    const targetX = mouseRef.current.x * 0.14;
-    const targetY = mouseRef.current.y * 0.08 - 0.15;
-
-    camera.position.x = THREE.MathUtils.lerp(camera.position.x, targetX, 0.05);
-    camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY, 0.05);
-    camera.position.z = THREE.MathUtils.lerp(camera.position.z, baseZ, 0.05);
-    camera.lookAt(0, -0.15, 0);
-  });
-
-  return null;
-}
-
-// 3D Canvas Scene
-function LifecycleCanvas({
+// ============================================================================
+// BRIGHT CLINICAL CIRCULAR INSTRUMENT CANVAS
+// ============================================================================
+function BrightCircularInstrumentCanvas({
   activeStageId,
   onSelectStageId,
-  hoveredStageId,
-  setHoveredStageId,
-  reducedMotion,
 }: {
   activeStageId: string;
   onSelectStageId: (id: string) => void;
-  hoveredStageId: string | null;
-  setHoveredStageId: (id: string | null) => void;
-  reducedMotion: boolean;
 }) {
   return (
-    <div className="w-full h-full cursor-pointer relative">
-      <Canvas
-        camera={{ position: [0, -0.15, 5.8], fov: 42 }}
-        dpr={[1, 2]}
-        gl={{ antialias: true, alpha: true }}
+    <div className="relative w-full h-full min-h-[460px] sm:min-h-[500px] bg-white flex flex-col justify-between p-5 sm:p-7 overflow-hidden select-none">
+      {/* Subtle crisp architect dot grid on pure white */}
+      <div
+        className="absolute inset-0 pointer-events-none opacity-25"
+        style={{
+          backgroundImage: `radial-gradient(#cbd5e1 1px, transparent 1px)`,
+          backgroundSize: '24px 24px',
+        }}
+      />
+
+      {/* SVG Connecting Flow Lines (Crisp Vector Data Bus Highways) */}
+      <svg
+        className="absolute inset-0 w-full h-full pointer-events-none z-0"
+        preserveAspectRatio="none"
       >
-        <ambientLight intensity={0.55} />
-        {/* Key Light */}
-        <directionalLight position={[5, 8, 6]} intensity={2.0} color="#ffffff" />
-        {/* Cyan Rim Light for Specular Metallic Bevels */}
-        <directionalLight position={[-6, 3, -2]} intensity={1.2} color="#67e8f9" />
-        {/* Subtle Slate Fill Light */}
-        <directionalLight position={[0, -5, 3]} intensity={0.6} color="#94a3b8" />
-        {/* Center Point Light */}
-        <pointLight position={[0, 0, 4]} intensity={0.9} color="#38bdf8" distance={14} />
+        <defs>
+          {/* Active Flow Gradient */}
+          <linearGradient id="activeCyanFlow" x1="0%" y1="0%" x2="100%" y2="0%">
+            <stop offset="0%" stopColor="#06b6d4" />
+            <stop offset="50%" stopColor="#38bdf8" />
+            <stop offset="100%" stopColor="#2563eb" />
+          </linearGradient>
+          <linearGradient id="purgeGreenFlow" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#0284c7" />
+            <stop offset="100%" stopColor="#10b981" />
+          </linearGradient>
+          <linearGradient id="ledgerVioletFlow" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" stopColor="#0d9488" />
+            <stop offset="100%" stopColor="#7c3aed" />
+          </linearGradient>
+        </defs>
 
-        <SceneCameraController reducedMotion={reducedMotion} />
+        {/* 1. Main Forward Processing Pipeline (Ingest -> ASR -> Arbiter -> Cloud LLM) */}
+        {/* Track Bedding */}
+        <line
+          x1="16%"
+          y1="28%"
+          x2="84%"
+          y2="28%"
+          stroke="#cbd5e1"
+          strokeWidth="3.5"
+          strokeLinecap="round"
+        />
+        {/* Animated Active Beam along Forward Pipeline */}
+        <line
+          x1="16%"
+          y1="28%"
+          x2="84%"
+          y2="28%"
+          stroke="url(#activeCyanFlow)"
+          strokeWidth="3.5"
+          strokeLinecap="round"
+          strokeDasharray="8 8"
+          className="animate-[pulse_3s_ease-in-out_infinite]"
+        />
 
-        {/* Spatial Tilt Group */}
-        <group rotation={[0.1, -0.03, 0]}>
-          {/* Main Conduits (01 -> 02 -> 03 -> 04) */}
-          <DataHighway
-            start={LIFECYCLE_STAGES[0].coords}
-            end={LIFECYCLE_STAGES[1].coords}
-          />
-          <DataHighway
-            start={LIFECYCLE_STAGES[1].coords}
-            end={LIFECYCLE_STAGES[2].coords}
-          />
-          <DataHighway
-            start={LIFECYCLE_STAGES[2].coords}
-            end={LIFECYCLE_STAGES[3].coords}
-          />
+        {/* 2. Downward Branch A: Memory Purge (from 02 Local ASR down to 05A Purge) */}
+        <path
+          d="M 38% 28% L 38% 74%"
+          stroke="#cbd5e1"
+          strokeWidth="3"
+          strokeLinecap="round"
+          strokeDasharray="6 6"
+        />
+        <path
+          d="M 38% 28% L 38% 74%"
+          stroke="url(#purgeGreenFlow)"
+          strokeWidth="3"
+          strokeLinecap="round"
+          strokeDasharray="6 6"
+        />
 
-          {/* Downward Branch: Memory Purge (02 -> 05A) */}
-          <DataHighway
-            start={LIFECYCLE_STAGES[1].coords}
-            end={LIFECYCLE_STAGES[4].coords}
-            dashed
-            color="#10b981"
-          />
+        {/* 3. Downward Branch B: Cryptographic Audit Ledger (from 03 Arbiter & 04 Cloud LLM down to 05B) */}
+        <path
+          d="M 62% 28% C 62% 52%, 72% 52%, 72% 74%"
+          stroke="#cbd5e1"
+          strokeWidth="3"
+          fill="none"
+          strokeLinecap="round"
+          strokeDasharray="6 6"
+        />
+        <path
+          d="M 84% 28% C 84% 52%, 72% 52%, 72% 74%"
+          stroke="#cbd5e1"
+          strokeWidth="3"
+          fill="none"
+          strokeLinecap="round"
+          strokeDasharray="6 6"
+        />
+        <path
+          d="M 62% 28% C 62% 52%, 72% 52%, 72% 74%"
+          stroke="url(#ledgerVioletFlow)"
+          strokeWidth="3"
+          fill="none"
+          strokeLinecap="round"
+          strokeDasharray="6 6"
+        />
+      </svg>
 
-          {/* Downward Branch: Audit Ledger (03 -> 05B & 04 -> 05B) */}
-          <DataHighway
-            start={LIFECYCLE_STAGES[2].coords}
-            end={LIFECYCLE_STAGES[5].coords}
-            color="#38bdf8"
-          />
-          <DataHighway
-            start={LIFECYCLE_STAGES[3].coords}
-            end={LIFECYCLE_STAGES[5].coords}
-            dashed
-            color="#38bdf8"
-          />
-
-          {/* Photon Signals Traveling Along Conduits */}
-          {!reducedMotion && (
-            <>
-              {/* Forward audio -> transcript */}
-              <SignalPhoton
-                start={LIFECYCLE_STAGES[0].coords}
-                end={LIFECYCLE_STAGES[1].coords}
-                speed={0.85}
-                offset={0}
-              />
-              {/* Forward transcript -> arbiter */}
-              <SignalPhoton
-                start={LIFECYCLE_STAGES[1].coords}
-                end={LIFECYCLE_STAGES[2].coords}
-                speed={0.85}
-                offset={0.6}
-              />
-              {/* Forward clinical context -> cloud LLM */}
-              <SignalPhoton
-                start={LIFECYCLE_STAGES[2].coords}
-                end={LIFECYCLE_STAGES[3].coords}
-                speed={0.85}
-                offset={1.2}
-              />
-              {/* Branch A: Audio purge signal */}
-              <SignalPhoton
-                start={LIFECYCLE_STAGES[1].coords}
-                end={LIFECYCLE_STAGES[4].coords}
-                color="#34d399"
-                speed={0.7}
-                offset={0.9}
-              />
-              {/* Branch B: Arbiter audit commit */}
-              <SignalPhoton
-                start={LIFECYCLE_STAGES[2].coords}
-                end={LIFECYCLE_STAGES[5].coords}
-                color="#38bdf8"
-                speed={0.75}
-                offset={1.4}
-              />
-            </>
-          )}
-
-          {/* 3D Modular Blocks */}
-          {LIFECYCLE_STAGES.map((st) => (
-            <ProcessingModule3D
-              key={st.id}
-              stage={st}
-              isSelected={activeStageId === st.id}
-              isHovered={hoveredStageId === st.id}
-              onPointerOver={() => setHoveredStageId(st.id)}
-              onPointerOut={() => setHoveredStageId(null)}
-              onClick={() => onSelectStageId(st.id)}
-            />
-          ))}
-        </group>
-      </Canvas>
-    </div>
-  );
-}
-
-// Accessible 2D Fallback
-function StaticFlowchartFallback({
-  activeStageId,
-  onSelectStageId,
-}: {
-  activeStageId: string;
-  onSelectStageId: (id: string) => void;
-}) {
-  return (
-    <div className="w-full p-8 bg-[#08080a] text-white space-y-4">
-      <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
-        <span className="font-mono text-xs font-semibold text-cyan-400">
-          DATA LIFECYCLE ARCHITECTURE (2D SPECIFICATION)
+      {/* Top Section Header inside Canvas */}
+      <div className="relative z-10 flex items-center justify-between">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white/90 border border-slate-200 shadow-xs">
+          <span className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
+          <span className="font-mono text-[11px] font-bold text-slate-700 tracking-wider">
+            CLINICAL DATA FLOW · 6 DIRECT NODES
+          </span>
+        </div>
+        <span className="font-mono text-[10px] text-slate-600 bg-white/80 px-2.5 py-1 rounded-lg border border-slate-200">
+          SELECT ANY NODE
         </span>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        {LIFECYCLE_STAGES.map((st) => {
-          const isSel = activeStageId === st.id;
-          return (
-            <button
-              key={st.id}
-              onClick={() => onSelectStageId(st.id)}
-              className={`p-4 rounded-xl text-left transition-all cursor-pointer flex flex-col gap-1.5 ${
-                isSel
-                  ? 'bg-neutral-900 border border-cyan-400/80 shadow-sm'
-                  : 'bg-neutral-950/60 border border-neutral-800/80 text-zinc-300'
-              }`}
-            >
-              <span className="font-mono text-xs font-bold text-cyan-400">{st.stepNum}</span>
-              <span className="text-sm font-bold text-white">{st.name}</span>
-              <span className="text-xs text-zinc-400 font-mono">{st.badge}</span>
-            </button>
-          );
-        })}
+      {/* Two-Tier Circular Nodes System */}
+      <div className="relative z-10 my-auto flex flex-col gap-10 sm:gap-12 py-3">
+        {/* TIER 1: Forward Clinical Dialogue Stream (4 Horizontal Circles) */}
+        <div className="grid grid-cols-4 gap-2 sm:gap-4 items-center">
+          {LIFECYCLE_STAGES.slice(0, 4).map((stage) => {
+            const isSel = activeStageId === stage.id;
+            const config = STAGE_VISUAL_CONFIG[stage.id];
+
+            return (
+              <div key={stage.id} className="flex flex-col items-center text-center group">
+                {/* Circular Button Shape */}
+                <button
+                  type="button"
+                  onClick={() => onSelectStageId(stage.id)}
+                  className={`relative w-14 h-14 sm:w-18 sm:h-18 md:w-20 md:h-20 rounded-full flex flex-col items-center justify-center transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500 ${
+                    isSel
+                      ? 'bg-slate-950 text-white shadow-xl scale-110 ring-4 ring-cyan-400/80 ring-offset-2'
+                      : 'bg-white text-slate-700 border-2 border-slate-200 shadow-md hover:border-slate-400 hover:scale-105 hover:shadow-lg'
+                  }`}
+                >
+                  {/* Subtle active beacon halo */}
+                  {isSel && (
+                    <span className="absolute -inset-1 rounded-full bg-cyan-400 opacity-20 animate-ping" />
+                  )}
+
+                  {/* Lucid Icon */}
+                  <div className={`transition-transform duration-200 ${isSel ? 'text-cyan-400 scale-110' : 'text-slate-700 group-hover:text-cyan-600'}`}>
+                    {getStageIcon(stage.id, 'w-6 h-6 sm:w-7 sm:h-7')}
+                  </div>
+
+                  {/* Micro Step Tag inside circle */}
+                  <span
+                    className={`font-mono text-[9px] font-bold mt-0.5 tracking-tight ${
+                      isSel ? 'text-cyan-300' : 'text-slate-600'
+                    }`}
+                  >
+                    {stage.stepNum}
+                  </span>
+                </button>
+
+                {/* Text Label Below Circle */}
+                <div className="mt-2 space-y-0.5">
+                  <span
+                    className={`font-mono text-[10px] sm:text-[11px] font-bold uppercase tracking-wider block transition-colors ${
+                      isSel ? 'text-cyan-700' : 'text-slate-800'
+                    }`}
+                  >
+                    {stage.shortLabel.replace(/^[0-9A-B]+ /, '')}
+                  </span>
+                  <span className="text-[10px] text-slate-600 hidden sm:block font-medium">
+                    {config.subLabel}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* TIER 2: Secondary Governance & Disposal Stream (2 Offset Branch Circles) */}
+        <div className="grid grid-cols-4 gap-2 sm:gap-4 items-center">
+          {/* Spacer Column 1 */}
+          <div className="flex flex-col items-center" />
+
+          {/* Column 2: 05A Audio Purge (Directly under 02 Local ASR) */}
+          {(() => {
+            const stage = LIFECYCLE_STAGES[4]; // audio_disposal
+            const isSel = activeStageId === stage.id;
+            const config = STAGE_VISUAL_CONFIG[stage.id];
+
+            return (
+              <div className="flex flex-col items-center text-center group">
+                <button
+                  type="button"
+                  onClick={() => onSelectStageId(stage.id)}
+                  className={`relative w-14 h-14 sm:w-18 sm:h-18 md:w-20 md:h-20 rounded-full flex flex-col items-center justify-center transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500 ${
+                    isSel
+                      ? 'bg-slate-950 text-white shadow-xl scale-110 ring-4 ring-emerald-400/80 ring-offset-2'
+                      : 'bg-white text-slate-700 border-2 border-emerald-200 shadow-md hover:border-emerald-400 hover:scale-105 hover:shadow-lg'
+                  }`}
+                >
+                  {isSel && (
+                    <span className="absolute -inset-1 rounded-full bg-emerald-400 opacity-20 animate-ping" />
+                  )}
+
+                  <div className={`transition-transform duration-200 ${isSel ? 'text-emerald-400 scale-110' : 'text-emerald-700 group-hover:text-emerald-800'}`}>
+                    {getStageIcon(stage.id, 'w-6 h-6 sm:w-7 sm:h-7')}
+                  </div>
+
+                  <span
+                    className={`font-mono text-[9px] font-bold mt-0.5 tracking-tight ${
+                      isSel ? 'text-emerald-300' : 'text-emerald-700'
+                    }`}
+                  >
+                    05A
+                  </span>
+                </button>
+
+                <div className="mt-2 space-y-0.5">
+                  <span
+                    className={`font-mono text-[10px] sm:text-[11px] font-bold uppercase tracking-wider block transition-colors ${
+                      isSel ? 'text-emerald-700' : 'text-slate-800'
+                    }`}
+                  >
+                    Audio Purge
+                  </span>
+                  <span className="text-[10px] text-emerald-700 hidden sm:block font-medium">
+                    RAM Zeroized
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Spacer Column 3 (Bridge Area) */}
+          <div className="flex flex-col items-center justify-center">
+            <div className="hidden sm:inline-flex items-center gap-1 px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-[10px] font-mono text-slate-600">
+              <span>SHA-256</span>
+              <ArrowRight className="w-3 h-3 text-violet-500" />
+            </div>
+          </div>
+
+          {/* Column 4: 05B Chained Audit Ledger (Under Arbiter / LLM) */}
+          {(() => {
+            const stage = LIFECYCLE_STAGES[5]; // audit_ledger
+            const isSel = activeStageId === stage.id;
+            const config = STAGE_VISUAL_CONFIG[stage.id];
+
+            return (
+              <div className="flex flex-col items-center text-center group">
+                <button
+                  type="button"
+                  onClick={() => onSelectStageId(stage.id)}
+                  className={`relative w-14 h-14 sm:w-18 sm:h-18 md:w-20 md:h-20 rounded-full flex flex-col items-center justify-center transition-all duration-200 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 ${
+                    isSel
+                      ? 'bg-slate-950 text-white shadow-xl scale-110 ring-4 ring-violet-400/80 ring-offset-2'
+                      : 'bg-white text-slate-700 border-2 border-violet-200 shadow-md hover:border-violet-400 hover:scale-105 hover:shadow-lg'
+                  }`}
+                >
+                  {isSel && (
+                    <span className="absolute -inset-1 rounded-full bg-violet-400 opacity-20 animate-ping" />
+                  )}
+
+                  <div className={`transition-transform duration-200 ${isSel ? 'text-violet-400 scale-110' : 'text-violet-700 group-hover:text-violet-800'}`}>
+                    {getStageIcon(stage.id, 'w-6 h-6 sm:w-7 sm:h-7')}
+                  </div>
+
+                  <span
+                    className={`font-mono text-[9px] font-bold mt-0.5 tracking-tight ${
+                      isSel ? 'text-violet-300' : 'text-violet-700'
+                    }`}
+                  >
+                    05B
+                  </span>
+                </button>
+
+                <div className="mt-2 space-y-0.5">
+                  <span
+                    className={`font-mono text-[10px] sm:text-[11px] font-bold uppercase tracking-wider block transition-colors ${
+                      isSel ? 'text-violet-700' : 'text-slate-800'
+                    }`}
+                  >
+                    Audit Ledger
+                  </span>
+                  <span className="text-[10px] text-violet-700 hidden sm:block font-medium">
+                    Immutable
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
+        </div>
+      </div>
+
+      {/* Micro Legend at Bottom of Canvas */}
+      <div className="relative z-10 pt-2 border-t border-slate-200/80 flex items-center justify-between text-slate-600 font-mono text-[10px]">
+        <span className="truncate">
+          FLOW: 16kHz PCM → NEURAL ASR → ARBITER → CLOUD LLM (DOWNWARD PURGE & LEDGER)
+        </span>
+        <span className="hidden sm:inline font-semibold text-slate-700 shrink-0 pl-2">
+          LIVE ISOLATION BOUNDARY
+        </span>
       </div>
     </div>
   );
 }
 
+// ============================================================================
+// MAIN CLINICAL DATA LIFECYCLE COMPONENT
+// ============================================================================
 export function ClinicalDataLifecycle3D({
   className = '',
 }: {
@@ -693,46 +546,11 @@ export function ClinicalDataLifecycle3D({
 }) {
   // SINGLE AUTHORITATIVE SOURCE OF TRUTH FOR ACTIVE STAGE
   const [activeStageId, setActiveStageId] = useState<string>('audio_buffer');
-  const [hoveredStageId, setHoveredStageId] = useState<string | null>(null);
-  const [webglSupported, setWebglSupported] = useState<boolean>(true);
-  const [reducedMotion, setReducedMotion] = useState<boolean>(false);
-  const [isInView, setIsInView] = useState<boolean>(true);
-  const containerRef = useRef<HTMLDivElement>(null);
 
   const selectedStage = useMemo(
     () => LIFECYCLE_STAGES.find((s) => s.id === activeStageId) ?? LIFECYCLE_STAGES[0],
     [activeStageId]
   );
-
-  useEffect(() => {
-    try {
-      const canvas = document.createElement('canvas');
-      const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl');
-      setWebglSupported(Boolean(gl));
-    } catch {
-      setWebglSupported(false);
-    }
-
-    if (typeof window !== 'undefined') {
-      const mq = window.matchMedia('(prefers-reduced-motion: reduce)');
-      setReducedMotion(mq.matches);
-      const listener = (e: MediaQueryListEvent) => setReducedMotion(e.matches);
-      mq.addEventListener('change', listener);
-      return () => mq.removeEventListener('change', listener);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!containerRef.current || typeof IntersectionObserver === 'undefined') return;
-    const observer = new IntersectionObserver(
-      ([entry]) => {
-        setIsInView(entry.isIntersecting);
-      },
-      { threshold: 0.1 }
-    );
-    observer.observe(containerRef.current);
-    return () => observer.disconnect();
-  }, []);
 
   const handleNextStage = () => {
     const curIdx = LIFECYCLE_STAGES.findIndex((s) => s.id === activeStageId);
@@ -742,17 +560,15 @@ export function ClinicalDataLifecycle3D({
 
   return (
     <div
-      ref={containerRef}
-      style={{ backgroundColor: '#08080a' }}
-      className={`relative w-full rounded-2xl sm:rounded-3xl bg-[#08080a] border border-neutral-800/80 text-white overflow-hidden shadow-2xl flex flex-col ${className}`}
+      className={`relative w-full rounded-2xl sm:rounded-3xl bg-white border border-slate-200/90 text-slate-900 overflow-hidden shadow-xl flex flex-col ${className}`}
     >
       {/* 1. Integrated Minimalist Header & Navigation Bar (Single Authoritative Strip) */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between px-6 sm:px-8 py-4 border-b border-neutral-800/80 bg-[#0a0a0e] gap-4">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between px-6 sm:px-8 py-4 border-b border-slate-200/80 bg-white gap-4">
         <div>
-          <span className="font-mono text-[11px] font-bold tracking-widest text-zinc-500 uppercase block">
+          <span className="font-mono text-[11px] font-bold tracking-widest text-slate-500 uppercase block">
             01 — 06 ARCHITECTURAL PIPELINE
           </span>
-          <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight">
+          <h2 className="text-lg sm:text-xl font-extrabold text-slate-950 tracking-tight">
             Interactive Clinical Data Lifecycle
           </h2>
         </div>
@@ -767,13 +583,13 @@ export function ClinicalDataLifecycle3D({
                 onClick={() => setActiveStageId(st.id)}
                 className={`group relative flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-colors cursor-pointer shrink-0 focus-visible:outline-none ${
                   isSel
-                    ? 'text-white font-semibold'
-                    : 'text-zinc-400 hover:text-zinc-200'
+                    ? 'text-slate-950 font-semibold bg-slate-100/90'
+                    : 'text-slate-600 hover:text-slate-950 hover:bg-slate-100/60'
                 }`}
               >
                 <span
                   className={`font-mono text-[10px] sm:text-[11px] font-bold ${
-                    isSel ? 'text-cyan-400' : 'text-zinc-500 group-hover:text-zinc-400'
+                    isSel ? 'text-cyan-600' : 'text-slate-400 group-hover:text-slate-600'
                   }`}
                 >
                   {st.stepNum}
@@ -782,7 +598,7 @@ export function ClinicalDataLifecycle3D({
                 {isSel && (
                   <motion.div
                     layoutId="active-stage-indicator"
-                    className="absolute -bottom-1 left-2 right-2 h-[2px] bg-cyan-400 shadow-[0_0_8px_#67e8f9]"
+                    className="absolute -bottom-1 left-2 right-2 h-[2.5px] bg-cyan-600 rounded-full shadow-[0_0_8px_rgba(8,145,178,0.4)]"
                     transition={{ type: 'spring', stiffness: 450, damping: 35 }}
                   />
                 )}
@@ -792,38 +608,18 @@ export function ClinicalDataLifecycle3D({
         </div>
       </div>
 
-      {/* 2. Coordinated Side-by-Side Architectural Workspace (3D Canvas + Side Stage Inspector) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 min-h-[500px] lg:min-h-[540px] w-full">
-        {/* Left Column (8 cols): 3D Sculptural Visualizer */}
-        <div className="lg:col-span-7 xl:col-span-8 relative h-[380px] sm:h-[440px] lg:h-full min-h-[380px] sm:min-h-[440px] bg-[#070709] border-b lg:border-b-0 lg:border-r border-neutral-800/80">
-          {webglSupported && isInView ? (
-            <LifecycleCanvas
-              activeStageId={activeStageId}
-              onSelectStageId={setActiveStageId}
-              hoveredStageId={hoveredStageId}
-              setHoveredStageId={setHoveredStageId}
-              reducedMotion={reducedMotion}
-            />
-          ) : (
-            <StaticFlowchartFallback
-              activeStageId={activeStageId}
-              onSelectStageId={setActiveStageId}
-            />
-          )}
-
-          {/* Interactive Micro-Legend Anchored to Canvas */}
-          <div className="absolute bottom-3 left-5 right-5 flex items-center justify-between font-mono text-[10px] text-zinc-500 pointer-events-none">
-            <span className="truncate">
-              PIPELINE: 16kHz PCM → NEURAL ASR → ARBITER → CLOUD LLM (DOWNWARD PURGE & LEDGER)
-            </span>
-            <span className="hidden sm:inline shrink-0 pl-3">
-              SELECT ANY 3D MODULE TO INSPECT
-            </span>
-          </div>
+      {/* 2. Coordinated Side-by-Side Architectural Workspace */}
+      <div className="grid grid-cols-1 lg:grid-cols-12 min-h-[500px] lg:min-h-[540px] w-full bg-white">
+        {/* Left Column (7-8 cols): Bright Circular Instrument Canvas */}
+        <div className="lg:col-span-7 xl:col-span-8 relative border-b lg:border-b-0 lg:border-r border-slate-200/80">
+          <BrightCircularInstrumentCanvas
+            activeStageId={activeStageId}
+            onSelectStageId={setActiveStageId}
+          />
         </div>
 
         {/* Right Column (4-5 cols): Integrated Stage Inspector Panel */}
-        <div className="lg:col-span-5 xl:col-span-4 p-6 sm:p-7 bg-[#0a0a0d] flex flex-col justify-between">
+        <div className="lg:col-span-5 xl:col-span-4 p-6 sm:p-7 bg-slate-50/50 flex flex-col justify-between">
           <AnimatePresence mode="wait">
             <motion.div
               key={selectedStage.id}
@@ -834,38 +630,38 @@ export function ClinicalDataLifecycle3D({
               className="space-y-5"
             >
               {/* Header: Stage Badge & Title */}
-              <div className="space-y-1.5 border-b border-neutral-800/70 pb-4">
+              <div className="space-y-1.5 border-b border-slate-200/70 pb-4">
                 <div className="flex items-center justify-between">
-                  <span className="font-mono text-xs font-bold text-cyan-400 tracking-wider">
+                  <span className="font-mono text-xs font-bold text-cyan-700 tracking-wider">
                     {selectedStage.stepNum} — {selectedStage.badge}
                   </span>
-                  <span className="font-mono text-[10px] text-zinc-500 bg-neutral-900 px-2 py-0.5 rounded border border-neutral-800">
+                  <span className="font-mono text-[10px] text-slate-600 bg-white px-2 py-0.5 rounded border border-slate-200 shadow-2xs">
                     STAGE {selectedStage.stepNum} OF 06
                   </span>
                 </div>
-                <h3 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight leading-snug">
+                <h3 className="text-xl sm:text-2xl font-extrabold text-slate-950 tracking-tight leading-snug">
                   {selectedStage.name}
                 </h3>
-                <p className="text-xs sm:text-sm text-zinc-300 leading-relaxed font-normal pt-0.5">
+                <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-normal pt-0.5">
                   {selectedStage.headline}
                 </p>
               </div>
 
               {/* Data In & Data Out Specification */}
               <div className="grid grid-cols-2 gap-3 pt-1">
-                <div className="p-3 rounded-xl bg-neutral-900/60 border border-neutral-800/80 space-y-1">
-                  <span className="font-mono text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">
+                <div className="p-3 rounded-xl bg-white border border-slate-200/90 shadow-2xs space-y-1">
+                  <span className="font-mono text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
                     DATA IN
                   </span>
-                  <p className="text-xs text-zinc-200 leading-tight">
+                  <p className="text-xs text-slate-800 leading-tight font-medium">
                     {selectedStage.dataIn}
                   </p>
                 </div>
-                <div className="p-3 rounded-xl bg-neutral-900/60 border border-neutral-800/80 space-y-1">
-                  <span className="font-mono text-[10px] font-bold text-cyan-400 uppercase tracking-wider block">
+                <div className="p-3 rounded-xl bg-white border border-slate-200/90 shadow-2xs space-y-1">
+                  <span className="font-mono text-[10px] font-bold text-cyan-700 uppercase tracking-wider block">
                     DATA OUT
                   </span>
-                  <p className="text-xs text-zinc-200 leading-tight">
+                  <p className="text-xs text-slate-800 leading-tight font-medium">
                     {selectedStage.dataOut}
                   </p>
                 </div>
@@ -873,14 +669,14 @@ export function ClinicalDataLifecycle3D({
 
               {/* Processing Sovereignty & Voice Isolation */}
               <div className="space-y-1.5 pt-1">
-                <span className="font-mono text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">
+                <span className="font-mono text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
                   PROCESSING SOVEREIGNTY & ISOLATION
                 </span>
-                <p className="text-xs sm:text-[13px] text-zinc-200 leading-relaxed font-normal">
+                <p className="text-xs sm:text-[13px] text-slate-700 leading-relaxed font-normal">
                   {selectedStage.voiceIsolationDetail}
                 </p>
                 <div className="pt-1">
-                  <span className="inline-block font-mono text-[10px] text-zinc-400 bg-neutral-900 border border-neutral-800 px-2 py-0.5 rounded">
+                  <span className="inline-block font-mono text-[10px] text-slate-700 bg-white border border-slate-200/90 shadow-2xs px-2 py-0.5 rounded">
                     Boundary: {selectedStage.boundary}
                   </span>
                 </div>
@@ -888,18 +684,18 @@ export function ClinicalDataLifecycle3D({
 
               {/* Data Retention & Lifecycle */}
               <div className="space-y-1.5 pt-1">
-                <span className="font-mono text-[10px] font-bold text-zinc-400 uppercase tracking-wider block">
+                <span className="font-mono text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
                   MEMORY & RETENTION LIFECYCLE
                 </span>
-                <p className="text-xs sm:text-[13px] text-zinc-200 leading-relaxed font-normal">
+                <p className="text-xs sm:text-[13px] text-slate-700 leading-relaxed font-normal">
                   {selectedStage.retentionDetail}
                 </p>
               </div>
 
               {/* Pilot Legal Disclaimer if Applicable */}
               {selectedStage.vendorNotice && (
-                <div className="p-3 rounded-xl bg-neutral-900/90 border border-amber-900/40 text-amber-200/90 text-xs font-mono leading-relaxed flex items-start gap-2">
-                  <Info className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+                <div className="p-3 rounded-xl bg-amber-50/80 border border-amber-200 text-amber-900 text-xs font-mono leading-relaxed flex items-start gap-2">
+                  <Info className="w-3.5 h-3.5 text-amber-700 shrink-0 mt-0.5" />
                   <span>{selectedStage.vendorNotice}</span>
                 </div>
               )}
@@ -907,13 +703,13 @@ export function ClinicalDataLifecycle3D({
           </AnimatePresence>
 
           {/* Action Footer: Step Next Stage Button */}
-          <div className="pt-6 border-t border-neutral-800/70 mt-6 flex items-center justify-between">
-            <span className="font-mono text-[11px] text-zinc-400">
+          <div className="pt-6 border-t border-slate-200/70 mt-6 flex items-center justify-between">
+            <span className="font-mono text-[11px] text-slate-500">
               Active: {selectedStage.shortLabel}
             </span>
             <button
               onClick={handleNextStage}
-              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-mono text-xs font-semibold text-white bg-neutral-900 hover:bg-neutral-800 border border-neutral-700/80 transition-all cursor-pointer active:scale-[0.98] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-400"
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl font-mono text-xs font-semibold text-white bg-slate-950 hover:bg-slate-800 border border-slate-900 shadow-xs transition-all cursor-pointer active:scale-[0.98] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-cyan-500"
             >
               <span>Step next</span>
               <ArrowRight className="w-3.5 h-3.5 text-cyan-400" />
