@@ -1,9 +1,8 @@
 "use client";
 
 import React from "react";
-import Link from "next/link";
 import dynamic from "next/dynamic";
-import { ArrowLeft, ShieldCheck, Lock, CheckCircle2, FileText, Key, Activity } from "lucide-react";
+import { ShieldCheck, Lock, CheckCircle2, FileText, Key, Activity } from "lucide-react";
 import { AppFooter } from "../_components/AppFooter";
 import { ScrollExpand, ExpandItem } from "@/components/motion/ScrollExpand";
 import { ClinicalFlipCard } from "@/components/clinical/ClinicalFlipCard";
@@ -98,15 +97,7 @@ export default function PrivacyPolicyPage() {
         {/* HERO SECTION WITH CENTERPIECE 3D INSTRUMENT */}
         <section className="pt-36 sm:pt-44 pb-16 px-4 sm:px-6 max-w-5xl lg:max-w-6xl mx-auto space-y-8 scroll-mt-36">
           <div className="space-y-4">
-            <Link
-              href="/"
-              className="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 hover:text-slate-950 bg-white hover:bg-slate-50 border border-slate-200/90 hover:border-slate-300 px-3.5 py-1.5 rounded-xl shadow-2xs transition-all w-fit cursor-pointer"
-            >
-              <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Back to Home</span>
-            </Link>
-
-            <div className="space-y-3 pt-2">
+            <div className="space-y-3">
               <span className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-slate-500 block">
                 MEDVOICE / ARCHITECTURE & PRIVACY
               </span>
