@@ -1422,47 +1422,38 @@ export default function CarePage() {
                         const famousFor = hosp.famousFor || getHospitalFamousFor(hosp);
 
                         return (
-                          <div className="w-full flex items-start justify-between gap-2.5">
-                            <div className="flex items-start gap-2.5 min-w-0">
-                              <div
-                                className={`w-5 h-5 rounded-md flex items-center justify-center font-bold text-[11px] shrink-0 ${
+                          <div className="w-full flex items-center justify-between gap-3">
+                            {/* Left: rank + name + subtitle */}
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span
+                                className={`text-[11px] font-semibold tabular-nums shrink-0 w-5 text-center ${
                                   isSelected
-                                    ? "bg-slate-950 text-white shadow-xs"
+                                    ? "text-slate-950"
                                     : isBest
-                                    ? "bg-cyan-100 text-cyan-900 border border-cyan-300"
-                                    : "bg-slate-100 text-slate-700 border border-slate-200"
+                                    ? "text-cyan-700"
+                                    : "text-slate-400"
                                 }`}
                               >
-                                #{hosp.rank}
-                              </div>
+                                {hosp.rank}
+                              </span>
                               <div className="min-w-0">
-                                <div className="flex items-center gap-1.5 flex-wrap">
-                                  <h4 className="text-xs font-bold text-slate-900 truncate" title={hosp.name}>
-                                    {hosp.name}
-                                  </h4>
-                                  {isSelected && (
-                                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-slate-950 text-white uppercase tracking-wider">
-                                      Destination
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
-                                  <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 border border-slate-200/80 truncate max-w-[160px]">
-                                    {famousFor}
-                                  </span>
-                                  <span className="text-[10px] text-slate-600">
-                                    {hosp.isEmergency24x7 ? "24/7 ER" : "OPD"} · {isGovernment ? "Govt" : "Private"}
-                                  </span>
-                                </div>
+                                <h4 className="text-[13px] font-semibold text-slate-900 truncate leading-snug" title={hosp.name}>
+                                  {hosp.name}
+                                </h4>
+                                <p className="text-[11px] text-slate-500 truncate leading-snug mt-px">
+                                  {famousFor}{hosp.isEmergency24x7 ? " · 24/7 ER" : ""}{isGovernment ? " · Govt" : ""}
+                                </p>
                               </div>
                             </div>
 
-                            <div className="flex flex-col items-end shrink-0 text-right">
-                              <span className="text-xs font-bold text-slate-900">
-                                ~{durationNum}m
+                            {/* Right: ETA + distance */}
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <span className={`text-[11px] font-semibold tabular-nums ${isSelected ? "text-slate-900" : "text-slate-600"}`}>
+                                {durationNum}m
                               </span>
-                              <span className="text-[10px] text-slate-600 font-mono">
-                                ~{distanceNum.toFixed(1)} km
+                              <span className="text-[10px] text-slate-400">·</span>
+                              <span className="text-[10px] text-slate-400 tabular-nums">
+                                {distanceNum.toFixed(1)}km
                               </span>
                             </div>
                           </div>
