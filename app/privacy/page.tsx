@@ -95,53 +95,28 @@ export default function PrivacyPolicyPage() {
   return (
     <AmbientPageBackground>
       <div>
-        {/* HERO HEADER */}
-        <section className="pt-28 sm:pt-32 pb-10 px-4 sm:px-6 max-w-4xl mx-auto space-y-4">
-          <Link
-            href="/"
-            className="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 hover:text-slate-950 bg-white hover:bg-slate-50 border border-slate-200/90 hover:border-slate-300 px-3.5 py-1.5 rounded-xl shadow-2xs transition-all w-fit cursor-pointer"
-          >
-            <ArrowLeft className="w-3.5 h-3.5" />
-            <span>Back to Home</span>
-          </Link>
+        {/* HERO SECTION WITH CENTERPIECE 3D INSTRUMENT */}
+        <section className="pt-32 sm:pt-36 pb-20 px-4 sm:px-6 max-w-5xl lg:max-w-6xl mx-auto space-y-8 scroll-mt-32">
+          <div className="space-y-4">
+            <Link
+              href="/"
+              className="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 hover:text-slate-950 bg-white hover:bg-slate-50 border border-slate-200/90 hover:border-slate-300 px-3.5 py-1.5 rounded-xl shadow-2xs transition-all w-fit cursor-pointer"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Back to Home</span>
+            </Link>
 
-          <div className="space-y-2 pt-2">
-            <span className="font-mono text-xs font-bold uppercase tracking-[0.1em] text-slate-900 bg-slate-100 border border-slate-200 px-3.5 py-1 rounded-full inline-block">
-              SECURITY & COMPLIANCE ARCHITECTURE
-            </span>
-            <div className="space-y-1">
-              <SplitText
-                text="Privacy Policy & Technical Safeguards"
-                tag="h1"
-                className="text-4xl sm:text-5xl font-extrabold tracking-tight text-slate-950 leading-tight"
-              />
-              <div className="pt-0.5">
-                <GradientText
-                  colors={["#0891b2", "#06b6d4", "#0e7490"]}
-                  className="text-xs sm:text-sm font-bold uppercase tracking-wider font-mono"
-                >
-                  Zero Voice Retention & Cryptographic Audit Trails
-                </GradientText>
-              </div>
+            <div className="space-y-3 pt-2">
+              <span className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-slate-500 block">
+                MEDVOICE / ARCHITECTURE & PRIVACY
+              </span>
+              <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-slate-950 leading-[1.1]">
+                Your clinical data has a clear path.
+              </h1>
+              <p className="text-base sm:text-lg text-slate-600 font-normal leading-relaxed max-w-3xl">
+                Explore how voice streams, clinical reasoning, cloud boundaries, and cryptographic audit records are isolated and protected throughout every consultation.
+              </p>
             </div>
-            <p className="text-base text-slate-600 font-normal leading-relaxed max-w-2xl">
-              MedVoice AI is engineered around strict zero voice-retention policies, end-to-end encryption, and verifiable cryptographic compliance logs.
-            </p>
-          </div>
-        </section>
-
-        {/* 3D INTERACTIVE DATA LIFECYCLE INSTRUMENT */}
-        <section className="pb-16 px-4 sm:px-6 max-w-5xl lg:max-w-6xl mx-auto space-y-5">
-          <div className="space-y-1">
-            <span className="font-mono text-xs font-bold uppercase tracking-[0.1em] text-slate-900 block">
-              SYSTEM ARCHITECTURE & DATA FLOW
-            </span>
-            <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-950 tracking-tight">
-              Clinical Data Lifecycle & Boundary Visualization
-            </h2>
-            <p className="text-sm text-slate-600 max-w-2xl leading-relaxed">
-              Inspect where raw audio is processed locally, where cloud LLM reasoning begins, how transient memory buffers are purged, and how cryptographic audit metadata is generated separately.
-            </p>
           </div>
 
           <ClinicalDataLifecycle3D />

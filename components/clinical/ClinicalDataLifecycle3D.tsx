@@ -4,20 +4,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import * as THREE from 'three';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { motion, AnimatePresence } from 'motion/react';
-import {
-  Mic,
-  Cpu,
-  Layers,
-  Cloud,
-  Trash2,
-  Database,
-  ShieldCheck,
-  Clock,
-  Terminal,
-  Activity,
-  ArrowRight,
-  Lock,
-} from 'lucide-react';
+import { ArrowRight } from 'lucide-react';
 
 export interface LifecycleStage {
   id: string;
@@ -28,11 +15,11 @@ export interface LifecycleStage {
   badge: string;
   boundary: string;
   headline: string;
-  details: string;
-  retention: string;
-  technicalTruth: string;
+  processingLocation: string;
+  sovereigntyDetail: string;
+  retentionDetail: string;
+  vendorQualification?: string;
   coords: [number, number, number];
-  icon: React.ComponentType<{ className?: string }>;
   isDisposal?: boolean;
 }
 
@@ -43,14 +30,15 @@ export const LIFECYCLE_STAGES: LifecycleStage[] = [
     name: 'Audio Capture & Ingest',
     shortLabel: 'Audio Ingest',
     category: 'ingest',
-    badge: 'Client → Server Ingest',
+    badge: 'Client Ingest',
     boundary: 'Volatile RAM Ring-Buffer',
-    headline: 'MediaRecorder 16kHz PCM audio stream in volatile server memory',
-    details: 'Spoken patient audio is captured in the browser via standard MediaRecorder and streamed as binary multipart FormData to /api/voice/stt.',
-    retention: 'Held in volatile server RAM buffer strictly during active transcription.',
-    technicalTruth: 'Local Ingest: Spoken audio is held in temporary memory. Never written to permanent disk storage or relational database.',
-    coords: [-2.8, 0.35, 0],
-    icon: Mic,
+    headline: 'Transient 16kHz PCM audio stream in volatile server RAM',
+    processingLocation: 'Browser Client → Local Server Ingest',
+    sovereigntyDetail:
+      'Spoken audio is captured via standard browser MediaRecorder and transmitted as binary multipart FormData to /api/voice/stt over HTTPS.',
+    retentionDetail:
+      'Held strictly in volatile RAM buffer during active transcription. Never written to permanent disk storage or relational database.',
+    coords: [-3.2, 0.45, 0],
   },
   {
     id: 'local_whisper',
@@ -58,14 +46,15 @@ export const LIFECYCLE_STAGES: LifecycleStage[] = [
     name: 'Local Speech Recognition',
     shortLabel: 'Local ASR',
     category: 'asr',
-    badge: 'Local Execution (CPU/GPU)',
+    badge: 'Local Execution',
     boundary: 'Local FastAPI Whisper base.en',
     headline: 'Neural speech-to-text decoding executes locally on server',
-    details: 'The audio buffer is processed by local OpenAI Whisper (base.en, 74M parameters) running inside the local FastAPI container to produce a text transcript.',
-    retention: 'Ephemeral processing pass. Audio unlinked immediately upon completion.',
-    technicalTruth: 'Local Execution: Spoken waveforms are converted to text locally on the FastAPI backend without streaming audio to external cloud services.',
-    coords: [-1.4, 0.35, 0],
-    icon: Cpu,
+    processingLocation: 'Local Container (FastAPI Whisper base.en, 74M params)',
+    sovereigntyDetail:
+      'Spoken waveforms are converted to text locally on the server without streaming voice audio to third-party cloud speech services.',
+    retentionDetail:
+      'Ephemeral processing pass. Audio file is unlinked immediately in audio_service.py within a finally: os.remove() block.',
+    coords: [-1.6, 0.45, 0],
   },
   {
     id: 'clinical_context',
@@ -75,12 +64,13 @@ export const LIFECYCLE_STAGES: LifecycleStage[] = [
     category: 'arbiter',
     badge: 'Local State Machine',
     boundary: 'Deterministic Rules Engine',
-    headline: 'Deterministic symptom parsing & ESI urgency classification',
-    details: 'Transcript text is analyzed by a deterministic rule-based safety arbiter, checking universal red flags across ACS, stroke, and pediatric vitals with strict non-downgrade invariants.',
-    retention: 'State maintained in encounter session memory; committed to consultation record upon finish.',
-    technicalTruth: 'Local Invariant: 100% deterministic rules engine runs locally before any generative model tokens are produced.',
-    coords: [0.0, 0.35, 0],
-    icon: Layers,
+    headline: 'Deterministic symptom parsing & emergency acuity screening',
+    processingLocation: 'Local Rule-Based Arbiter Engine',
+    sovereigntyDetail:
+      'Transcript text is evaluated against deterministic clinical safety rules for ACS, stroke, and pediatric vitals. Emergency states cannot be downgraded.',
+    retentionDetail:
+      'Encounter state is maintained in active session memory and committed to the consultation ledger upon turn completion.',
+    coords: [0.0, 0.45, 0],
   },
   {
     id: 'cloud_inference',
@@ -88,14 +78,17 @@ export const LIFECYCLE_STAGES: LifecycleStage[] = [
     name: 'Clinical Reasoning (LLM)',
     shortLabel: 'Cloud LLM',
     category: 'cloud',
-    badge: 'Cloud Inference Boundary',
+    badge: 'Cloud Boundary',
     boundary: 'Groq / NVIDIA NIM Cloud API',
-    headline: 'Contextual doctor dialogue synthesized via cloud LLM API',
-    details: 'De-identified clinical state and multi-turn dialogue context are submitted to Cloud LLM APIs (Groq LLaMA-3.3 / NVIDIA NIM) to generate bedside doctor guidance.',
-    retention: 'Zero-data-retention API contracts; clinical prompt discarded post-generation.',
-    technicalTruth: 'Cloud Inference Boundary: De-identified clinical text prompt is submitted to cloud LLM API. Only text is transmitted—raw audio never leaves local infrastructure.',
-    coords: [1.4, 0.35, 0],
-    icon: Cloud,
+    headline: 'Doctor dialogue synthesized via cloud LLM API',
+    processingLocation: 'Cloud Inference Boundary (Groq LLaMA-3.3 / NVIDIA NIM)',
+    sovereigntyDetail:
+      'De-identified clinical state and multi-turn dialogue context are submitted to cloud LLM APIs. Voice audio NEVER leaves local infrastructure—only structured text is transmitted.',
+    retentionDetail:
+      'Ephemeral API request. Model prompt context is discarded post-inference.',
+    vendorQualification:
+      'Pilot Notice: Enterprise zero-retention contracts and dedicated BAA agreements remain under active pilot legal review.',
+    coords: [1.6, 0.45, 0],
   },
   {
     id: 'audio_disposal',
@@ -103,14 +96,15 @@ export const LIFECYCLE_STAGES: LifecycleStage[] = [
     name: 'Raw Audio Disposal',
     shortLabel: 'Audio Purge',
     category: 'disposal',
-    badge: 'Memory Lifecycle Purge',
-    boundary: 'Python finally: block',
-    headline: 'Temporary audio buffers unlinked and purged post-transcription',
-    details: 'Immediately after Whisper returns the transcript text, the temporary audio file is deleted inside audio_service.py in an explicit finally: os.remove() block.',
-    retention: 'ZERO persistent voice retention on server disk or database.',
-    technicalTruth: 'Confirmed by Codebase: audio_service.py unlinks temporary files immediately; no voice waveforms are persisted.',
-    coords: [-1.4, -1.05, 0],
-    icon: Trash2,
+    badge: 'Memory Purge',
+    boundary: 'Python finally: os.remove()',
+    headline: 'Temporary audio buffers zeroized and unlinked post-ASR',
+    processingLocation: 'Local Server File System',
+    sovereigntyDetail:
+      'Immediately after local Whisper returns text tokens, the temporary audio file is unlinked via os.remove() in audio_service.py.',
+    retentionDetail:
+      'ZERO persistent voice retention. No audio waveforms remain on server disk or database after call turn.',
+    coords: [-1.6, -1.05, 0],
     isDisposal: true,
   },
   {
@@ -121,16 +115,17 @@ export const LIFECYCLE_STAGES: LifecycleStage[] = [
     category: 'audit',
     badge: 'PostgreSQL Ledger',
     boundary: 'SHA-256 Chained Hash Digest',
-    headline: 'Cryptographic hash-chained audit ledger tracks consultation events',
-    details: 'Each consultation creation, clinical decision, and emergency dispatch creates a tamper-evident SHA-256 chained entry linking to previousHash in PostgreSQL.',
-    retention: 'Durable immutable ledger entries for regulatory compliance.',
-    technicalTruth: 'Cryptographic Digest: Audit metadata contains verification hashes, timestamps, and caller role. Does NOT store raw clinical audio.',
-    coords: [2.8, 0.35, 0],
-    icon: Database,
+    headline: 'Tamper-evident SHA-256 hash-chained compliance ledger',
+    processingLocation: 'PostgreSQL Database',
+    sovereigntyDetail:
+      'Clinical events, triage levels, and dispatch actions generate SHA-256 cryptographically chained entries linking to previousHash for audit integrity.',
+    retentionDetail:
+      'Stores cryptographic verification hashes, caller roles, and event timestamps. Does NOT store raw clinical audio.',
+    coords: [3.2, 0.45, 0],
   },
 ];
 
-// Precision Architectural Connecting Bus
+// Precision Connecting Bus
 function DataBusPath({
   start,
   end,
@@ -147,12 +142,12 @@ function DataBusPath({
     const p1 = new THREE.Vector3(midX, p0.y, 0.02);
     const p2 = new THREE.Vector3(midX, p3.y, 0.02);
     const curve = new THREE.CubicBezierCurve3(p0, p1, p2, p3);
-    const points = curve.getPoints(32);
+    const points = curve.getPoints(36);
     const geo = new THREE.BufferGeometry().setFromPoints(points);
     const mat = new THREE.LineBasicMaterial({
       color: dashed ? new THREE.Color('#3f3f46') : new THREE.Color('#27272a'),
       transparent: true,
-      opacity: dashed ? 0.45 : 0.75,
+      opacity: dashed ? 0.45 : 0.8,
       linewidth: 1,
     });
     return new THREE.Line(geo, mat);
@@ -161,12 +156,12 @@ function DataBusPath({
   return <primitive object={lineObj} />;
 }
 
-// Single Signal Pulse Traveling Along Bus in MedVoice Cyan
+// Directional Signal Pulses
 function SignalPulse({
   start,
   end,
   color = '#67E8F9',
-  speed = 0.9,
+  speed = 0.85,
   offset = 0,
 }: {
   start: [number, number, number];
@@ -180,28 +175,28 @@ function SignalPulse({
   const p3 = useMemo(() => new THREE.Vector3(...end), [end]);
   const curve = useMemo(() => {
     const midX = (p0.x + p3.x) / 2;
-    const p1 = new THREE.Vector3(midX, p0.y, 0.03);
-    const p2 = new THREE.Vector3(midX, p3.y, 0.03);
+    const p1 = new THREE.Vector3(midX, p0.y, 0.04);
+    const p2 = new THREE.Vector3(midX, p3.y, 0.04);
     return new THREE.CubicBezierCurve3(p0, p1, p2, p3);
   }, [p0, p3]);
 
   useFrame(({ clock }) => {
     if (!meshRef.current) return;
     const elapsed = clock.getElapsedTime() * speed + offset;
-    const t = (elapsed % 2.4) / 2.4;
+    const t = (elapsed % 2.2) / 2.2;
     const pt = curve.getPoint(t);
     meshRef.current.position.copy(pt);
   });
 
   return (
     <mesh ref={meshRef}>
-      <sphereGeometry args={[0.038, 14, 14]} />
+      <sphereGeometry args={[0.048, 16, 16]} />
       <meshBasicMaterial color={color} transparent opacity={0.95} />
     </mesh>
   );
 }
 
-// Clean Precision Geometric Node (Architectural, No Spinning Radar Rings)
+// Commanding Precision Node (Enlarged, Architectural, Focal Point)
 function Node3D({
   stage,
   isSelected,
@@ -222,11 +217,11 @@ function Node3D({
 
   useFrame(({ clock }) => {
     if (groupRef.current) {
-      const targetScale = isSelected ? 1.12 : isHovered ? 1.06 : 1.0;
+      const targetScale = isSelected ? 1.08 : isHovered ? 1.04 : 1.0;
       groupRef.current.scale.lerp(new THREE.Vector3(targetScale, targetScale, targetScale), 0.12);
     }
     if (haloRef.current && isSelected) {
-      const pulse = 1 + Math.sin(clock.getElapsedTime() * 3) * 0.04;
+      const pulse = 1 + Math.sin(clock.getElapsedTime() * 2.5) * 0.03;
       haloRef.current.scale.set(pulse, pulse, 1);
     }
   });
@@ -248,17 +243,17 @@ function Node3D({
         onClick();
       }}
     >
-      {/* 1. Subtle Outer Focus Ring on Selected Node Only (Clean, Not Spinning) */}
+      {/* 1. Active Focus Halo (Delicate Outer Reticle) */}
       {isSelected && (
         <mesh ref={haloRef} position={[0, 0, 0.01]}>
-          <ringGeometry args={[0.29, 0.302, 48]} />
-          <meshBasicMaterial color={activeColor} transparent opacity={0.75} />
+          <ringGeometry args={[0.46, 0.478, 48]} />
+          <meshBasicMaterial color={activeColor} transparent opacity={0.8} />
         </mesh>
       )}
 
-      {/* 2. Precision Bezel Ring */}
+      {/* 2. Precision Metallic Bezel Ring */}
       <mesh position={[0, 0, 0.02]}>
-        <ringGeometry args={[0.22, 0.235, 40]} />
+        <ringGeometry args={[0.36, 0.385, 48]} />
         <meshBasicMaterial
           color={isSelected ? activeColor : isHovered ? '#71717a' : '#27272a'}
           transparent
@@ -266,32 +261,32 @@ function Node3D({
         />
       </mesh>
 
-      {/* 3. Dark Precision Face (Near-Black Ceramic Surface) */}
+      {/* 3. Dark Ceramic Face Disc */}
       <mesh position={[0, 0, 0.03]}>
-        <circleGeometry args={[0.21, 32]} />
+        <circleGeometry args={[0.35, 40]} />
         <meshStandardMaterial
-          color="#09090b"
-          roughness={0.4}
-          metalness={0.7}
+          color="#0b0b0e"
+          roughness={0.35}
+          metalness={0.8}
         />
       </mesh>
 
       {/* 4. Center Optic Core (Cyan when Selected, Graphite when Inactive) */}
       <mesh position={[0, 0, 0.06]}>
-        <sphereGeometry args={[isSelected ? 0.082 : 0.058, 20, 20]} />
+        <sphereGeometry args={[isSelected ? 0.13 : 0.08, 24, 24]} />
         <meshStandardMaterial
           color={isSelected ? activeColor : isHovered ? '#a1a1aa' : isDisposal ? '#10b981' : '#3f3f46'}
           emissive={isSelected ? activeColor : isHovered ? '#52525b' : isDisposal ? '#064e3b' : '#18181b'}
-          emissiveIntensity={isSelected ? 1.5 : isDisposal ? 0.4 : 0.2}
+          emissiveIntensity={isSelected ? 1.6 : isDisposal ? 0.4 : 0.2}
           roughness={0.2}
           metalness={0.3}
         />
       </mesh>
 
-      {/* 5. Center Laser Bead (White Highlight on Active Node) */}
+      {/* 5. Center Laser Highlight Pin on Active Node */}
       {isSelected && (
-        <mesh position={[0, 0, 0.11]}>
-          <sphereGeometry args={[0.03, 12, 12]} />
+        <mesh position={[0, 0, 0.14]}>
+          <sphereGeometry args={[0.045, 16, 16]} />
           <meshBasicMaterial color="#ffffff" />
         </mesh>
       )}
@@ -299,9 +294,9 @@ function Node3D({
   );
 }
 
-// Subtle Parallax Controller (Restrained, Smooth Easing)
+// Parallax Scene Controller with Dynamic Aspect Ratio Scaling
 function SceneController({ reducedMotion }: { reducedMotion: boolean }) {
-  const { camera } = useThree();
+  const { camera, size } = useThree();
   const mouseRef = useRef({ x: 0, y: 0 });
 
   useEffect(() => {
@@ -315,16 +310,23 @@ function SceneController({ reducedMotion }: { reducedMotion: boolean }) {
   }, [reducedMotion]);
 
   useFrame(() => {
+    const aspect = size.width / Math.max(size.height, 1);
+    // Smooth camera Z adaptation:
+    // Wide desktop aspect (~2.4) -> baseZ is 4.4
+    // Narrow mobile aspect (~1.0) -> baseZ smoothly scales to ~7.6 so all nodes fit
+    const baseZ = aspect < 1.8 ? Math.min(8.2, 4.4 * (1.85 / Math.max(aspect, 0.75))) : 4.4;
+
     if (reducedMotion) {
-      camera.position.set(0, -0.15, 5.0);
-      camera.lookAt(0, -0.15, 0);
+      camera.position.set(0, -0.1, baseZ);
+      camera.lookAt(0, -0.1, 0);
       return;
     }
     const targetX = mouseRef.current.x * 0.18;
-    const targetY = mouseRef.current.y * 0.12 - 0.15;
+    const targetY = mouseRef.current.y * 0.1 - 0.1;
     camera.position.x = THREE.MathUtils.lerp(camera.position.x, targetX, 0.05);
     camera.position.y = THREE.MathUtils.lerp(camera.position.y, targetY, 0.05);
-    camera.lookAt(0, -0.15, 0);
+    camera.position.z = THREE.MathUtils.lerp(camera.position.z, baseZ, 0.05);
+    camera.lookAt(0, -0.1, 0);
   });
 
   return null;
@@ -347,19 +349,18 @@ function LifecycleCanvas({
   return (
     <div className="w-full h-full cursor-pointer">
       <Canvas
-        camera={{ position: [0, -0.15, 5.0], fov: 42 }}
+        camera={{ position: [0, -0.1, 4.4], fov: 44 }}
         dpr={[1, 2]}
         gl={{ antialias: true, alpha: true }}
       >
-        {/* Restrained Precision Illumination */}
-        <ambientLight intensity={0.75} />
-        <directionalLight position={[2, 4, 3]} intensity={1.1} color="#ffffff" />
+        <ambientLight intensity={0.8} />
+        <directionalLight position={[2, 4, 3]} intensity={1.2} color="#ffffff" />
         <directionalLight position={[-3, -2, -1]} intensity={0.3} color="#94a3b8" />
         <pointLight position={[0, 0, 3.5]} intensity={0.4} color="#67e8f9" distance={8} />
 
         <SceneController reducedMotion={reducedMotion} />
 
-        {/* Main Linear Bus (01 -> 02 -> 03 -> 04 -> 05B) */}
+        {/* Linear Connecting Buses (01 -> 02 -> 03 -> 04 -> 05B) */}
         <DataBusPath
           start={LIFECYCLE_STAGES[0].coords}
           end={LIFECYCLE_STAGES[1].coords}
@@ -384,39 +385,39 @@ function LifecycleCanvas({
           dashed
         />
 
-        {/* Restrained Cyan Signal Pulses */}
+        {/* Signal Pulses Along Paths */}
         {!reducedMotion && (
           <>
             <SignalPulse
               start={LIFECYCLE_STAGES[0].coords}
               end={LIFECYCLE_STAGES[1].coords}
-              speed={0.9}
+              speed={0.85}
               offset={0}
             />
             <SignalPulse
               start={LIFECYCLE_STAGES[1].coords}
               end={LIFECYCLE_STAGES[2].coords}
-              speed={0.9}
-              offset={0.6}
+              speed={0.85}
+              offset={0.55}
             />
             <SignalPulse
               start={LIFECYCLE_STAGES[2].coords}
               end={LIFECYCLE_STAGES[3].coords}
-              speed={0.9}
-              offset={1.2}
+              speed={0.85}
+              offset={1.1}
             />
             <SignalPulse
               start={LIFECYCLE_STAGES[3].coords}
               end={LIFECYCLE_STAGES[5].coords}
-              speed={0.9}
-              offset={1.8}
+              speed={0.85}
+              offset={1.65}
             />
             <SignalPulse
               start={LIFECYCLE_STAGES[1].coords}
               end={LIFECYCLE_STAGES[4].coords}
               color="#34d399"
               speed={0.7}
-              offset={0.9}
+              offset={0.85}
             />
           </>
         )}
@@ -438,7 +439,7 @@ function LifecycleCanvas({
   );
 }
 
-// Accessible 2D Fallback
+// 2D Accessible Fallback
 function StaticFlowchartFallback({
   selectedStage,
   onSelectStage,
@@ -447,34 +448,29 @@ function StaticFlowchartFallback({
   onSelectStage: (stage: LifecycleStage) => void;
 }) {
   return (
-    <div className="w-full p-6 bg-[#08080a] rounded-2xl border border-neutral-800 text-white space-y-4">
+    <div className="w-full p-8 bg-[#080808] text-white space-y-4">
       <div className="flex items-center justify-between border-b border-neutral-800 pb-3">
-        <span className="font-mono text-xs font-bold text-cyan-400">
-          DATA LIFECYCLE FLOWCHART (2D ARCHITECTURAL SPECIFICATION)
+        <span className="font-mono text-xs font-semibold text-cyan-400">
+          DATA LIFECYCLE SPECIFICATION (2D ACCESSIBLE VIEW)
         </span>
-        <span className="text-xs text-zinc-400 font-mono">Standard Mode</span>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {LIFECYCLE_STAGES.map((st) => {
           const isSel = selectedStage.id === st.id;
-          const Icon = st.icon;
           return (
             <button
               key={st.id}
               onClick={() => onSelectStage(st)}
-              className={`p-3.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col gap-1.5 ${
+              className={`p-4 rounded-xl text-left transition-all cursor-pointer flex flex-col gap-1.5 ${
                 isSel
-                  ? 'bg-[#18181b] border-cyan-400/80 shadow-sm ring-1 ring-cyan-400/30'
-                  : 'bg-[#101012] border-neutral-800 hover:border-neutral-700 text-zinc-300'
+                  ? 'bg-neutral-900 border border-cyan-400/80'
+                  : 'bg-neutral-950/60 border border-neutral-800/80 text-zinc-300'
               }`}
             >
-              <div className="flex items-center justify-between">
-                <span className="font-mono text-[11px] font-bold text-cyan-400">{st.stepNum}</span>
-                <Icon className="w-4 h-4 text-zinc-400" />
-              </div>
-              <span className="text-xs font-bold text-white">{st.name}</span>
-              <span className="text-[11px] text-zinc-400 font-mono">{st.badge}</span>
+              <span className="font-mono text-xs font-bold text-cyan-400">{st.stepNum}</span>
+              <span className="text-sm font-bold text-white">{st.name}</span>
+              <span className="text-xs text-zinc-400 font-mono">{st.badge}</span>
             </button>
           );
         })}
@@ -525,94 +521,76 @@ export function ClinicalDataLifecycle3D({
     return () => observer.disconnect();
   }, []);
 
-  const ActiveIcon = selectedStage.icon;
+  const handleNextStage = () => {
+    const curIdx = LIFECYCLE_STAGES.findIndex((s) => s.id === selectedStage.id);
+    const nextIdx = (curIdx + 1) % LIFECYCLE_STAGES.length;
+    setSelectedStage(LIFECYCLE_STAGES[nextIdx]);
+  };
 
   return (
     <div
       ref={containerRef}
-      style={{ backgroundColor: '#070709' }}
-      className={`relative w-full rounded-2xl bg-[#070709] border border-neutral-800 text-white overflow-hidden shadow-2xl flex flex-col ${className}`}
+      style={{ backgroundColor: '#080808' }}
+      className={`relative w-full rounded-2xl sm:rounded-3xl bg-[#080808] border border-neutral-800/80 text-white overflow-hidden shadow-2xl flex flex-col ${className}`}
     >
-      {/* 1. Header Bar: Concise Instrument Title & One Useful Action */}
-      <div
-        style={{ backgroundColor: '#0a0a0d' }}
-        className="relative z-10 flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 sm:p-5 border-b border-neutral-800/80 gap-3"
-      >
-        <div className="space-y-0.5">
-          <div className="flex items-center gap-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
-            <span className="font-mono text-[10px] sm:text-[11px] font-bold uppercase tracking-widest text-zinc-400">
-              MEDVOICE / ARCHITECTURE & BOUNDARIES
-            </span>
-          </div>
-          <h3 className="text-base sm:text-lg font-bold text-[#F5F5F5] tracking-tight">
-            Clinical Data Lifecycle & Execution Boundaries
-          </h3>
+      {/* 1. Integrated Minimalist Header & Borderless Apple-Style Stage Navigation */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between px-6 sm:px-8 pt-6 pb-3 border-b border-neutral-800/60 gap-4">
+        <div>
+          <span className="font-mono text-[11px] font-bold tracking-widest text-zinc-500 uppercase block">
+            01 — 06 ARCHITECTURE
+          </span>
+          <h2 className="text-lg sm:text-xl font-bold text-white tracking-tight">
+            Clinical Data Lifecycle
+          </h2>
         </div>
 
-        {/* Step Through Action Button */}
-        <button
-          onClick={() => {
-            const curIdx = LIFECYCLE_STAGES.findIndex((s) => s.id === selectedStage.id);
-            const nextIdx = (curIdx + 1) % LIFECYCLE_STAGES.length;
-            setSelectedStage(LIFECYCLE_STAGES[nextIdx]);
-          }}
-          className="px-3.5 py-1.5 rounded-xl font-mono text-xs text-zinc-300 hover:text-white bg-[#131316] hover:bg-[#1a1a1e] border border-neutral-700/80 transition-all cursor-pointer flex items-center gap-2 shrink-0 active:scale-[0.98] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-400"
-        >
-          <Terminal className="w-3.5 h-3.5 text-cyan-400" />
-          <span>Step Next Stage ↗</span>
-        </button>
-      </div>
-
-      {/* 2. Responsive Stage Navigator (Grid layout: Never Clips, Fully Visible) */}
-      <div
-        style={{ backgroundColor: '#08080a' }}
-        className="relative z-10 p-2.5 sm:p-3 border-b border-neutral-800/80"
-      >
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+        {/* Borderless Stage Tabs with Gliding Cyan Underline */}
+        <div className="flex items-center gap-1 sm:gap-2 overflow-x-auto no-scrollbar pb-1 sm:pb-0">
           {LIFECYCLE_STAGES.map((st) => {
             const isSel = selectedStage.id === st.id;
             return (
               <button
                 key={st.id}
                 onClick={() => setSelectedStage(st)}
-                className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-left transition-all cursor-pointer border active:scale-[0.98] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-cyan-400 ${
+                className={`group relative flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm font-medium transition-colors cursor-pointer shrink-0 focus-visible:outline-none ${
                   isSel
-                    ? 'bg-[#18181b] border-cyan-400/80 text-white shadow-xs ring-1 ring-cyan-400/25'
-                    : 'bg-[#101012] border-neutral-800/90 hover:border-neutral-700 text-zinc-400 hover:text-zinc-200'
+                    ? 'text-white font-semibold'
+                    : 'text-zinc-400 hover:text-zinc-200'
                 }`}
               >
                 <span
-                  className={`w-1.5 h-1.5 rounded-full shrink-0 ${
-                    isSel
-                      ? 'bg-cyan-400 shadow-[0_0_8px_#67e8f9]'
-                      : st.isDisposal
-                      ? 'bg-emerald-500/70'
-                      : 'bg-neutral-600'
+                  className={`font-mono text-[10px] sm:text-[11px] font-bold ${
+                    isSel ? 'text-cyan-400' : 'text-zinc-500 group-hover:text-zinc-400'
                   }`}
-                />
-                <div className="min-w-0 flex flex-col">
-                  <span
-                    className={`font-mono text-[10px] font-bold tracking-wider leading-none ${
-                      isSel ? 'text-cyan-400' : 'text-zinc-500'
-                    }`}
-                  >
-                    {st.stepNum}
-                  </span>
-                  <span className="text-xs font-semibold truncate leading-tight mt-0.5">
-                    {st.shortLabel}
-                  </span>
-                </div>
+                >
+                  {st.stepNum}
+                </span>
+                <span>{st.shortLabel}</span>
+                {isSel && (
+                  <motion.div
+                    layoutId="active-stage-indicator"
+                    className="absolute -bottom-1 left-2 right-2 h-[2px] bg-cyan-400 shadow-[0_0_8px_#67e8f9]"
+                    transition={{ type: 'spring', stiffness: 450, damping: 35 }}
+                  />
+                )}
               </button>
             );
           })}
+
+          <button
+            onClick={handleNextStage}
+            className="hidden lg:flex items-center gap-1 text-xs font-mono text-zinc-400 hover:text-cyan-400 transition-colors cursor-pointer pl-3 shrink-0"
+          >
+            <span>Next</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
         </div>
       </div>
 
-      {/* 3. 3D Visualization Viewport (Clean Near-Black Canvas) */}
+      {/* 2. Primary 3D Visualization Viewport (Commanding Focal Point) */}
       <div
-        style={{ backgroundColor: '#060608' }}
-        className="relative w-full h-[300px] sm:h-[340px] lg:h-[360px]"
+        style={{ backgroundColor: '#080808' }}
+        className="relative w-full h-[360px] sm:h-[400px] lg:h-[440px]"
       >
         {webglSupported && isInView ? (
           <LifecycleCanvas
@@ -629,103 +607,74 @@ export function ClinicalDataLifecycle3D({
           />
         )}
 
-        {/* Technical Boundary Micro-Label */}
-        <div
-          style={{ backgroundColor: '#0a0a0d' }}
-          className="absolute bottom-2.5 right-3 z-10 font-mono text-[10px] text-zinc-400 px-2.5 py-1 rounded-lg border border-neutral-800 pointer-events-none shadow-xs"
-        >
-          Select any node or stage to inspect architectural boundary
+        {/* Visual Stream Bus Indicator Overlays */}
+        <div className="absolute bottom-3 left-6 right-6 flex items-center justify-between font-mono text-[10px] text-zinc-500 pointer-events-none">
+          <span>PIPELINE: 16kHz PCM → NEURAL ASR → ARBITER INVARIANTS → CLOUD LLM → LEDGER</span>
+          <span className="hidden sm:inline">SELECT ANY NODE TO INSPECT ARCHITECTURAL BOUNDARY</span>
         </div>
       </div>
 
-      {/* 4. Stage Inspector Detail Layer (Restrained Specification Cards) */}
-      <div
-        style={{ backgroundColor: '#09090c' }}
-        className="relative z-10 p-5 sm:p-6 border-t border-neutral-800 text-white"
-      >
+      {/* 3. Spacious Editorial Details Section (No Box-in-a-Box Clutter) */}
+      <div className="p-6 sm:p-8 lg:p-10 border-t border-neutral-800/60 bg-[#0a0a0c]">
         <AnimatePresence mode="wait">
           <motion.div
             key={selectedStage.id}
-            initial={{ opacity: 0, y: 6 }}
+            initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -6 }}
+            exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.18 }}
-            className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start w-full"
+            className="space-y-6"
           >
-            {/* Left Column: Stage Identity & Boundary */}
-            <div className="w-full lg:col-span-5 space-y-3">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl flex items-center justify-center text-cyan-400 bg-[#141417] border border-neutral-700/80 shrink-0">
-                  <ActiveIcon className="w-4 h-4" />
-                </div>
-                <div>
-                  <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-cyan-400 block">
-                    {selectedStage.badge}
-                  </span>
-                  <h4 className="text-base sm:text-lg font-bold text-[#F5F5F5] tracking-tight leading-snug">
-                    {selectedStage.stepNum} — {selectedStage.name}
-                  </h4>
-                </div>
+            {/* Stage Title and Summary */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2 font-mono text-xs text-cyan-400 font-semibold tracking-wider">
+                <span>{selectedStage.stepNum}</span>
+                <span>—</span>
+                <span className="uppercase">{selectedStage.badge}</span>
               </div>
-
-              <p className="text-xs sm:text-sm text-zinc-300 font-normal leading-relaxed">
+              <h3 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+                {selectedStage.name}
+              </h3>
+              <p className="text-base sm:text-lg text-zinc-300 max-w-3xl leading-relaxed">
                 {selectedStage.headline}
               </p>
-
-              <div className="flex items-center gap-2 pt-0.5 font-mono text-xs">
-                <span className="text-zinc-500">Execution Boundary:</span>
-                <span className="px-2 py-0.5 rounded-lg font-semibold text-xs bg-[#141416] border border-neutral-700/80 text-zinc-200">
-                  {selectedStage.boundary}
-                </span>
-              </div>
             </div>
 
-            {/* Right Column: Specification Cards */}
-            <div className="w-full lg:col-span-7 space-y-3">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 w-full">
-                {/* Retention Lifecycle Card */}
-                <div
-                  style={{ backgroundColor: '#111114' }}
-                  className="p-3.5 sm:p-4 rounded-xl border border-neutral-800 space-y-1.5"
-                >
-                  <div className="flex items-center gap-2">
-                    <Clock className="w-3.5 h-3.5 text-zinc-400 shrink-0" />
-                    <span className="text-[10px] uppercase font-bold text-zinc-400 tracking-wider">
-                      Retention Lifecycle
-                    </span>
-                  </div>
-                  <p className="text-xs sm:text-[13px] text-zinc-200 font-sans leading-relaxed">
-                    {selectedStage.retention}
-                  </p>
-                </div>
-
-                {/* Architectural Boundary Truth Card */}
-                <div
-                  style={{ backgroundColor: '#111114' }}
-                  className="p-3.5 sm:p-4 rounded-xl border border-neutral-800 space-y-1.5"
-                >
-                  <div className="flex items-center gap-2">
-                    <ShieldCheck className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-                    <span className="text-[10px] uppercase font-bold text-cyan-400 tracking-wider">
-                      Architectural Boundary
-                    </span>
-                  </div>
-                  <p className="text-xs sm:text-[13px] text-zinc-200 font-sans leading-relaxed">
-                    {selectedStage.technicalTruth}
-                  </p>
+            {/* Two Clean Editorial Specification Columns */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 sm:gap-10 pt-4 border-t border-neutral-800/60">
+              <div className="space-y-2">
+                <span className="font-mono text-xs font-bold text-zinc-400 uppercase tracking-wider block">
+                  Processing Sovereignty
+                </span>
+                <p className="text-sm text-zinc-200 leading-relaxed font-normal">
+                  {selectedStage.sovereigntyDetail}
+                </p>
+                <div className="pt-1">
+                  <span className="inline-block font-mono text-[11px] text-zinc-400 bg-neutral-900 border border-neutral-800 px-2.5 py-1 rounded-md">
+                    Execution Boundary: {selectedStage.boundary}
+                  </span>
                 </div>
               </div>
 
-              {/* Technical Implementation Detail */}
-              <div
-                style={{ backgroundColor: '#0d0d10' }}
-                className="p-3 sm:p-3.5 rounded-xl border border-neutral-800/90"
-              >
-                <p className="text-xs text-zinc-400 leading-relaxed font-sans">
-                  {selectedStage.details}
+              <div className="space-y-2">
+                <span className="font-mono text-xs font-bold text-zinc-400 uppercase tracking-wider block">
+                  Data Retention & Memory Lifecycle
+                </span>
+                <p className="text-sm text-zinc-200 leading-relaxed font-normal">
+                  {selectedStage.retentionDetail}
                 </p>
               </div>
             </div>
+
+            {/* Qualified Vendor Pilot Disclaimer (Truthful, Zero-Hype) */}
+            {selectedStage.vendorQualification && (
+              <div className="pt-2">
+                <div className="p-3.5 rounded-xl bg-neutral-900/90 border border-neutral-800 text-xs text-amber-200/90 font-mono leading-relaxed flex items-start gap-2.5">
+                  <span className="text-amber-400 font-bold shrink-0">ⓘ</span>
+                  <span>{selectedStage.vendorQualification}</span>
+                </div>
+              </div>
+            )}
           </motion.div>
         </AnimatePresence>
       </div>
