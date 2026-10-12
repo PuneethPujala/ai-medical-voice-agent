@@ -95,7 +95,7 @@ export default function PrivacyPolicyPage() {
     <AmbientPageBackground>
       <div>
         {/* HERO SECTION WITH CENTERPIECE 3D INSTRUMENT */}
-        <section className="pt-36 sm:pt-44 pb-16 px-4 sm:px-6 max-w-5xl lg:max-w-6xl mx-auto space-y-8 scroll-mt-36">
+        <section className="pt-24 sm:pt-28 pb-16 px-4 sm:px-6 max-w-5xl lg:max-w-6xl mx-auto space-y-8 scroll-mt-24">
           <div className="space-y-4">
             <div className="space-y-3">
               <span className="font-mono text-xs font-bold uppercase tracking-[0.15em] text-slate-500 block">

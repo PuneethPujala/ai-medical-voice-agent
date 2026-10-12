@@ -1,11 +1,12 @@
 import { currentUser } from "@clerk/nextjs/server";
 import { logAuditEventAsync, AuditActorRole } from "../audit/audit-logger";
 
-export type Role = "patient" | "admin";
+export type Role = "patient" | "clinician" | "admin";
 
 export type Permission =
   | "consultations:create"
   | "consultations:read:own"
+  | "consultations:approve"
   | "emergency:dispatch"
   | "health:export:own"
   | "analytics:read"
@@ -20,7 +21,15 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     "emergency:dispatch",
     "health:export:own",
   ],
+  clinician: [
+    "consultations:read:own",
+    "consultations:approve",
+    "emergency:dispatch",
+    "health:export:own",
+    "analytics:read",
+  ],
   admin: [
+    "consultations:approve",
     "analytics:read",
     "system:read",
     "audit:read",
@@ -62,7 +71,7 @@ export async function getAuthContext(request?: Request): Promise<AuthContext> {
     const user = await currentUser();
     if (user) {
       const userRole = (user.publicMetadata?.role as Role) || "patient";
-      const verifiedRole: Role = ["patient", "admin"].includes(userRole) ? userRole : "patient";
+      const verifiedRole: Role = ["patient", "clinician", "admin"].includes(userRole) ? userRole : "patient";
 
       // Privilege attenuation: allow verified admin to down-scope to patient for safety inspection
       const simulatePatient = request?.headers.get("x-simulate-patient-view") === "true";
@@ -97,7 +106,7 @@ export async function getAuthContext(request?: Request): Promise<AuthContext> {
     isTestHarness &&
     providedSecret === expectedSecret &&
     testRoleHeader &&
-    ["patient", "admin"].includes(testRoleHeader)
+    ["patient", "clinician", "admin"].includes(testRoleHeader)
   ) {
     const simulatePatient = request?.headers.get("x-simulate-patient-view") === "true";
     const effectiveRole: Role = testRoleHeader === "admin" && simulatePatient ? "patient" : testRoleHeader;

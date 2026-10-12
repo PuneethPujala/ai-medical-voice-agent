@@ -2,6 +2,8 @@ import { createHash } from "crypto";
 
 export type AuditAction =
   | "CONSULTATION_CREATED"
+  | "CONSULTATION_UPDATED"
+  | "CONSULTATION_APPROVED"
   | "CONSULTATION_ACCESSED"
   | "CONSULTATION_OVERRIDE"
   | "TRIAGE_EVALUATION"
@@ -13,7 +15,7 @@ export type AuditAction =
   | "PATIENT_PROFILE_SAVED"
   | "PATIENT_PROFILE_DELETED";
 
-export type AuditActorRole = "patient" | "admin" | "system";
+export type AuditActorRole = "patient" | "clinician" | "admin" | "system";
 
 export interface AuditEvent {
   index: number;
@@ -231,6 +233,11 @@ export function logAuditEvent(
  * in-process mutex serialization, database-first persistence, and concurrency conflict retry.
  * Guarantees that in-memory cache and PostgreSQL ledger NEVER diverge.
  */
+let simulatedAuditFailure = false;
+export function __setSimulatedAuditFailure(val: boolean) {
+  simulatedAuditFailure = val;
+}
+
 export async function logAuditEventAsync(params: {
   actorId: string;
   actorRole: AuditActorRole;
@@ -241,6 +248,9 @@ export async function logAuditEventAsync(params: {
   clientIp?: string;
   metadata?: Record<string, any>;
 }): Promise<AuditEvent> {
+  if (simulatedAuditFailure) {
+    throw new Error("Simulated transient audit ledger datastore failure");
+  }
   return serializeWrite(async () => {
     let attempts = 0;
     const maxAttempts = 3;

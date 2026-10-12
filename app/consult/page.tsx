@@ -535,6 +535,12 @@ export default function ConsultPage() {
   const [showRatingModal, setShowRatingModal] = useState<boolean>(false);
   const [clinicalToasts, setClinicalToasts] = useState<Array<{ id: string; type: "success" | "warning" | "info"; title: string; description: string }>>([]);
 
+  // Encounter Persistence & Review State Machine
+  const stableEncounterIdRef = useRef<string>("");
+  const [currentEncounterId, setCurrentEncounterId] = useState<string>("");
+  const [persistenceStatus, setPersistenceStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [persistenceError, setPersistenceError] = useState<string | null>(null);
+
   const voicePillState: VoicePillState = 
     audioState === "PATIENT_LISTENING"
       ? "listening"
@@ -1810,6 +1816,90 @@ export default function ConsultPage() {
     });
   };
 
+  // Persist consultation record to primary archive (State machine: completed_pending_review)
+  const persistEncounterRecord = async (
+    encId: string,
+    durationSecs: number,
+    statusOverride: "completed_pending_review" | "approved" = "completed_pending_review"
+  ) => {
+    setPersistenceStatus("saving");
+    setPersistenceError(null);
+
+    const patientUtterances = messages.filter((m) => m.role === "patient");
+    const chiefConcern = patientUtterances.length > 0
+      ? patientUtterances[0].text.replace(/^"|"$/g, "")
+      : triageData?.detectedSymptoms?.length
+      ? triageData.detectedSymptoms.join(", ")
+      : "Clinical voice intake consultation";
+
+    const payload = {
+      id: encId,
+      patientName: patientDisplayName || "Anonymous Patient",
+      patientAge: activeProfile?.age != null ? String(activeProfile.age) : undefined,
+      patientGender: activeProfile?.gender || undefined,
+      doctorId: selectedDoctor.id,
+      doctorName: selectedDoctor.name,
+      specialty: selectedDoctor.department || selectedDoctor.specialty,
+      chiefComplaint: chiefConcern,
+      transcript: messages.map((m) => ({
+        role: m.role,
+        text: m.text,
+        timestamp: m.timestamp,
+      })),
+      triageLevel: triageData?.triageLevel || (boardData?.phase === "decided" ? "priority" : "routine"),
+      triageTitle: triageData?.triageTitle || "Clinical Voice Consultation Evaluation",
+      esiScore: triageData?.esiScore ?? null,
+      icd10Codes: triageData?.icdCodes || [],
+      detectedSymptoms: triageData?.detectedSymptoms || [],
+      soapSubjective: triageData?.soap?.subjective || "",
+      soapObjective: triageData?.soap?.objective || "",
+      soapAssessment: triageData?.soap?.assessment || "",
+      soapPlan: triageData?.soap?.plan || "",
+      recommendedSpecialists: selectedDoctor?.department ? [selectedDoctor.department] : [],
+      recommendedAction: triageData?.recommendedAction || "Consultation complete.",
+      durationSeconds: durationSecs,
+      status: statusOverride,
+    };
+
+    try {
+      const res = await fetch("/api/consultations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (res.ok) {
+        setPersistenceStatus("saved");
+        setPersistenceError(null);
+        // Immediate hygiene cleanup: Purge transient recovery buffer upon verified server persistence
+        if (typeof window !== "undefined" && window.sessionStorage) {
+          try {
+            window.sessionStorage.removeItem(`medvoice_transient_draft_${encId}`);
+          } catch {}
+        }
+      } else {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || "Failed to persist consultation to clinical archive.");
+      }
+    } catch (err: any) {
+      console.error("Auto-persist encounter error:", err);
+      setPersistenceStatus("error");
+      setPersistenceError(err?.message || "Encounter sync failed.");
+      // Strict PHI hygiene: Store in sessionStorage (tab-isolated, non-persistent across browser sessions)
+      // with a strict 15-minute Time-To-Live (TTL) to prevent data accumulation.
+      if (typeof window !== "undefined" && window.sessionStorage) {
+        try {
+          const recoveryRecord = {
+            payload,
+            savedAt: Date.now(),
+            expiresAt: Date.now() + 15 * 60 * 1000,
+          };
+          window.sessionStorage.setItem(`medvoice_transient_draft_${encId}`, JSON.stringify(recoveryRecord));
+        } catch {}
+      }
+    }
+  };
+
   // End consultation session
   const endConsultation = () => {
     playbackSessionTokenRef.current += 1;
@@ -1835,7 +1925,17 @@ export default function ConsultPage() {
     if (timerRef.current) {
       clearInterval(timerRef.current);
     }
+
+    if (!stableEncounterIdRef.current) {
+      const genId = `ENC-${Date.now().toString().slice(-6)}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
+      stableEncounterIdRef.current = genId;
+      setCurrentEncounterId(genId);
+    }
+
     setSessionMode("CONSULT_COMPLETE");
+
+    // Automatically persist completed consultation as pending review
+    persistEncounterRecord(stableEncounterIdRef.current, elapsedSeconds, "completed_pending_review");
   };
 
   // Return to lobby and start new consultation
@@ -1843,6 +1943,11 @@ export default function ConsultPage() {
     playbackSessionTokenRef.current += 1;
     setPendingDoctorMessage(null);
     stopSpeechRecognitionListening();
+    if (typeof window !== "undefined" && window.sessionStorage && stableEncounterIdRef.current) {
+      try {
+        window.sessionStorage.removeItem(`medvoice_transient_draft_${stableEncounterIdRef.current}`);
+      } catch {}
+    }
     consultationStartedAtRef.current = null;
     consultationCompletedAtRef.current = null;
     setMessages([]);
@@ -1855,6 +1960,10 @@ export default function ConsultPage() {
     setTypedInput("");
     setInterviewState(null);
     setAudioState("IDLE");
+    stableEncounterIdRef.current = "";
+    setCurrentEncounterId("");
+    setPersistenceStatus("idle");
+    setPersistenceError(null);
     setSessionMode("CONSULT_LOBBY");
   };
 
@@ -3712,6 +3821,36 @@ export default function ConsultPage() {
                   Your clinical history has been recorded and your assessment is ready to review.
                 </p>
 
+                {/* Real-time Persistence Status Indicator */}
+                <div className="pt-0.5">
+                  {persistenceStatus === "saving" && (
+                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-50 border border-cyan-200 text-xs font-mono text-cyan-800">
+                      <span className="w-2 h-2 rounded-full bg-cyan-500 animate-ping" />
+                      <span>Syncing encounter to clinical archive...</span>
+                    </div>
+                  )}
+                  {persistenceStatus === "saved" && (
+                    <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-xs font-mono font-bold text-emerald-800">
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Archived to Record · Pending Clinician Review</span>
+                      {currentEncounterId && <span className="text-slate-400 font-normal">({currentEncounterId})</span>}
+                    </div>
+                  )}
+                  {persistenceStatus === "error" && (
+                    <div className="inline-flex items-center gap-3 px-3.5 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                      <span>Sync pending: {persistenceError}</span>
+                      <button
+                        type="button"
+                        onClick={() => persistEncounterRecord(stableEncounterIdRef.current, callDuration)}
+                        className="px-2.5 py-0.5 rounded-lg bg-amber-700 hover:bg-amber-800 text-white font-bold text-[11px] cursor-pointer"
+                      >
+                        Retry Sync
+                      </button>
+                    </div>
+                  )}
+                </div>
+
                 {/* Clean 3-Card Summary Grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 w-full max-w-2xl pt-2">
                   {/* Card 1: Consultation Duration */}
@@ -3910,7 +4049,7 @@ export default function ConsultPage() {
         isOpen={showSoapModal}
         onClose={() => setShowSoapModal(false)}
         encounter={{
-          id: `ENC-${Date.now().toString().slice(-6)}`,
+          id: currentEncounterId || stableEncounterIdRef.current || `ENC-${Date.now().toString().slice(-6)}`,
           patientName: patientDisplayName,
           doctorId: selectedDoctor.id,
           doctorName: selectedDoctor.name,
@@ -3935,6 +4074,9 @@ export default function ConsultPage() {
           },
           auditSha256: boardData?.trace?.audit_sha256,
           userId: user?.id,
+        }}
+        onSaveSuccess={() => {
+          setPersistenceStatus("saved");
         }}
       />
 
