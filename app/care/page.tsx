@@ -663,7 +663,7 @@ export default function CarePage() {
 
   return (
     <AmbientPageBackground>
-      <main className="relative z-10 flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 pt-24 sm:pt-28 pb-16 flex flex-col gap-6">
+      <main className="relative z-10 flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 pt-24 sm:pt-28 pb-16 flex flex-col gap-6">
 
         {/* ========================================================================= */}
         {/* CASE 1: LOCATION UNKNOWN — CALM, QUIET LUXURY FIRST IMPRESSION            */}
@@ -1041,12 +1041,12 @@ export default function CarePage() {
             )}
 
             {/* DOMINANT WORKSPACE: LIVE MAP + RANKED FACILITIES LIST */}
-            <div id="care-map-section" className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch scroll-mt-32">
+            <div id="care-map-section" className="grid grid-cols-1 care-workspace-grid gap-5 lg:gap-6 items-stretch scroll-mt-32">
 
-              {/* LEFT: Dominant Live Route Map + Dedicated Selected Hospital Card (58% width on large screens) */}
-              <div className="lg:col-span-7 flex flex-col gap-4">
+              {/* LEFT: Dominant Live Route Map + Dedicated Selected Hospital Card (~55% width on large screens) */}
+              <div className="flex flex-col gap-4 min-w-0">
                 {/* MAP CONTAINER */}
-                <div className="rounded-2xl overflow-hidden shadow-xs border border-slate-200/90 bg-white h-[460px] sm:h-[480px] relative">
+                <div className="rounded-2xl overflow-hidden shadow-xs border border-slate-200/90 bg-white h-[440px] sm:h-[460px] relative">
                   <InteractiveRouteMap
                     patientCoords={userLocation ? { lat: userLocation.lat, lng: userLocation.lng } : null}
                     patientLocationName={userLocation?.label}
@@ -1202,8 +1202,8 @@ export default function CarePage() {
                 )}
               </div>
 
-              {/* RIGHT: Decoupled Matching Facilities Rail + Animated List */}
-              <div className="lg:col-span-5 rounded-2xl bg-white border border-slate-200/90 shadow-xs p-4 sm:p-5 flex flex-col gap-3 h-[740px] sm:h-[760px] lg:h-[780px] max-h-[780px] overflow-hidden">
+              {/* RIGHT: Decoupled Matching Facilities Rail + Animated List (~45% width on large screens) */}
+              <div className="rounded-2xl bg-white border border-slate-200/90 shadow-xs p-4 sm:p-5 flex flex-col gap-3 min-w-0 h-[700px] sm:h-[710px] lg:h-[720px] max-h-[720px] overflow-hidden">
 
                 {/* CATEGORY FALLBACK ALERT BANNER */}
                 {categoryFallback && fallbackBanner && (
@@ -1228,7 +1228,7 @@ export default function CarePage() {
                       </span>
                     </div>
 
-                    <div className="flex items-center gap-2 shrink-0">
+                    <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
                       {selectedHospital && selectedHospital.id !== recommendedHospital?.id && (
                         <button
                           onClick={handleResetToRecommended}
@@ -1242,29 +1242,27 @@ export default function CarePage() {
                         value={sortBy}
                         onChange={(e) => setSortBy(e.target.value as any)}
                         aria-label="Sort order"
-                        className="text-[11px] font-medium text-slate-800 bg-white hover:bg-slate-50 border border-slate-200/90 shadow-2xs rounded-lg px-2 py-1 focus:outline-none transition-all cursor-pointer"
+                        className="text-[11px] font-medium text-slate-800 bg-white hover:bg-slate-50 border border-slate-200/90 shadow-2xs rounded-lg px-2.5 py-1 focus:outline-none transition-all cursor-pointer"
                       >
                         <option value="fastest">Fastest / Best Match</option>
                         <option value="government">Government First</option>
                         <option value="rating">Highest Rating</option>
                       </select>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center justify-between gap-2 text-[10.5px] text-slate-500">
-                    <span className="truncate">{categoryLabel} · Ranked by suitability</span>
-                    <div className="flex items-center gap-2 shrink-0">
                       <select
                         value={ownershipFilter}
                         onChange={(e) => setOwnershipFilter(e.target.value)}
                         aria-label="Ownership filter"
-                        className="text-[10.5px] font-medium text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-md px-1.5 py-0.5 focus:outline-none cursor-pointer"
+                        className="text-[11px] font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200/90 shadow-2xs rounded-lg px-2.5 py-1 focus:outline-none cursor-pointer"
                       >
                         <option value="all">All Ownership</option>
                         <option value="government">Govt Only</option>
                         <option value="private">Private Only</option>
                       </select>
                     </div>
+                  </div>
+
+                  <div className="text-[10.5px] text-slate-500 truncate">
+                    {categoryLabel} · Ranked by clinical suitability & road reachability
                   </div>
                 </div>
 
@@ -1361,69 +1359,62 @@ export default function CarePage() {
                         const famousFor = hosp.famousFor || getHospitalFamousFor(hosp);
 
                         return (
-                          <div className="w-full flex items-start justify-between gap-3 py-0.5">
-                            {/* Left side: Rank + Hospital Name (up to 2 lines) + Specialty + Clean Badges */}
-                            <div className="flex items-start gap-3 min-w-0 flex-1">
-                              {/* Rank Badge */}
-                              <span
-                                className={`font-mono font-bold text-xs w-6 h-6 rounded-md flex items-center justify-center shrink-0 mt-0.5 transition-colors ${
-                                  isSelected
-                                    ? "bg-slate-950 text-white shadow-xs"
-                                    : isBest
-                                    ? "bg-cyan-100 text-cyan-900 border border-cyan-300 font-extrabold"
-                                    : "bg-slate-100 text-slate-700 border border-slate-200"
-                                }`}
-                              >
-                                #{hosp.rank}
-                              </span>
+                          <div className="w-full flex items-start justify-between gap-3 sm:gap-4">
+                            {/* Left: flexible content column */}
+                            <div className="min-w-0 flex-1 flex flex-col gap-1.5">
+                              {/* Row 1: Rank badge + Full hospital name */}
+                              <div className="flex items-start gap-2.5 min-w-0">
+                                <span
+                                  className={`font-mono font-bold text-xs w-6 h-6 rounded-md flex items-center justify-center shrink-0 mt-0.5 transition-colors ${
+                                    isSelected
+                                      ? "bg-slate-950 text-white shadow-xs"
+                                      : isBest
+                                      ? "bg-cyan-100 text-cyan-900 border border-cyan-300 font-extrabold"
+                                      : "bg-slate-100 text-slate-700 border border-slate-200"
+                                  }`}
+                                >
+                                  #{hosp.rank}
+                                </span>
 
-                              {/* Content Column */}
-                              <div className="min-w-0 flex-1 flex flex-col gap-1">
-                                {/* Hospital Name: Wraps up to 2 lines cleanly without aggressive truncation */}
                                 <h4
-                                  className="text-xs sm:text-[13px] font-bold text-slate-900 leading-snug line-clamp-2"
+                                  className="text-[13.5px] sm:text-sm font-bold text-slate-900 leading-snug line-clamp-2 min-w-0"
                                   title={hosp.name}
                                 >
                                   {hosp.name}
                                 </h4>
+                              </div>
 
-                                {/* Specialty or service category */}
-                                <p className="text-[11px] text-slate-600 line-clamp-1 font-medium">
-                                  {famousFor}
-                                </p>
+                              {/* Row 2: Specialty / Service category (indented to align with hospital title) */}
+                              <p className="text-xs text-slate-500 line-clamp-1 font-medium pl-[34px]">
+                                {famousFor}
+                              </p>
 
-                                {/* Clean, restrained status tags: max 1 or 2 */}
-                                <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
-                                  {isSelected && (
-                                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-slate-950 text-white uppercase tracking-wider shrink-0">
-                                      Selected destination
-                                    </span>
-                                  )}
-                                  {hosp.sourceType === "official_registry" && (
-                                    <span className="text-[10px] font-medium text-emerald-800 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200/80">
-                                      ✓ Verified registry
-                                    </span>
-                                  )}
-                                  {hosp.isEmergency24x7 && (
-                                    <span className="text-[10px] font-medium text-rose-800 bg-rose-50 px-1.5 py-0.5 rounded border border-rose-200/80">
-                                      24/7 ER
-                                    </span>
-                                  )}
-                                  {isGovernment && (
-                                    <span className="text-[10px] font-medium text-blue-800 bg-blue-50 px-1.5 py-0.5 rounded border border-blue-200/80">
-                                      Govt
-                                    </span>
-                                  )}
-                                </div>
+                              {/* Row 3: Restrained status badges (indented to align with hospital title) */}
+                              <div className="flex items-center gap-1.5 flex-wrap pl-[34px] pt-0.5">
+                                {hosp.sourceType === "official_registry" && (
+                                  <span className="text-[10px] font-medium text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200/80">
+                                    ✓ Verified registry
+                                  </span>
+                                )}
+                                {hosp.isEmergency24x7 && (
+                                  <span className="text-[10px] font-medium text-rose-800 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200/80">
+                                    24/7 ER
+                                  </span>
+                                )}
+                                {isGovernment && (
+                                  <span className="text-[10px] font-medium text-blue-800 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200/80">
+                                    Govt
+                                  </span>
+                                )}
                               </div>
                             </div>
 
-                            {/* Right side: Drive Metrics Area (Dedicated column, aligned) */}
-                            <div className="flex flex-col items-end shrink-0 text-right pl-2 pr-1 min-w-[78px]">
-                              <span className="text-xs sm:text-[13px] font-extrabold text-slate-950 font-mono tracking-tight leading-tight">
+                            {/* Right: fixed-width metric column (85–100px, right-aligned) */}
+                            <div className="w-24 sm:w-28 shrink-0 flex flex-col items-end text-right pt-0.5 pl-2">
+                              <span className="text-sm sm:text-base font-extrabold text-slate-950 font-mono tracking-tight leading-tight">
                                 ~{durationNum} min
                               </span>
-                              <span className="text-[10.5px] text-slate-500 font-mono leading-tight mt-0.5">
+                              <span className="text-[11px] text-slate-500 font-mono leading-tight mt-1 whitespace-nowrap">
                                 {distanceNum.toFixed(1)} km by road
                               </span>
                             </div>
@@ -1433,14 +1424,15 @@ export default function CarePage() {
                       animation="pop"
                       stagger={0.03}
                       showGradients={true}
-                      fadeSize={20}
+                      fadeSize={16}
                       displayScrollbar={true}
                       frame={false}
                       theme="light"
+                      accentColor="#020617"
                       radius={12}
                       gap={10}
                       width="100%"
-                      maxHeight={isRationaleExpanded ? 580 : 620}
+                      maxHeight={isRationaleExpanded ? 460 : 550}
                       className="w-full"
                     />
                   )}
