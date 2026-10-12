@@ -6,7 +6,7 @@ async function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function getWsUrl(port = 9460) {
+async function getWsUrl(port = 9465) {
   for (let i = 0; i < 40; i++) {
     try {
       const res = await fetch(`http://127.0.0.1:${port}/json/list`);
@@ -30,9 +30,9 @@ async function run() {
     chromePath,
     [
       '--headless=new',
-      '--remote-debugging-port=9460',
+      '--remote-debugging-port=9465',
       '--remote-allow-origins=*',
-      '--user-data-dir=c:\\dev\\Capstone\\.tmp_chrome_verify_care_ux',
+      '--user-data-dir=c:\\dev\\Capstone\\.tmp_chrome_verify_care_animated_list',
       '--disable-gpu',
       '--window-size=1440,960',
       '--no-sandbox',
@@ -45,7 +45,7 @@ async function run() {
   chromeProcess.stderr.on('data', (d) => console.log('Chrome stderr:', d.toString()));
 
   try {
-    const wsUrl = await getWsUrl(9460);
+    const wsUrl = await getWsUrl(9465);
     const WebSocket = globalThis.WebSocket;
     const ws = new WebSocket(wsUrl);
     await new Promise((r) => (ws.onopen = r));
@@ -91,31 +91,33 @@ async function run() {
     });
     await wait(5000);
 
-    // Evaluate DOM structure and data quality
+    // Evaluate DOM structure, AnimatedList presence, and Rationale
     const domAudit = await send('Runtime.evaluate', {
       expression: `(() => {
         const text = document.body.innerText;
         const hasHashHospital = text.includes('#hospital');
-        const hasGenericHospitalOnly = text.includes('Hospital') && !text.includes('General Hospital') && !text.includes('Care Hospital'); // check raw standalone
         const hasDummyPhone = text.includes('8000 000 000') || text.includes('0000000000');
         
-        // Find legend
-        const legendItems = Array.from(document.querySelectorAll('span, div')).map(e => e.textContent.trim());
-        const hasDrivingRouteCar = legendItems.some(t => t.includes('Driving route · Car'));
+        // Find AnimatedList container
+        const animatedListEl = document.querySelector('[data-animated]') || document.querySelector('[role="listbox"]');
+        const items = document.querySelectorAll('[role="option"]');
         
-        // Find why ranked #1 toggle
-        const toggleBtn = Array.from(document.querySelectorAll('button')).find(b => b.textContent && b.textContent.includes('Why ranked #1?'));
+        // Find Recommendation Rationale toggle
+        const rationaleBtn = Array.from(document.querySelectorAll('button')).find(b => 
+          b.textContent && (b.textContent.includes('Recommendation Rationale') || b.textContent.includes('Suitability Rationale'))
+        );
         
-        // Facility cards count
-        const cards = document.querySelectorAll('button[class*="group relative"]');
+        // Check for duplicate second list
+        const pagination = Array.from(document.querySelectorAll('div, span')).some(e => e.textContent && e.textContent.includes('Showing 1–10 of'));
         
         return {
           hasHashHospital,
           hasDummyPhone,
-          hasDrivingRouteCar,
-          hasToggleBtn: !!toggleBtn,
-          toggleBtnText: toggleBtn ? toggleBtn.textContent.trim() : null,
-          facilityCardsCount: cards.length
+          hasAnimatedList: !!animatedListEl,
+          animatedItemsCount: items.length,
+          hasRationaleBtn: !!rationaleBtn,
+          rationaleBtnText: rationaleBtn ? rationaleBtn.textContent.trim() : null,
+          hasDuplicateList: pagination
         };
       })()`,
       returnByValue: true
@@ -134,33 +136,54 @@ async function run() {
     });
     await wait(1500);
 
-    // 1. Desktop Screenshot: Initial State (Collapsed rationale, selected card below map, legend clear)
-    console.log('Capturing Desktop Map & Facilities (Collapsed)...');
+    // 1. Desktop Screenshot: Initial State with AnimatedList (Collapsed rationale)
+    console.log('Capturing Desktop Map & AnimatedList (Collapsed)...');
     const shot1 = await send('Page.captureScreenshot', { format: 'png' });
-    const file1 = path.join(artifactDir, 'verify-care-map-and-details-clean.png');
+    const file1 = path.join(artifactDir, 'verify-care-animated-list-clean.png');
     fs.writeFileSync(file1, Buffer.from(shot1.data, 'base64'));
-    fs.writeFileSync(path.join('c:\\dev\\Capstone', 'verify-care-map-and-details-clean.png'), Buffer.from(shot1.data, 'base64'));
+    fs.writeFileSync(path.join('c:\\dev\\Capstone', 'verify-care-animated-list-clean.png'), Buffer.from(shot1.data, 'base64'));
     console.log('Saved:', file1);
 
-    // 2. Click "Why ranked #1?" toggle to expand rationale
-    console.log('Expanding Why ranked #1? rationale...');
+    // 2. Click "Recommendation Rationale" toggle to expand clinical factors
+    console.log('Expanding Recommendation Rationale factors...');
     await send('Runtime.evaluate', {
       expression: `(() => {
-        const toggleBtn = Array.from(document.querySelectorAll('button')).find(b => b.textContent && b.textContent.includes('Why ranked #1?'));
-        if (toggleBtn) toggleBtn.click();
+        const rationaleBtn = Array.from(document.querySelectorAll('button')).find(b => 
+          b.textContent && (b.textContent.includes('Recommendation Rationale') || b.textContent.includes('Suitability Rationale'))
+        );
+        if (rationaleBtn) rationaleBtn.click();
       })()`,
     });
     await wait(1500);
 
-    // 3. Desktop Screenshot: Expanded State
-    console.log('Capturing Desktop Expanded Rationale State...');
+    // 3. Desktop Screenshot: Expanded State (Showing structured 4 clinical factor tiles)
+    console.log('Capturing Desktop Expanded Clinical Factors State...');
     const shot2 = await send('Page.captureScreenshot', { format: 'png' });
-    const file2 = path.join(artifactDir, 'verify-care-rationale-expanded.png');
+    const file2 = path.join(artifactDir, 'verify-care-clinical-factors-expanded.png');
     fs.writeFileSync(file2, Buffer.from(shot2.data, 'base64'));
-    fs.writeFileSync(path.join('c:\\dev\\Capstone', 'verify-care-rationale-expanded.png'), Buffer.from(shot2.data, 'base64'));
+    fs.writeFileSync(path.join('c:\\dev\\Capstone', 'verify-care-clinical-factors-expanded.png'), Buffer.from(shot2.data, 'base64'));
     console.log('Saved:', file2);
 
-    // 4. Switch to Mobile Viewport (375x812)
+    // 4. Click #2 hospital in AnimatedList to test interaction & spring selection
+    console.log('Selecting #2 hospital in AnimatedList...');
+    await send('Runtime.evaluate', {
+      expression: `(() => {
+        const options = document.querySelectorAll('[role="option"]');
+        if (options.length > 1) {
+          options[1].click();
+        }
+      })()`,
+    });
+    await wait(2500);
+
+    console.log('Capturing Desktop Selected #2 Hospital State...');
+    const shot3 = await send('Page.captureScreenshot', { format: 'png' });
+    const file3 = path.join(artifactDir, 'verify-care-animated-list-second-selected.png');
+    fs.writeFileSync(file3, Buffer.from(shot3.data, 'base64'));
+    fs.writeFileSync(path.join('c:\\dev\\Capstone', 'verify-care-animated-list-second-selected.png'), Buffer.from(shot3.data, 'base64'));
+    console.log('Saved:', file3);
+
+    // 5. Switch to Mobile Viewport (375x812)
     console.log('Switching to mobile viewport (375x812)...');
     await send('Emulation.setDeviceMetricsOverride', {
       width: 375,
@@ -170,35 +193,16 @@ async function run() {
     });
     await send('Runtime.evaluate', {
       expression: `(() => {
-        const mapCard = document.querySelector('.leaflet-container');
-        if (mapCard) {
-          mapCard.scrollIntoView({ behavior: 'instant', block: 'start' });
-        }
+        window.scrollTo(0, 480);
       })()`,
     });
     await wait(2000);
 
-    // 5. Mobile Screenshot: Map + Selected Card Stacking
-    console.log('Capturing Mobile Map & Stacked Card...');
-    const shot3 = await send('Page.captureScreenshot', { format: 'png' });
-    const file3 = path.join(artifactDir, 'verify-care-mobile-stacked.png');
-    fs.writeFileSync(file3, Buffer.from(shot3.data, 'base64'));
-    fs.writeFileSync(path.join('c:\\dev\\Capstone', 'verify-care-mobile-stacked.png'), Buffer.from(shot3.data, 'base64'));
-    console.log('Saved:', file3);
-
-    // Scroll down to facilities list on mobile
-    await send('Runtime.evaluate', {
-      expression: `(() => {
-        window.scrollBy(0, 520);
-      })()`,
-    });
-    await wait(1500);
-
-    console.log('Capturing Mobile Facilities List...');
+    console.log('Capturing Mobile Stacked View...');
     const shot4 = await send('Page.captureScreenshot', { format: 'png' });
-    const file4 = path.join(artifactDir, 'verify-care-mobile-facilities.png');
+    const file4 = path.join(artifactDir, 'verify-care-mobile-animated-list.png');
     fs.writeFileSync(file4, Buffer.from(shot4.data, 'base64'));
-    fs.writeFileSync(path.join('c:\\dev\\Capstone', 'verify-care-mobile-facilities.png'), Buffer.from(shot4.data, 'base64'));
+    fs.writeFileSync(path.join('c:\\dev\\Capstone', 'verify-care-mobile-animated-list.png'), Buffer.from(shot4.data, 'base64'));
     console.log('Saved:', file4);
 
     ws.close();

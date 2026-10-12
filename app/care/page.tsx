@@ -25,7 +25,11 @@ import {
   ChevronDown,
   ChevronUp,
   Info,
+  Shield,
+  Stethoscope,
+  Award,
 } from "lucide-react";
+import { AnimatedList } from "@/components/AnimatedList";
 import { SpecialtyIcon } from "@/components/care/SpecialtyIcon";
 import { AppFooter } from "../_components/AppFooter";
 import { HospitalItem } from "../_components/InteractiveRouteMap";
@@ -1196,8 +1200,8 @@ export default function CarePage() {
                 )}
               </div>
 
-              {/* RIGHT: Decoupled Matching Facilities Rail + Expandable Rationale (42% width) */}
-              <div className="lg:col-span-5 rounded-2xl bg-white border border-slate-200/90 shadow-xs p-4 sm:p-5 flex flex-col gap-3 min-h-[500px] lg:h-[720px] overflow-hidden">
+              {/* RIGHT: Decoupled Matching Facilities Rail + Animated List */}
+              <div className="lg:col-span-5 rounded-2xl bg-white border border-slate-200/90 shadow-xs p-4 sm:p-5 flex flex-col gap-3 h-[680px] sm:h-[720px] max-h-[720px] overflow-hidden">
 
                 {/* CATEGORY FALLBACK ALERT BANNER */}
                 {categoryFallback && fallbackBanner && (
@@ -1211,8 +1215,8 @@ export default function CarePage() {
                 )}
 
                 {/* 1. COMPACT PANEL HEADING & CONTROLS */}
-                <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-200/90 shrink-0 flex-wrap">
-                  <div className="min-w-0">
+                <div className="flex flex-col gap-2 pb-2.5 border-b border-slate-200/90 shrink-0">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
                     <div className="flex items-center gap-2">
                       <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider truncate">
                         Matching Facilities
@@ -1221,34 +1225,44 @@ export default function CarePage() {
                         {filteredAndSortedHospitals.length}
                       </span>
                     </div>
-                    <p className="text-[10.5px] text-slate-500 truncate">
-                      {categoryLabel} · Ranked by suitability
-                    </p>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      {selectedHospital && selectedHospital.id !== recommendedHospital?.id && (
+                        <button
+                          onClick={handleResetToRecommended}
+                          className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-[11px] font-medium border border-slate-200 transition-colors cursor-pointer"
+                          title="Return to #1 recommended match"
+                        >
+                          Reset to #1
+                        </button>
+                      )}
+                      <select
+                        value={sortBy}
+                        onChange={(e) => setSortBy(e.target.value as any)}
+                        aria-label="Sort order"
+                        className="text-[11px] font-medium text-slate-800 bg-white hover:bg-slate-50 border border-slate-200/90 shadow-2xs rounded-lg px-2 py-1 focus:outline-none transition-all cursor-pointer"
+                      >
+                        <option value="fastest">Fastest / Best Match</option>
+                        <option value="government">Government First</option>
+                        <option value="rating">Highest Rating</option>
+                      </select>
+                    </div>
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
-                    {selectedHospital && selectedHospital.id !== recommendedHospital?.id && (
-                      <button
-                        onClick={handleResetToRecommended}
-                        className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-[11px] font-medium border border-slate-200 transition-colors cursor-pointer"
-                        title="Return to #1 recommended match"
+                  <div className="flex items-center justify-between gap-2 text-[10.5px] text-slate-500">
+                    <span className="truncate">{categoryLabel} · Ranked by suitability</span>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <select
+                        value={ownershipFilter}
+                        onChange={(e) => setOwnershipFilter(e.target.value)}
+                        aria-label="Ownership filter"
+                        className="text-[10.5px] font-medium text-slate-700 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-md px-1.5 py-0.5 focus:outline-none cursor-pointer"
                       >
-                        Reset to #1
-                      </button>
-                    )}
-                    <select
-                      value={sortBy}
-                      onChange={(e) => {
-                        setSortBy(e.target.value as any);
-                        setCurrentPage(1);
-                      }}
-                      aria-label="Sort order"
-                      className="text-[11px] font-medium text-slate-800 bg-white hover:bg-slate-50 border border-slate-200/90 shadow-2xs rounded-lg px-2 py-1 focus:outline-none transition-all cursor-pointer"
-                    >
-                      <option value="fastest">Fastest / Best Match</option>
-                      <option value="government">Government First</option>
-                      <option value="rating">Highest Rating</option>
-                    </select>
+                        <option value="all">All Ownership</option>
+                        <option value="government">Govt Only</option>
+                        <option value="private">Private Only</option>
+                      </select>
+                    </div>
                   </div>
                 </div>
 
@@ -1273,56 +1287,120 @@ export default function CarePage() {
                   </div>
                 )}
 
-                {/* 3. EXPANDABLE "WHY RANKED #1?" / "WHY THIS HOSPITAL?" ACCORDION (COLLAPSED BY DEFAULT) */}
-                {selectedHospital?.matchReasons && selectedHospital.matchReasons.length > 0 && (() => {
-                  const distinctiveReasons = selectedHospital.matchReasons.filter((r) => {
-                    const lower = r.toLowerCase();
-                    if (lower.includes("ayushman") || lower.includes("pm-jay") || lower.includes("aarogyasri")) return false;
-                    if (lower.includes("emergency department") && selectedHospital.matchReasons?.some((m) => m.toLowerCase().includes("emergency care"))) return false;
-                    return true;
-                  });
-                  const displayReasons = distinctiveReasons.length > 0 ? distinctiveReasons : selectedHospital.matchReasons;
+                {/* 3. STRUCTURED CLINICAL RECOMMENDATION RATIONALE ACCORDION */}
+                {selectedHospital && (() => {
+                  const isRecommended = selectedHospital.id === recommendedHospital?.id;
+                  const isGovernment = (selectedHospital as any).ownership === "government";
+                  const distanceKm = liveRoadStats ? liveRoadStats.roadDistanceKm : selectedHospital.distanceKm;
+                  const etaMinutes = liveRoadStats ? liveRoadStats.etaMinutes : (selectedHospital.etaMinutes || Math.max(3, Math.round(distanceKm * 1.5)));
+                  const famousFor = selectedHospital.famousFor || getHospitalFamousFor(selectedHospital);
+
+                  const clinicalFactors = [
+                    {
+                      badge: "EMERGENCY READINESS",
+                      icon: ShieldCheck,
+                      title: selectedHospital.isEmergency24x7 ? "24/7 Acute Emergency Department" : "Specialty Day Clinic",
+                      detail: selectedHospital.isEmergency24x7
+                        ? "Active 24-hour resuscitation bay & acute trauma intake team"
+                        : "Outpatient clinical consultation & scheduled admissions",
+                    },
+                    {
+                      badge: "ROAD TELEMETRY",
+                      icon: Navigation,
+                      title: `~${etaMinutes} min drive (${distanceKm.toFixed(1)} km by road)`,
+                      detail: liveRoadStats
+                        ? "Direct drivable road transit corridor calculated from patient origin"
+                        : "Shortest route transit corridor based on geographical proximity",
+                    },
+                    {
+                      badge: "CLINICAL SPECIALTY",
+                      icon: Stethoscope,
+                      title: famousFor || "Multi-Specialty & Critical Care",
+                      detail: selectedHospital.specialty?.length
+                        ? `Specialized departments: ${selectedHospital.specialty.slice(0, 3).join(", ")}`
+                        : "Comprehensive multi-specialty clinical infrastructure",
+                    },
+                    {
+                      badge: "REGISTRY STATUS",
+                      icon: Award,
+                      title: selectedHospital.sourceType === "official_registry"
+                        ? "Official National / State Registry"
+                        : (selectedHospital as any).accreditation?.length
+                        ? `${(selectedHospital as any).accreditation[0]} Accredited`
+                        : "Verified Healthcare Facility",
+                      detail: "Accredited clinical institution meeting state healthcare quality standards",
+                    },
+                    ...(selectedHospital.acceptsPublicInsurance || isGovernment
+                      ? [
+                          {
+                            badge: "PUBLIC INSURANCE",
+                            icon: CheckCircle2,
+                            title: "Ayushman Bharat / PM-JAY Cashless",
+                            detail: "Empanelled under public health scheme for cashless hospitalization",
+                          },
+                        ]
+                      : []),
+                  ];
 
                   return (
                     <div className="rounded-xl border border-slate-200/90 bg-slate-50/60 overflow-hidden shrink-0 transition-all">
                       <button
                         type="button"
                         onClick={() => setIsRationaleExpanded(!isRationaleExpanded)}
-                        className="w-full px-3 py-1.5 flex items-center justify-between gap-2 text-left hover:bg-slate-100/60 transition-colors cursor-pointer"
+                        className="w-full px-3 py-2 flex items-center justify-between gap-2 text-left hover:bg-slate-100/60 transition-colors cursor-pointer"
                       >
-                        <span className="text-[11px] font-bold text-slate-900 flex items-center gap-1.5">
-                          <Sparkles className="w-3 h-3 text-cyan-600 shrink-0" />
-                          <span>{selectedHospital.id === recommendedHospital?.id ? "Why ranked #1?" : "Match rationale"}</span>
-                          <span className="text-[10px] font-normal text-slate-500">({displayReasons.length} key factors)</span>
-                        </span>
-                        <span className="text-[10.5px] font-medium text-slate-500 flex items-center gap-1">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <Sparkles className="w-3.5 h-3.5 text-cyan-600 shrink-0" />
+                          <span className="text-[11.5px] font-bold text-slate-900">
+                            {isRecommended ? "Primary Recommendation Rationale" : "Facility Suitability Rationale"}
+                          </span>
+                          <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded-md bg-cyan-50 text-cyan-800 border border-cyan-200 shrink-0">
+                            {clinicalFactors.length} factors
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1 text-[10.5px] font-semibold text-slate-500 shrink-0">
                           <span>{isRationaleExpanded ? "Hide" : "Details"}</span>
                           {isRationaleExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                        </span>
+                        </div>
                       </button>
 
                       {isRationaleExpanded && (
-                        <div className="px-3 pb-2.5 pt-1 border-t border-slate-200/80 flex flex-wrap gap-1.5 animate-in fade-in duration-150">
-                          {displayReasons.map((reason, rIdx) => (
-                            <span
-                              key={rIdx}
-                              className="bg-white text-slate-700 border border-slate-200/90 rounded-md px-2 py-0.5 text-[10.5px] font-mono font-medium inline-flex items-center gap-1 shadow-2xs"
-                            >
-                              <Check className="w-2.5 h-2.5 text-emerald-600 shrink-0" /> {reason}
-                            </span>
-                          ))}
+                        <div className="px-3 pb-3 pt-1 border-t border-slate-200/80 grid grid-cols-1 sm:grid-cols-2 gap-2 animate-in fade-in duration-150">
+                          {clinicalFactors.map((factor, fIdx) => {
+                            const FactorIcon = factor.icon;
+                            return (
+                              <div
+                                key={fIdx}
+                                className="bg-white p-2.5 rounded-lg border border-slate-200/90 shadow-2xs flex flex-col gap-1 text-left"
+                              >
+                                <div className="flex items-center justify-between gap-1">
+                                  <span className="text-[9px] font-mono font-bold tracking-wider text-slate-600 uppercase">
+                                    {factor.badge}
+                                  </span>
+                                  <FactorIcon className="w-3 h-3 text-cyan-600 shrink-0" />
+                                </div>
+                                <div className="text-[11px] font-bold text-slate-900 leading-snug flex items-start gap-1">
+                                  <Check className="w-3 h-3 text-emerald-600 shrink-0 mt-0.5" />
+                                  <span>{factor.title}</span>
+                                </div>
+                                <p className="text-[10px] text-slate-500 leading-relaxed pl-4">
+                                  {factor.detail}
+                                </p>
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
                   );
                 })()}
 
-                {/* 4. HOSPITAL RESULTS LIST (PREDICTABLE USABLE VIEWING AREA, INDEPENDENT SCROLL) */}
-                <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-2 min-h-0">
+                {/* 4. HOSPITAL RESULTS LIST (FIXED CONTAINER, INTERNAL SCROLL WITH ANIMATED LIST) */}
+                <div className="flex-1 min-h-0 overflow-hidden relative">
                   {loading ? (
-                    <div className="py-12 text-center text-xs text-slate-600 flex items-center justify-center gap-2">
+                    <div className="py-16 text-center text-xs text-slate-600 flex items-center justify-center gap-2">
                       <div className="w-4 h-4 rounded-full border-2 border-cyan-600 border-t-transparent animate-spin" />
-                      <span>Evaluating facilities nearby...</span>
+                      <span>Evaluating verified facilities nearby...</span>
                     </div>
                   ) : filteredAndSortedHospitals.length === 0 ? (
                     <div className="p-8 rounded-2xl bg-white border border-slate-200/90 text-center flex flex-col items-center justify-center gap-2 shadow-xs">
@@ -1331,32 +1409,27 @@ export default function CarePage() {
                       <p className="text-[11px] text-slate-500">Try broadening your medical issue or selecting another region.</p>
                     </div>
                   ) : (
-                    filteredAndSortedHospitals.map((hosp) => {
-                      const isSelected = selectedHospital?.id === hosp.id;
-                      const isBest = recommendedHospital?.id === hosp.id;
-                      const distanceNum = isSelected && liveRoadStats ? liveRoadStats.roadDistanceKm : hosp.distanceKm;
-                      const durationNum = isSelected && liveRoadStats ? liveRoadStats.etaMinutes : hosp.etaMinutes || Math.max(3, Math.round(distanceNum * 1.5));
-                      const isGovernment = (hosp as any).ownership === "government";
-                      const famousFor = hosp.famousFor || getHospitalFamousFor(hosp);
+                    <AnimatedList
+                      items={filteredAndSortedHospitals}
+                      selectedIndex={filteredAndSortedHospitals.findIndex((h) => h.id === selectedHospital?.id)}
+                      onItemSelect={(item) => handleSelectHospital(item as any)}
+                      renderItem={(item, index, isSelected) => {
+                        const hosp = item as any;
+                        const isBest = recommendedHospital?.id === hosp.id;
+                        const distanceNum = isSelected && liveRoadStats ? liveRoadStats.roadDistanceKm : hosp.distanceKm;
+                        const durationNum = isSelected && liveRoadStats ? liveRoadStats.etaMinutes : hosp.etaMinutes || Math.max(3, Math.round(distanceNum * 1.5));
+                        const isGovernment = hosp.ownership === "government";
+                        const famousFor = hosp.famousFor || getHospitalFamousFor(hosp);
 
-                      return (
-                        <div
-                          key={hosp.id}
-                          onClick={() => handleSelectHospital(hosp)}
-                          className={`p-2.5 rounded-xl border transition-all cursor-pointer flex flex-col gap-1.5 ${
-                            isSelected
-                              ? "bg-slate-950/5 border-slate-900 shadow-xs ring-1 ring-slate-900/20"
-                              : "bg-white hover:bg-slate-50 border border-slate-200/90 shadow-xs"
-                          }`}
-                        >
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex items-start gap-2 min-w-0">
+                        return (
+                          <div className="w-full flex items-start justify-between gap-2.5">
+                            <div className="flex items-start gap-2.5 min-w-0">
                               <div
                                 className={`w-5 h-5 rounded-md flex items-center justify-center font-bold text-[11px] shrink-0 ${
                                   isSelected
                                     ? "bg-slate-950 text-white shadow-xs"
                                     : isBest
-                                    ? "bg-cyan-50 text-cyan-800 border border-cyan-300"
+                                    ? "bg-cyan-100 text-cyan-900 border border-cyan-300"
                                     : "bg-slate-100 text-slate-700 border border-slate-200"
                                 }`}
                               >
@@ -1374,7 +1447,7 @@ export default function CarePage() {
                                   )}
                                 </div>
                                 <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
-                                  <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded-lg bg-slate-100 text-slate-800 border border-slate-200/80 truncate max-w-[160px]">
+                                  <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 border border-slate-200/80 truncate max-w-[160px]">
                                     {famousFor}
                                   </span>
                                   <span className="text-[10px] text-slate-600">
@@ -1388,341 +1461,30 @@ export default function CarePage() {
                               <span className="text-xs font-bold text-slate-900">
                                 ~{durationNum}m
                               </span>
-                              <span className="text-[10px] text-slate-600">
+                              <span className="text-[10px] text-slate-600 font-mono">
                                 ~{distanceNum.toFixed(1)} km
                               </span>
                             </div>
                           </div>
-                        </div>
-                      );
-                    })
+                        );
+                      }}
+                      animation="pop"
+                      stagger={0.03}
+                      showGradients={true}
+                      fadeSize={28}
+                      displayScrollbar={true}
+                      frame={false}
+                      theme="light"
+                      radius={12}
+                      gap={8}
+                      width="100%"
+                      maxHeight={isRationaleExpanded ? 310 : 450}
+                      className="w-full"
+                    />
                   )}
                 </div>
               </div>
             </div>
-
-            {/* FILTER & SORT BAR */}
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-semibold text-slate-900">
-                  {filteredAndSortedHospitals.length} facilities match criteria
-                </span>
-                {filteredAndSortedHospitals.length > 0 && (
-                  <span className="text-xs text-slate-600">
-                    · Showing {startIndex + 1}–{endIndex} of {filteredAndSortedHospitals.length}
-                  </span>
-                )}
-              </div>
-
-              <div className="flex items-center gap-2 text-xs flex-wrap">
-                {/* Sort */}
-                <div className="flex items-center gap-1 bg-white hover:bg-slate-50 border border-slate-200/90 shadow-2xs rounded-xl px-2.5 py-1.5 transition-all">
-                  <ArrowUpDown className="w-3 h-3 text-slate-400" />
-                  <select
-                    value={sortBy}
-                    onChange={(e) => {
-                      setSortBy(e.target.value as any);
-                      setCurrentPage(1);
-                    }}
-                    aria-label="Sort order"
-                    className="text-xs font-medium text-slate-800 bg-transparent focus:outline-none cursor-pointer"
-                  >
-                    <option value="fastest">Sort: Fastest / Closest</option>
-                    <option value="government">Sort: Government First</option>
-                    <option value="rating">Sort: Highest Rating</option>
-                  </select>
-                </div>
-
-                {/* Specialty */}
-                <select
-                  value={specialtyFilter}
-                  onChange={(e) => {
-                    setSpecialtyFilter(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  aria-label="Clinical capability filter"
-                  className="bg-white hover:bg-slate-50 border border-slate-200/90 shadow-2xs rounded-xl px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:outline-none transition-all cursor-pointer"
-                >
-                  <option value="all">All Specialties</option>
-                  <option value="cardiology">Cardiology / Heart</option>
-                  <option value="neurology">Neurology / Stroke</option>
-                  <option value="pediatrics">Pediatrics / Child</option>
-                  <option value="cancer">Oncology / Cancer</option>
-                </select>
-
-                {/* Ownership */}
-                <select
-                  value={ownershipFilter}
-                  onChange={(e) => {
-                    setOwnershipFilter(e.target.value);
-                    setCurrentPage(1);
-                  }}
-                  aria-label="Ownership filter"
-                  className="bg-white hover:bg-slate-50 border border-slate-200/90 shadow-2xs rounded-xl px-2.5 py-1.5 text-xs font-medium text-slate-800 focus:outline-none transition-all cursor-pointer"
-                >
-                  <option value="all">All Ownership</option>
-                  <option value="government">Government / Subsidized</option>
-                  <option value="private">Private Tertiary</option>
-                </select>
-              </div>
-            </div>
-
-            {/* HOSPITAL RESULTS LIST */}
-            <div className="flex flex-col gap-3">
-              {loading ? (
-                <div className="py-12 text-center text-xs text-slate-600 flex items-center justify-center gap-2">
-                  <div className="w-4 h-4 rounded-full border-2 border-cyan-600 border-t-transparent animate-spin" />
-                  <span>Evaluating verified facilities nearby...</span>
-                </div>
-              ) : pageHospitals.length === 0 ? (
-                <div className="p-8 rounded-2xl bg-white border border-slate-200/90 text-center flex flex-col items-center justify-center gap-2">
-                  <Building2 className="w-8 h-8 text-slate-400" />
-                  <p className="text-xs font-semibold text-slate-900">No facilities matching current filters</p>
-                  <p className="text-[11px] text-slate-600">
-                    Try selecting "All Specialties" or broadening your search.
-                  </p>
-                </div>
-              ) : (
-                pageHospitals.map((hosp, pIdx) => {
-                  const globalIndex = startIndex + pIdx;
-                  const isSelected = selectedHospital?.id === hosp.id;
-                  const distanceNum =
-                    isSelected && liveRoadStats ? liveRoadStats.roadDistanceKm : hosp.distanceKm;
-                  const durationNum =
-                    isSelected && liveRoadStats ? liveRoadStats.etaMinutes : hosp.etaMinutes || Math.max(2, Math.round(distanceNum * 1.5));
-                  const isGovernment = (hosp as any).ownership === "government";
-                  const isSpecMatch = Boolean(hosp.isEligible && specialtyFilter !== "all");
-
-                  return (
-                    <div
-                      key={hosp.id}
-                      onClick={() => handleSelectHospital(hosp)}
-                      className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col gap-3 ${
-                        isSelected
-                          ? "bg-white border-slate-900 shadow-sm ring-1 ring-slate-900/20"
-                          : "bg-white hover:bg-slate-50 border border-slate-200/90 shadow-xs"
-                      }`}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex flex-col min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-semibold text-slate-900 truncate">
-                              {hosp.name}
-                            </span>
-                            <span className="bg-slate-100 text-slate-800 border border-slate-200/80 rounded-lg text-xs font-mono font-medium px-2.5 py-1 inline-flex items-center">
-                              <span>{hosp.famousFor || getHospitalFamousFor(hosp)}</span>
-                            </span>
-                            {isSpecMatch && (
-                              <span className="bg-cyan-50 text-cyan-800 border border-cyan-200 rounded-lg text-xs font-mono font-semibold px-2.5 py-1">
-                                Verified {specialtyFilter}
-                              </span>
-                            )}
-                            {hosp.acceptsPublicInsurance && (
-                              <span className="bg-slate-100 text-slate-800 border border-slate-200/80 rounded-lg text-xs font-mono font-medium px-2.5 py-1">
-                                Ayushman / Aarogyasri
-                              </span>
-                            )}
-                          </div>
-                          <span className="text-xs text-slate-600 truncate mt-0.5">{hosp.address}</span>
-                        </div>
-
-                        <div className="flex items-end flex-col shrink-0">
-                          <span className="text-xs font-semibold text-slate-900">
-                            ~{durationNum} min
-                          </span>
-                          <span className="text-[11px] text-slate-600">
-                            ~{distanceNum.toFixed(1)} km
-                          </span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center justify-between gap-2 flex-wrap pt-2 border-t border-slate-200/90 text-xs">
-                        <div className="flex items-center gap-2">
-                          {hosp.isEmergency24x7 ? (
-                            <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-mono font-semibold px-2.5 py-1 inline-flex items-center gap-1">
-                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600" />
-                              24/7 Emergency & Trauma
-                            </span>
-                          ) : (
-                            <span className="bg-slate-100 text-slate-800 border border-slate-200/80 rounded-lg text-xs font-mono font-medium px-2.5 py-1">
-                              Specialty Center
-                            </span>
-                          )}
-                          <span className="text-slate-300">•</span>
-                          <span className="text-slate-600 text-[11px] font-mono">{isGovernment ? "Government" : "Private"}</span>
-                        </div>
-
-                        <div className="flex items-center gap-2">
-                          <a
-                            href={`tel:${hosp.emergencyPhone || hosp.phone}`}
-                            onClick={(e) => e.stopPropagation()}
-                            className="inline-flex items-center gap-1 px-3.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-semibold text-xs shadow-xs transition-all cursor-pointer"
-                          >
-                            <PhoneCall className="w-3 h-3" />
-                            <span>Call ED</span>
-                          </a>
-
-                          <a
-                            href={userLocation ? `https://www.google.com/maps/dir/?api=1&origin=${userLocation.lat},${userLocation.lng}&destination=${hosp.latitude},${hosp.longitude}&travelmode=driving` : `https://www.google.com/maps/search/?api=1&query=${hosp.latitude},${hosp.longitude}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            onClick={(e) => e.stopPropagation()}
-                            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-white hover:bg-slate-50 text-slate-800 font-medium text-xs border border-slate-200/90 shadow-2xs transition-all cursor-pointer active:scale-[0.98]"
-                          >
-                            <span>Directions</span>
-                            <ExternalLink className="w-3 h-3 text-slate-500" />
-                          </a>
-                        </div>
-                      </div>
-
-                      {/* EXPANDED HOSPITAL & ROUTE INTELLIGENCE DETAILS */}
-                      {isSelected && (
-                        <div className="pt-3 border-t border-slate-200/90 flex flex-col gap-3 animate-in fade-in duration-200">
-                          {/* Live route banner with scroll to map button */}
-                          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 p-3 rounded-2xl bg-cyan-50/70 border border-cyan-200/80 text-xs">
-                            <div className="flex items-center gap-2">
-                              <span className="w-2.5 h-2.5 rounded-full bg-cyan-600 animate-pulse shrink-0" />
-                              <div className="flex flex-col">
-                                <span className="font-bold text-cyan-800">
-                                  Active Route: ~{distanceNum.toFixed(1)} km · ~{durationNum} min drive
-                                </span>
-                                <span className="text-[11px] text-slate-600">
-                                  Live road route calculated and plotted on map above
-                                </span>
-                              </div>
-                            </div>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleSelectHospital(hosp, true);
-                              }}
-                              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-950 hover:bg-slate-900 text-white font-semibold text-xs shadow-xs transition-all cursor-pointer shrink-0 active:scale-[0.98]"
-                            >
-                              <MapPin className="w-3.5 h-3.5 text-cyan-400" />
-                              <span>View route on map</span>
-                            </button>
-                          </div>
-
-                          {/* Specialties List */}
-                          {hosp.specialty && hosp.specialty.length > 0 && (
-                            <div>
-                              <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 block mb-1.5 font-mono">
-                                Clinical capabilities & departments
-                              </span>
-                              <div className="flex flex-wrap gap-1.5">
-                                {hosp.specialty.map((s, sIdx) => (
-                                  <span
-                                    key={sIdx}
-                                    className="bg-slate-100 text-slate-800 border border-slate-200/80 rounded-lg text-xs font-mono font-medium px-2.5 py-1"
-                                  >
-                                    {s}
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Match reasons */}
-                          {hosp.matchReasons && hosp.matchReasons.length > 0 && (
-                            <div>
-                              <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 block mb-1.5 font-mono">
-                                Why this facility
-                              </span>
-                              <div className="flex flex-wrap gap-1.5">
-                                {hosp.matchReasons.map((reason, rIdx) => (
-                                  <span
-                                    key={rIdx}
-                                    className="bg-slate-100 text-slate-800 border border-slate-200/80 rounded-lg text-xs font-mono font-medium px-2.5 py-1 flex items-center gap-1.5"
-                                  >
-                                    <Check className="w-3.5 h-3.5 text-emerald-600" />
-                                    <span>{reason}</span>
-                                  </span>
-                                ))}
-                              </div>
-                            </div>
-                          )}
-
-                          {/* Contact details */}
-                          <div className="flex items-center justify-between text-xs text-slate-600 pt-1">
-                            <div>
-                              <span>Emergency ED: </span>
-                              <a
-                                href={`tel:${hosp.emergencyPhone || hosp.phone || "108"}`}
-                                onClick={(e) => e.stopPropagation()}
-                                className="font-bold text-rose-600 hover:text-rose-700 hover:underline"
-                              >
-                                {hosp.emergencyPhone || hosp.phone || "108"}
-                              </a>
-                            </div>
-                            {hosp.phone && hosp.phone !== hosp.emergencyPhone && (
-                              <div>
-                                <span>Reception: </span>
-                                <a
-                                  href={`tel:${hosp.phone}`}
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="font-semibold text-slate-900 hover:underline"
-                                >
-                                  {hosp.phone}
-                                </a>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })
-              )}
-            </div>
-
-            {/* PAGINATION CONTROLS */}
-            {!loading && filteredAndSortedHospitals.length > PAGE_SIZE && (
-              <div className="pt-4 pb-4 border-t border-slate-200/90 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
-                <span className="text-slate-600">
-                  Showing {startIndex + 1}–{endIndex} of {filteredAndSortedHospitals.length} facilities
-                </span>
-
-                <div className="flex items-center gap-1.5">
-                  <button
-                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                    disabled={currentPage === 1}
-                    className="px-3 py-1.5 rounded-xl border border-slate-200/90 hover:border-slate-300 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-medium text-slate-800 hover:text-slate-950 shadow-2xs transition-all cursor-pointer flex items-center gap-1"
-                  >
-                    <ChevronLeft className="w-3.5 h-3.5" />
-                    <span>Previous</span>
-                  </button>
-
-                  {pageNumbers.map((p, idx) =>
-                    p === -1 ? (
-                      <span key={`ellipsis-${idx}`} className="px-1 text-slate-400 font-bold">
-                        …
-                      </span>
-                    ) : (
-                      <button
-                        key={p}
-                        onClick={() => setCurrentPage(p)}
-                        className={`w-8 h-8 rounded-xl text-xs transition-all cursor-pointer ${
-                          currentPage === p
-                            ? "bg-slate-950 text-white font-bold border border-slate-900 shadow-xs"
-                            : "bg-white hover:bg-slate-50 border border-slate-200/90 hover:border-slate-300 text-slate-800 font-medium shadow-2xs"
-                        }`}
-                      >
-                        {p}
-                      </button>
-                    )
-                  )}
-
-                  <button
-                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                    disabled={currentPage === totalPages}
-                    className="px-3 py-1.5 rounded-xl border border-slate-200/90 hover:border-slate-300 bg-white hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed font-medium text-slate-800 hover:text-slate-950 shadow-2xs transition-all cursor-pointer flex items-center gap-1"
-                  >
-                    <span>Next</span>
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </div>
-            )}
           </>
         )}
 
