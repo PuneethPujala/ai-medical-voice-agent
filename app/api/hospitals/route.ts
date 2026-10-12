@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { INDIAN_HOSPITALS_DATASET, ALL_REGION_PRESETS, calculateDistanceKm, Hospital, getHospitalFamousFor } from "@/lib/hospitals-india-data";
 import { discoverHospitalsNearCoordinates } from "@/lib/care-network/osm-discovery";
-import { deduplicateAndMergeHospitals } from "@/lib/care-network/evaluator";
+import { deduplicateAndMergeHospitals, isPlaceholderOrGenericHospitalName } from "@/lib/care-network/evaluator";
 
 export function calculateRealisticDriveTime(distanceKm: number): number {
   if (distanceKm <= 4) {
@@ -164,7 +164,7 @@ export async function GET(request: Request) {
     }
 
     // ─── DEDUPLICATION: Multi-signal merge (canonical name + 350m geo proximity) ───
-    hospitals = deduplicateAndMergeHospitals(hospitals);
+    hospitals = deduplicateAndMergeHospitals(hospitals.filter((h) => !isPlaceholderOrGenericHospitalName(h.name)));
 
     // ─── ENRICH: Add distance, ETA, and famousFor to every hospital ───
     // NOTE: NO specialty filtering here. The full enriched dataset is returned.
@@ -201,7 +201,7 @@ export async function GET(request: Request) {
         // Placeholder fields — client fills these via evaluateAndRankForSpecialty()
         isEligible: true,
         rank: 0,
-        matchTier: "inferred" as const,
+        matchTier: h.sourceType === "official_registry" ? ("verified" as const) : ("inferred" as const),
         matchedCategory: "General Care",
         isFallback: false,
         actionType: (h.isEmergency24x7 ? "call_ed" : "call_hospital") as "call_ed" | "call_hospital",

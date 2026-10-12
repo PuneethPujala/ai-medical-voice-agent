@@ -22,6 +22,9 @@ import {
   Activity,
   Sparkles,
   Check,
+  ChevronDown,
+  ChevronUp,
+  Info,
 } from "lucide-react";
 import { SpecialtyIcon } from "@/components/care/SpecialtyIcon";
 import { AppFooter } from "../_components/AppFooter";
@@ -39,7 +42,11 @@ import {
   MedicalIssueOption,
   getHospitalFamousFor,
 } from "@/lib/hospitals-india-data";
-import { evaluateAndRankForSpecialty } from "@/lib/care-network/evaluator";
+import {
+  evaluateAndRankForSpecialty,
+  isPlaceholderOrGenericHospitalName,
+  isValidHospitalPhoneNumber,
+} from "@/lib/care-network/evaluator";
 
 // Leaflet map dynamically imported with SSR disabled
 const InteractiveRouteMap = dynamic(
@@ -109,6 +116,7 @@ export default function CarePage() {
 
   const [ownershipFilter, setOwnershipFilter] = useState<string>("all");
   const [sortBy, setSortBy] = useState<"fastest" | "government" | "rating">("fastest");
+  const [isRationaleExpanded, setIsRationaleExpanded] = useState<boolean>(false);
 
   // True Pagination state (10 results per page)
   const [currentPage, setCurrentPage] = useState<number>(1);
@@ -552,7 +560,7 @@ export default function CarePage() {
 
   // Filter & Sort: Apply ownership filter and sort on top of evaluated results
   const filteredAndSortedHospitals = useMemo(() => {
-    let list = [...evaluationResult.ranked];
+    let list = evaluationResult.ranked.filter((h) => !isPlaceholderOrGenericHospitalName(h.name));
 
     // Ownership filter
     if (ownershipFilter === "government") {
@@ -1031,26 +1039,165 @@ export default function CarePage() {
             {/* DOMINANT WORKSPACE: LIVE MAP + RANKED FACILITIES LIST */}
             <div id="care-map-section" className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch scroll-mt-24">
 
-              {/* LEFT: Dominant Live Route Map (58% width on large screens) */}
-              <div className="lg:col-span-7 rounded-2xl overflow-hidden shadow-xs border border-slate-200/90 bg-white min-h-[480px] lg:min-h-[640px] flex flex-col">
-                <InteractiveRouteMap
-                  patientCoords={userLocation ? { lat: userLocation.lat, lng: userLocation.lng } : null}
-                  patientLocationName={userLocation?.label}
-                  mapCenter={searchRegion ? { lat: searchRegion.lat, lng: searchRegion.lng } : undefined}
-                  selectedHospital={selectedHospital}
-                  allHospitals={filteredAndSortedHospitals}
-                  isManualPicking={isManualPicking}
-                  onSelectHospital={(h) => handleSelectHospital(h, false)}
-                  onConfirmManualLocation={handleConfirmManualLocation}
-                  onCancelManualPicking={() => setIsManualPicking(false)}
-                  onRouteCalculated={(stats) => setLiveRoadStats(stats)}
-                  onResetToRecommended={handleResetToRecommended}
-                  onRequestLocation={() => handleDetectLiveLocation()}
-                />
+              {/* LEFT: Dominant Live Route Map + Dedicated Selected Hospital Card (58% width on large screens) */}
+              <div className="lg:col-span-7 flex flex-col gap-4">
+                {/* MAP CONTAINER */}
+                <div className="rounded-2xl overflow-hidden shadow-xs border border-slate-200/90 bg-white h-[460px] sm:h-[480px] relative">
+                  <InteractiveRouteMap
+                    patientCoords={userLocation ? { lat: userLocation.lat, lng: userLocation.lng } : null}
+                    patientLocationName={userLocation?.label}
+                    mapCenter={searchRegion ? { lat: searchRegion.lat, lng: searchRegion.lng } : undefined}
+                    selectedHospital={selectedHospital}
+                    allHospitals={filteredAndSortedHospitals}
+                    isManualPicking={isManualPicking}
+                    onSelectHospital={(h) => handleSelectHospital(h, false)}
+                    onConfirmManualLocation={handleConfirmManualLocation}
+                    onCancelManualPicking={() => setIsManualPicking(false)}
+                    onRouteCalculated={(stats) => setLiveRoadStats(stats)}
+                    onResetToRecommended={handleResetToRecommended}
+                    onRequestLocation={() => handleDetectLiveLocation()}
+                  />
+                </div>
+
+                {/* DEDICATED SELECTED HOSPITAL & ROUTE INTELLIGENCE CARD (BELOW THE MAP) */}
+                {selectedHospital ? (
+                  <div className="rounded-2xl bg-white border border-slate-200/90 shadow-xs p-4 sm:p-5 flex flex-col gap-3 transition-all animate-in fade-in duration-200">
+                    {/* HEADER: RANK BADGE, PROVENANCE, NAME & SPECIALTY */}
+                    <div className="flex items-start justify-between gap-3 flex-wrap">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                          <span
+                            className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-md text-white ${
+                              selectedHospital.id === recommendedHospital?.id ? "bg-slate-950" : "bg-slate-800"
+                            }`}
+                          >
+                            #{selectedHospital.rank} {selectedHospital.id === recommendedHospital?.id ? "Recommended Match" : "Selected Facility"}
+                          </span>
+
+                          {/* Verification / Provenance Badge (Strict: Verified only for official registry) */}
+                          <span
+                            className={`text-[10px] font-medium px-2 py-0.5 rounded-md border ${
+                              selectedHospital.sourceType === "official_registry"
+                                ? "bg-emerald-50 text-emerald-800 border-emerald-200 font-semibold"
+                                : "bg-slate-100 text-slate-700 border-slate-200 font-medium"
+                            }`}
+                          >
+                            {selectedHospital.sourceType === "official_registry"
+                              ? "✓ Verified Registry"
+                              : "OSM Care Directory"}
+                          </span>
+
+                          {selectedHospital.isEmergency24x7 && (
+                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-rose-50 text-rose-800 border border-rose-200">
+                              24/7 ER
+                            </span>
+                          )}
+                          {(selectedHospital as any).ownership === "government" && (
+                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200">
+                              Government
+                            </span>
+                          )}
+                          {selectedHospital.acceptsPublicInsurance && (
+                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-purple-50 text-purple-800 border border-purple-200">
+                              Ayushman / PM-JAY
+                            </span>
+                          )}
+                        </div>
+
+                        <h3 className="text-sm sm:text-base font-bold text-slate-900 leading-snug">
+                          {selectedHospital.name}
+                        </h3>
+                        <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">
+                          {selectedHospital.famousFor || getHospitalFamousFor(selectedHospital)}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* ADDRESS STRIP */}
+                    <div className="flex items-center gap-1.5 text-xs text-slate-600 bg-slate-50 px-3 py-2 rounded-xl border border-slate-100">
+                      <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                      <span className="truncate">{selectedHospital.address}</span>
+                    </div>
+
+                    {/* DRIVING ROUTE TELEMETRY STRIP - Fully decoupled from action buttons */}
+                    <div className="flex items-center justify-between gap-3 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200/80 flex-wrap">
+                      <div className="flex items-center gap-2 text-xs font-semibold text-slate-900">
+                        <Car className="w-4 h-4 text-sky-600 shrink-0" />
+                        <span>~{liveRoadStats ? liveRoadStats.etaMinutes : (selectedHospital.etaMinutes || 12)} min drive</span>
+                        <span className="text-slate-300 font-normal">·</span>
+                        <span className="text-slate-600 font-medium">
+                          ~{liveRoadStats ? liveRoadStats.roadDistanceKm.toFixed(1) : selectedHospital.distanceKm.toFixed(1)} km by road
+                        </span>
+                      </div>
+                      <div
+                        className="flex items-center gap-1.5 text-[10px] font-mono text-slate-500 cursor-help"
+                        title="Route and estimated travel time calculated for car travel along roads."
+                      >
+                        <span className="w-1.5 h-1.5 rounded-full bg-sky-500" />
+                        <span>Driving route · Car</span>
+                        <Info className="w-3 h-3 text-slate-400" />
+                      </div>
+                    </div>
+
+                    {/* ACTION BUTTONS ROW - Responsive wrapping with zero overlap */}
+                    {(() => {
+                      const directPhone = selectedHospital.emergencyPhone || selectedHospital.phone;
+                      const hasPhone = isValidHospitalPhoneNumber(directPhone);
+                      const mapsUrl = userLocation
+                        ? `https://www.google.com/maps/dir/?api=1&origin=${userLocation.lat},${userLocation.lng}&destination=${selectedHospital.latitude},${selectedHospital.longitude}&travelmode=driving`
+                        : `https://www.google.com/maps/search/?api=1&query=${selectedHospital.latitude},${selectedHospital.longitude}`;
+
+                      return (
+                        <div className="flex items-center gap-2.5 pt-0.5 flex-wrap">
+                          {hasPhone ? (
+                            <a
+                              href={`tel:${directPhone}`}
+                              className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-white font-semibold text-xs shadow-xs active:scale-[0.98] transition-all cursor-pointer bg-rose-600 hover:bg-rose-700"
+                              title={`Call ${selectedHospital.actionType === "call_hospital" ? "Hospital" : "Emergency Department"}: ${directPhone}`}
+                            >
+                              <PhoneCall className="w-3.5 h-3.5" />
+                              <span>{selectedHospital.actionType === "call_hospital" ? "Call Hospital" : "Call ED"}</span>
+                              <span className="text-[10.5px] opacity-80 font-mono font-normal">({directPhone})</span>
+                            </a>
+                          ) : selectedHospital.isEmergency24x7 ? (
+                            <a
+                              href="tel:108"
+                              className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-white font-semibold text-xs shadow-xs active:scale-[0.98] transition-all cursor-pointer bg-rose-600 hover:bg-rose-700"
+                              title="Call 108 Emergency Ambulance Dispatch"
+                            >
+                              <PhoneCall className="w-3.5 h-3.5" />
+                              <span>Call 108 Emergency</span>
+                            </a>
+                          ) : (
+                            <div className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-1.5 py-2.5 px-4 rounded-xl text-xs text-slate-500 bg-slate-100 border border-slate-200">
+                              <PhoneCall className="w-3.5 h-3.5 text-slate-400" />
+                              <span>No direct phone listed</span>
+                            </div>
+                          )}
+
+                          <a
+                            href={mapsUrl}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-slate-950 hover:bg-slate-900 text-white font-semibold text-xs shadow-xs active:scale-[0.98] transition-all cursor-pointer"
+                            title="Open turn-by-turn navigation in Google Maps"
+                          >
+                            <span>Start Navigation</span>
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        </div>
+                      );
+                    })()}
+                  </div>
+                ) : (
+                  <div className="rounded-2xl bg-white border border-slate-200/90 p-4 text-center text-xs text-slate-500">
+                    Select a facility to view route details and emergency contact
+                  </div>
+                )}
               </div>
 
-              {/* RIGHT: Decoupled Current Destination + All Matching Facilities Rail (42% width) */}
-              <div className="lg:col-span-5 rounded-2xl bg-white border border-slate-200/90 shadow-xs p-4 sm:p-5 flex flex-col gap-3.5 max-h-[640px] lg:max-h-[680px] overflow-hidden">
+              {/* RIGHT: Decoupled Matching Facilities Rail + Expandable Rationale (42% width) */}
+              <div className="lg:col-span-5 rounded-2xl bg-white border border-slate-200/90 shadow-xs p-4 sm:p-5 flex flex-col gap-3 min-h-[500px] lg:h-[720px] overflow-hidden">
 
                 {/* CATEGORY FALLBACK ALERT BANNER */}
                 {categoryFallback && fallbackBanner && (
@@ -1063,155 +1210,32 @@ export default function CarePage() {
                   </div>
                 )}
 
-                {/* SECTION 1: CURRENT DESTINATION CARD (Driven by selectedHospital) */}
-                <div className="rounded-2xl bg-white border border-slate-200/90 p-4 flex flex-col gap-3 shrink-0 shadow-xs">
-                  <div className="flex items-center justify-between pb-2 border-b border-slate-200/90">
+                {/* 1. COMPACT PANEL HEADING & CONTROLS */}
+                <div className="flex items-center justify-between gap-2 pb-2 border-b border-slate-200/90 shrink-0 flex-wrap">
+                  <div className="min-w-0">
                     <div className="flex items-center gap-2">
-                      <span className="w-2 h-2 rounded-full bg-cyan-600 animate-pulse" />
-                      <span className="text-[10.5px] font-bold text-slate-900 uppercase tracking-wider font-mono">
-                        Current Destination
+                      <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider truncate">
+                        Matching Facilities
+                      </h3>
+                      <span className="text-[10px] font-mono font-semibold bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full border border-slate-200">
+                        {filteredAndSortedHospitals.length}
                       </span>
                     </div>
+                    <p className="text-[10.5px] text-slate-500 truncate">
+                      {categoryLabel} · Ranked by suitability
+                    </p>
+                  </div>
+
+                  <div className="flex items-center gap-2 shrink-0">
                     {selectedHospital && selectedHospital.id !== recommendedHospital?.id && (
                       <button
                         onClick={handleResetToRecommended}
-                        className="px-2.5 py-1 rounded-xl bg-white hover:bg-slate-50 text-slate-800 hover:text-slate-950 border border-slate-200/90 text-xs font-medium shadow-2xs transition-colors cursor-pointer flex items-center gap-1"
+                        className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-[11px] font-medium border border-slate-200 transition-colors cursor-pointer"
+                        title="Return to #1 recommended match"
                       >
-                        <span>Return to #1 Match</span>
+                        Reset to #1
                       </button>
                     )}
-                  </div>
-
-                  {selectedHospital ? (
-                    <>
-                      <div className="flex items-start justify-between gap-2.5">
-                        <div className="min-w-0">
-                          <div className="flex items-center gap-2 flex-wrap mb-1">
-                            <span
-                              className={`w-6 h-6 rounded-md flex items-center justify-center font-bold text-xs text-white shrink-0 ${
-                                selectedHospital.id === recommendedHospital?.id ? "bg-slate-950" : "bg-slate-800"
-                              }`}
-                            >
-                              #{selectedHospital.rank}
-                            </span>
-                            <h4 className="text-xs sm:text-sm font-bold text-slate-900 truncate" title={selectedHospital.name}>
-                              {selectedHospital.name}
-                            </h4>
-                          </div>
-
-                          <div className="flex items-center gap-1.5 flex-wrap mt-1">
-                            {selectedHospital.isFallback ? (
-                              <span className="bg-rose-50 text-rose-800 border border-rose-200 rounded-lg text-xs font-mono font-semibold px-2.5 py-1">
-                                Fallback · Nearest 24/7 ER
-                              </span>
-                            ) : (
-                              <span className="bg-cyan-50 text-cyan-800 border border-cyan-200 rounded-lg text-xs font-mono font-semibold px-2.5 py-1">
-                                Matched: {selectedHospital.matchedCategory || categoryLabel} · {selectedHospital.matchTier === "verified" ? "Verified" : "Inferred"}
-                              </span>
-                            )}
-                            <span className="bg-slate-100 text-slate-800 border border-slate-200/80 rounded-lg text-xs font-mono font-medium px-2.5 py-1 truncate max-w-[200px]">
-                              {selectedHospital.famousFor || getHospitalFamousFor(selectedHospital)}
-                            </span>
-                          </div>
-
-                          <p className="text-[11px] text-slate-600 truncate mt-1.5">
-                            {selectedHospital.address}
-                          </p>
-                        </div>
-
-                        <div className="flex flex-col items-end shrink-0 text-right">
-                          <span className="text-xs sm:text-sm font-bold text-slate-900">
-                            ~{liveRoadStats ? liveRoadStats.etaMinutes : (selectedHospital.etaMinutes || 12)} min
-                          </span>
-                          <span className="text-[11px] text-slate-600">
-                            ~{liveRoadStats ? liveRoadStats.roadDistanceKm.toFixed(1) : selectedHospital.distanceKm.toFixed(1)} km by road
-                          </span>
-                        </div>
-                      </div>
-
-                      {/* Verified capability tags */}
-                      <div className="flex items-center gap-1.5 flex-wrap text-xs">
-                        {selectedHospital.isEmergency24x7 ? (
-                          <span className="bg-emerald-50 text-emerald-800 border border-emerald-200 rounded-lg text-xs font-mono font-semibold px-2.5 py-1">
-                            ✓ 24/7 Verified Emergency
-                          </span>
-                        ) : (
-                          <span className="bg-slate-100 text-slate-800 border border-slate-200/80 rounded-lg text-xs font-mono font-medium px-2.5 py-1">
-                            Specialty OPD
-                          </span>
-                        )}
-                        <span className="bg-slate-100 text-slate-800 border border-slate-200/80 rounded-lg text-xs font-mono font-medium px-2.5 py-1">
-                          ✓ {(selectedHospital as any).ownership === "government" ? "Government" : "Private"}
-                        </span>
-                        {selectedHospital.acceptsPublicInsurance && (
-                          <span className="bg-slate-100 text-slate-800 border border-slate-200/80 rounded-lg text-xs font-mono font-medium px-2.5 py-1">
-                            ✓ Ayushman / PM-JAY
-                          </span>
-                        )}
-                      </div>
-
-                      {/* Why Ranked #1 Box (when #1 is selected) */}
-                      {selectedHospital.id === recommendedHospital?.id && selectedHospital.matchReasons && selectedHospital.matchReasons.length > 0 && (
-                        <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-xs text-slate-800 flex flex-col gap-1.5">
-                          <span className="font-bold flex items-center gap-1 text-slate-900">
-                            <Sparkles className="w-3.5 h-3.5 text-cyan-600" /> Why ranked #1:
-                          </span>
-                          <div className="flex flex-wrap gap-1.5">
-                            {selectedHospital.matchReasons.map((reason, rIdx) => (
-                              <span key={rIdx} className="bg-slate-100 text-slate-800 border border-slate-200/80 rounded-lg px-2.5 py-1 text-xs font-mono font-medium inline-flex items-center gap-1.5">
-                                <Check className="w-3 h-3 text-emerald-600" /> {reason}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Action Buttons */}
-                      <div className="flex items-center gap-2 pt-0.5">
-                        <a
-                          href={`tel:${selectedHospital.emergencyPhone || selectedHospital.phone || "108"}`}
-                          className={`flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-white font-semibold text-xs shadow-xs active:scale-[0.98] transition-all cursor-pointer ${
-                            selectedHospital.actionType === "call_hospital"
-                              ? "bg-slate-950 hover:bg-slate-900"
-                              : "bg-rose-600 hover:bg-rose-700"
-                          }`}
-                        >
-                          <PhoneCall className="w-3.5 h-3.5" />
-                          <span>{selectedHospital.actionType === "call_hospital" ? "Call hospital" : "Call ED"}</span>
-                        </a>
-                        <a
-                          href={
-                            userLocation
-                              ? `https://www.google.com/maps/dir/?api=1&origin=${userLocation.lat},${userLocation.lng}&destination=${selectedHospital.latitude},${selectedHospital.longitude}&travelmode=driving`
-                              : `https://www.google.com/maps/search/?api=1&query=${selectedHospital.latitude},${selectedHospital.longitude}`
-                          }
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="flex-1 inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-white hover:bg-slate-50 text-slate-800 font-medium text-xs border border-slate-200/90 shadow-2xs active:scale-[0.98] transition-all cursor-pointer"
-                        >
-                          <Navigation className="w-3.5 h-3.5 text-slate-500" />
-                          <span>Directions</span>
-                        </a>
-                      </div>
-                    </>
-                  ) : (
-                    <div className="p-3 text-center text-xs text-slate-600">
-                      No destination selected. Select any facility below or on the map.
-                    </div>
-                  )}
-                </div>
-
-                {/* SECTION 2: ALL MATCHING FACILITIES RAIL */}
-                <div className="flex flex-col gap-2 min-h-0 flex-1">
-                  <div className="flex items-center justify-between gap-2 pb-1.5 border-b border-slate-200/90 shrink-0">
-                    <div className="min-w-0">
-                      <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider truncate">
-                        {filteredAndSortedHospitals.length} Matching Facilities
-                      </h3>
-                      <p className="text-[10.5px] text-slate-600 truncate">
-                        Ranked for {categoryLabel} · Select any to route
-                      </p>
-                    </div>
                     <select
                       value={sortBy}
                       onChange={(e) => {
@@ -1219,96 +1243,161 @@ export default function CarePage() {
                         setCurrentPage(1);
                       }}
                       aria-label="Sort order"
-                      className="text-xs font-medium text-slate-800 bg-white hover:bg-slate-50 border border-slate-200/90 shadow-2xs rounded-xl px-2.5 py-1.5 focus:outline-none transition-all cursor-pointer shrink-0"
+                      className="text-[11px] font-medium text-slate-800 bg-white hover:bg-slate-50 border border-slate-200/90 shadow-2xs rounded-lg px-2 py-1 focus:outline-none transition-all cursor-pointer"
                     >
-                      <option value="fastest">Best Match / Fastest</option>
+                      <option value="fastest">Fastest / Best Match</option>
                       <option value="government">Government First</option>
                       <option value="rating">Highest Rating</option>
                     </select>
                   </div>
-
-                  {/* SCROLLABLE LIST OF ALL FACILITIES */}
-                  <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-2 min-h-0">
-                    {loading ? (
-                      <div className="py-12 text-center text-xs text-slate-600 flex items-center justify-center gap-2">
-                        <div className="w-4 h-4 rounded-full border-2 border-cyan-600 border-t-transparent animate-spin" />
-                        <span>Evaluating verified facilities nearby...</span>
-                      </div>
-                    ) : filteredAndSortedHospitals.length === 0 ? (
-                      <div className="p-8 rounded-2xl bg-white border border-slate-200/90 text-center flex flex-col items-center justify-center gap-2 shadow-xs">
-                        <Building2 className="w-6 h-6 text-slate-400" />
-                        <p className="text-xs font-semibold text-slate-900">No facilities matching criteria</p>
-                      </div>
-                    ) : (
-                      filteredAndSortedHospitals.map((hosp) => {
-                        const isSelected = selectedHospital?.id === hosp.id;
-                        const isBest = recommendedHospital?.id === hosp.id;
-                        const distanceNum = isSelected && liveRoadStats ? liveRoadStats.roadDistanceKm : hosp.distanceKm;
-                        const durationNum = isSelected && liveRoadStats ? liveRoadStats.etaMinutes : hosp.etaMinutes || Math.max(3, Math.round(distanceNum * 1.5));
-                        const isGovernment = (hosp as any).ownership === "government";
-                        const famousFor = hosp.famousFor || getHospitalFamousFor(hosp);
-
-                        return (
-                          <div
-                            key={hosp.id}
-                            onClick={() => handleSelectHospital(hosp)}
-                            className={`p-2.5 rounded-xl border transition-all cursor-pointer flex flex-col gap-1.5 ${
-                              isSelected
-                                ? "bg-slate-950/5 border-slate-900 shadow-xs ring-1 ring-slate-900/20"
-                                : "bg-white hover:bg-slate-50 border border-slate-200/90 shadow-xs"
-                            }`}
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="flex items-start gap-2 min-w-0">
-                                <div
-                                  className={`w-5 h-5 rounded-md flex items-center justify-center font-bold text-[11px] shrink-0 ${
-                                    isSelected
-                                      ? "bg-slate-950 text-white shadow-xs"
-                                      : isBest
-                                      ? "bg-cyan-50 text-cyan-800 border border-cyan-300"
-                                      : "bg-slate-100 text-slate-700 border border-slate-200"
-                                  }`}
-                                >
-                                  #{hosp.rank}
-                                </div>
-                                <div className="min-w-0">
-                                  <div className="flex items-center gap-1.5 flex-wrap">
-                                    <h4 className="text-xs font-bold text-slate-900 truncate" title={hosp.name}>
-                                      {hosp.name}
-                                    </h4>
-                                    {isSelected && (
-                                      <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-slate-950 text-white uppercase tracking-wider">
-                                        Destination
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
-                                    <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded-lg bg-slate-100 text-slate-800 border border-slate-200/80 truncate max-w-[160px]">
-                                      {famousFor}
-                                    </span>
-                                    <span className="text-[10px] text-slate-600">
-                                      {hosp.isEmergency24x7 ? "24/7 ER" : "OPD"} · {isGovernment ? "Govt" : "Private"}
-                                    </span>
-                                  </div>
-                                </div>
-                              </div>
-
-                              <div className="flex flex-col items-end shrink-0 text-right">
-                                <span className="text-xs font-bold text-slate-900">
-                                  ~{durationNum}m
-                                </span>
-                                <span className="text-[10px] text-slate-600">
-                                  ~{distanceNum.toFixed(1)} km
-                                </span>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })
-                    )}
-                  </div>
                 </div>
 
+                {/* 2. COMPACT SELECTED-HOSPITAL SUMMARY */}
+                {selectedHospital && (
+                  <div className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200/90 flex items-center justify-between gap-2 shrink-0">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className={`w-5 h-5 rounded flex items-center justify-center font-bold text-[10px] text-white shrink-0 ${
+                        selectedHospital.id === recommendedHospital?.id ? "bg-slate-950" : "bg-slate-800"
+                      }`}>
+                        #{selectedHospital.rank}
+                      </span>
+                      <span className="text-xs font-bold text-slate-900 truncate" title={selectedHospital.name}>
+                        {selectedHospital.name}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-xs text-slate-600 shrink-0 font-medium">
+                      <span>~{liveRoadStats ? liveRoadStats.etaMinutes : (selectedHospital.etaMinutes || 12)}m</span>
+                      <span className="text-slate-300">·</span>
+                      <span>~{liveRoadStats ? liveRoadStats.roadDistanceKm.toFixed(1) : selectedHospital.distanceKm.toFixed(1)}km</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. EXPANDABLE "WHY RANKED #1?" / "WHY THIS HOSPITAL?" ACCORDION (COLLAPSED BY DEFAULT) */}
+                {selectedHospital?.matchReasons && selectedHospital.matchReasons.length > 0 && (() => {
+                  const distinctiveReasons = selectedHospital.matchReasons.filter((r) => {
+                    const lower = r.toLowerCase();
+                    if (lower.includes("ayushman") || lower.includes("pm-jay") || lower.includes("aarogyasri")) return false;
+                    if (lower.includes("emergency department") && selectedHospital.matchReasons?.some((m) => m.toLowerCase().includes("emergency care"))) return false;
+                    return true;
+                  });
+                  const displayReasons = distinctiveReasons.length > 0 ? distinctiveReasons : selectedHospital.matchReasons;
+
+                  return (
+                    <div className="rounded-xl border border-slate-200/90 bg-slate-50/60 overflow-hidden shrink-0 transition-all">
+                      <button
+                        type="button"
+                        onClick={() => setIsRationaleExpanded(!isRationaleExpanded)}
+                        className="w-full px-3 py-1.5 flex items-center justify-between gap-2 text-left hover:bg-slate-100/60 transition-colors cursor-pointer"
+                      >
+                        <span className="text-[11px] font-bold text-slate-900 flex items-center gap-1.5">
+                          <Sparkles className="w-3 h-3 text-cyan-600 shrink-0" />
+                          <span>{selectedHospital.id === recommendedHospital?.id ? "Why ranked #1?" : "Match rationale"}</span>
+                          <span className="text-[10px] font-normal text-slate-500">({displayReasons.length} key factors)</span>
+                        </span>
+                        <span className="text-[10.5px] font-medium text-slate-500 flex items-center gap-1">
+                          <span>{isRationaleExpanded ? "Hide" : "Details"}</span>
+                          {isRationaleExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                        </span>
+                      </button>
+
+                      {isRationaleExpanded && (
+                        <div className="px-3 pb-2.5 pt-1 border-t border-slate-200/80 flex flex-wrap gap-1.5 animate-in fade-in duration-150">
+                          {displayReasons.map((reason, rIdx) => (
+                            <span
+                              key={rIdx}
+                              className="bg-white text-slate-700 border border-slate-200/90 rounded-md px-2 py-0.5 text-[10.5px] font-mono font-medium inline-flex items-center gap-1 shadow-2xs"
+                            >
+                              <Check className="w-2.5 h-2.5 text-emerald-600 shrink-0" /> {reason}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {/* 4. HOSPITAL RESULTS LIST (PREDICTABLE USABLE VIEWING AREA, INDEPENDENT SCROLL) */}
+                <div className="flex-1 overflow-y-auto pr-1 flex flex-col gap-2 min-h-0">
+                  {loading ? (
+                    <div className="py-12 text-center text-xs text-slate-600 flex items-center justify-center gap-2">
+                      <div className="w-4 h-4 rounded-full border-2 border-cyan-600 border-t-transparent animate-spin" />
+                      <span>Evaluating facilities nearby...</span>
+                    </div>
+                  ) : filteredAndSortedHospitals.length === 0 ? (
+                    <div className="p-8 rounded-2xl bg-white border border-slate-200/90 text-center flex flex-col items-center justify-center gap-2 shadow-xs">
+                      <Building2 className="w-6 h-6 text-slate-400" />
+                      <p className="text-xs font-semibold text-slate-900">No facilities matching criteria</p>
+                      <p className="text-[11px] text-slate-500">Try broadening your medical issue or selecting another region.</p>
+                    </div>
+                  ) : (
+                    filteredAndSortedHospitals.map((hosp) => {
+                      const isSelected = selectedHospital?.id === hosp.id;
+                      const isBest = recommendedHospital?.id === hosp.id;
+                      const distanceNum = isSelected && liveRoadStats ? liveRoadStats.roadDistanceKm : hosp.distanceKm;
+                      const durationNum = isSelected && liveRoadStats ? liveRoadStats.etaMinutes : hosp.etaMinutes || Math.max(3, Math.round(distanceNum * 1.5));
+                      const isGovernment = (hosp as any).ownership === "government";
+                      const famousFor = hosp.famousFor || getHospitalFamousFor(hosp);
+
+                      return (
+                        <div
+                          key={hosp.id}
+                          onClick={() => handleSelectHospital(hosp)}
+                          className={`p-2.5 rounded-xl border transition-all cursor-pointer flex flex-col gap-1.5 ${
+                            isSelected
+                              ? "bg-slate-950/5 border-slate-900 shadow-xs ring-1 ring-slate-900/20"
+                              : "bg-white hover:bg-slate-50 border border-slate-200/90 shadow-xs"
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-start gap-2 min-w-0">
+                              <div
+                                className={`w-5 h-5 rounded-md flex items-center justify-center font-bold text-[11px] shrink-0 ${
+                                  isSelected
+                                    ? "bg-slate-950 text-white shadow-xs"
+                                    : isBest
+                                    ? "bg-cyan-50 text-cyan-800 border border-cyan-300"
+                                    : "bg-slate-100 text-slate-700 border border-slate-200"
+                                }`}
+                              >
+                                #{hosp.rank}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <h4 className="text-xs font-bold text-slate-900 truncate" title={hosp.name}>
+                                    {hosp.name}
+                                  </h4>
+                                  {isSelected && (
+                                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-slate-950 text-white uppercase tracking-wider">
+                                      Destination
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                                  <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded-lg bg-slate-100 text-slate-800 border border-slate-200/80 truncate max-w-[160px]">
+                                    {famousFor}
+                                  </span>
+                                  <span className="text-[10px] text-slate-600">
+                                    {hosp.isEmergency24x7 ? "24/7 ER" : "OPD"} · {isGovernment ? "Govt" : "Private"}
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex flex-col items-end shrink-0 text-right">
+                              <span className="text-xs font-bold text-slate-900">
+                                ~{durationNum}m
+                              </span>
+                              <span className="text-[10px] text-slate-600">
+                                ~{distanceNum.toFixed(1)} km
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
               </div>
             </div>
 
