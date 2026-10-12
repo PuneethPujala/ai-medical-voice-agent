@@ -163,7 +163,7 @@ const SCROLLBAR_CLASS =
   '[scrollbar-width:thin] [scrollbar-color:var(--al-thumb)_transparent] [&::-webkit-scrollbar]:w-[6px] [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:rounded-[3px] [&::-webkit-scrollbar-thumb]:bg-[color:var(--al-thumb)]';
 const BARE_CLASS = '[scrollbar-width:none] [&::-webkit-scrollbar]:hidden';
 const ITEM_CLASS =
-  'relative box-border flex min-w-0 cursor-pointer items-center gap-3 rounded-[var(--al-radius)] py-[12px] pr-[16px] pl-[12px] text-[color:var(--al-ink)] select-none [background:var(--al-tile)] [box-shadow:var(--al-tile-shadow)] [[data-animated]_&:not([data-state])]:opacity-0 hover:[filter:var(--al-hover)] active:[filter:var(--al-press)] data-[selected]:not-active:[filter:var(--al-active)]';
+  'relative box-border flex min-w-0 cursor-pointer items-center gap-3 rounded-[var(--al-radius)] py-[10px] pr-[18px] pl-[12px] text-[color:var(--al-ink)] select-none [background:var(--al-tile)] [box-shadow:var(--al-tile-shadow)] border border-slate-200/90 hover:border-slate-300 transition-colors [[data-animated]_&:not([data-state])]:opacity-0 hover:[filter:var(--al-hover)] active:[filter:var(--al-press)] data-[selected]:not-active:[filter:var(--al-active)]';
 const LEAD_CLASS =
   'grid h-9 w-9 flex-none place-items-center overflow-hidden rounded-[max(8px,calc(var(--al-radius)-4px))] bg-[color:var(--al-well)] text-[color:var(--al-ink)]';
 const RIM_CLASS =

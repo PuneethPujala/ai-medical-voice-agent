@@ -1041,7 +1041,7 @@ export default function CarePage() {
             )}
 
             {/* DOMINANT WORKSPACE: LIVE MAP + RANKED FACILITIES LIST */}
-            <div id="care-map-section" className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start scroll-mt-24">
+            <div id="care-map-section" className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-stretch scroll-mt-24">
 
               {/* LEFT: Dominant Live Route Map + Dedicated Selected Hospital Card (58% width on large screens) */}
               <div className="lg:col-span-7 flex flex-col gap-4">
@@ -1201,7 +1201,7 @@ export default function CarePage() {
               </div>
 
               {/* RIGHT: Decoupled Matching Facilities Rail + Animated List */}
-              <div className="lg:col-span-5 rounded-2xl bg-white border border-slate-200/90 shadow-xs p-4 sm:p-5 flex flex-col gap-3 min-h-[680px]">
+              <div className="lg:col-span-5 rounded-2xl bg-white border border-slate-200/90 shadow-xs p-4 sm:p-5 flex flex-col gap-3 h-[700px] sm:h-[720px] max-h-[720px] overflow-hidden">
 
                 {/* CATEGORY FALLBACK ALERT BANNER */}
                 {categoryFallback && fallbackBanner && (
@@ -1266,28 +1266,7 @@ export default function CarePage() {
                   </div>
                 </div>
 
-                {/* 2. COMPACT SELECTED-HOSPITAL SUMMARY */}
-                {selectedHospital && (
-                  <div className="px-3 py-2 rounded-xl bg-slate-50 border border-slate-200/90 flex items-center justify-between gap-2 shrink-0">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span className={`w-5 h-5 rounded flex items-center justify-center font-bold text-[10px] text-white shrink-0 ${
-                        selectedHospital.id === recommendedHospital?.id ? "bg-slate-950" : "bg-slate-800"
-                      }`}>
-                        #{selectedHospital.rank}
-                      </span>
-                      <span className="text-xs font-bold text-slate-900 truncate" title={selectedHospital.name}>
-                        {selectedHospital.name}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-xs text-slate-600 shrink-0 font-medium">
-                      <span>~{liveRoadStats ? liveRoadStats.etaMinutes : (selectedHospital.etaMinutes || 12)}m</span>
-                      <span className="text-slate-300">·</span>
-                      <span>~{liveRoadStats ? liveRoadStats.roadDistanceKm.toFixed(1) : selectedHospital.distanceKm.toFixed(1)}km</span>
-                    </div>
-                  </div>
-                )}
-
-                {/* 3. STRUCTURED CLINICAL RECOMMENDATION RATIONALE ACCORDION */}
+                {/* 2. KEY MATCH FACTORS & RECOMMENDATION RATIONALE (Clean & compact, as in Picture 2) */}
                 {selectedHospital && (() => {
                   const isRecommended = selectedHospital.id === recommendedHospital?.id;
                   const isGovernment = (selectedHospital as any).ownership === "government";
@@ -1295,107 +1274,53 @@ export default function CarePage() {
                   const etaMinutes = liveRoadStats ? liveRoadStats.etaMinutes : (selectedHospital.etaMinutes || Math.max(3, Math.round(distanceKm * 1.5)));
                   const famousFor = selectedHospital.famousFor || getHospitalFamousFor(selectedHospital);
 
-                  const clinicalFactors = [
-                    {
-                      badge: "EMERGENCY READINESS",
-                      icon: ShieldCheck,
-                      title: selectedHospital.isEmergency24x7 ? "24/7 Acute Emergency Department" : "Specialty Day Clinic",
-                      detail: selectedHospital.isEmergency24x7
-                        ? "Active 24-hour resuscitation bay & acute trauma intake team"
-                        : "Outpatient clinical consultation & scheduled admissions",
-                    },
-                    {
-                      badge: "ROAD TELEMETRY",
-                      icon: Navigation,
-                      title: `~${etaMinutes} min drive (${distanceKm.toFixed(1)} km by road)`,
-                      detail: liveRoadStats
-                        ? "Direct drivable road transit corridor calculated from patient origin"
-                        : "Shortest route transit corridor based on geographical proximity",
-                    },
-                    {
-                      badge: "CLINICAL SPECIALTY",
-                      icon: Stethoscope,
-                      title: famousFor || "Multi-Specialty & Critical Care",
-                      detail: selectedHospital.specialty?.length
-                        ? `Specialized departments: ${selectedHospital.specialty.slice(0, 3).join(", ")}`
-                        : "Comprehensive multi-specialty clinical infrastructure",
-                    },
-                    {
-                      badge: "REGISTRY STATUS",
-                      icon: Award,
-                      title: selectedHospital.sourceType === "official_registry"
-                        ? "Official National / State Registry"
-                        : (selectedHospital as any).accreditation?.length
-                        ? `${(selectedHospital as any).accreditation[0]} Accredited`
-                        : "Verified Healthcare Facility",
-                      detail: "Accredited clinical institution meeting state healthcare quality standards",
-                    },
-                    ...(selectedHospital.acceptsPublicInsurance || isGovernment
-                      ? [
-                          {
-                            badge: "PUBLIC INSURANCE",
-                            icon: CheckCircle2,
-                            title: "Ayushman Bharat / PM-JAY Cashless",
-                            detail: "Empanelled under public health scheme for cashless hospitalization",
-                          },
-                        ]
-                      : []),
-                  ];
-
                   return (
-                    <div className="rounded-xl border border-slate-200/90 bg-slate-50/60 overflow-hidden shrink-0 transition-all">
-                      <button
-                        type="button"
-                        onClick={() => setIsRationaleExpanded(!isRationaleExpanded)}
-                        className="w-full px-3 py-2 flex items-center justify-between gap-2 text-left hover:bg-slate-100/60 transition-colors cursor-pointer"
-                      >
+                    <div className="p-3 rounded-xl bg-slate-50/90 border border-slate-200/90 flex flex-col gap-2 shrink-0 shadow-2xs">
+                      <div className="flex items-center justify-between gap-2">
                         <div className="flex items-center gap-1.5 min-w-0">
                           <Sparkles className="w-3.5 h-3.5 text-cyan-600 shrink-0" />
-                          <span className="text-[11.5px] font-bold text-slate-900">
-                            {isRecommended ? "Primary Recommendation Rationale" : "Facility Suitability Rationale"}
-                          </span>
-                          <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded-md bg-cyan-50 text-cyan-800 border border-cyan-200 shrink-0">
-                            {clinicalFactors.length} factors
+                          <span className="text-xs font-bold text-slate-900 truncate">
+                            {isRecommended ? "Why Ranked #1 · Key Match Factors" : `Match Rationale · #${selectedHospital.rank}`}
                           </span>
                         </div>
-                        <div className="flex items-center gap-1 text-[10.5px] font-semibold text-slate-500 shrink-0">
-                          <span>{isRationaleExpanded ? "Hide" : "Details"}</span>
-                          {isRationaleExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                        </div>
-                      </button>
+                        <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-cyan-50 text-cyan-800 border border-cyan-200 shrink-0">
+                          ~{etaMinutes}m drive
+                        </span>
+                      </div>
 
-                      {isRationaleExpanded && (
-                        <div className="px-3 pb-3 pt-1 border-t border-slate-200/80 grid grid-cols-1 sm:grid-cols-2 gap-2 animate-in fade-in duration-150">
-                          {clinicalFactors.map((factor, fIdx) => {
-                            const FactorIcon = factor.icon;
-                            return (
-                              <div
-                                key={fIdx}
-                                className="bg-white p-2.5 rounded-lg border border-slate-200/90 shadow-2xs flex flex-col gap-1 text-left"
-                              >
-                                <div className="flex items-center justify-between gap-1">
-                                  <span className="text-[9px] font-mono font-bold tracking-wider text-slate-600 uppercase">
-                                    {factor.badge}
-                                  </span>
-                                  <FactorIcon className="w-3 h-3 text-cyan-600 shrink-0" />
-                                </div>
-                                <div className="text-[11px] font-bold text-slate-900 leading-snug flex items-start gap-1">
-                                  <Check className="w-3 h-3 text-emerald-600 shrink-0 mt-0.5" />
-                                  <span>{factor.title}</span>
-                                </div>
-                                <p className="text-[10px] text-slate-500 leading-relaxed pl-4">
-                                  {factor.detail}
-                                </p>
-                              </div>
-                            );
-                          })}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px] text-slate-700">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <span className="truncate">{selectedHospital.isEmergency24x7 ? "24/7 Verified Emergency Care" : "Specialized Care"}</span>
                         </div>
-                      )}
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <span className="truncate">
+                            {selectedHospital.sourceType === "official_registry"
+                              ? "State Health Authority Accredited"
+                              : "Verified Care Provider"}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <span className="truncate">~{distanceKm.toFixed(1)} km away · ~{etaMinutes}m drive</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                          <span className="truncate">
+                            {selectedHospital.acceptsPublicInsurance
+                              ? "Ayushman / PM-JAY Cashless"
+                              : isGovernment
+                              ? "Government Hospital"
+                              : famousFor}
+                          </span>
+                        </div>
+                      </div>
                     </div>
                   );
                 })()}
 
-                {/* 4. HOSPITAL RESULTS LIST (FIXED CONTAINER, INTERNAL SCROLL WITH ANIMATED LIST) */}
+                {/* 3. HOSPITAL RESULTS LIST (FIXED CONTAINER, INTERNAL SCROLL WITH ANIMATED LIST) */}
                 <div className="flex-1 min-h-0 overflow-hidden relative">
                   {loading ? (
                     <div className="py-16 text-center text-xs text-slate-600 flex items-center justify-center gap-2">
@@ -1422,38 +1347,55 @@ export default function CarePage() {
                         const famousFor = hosp.famousFor || getHospitalFamousFor(hosp);
 
                         return (
-                          <div className="w-full flex items-center justify-between gap-3">
-                            {/* Left: rank + name + subtitle */}
-                            <div className="flex items-center gap-3 min-w-0">
+                          <div className="w-full flex items-start justify-between gap-2.5">
+                            {/* Left side: Rank + Hospital Name & Badges */}
+                            <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                              {/* Rank Badge */}
                               <span
-                                className={`text-[11px] font-semibold tabular-nums shrink-0 w-5 text-center ${
+                                className={`font-mono font-bold text-[11px] px-1.5 py-0.5 rounded-md shrink-0 ${
                                   isSelected
-                                    ? "text-slate-950"
+                                    ? "bg-slate-950 text-white shadow-xs"
                                     : isBest
-                                    ? "text-cyan-700"
-                                    : "text-slate-400"
+                                    ? "bg-cyan-100 text-cyan-900 border border-cyan-300"
+                                    : "bg-slate-100 text-slate-700 border border-slate-200"
                                 }`}
                               >
-                                {hosp.rank}
+                                #{hosp.rank}
                               </span>
-                              <div className="min-w-0">
-                                <h4 className="text-[13px] font-semibold text-slate-900 truncate leading-snug" title={hosp.name}>
-                                  {hosp.name}
-                                </h4>
-                                <p className="text-[11px] text-slate-500 truncate leading-snug mt-px">
-                                  {famousFor}{hosp.isEmergency24x7 ? " · 24/7 ER" : ""}{isGovernment ? " · Govt" : ""}
-                                </p>
+
+                              {/* Main Info */}
+                              <div className="min-w-0 flex-1">
+                                {/* Top line: Hospital Name + DESTINATION badge */}
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <h4 className="text-xs sm:text-[13px] font-bold text-slate-900 truncate" title={hosp.name}>
+                                    {hosp.name}
+                                  </h4>
+                                  {isSelected && (
+                                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-md bg-slate-950 text-white uppercase tracking-wider shrink-0">
+                                      DESTINATION
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Second line: Specialty Chip Tag + ER & Ownership info */}
+                                <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                                  <span className="text-[10px] font-mono font-medium px-2 py-0.5 rounded-md bg-slate-100 text-slate-800 border border-slate-200/80 truncate max-w-[160px] inline-block">
+                                    {famousFor}
+                                  </span>
+                                  <span className="text-[10.5px] text-slate-500 font-normal">
+                                    {hosp.isEmergency24x7 ? "24/7 ER" : "OPD"} · {isGovernment ? "Govt" : "Private"}
+                                  </span>
+                                </div>
                               </div>
                             </div>
 
-                            {/* Right: ETA + distance */}
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              <span className={`text-[11px] font-semibold tabular-nums ${isSelected ? "text-slate-900" : "text-slate-600"}`}>
-                                {durationNum}m
+                            {/* Right side: ETA + Distance by road */}
+                            <div className="flex flex-col items-end shrink-0 text-right">
+                              <span className="text-xs sm:text-[13px] font-bold text-slate-900 leading-tight">
+                                ~{durationNum}m
                               </span>
-                              <span className="text-[10px] text-slate-400">·</span>
-                              <span className="text-[10px] text-slate-400 tabular-nums">
-                                {distanceNum.toFixed(1)}km
+                              <span className="text-[10px] text-slate-500 font-mono leading-tight mt-0.5">
+                                ~{distanceNum.toFixed(1)} km{isSelected ? " by road" : ""}
                               </span>
                             </div>
                           </div>
@@ -1462,14 +1404,14 @@ export default function CarePage() {
                       animation="pop"
                       stagger={0.03}
                       showGradients={true}
-                      fadeSize={28}
+                      fadeSize={24}
                       displayScrollbar={true}
                       frame={false}
                       theme="light"
                       radius={12}
-                      gap={10}
+                      gap={8}
                       width="100%"
-                      maxHeight={480}
+                      maxHeight={520}
                       className="w-full"
                     />
                   )}
