@@ -46,8 +46,12 @@
     "test:streaming-benchmark": "tsx tests/verification/streaming_benchmark.ts",
     "test:emergency-latency": "tsx tests/verification/emergency_latency_benchmark.ts",
     "test:system-voice": "tsx tests/verification/system_voice_benchmark.ts",
-    "test:phase2": "tsx tests/verification/verify_phase2_milestones.ts",
-    "test:all": "npm run test:security && npm run test:durable-audit && npm run test:goldendialogue && npm run test:safetyarbiter && npm run test:safetyintegration && npm run test:remediations && npm run test:severity && npm run test:voicestate && npm run test:subfield && npm run test:interpreter && npm run test:planner && npm run test:engine && npm run test:adversarial && npm run test:multiclause && npm run test:provenance && npm run test:rag && npm run test:explanatory && npm run test:manager && npm run test:board && npm run test:clinical && npm run test:interview && npm run test:bargein && npm run test:discussion && npm run test:acceptance && npm run test:fhir && npm run test:dispatch"
+    "test:profile-persistence": "tsx tests/patient-profile/profile-persistence.test.ts",
+    "test:context-chat": "tsx tests/patient-profile/context-aware-chat.test.ts",
+    "test:consultation-lifecycle": "tsx tests/security-eval/consultation-lifecycle.test.ts",
+    "test:chat-isolation": "tsx tests/security-eval/chat-identity-isolation.test.ts",
+    "test:unknown-age": "tsx tests/triage/unknown-age-pediatric.test.ts",
+    "test:all": "npm run test:security && npm run test:durable-audit && npm run test:consultation-lifecycle && npm run test:profile-persistence && npm run test:context-chat && npm run test:chat-isolation && npm run test:unknown-age && npm run test:goldendialogue && npm run test:safetyarbiter && npm run test:safetyintegration && npm run test:remediations && npm run test:severity && npm run test:voicestate && npm run test:subfield && npm run test:interpreter && npm run test:planner && npm run test:engine && npm run test:adversarial && npm run test:multiclause && npm run test:provenance && npm run test:rag && npm run test:explanatory && npm run test:manager && npm run test:board && npm run test:clinical && npm run test:interview && npm run test:bargein && npm run test:discussion && npm run test:acceptance && npm run test:fhir && npm run test:dispatch"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

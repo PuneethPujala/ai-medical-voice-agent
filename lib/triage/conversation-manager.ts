@@ -678,7 +678,7 @@ export class ConversationManager {
   public async processTurn(
     patientUtterance: string,
     existingState?: ClinicalInterviewState,
-    demographics: { age?: number | null; age_group?: any; age_source?: string } = { age: null, age_group: "adult", age_source: "unknown" },
+    demographics: { age?: number | null; age_group?: any; age_source?: string } = { age: null, age_group: "unknown", age_source: "unknown" },
     localeConfig: LocaleConfig = DEFAULT_LOCALE_CONFIG,
     options?: ProcessTurnOptions
   ): Promise<ConversationTurnResult> {
@@ -718,7 +718,7 @@ export class ConversationManager {
       transcript: state.cumulativeTranscript,
       demographics: {
         age: pAge ?? undefined,
-        age_group: profile && typeof profile.age === "number" ? (profile.age < 1 ? "infant" : profile.age < 16 ? "pediatric" : "adult") : (demographics.age_group || "adult"),
+        age_group: profile && typeof profile.age === "number" ? (profile.age < 1 ? "infant" : profile.age < 16 ? "pediatric" : "adult") : (demographics.age_group || "unknown"),
       },
       patientSpec,
     } as any);
@@ -1108,7 +1108,7 @@ export class ConversationManager {
         preArbiterResult,
         demographics: {
           age: pAge ?? null,
-          age_group: demographics?.age_group || "adult",
+          age_group: demographics?.age_group || "unknown",
           age_source: demographics?.age_source
         },
         doctor: doctorProfile,
