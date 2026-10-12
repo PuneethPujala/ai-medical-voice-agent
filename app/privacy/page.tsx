@@ -96,7 +96,7 @@ export default function PrivacyPolicyPage() {
     <AmbientPageBackground>
       <div>
         {/* HERO HEADER */}
-        <section className="pt-16 pb-12 px-6 max-w-4xl mx-auto space-y-4">
+        <section className="pt-28 sm:pt-32 pb-10 px-4 sm:px-6 max-w-4xl mx-auto space-y-4">
           <Link
             href="/"
             className="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 hover:text-slate-950 bg-white hover:bg-slate-50 border border-slate-200/90 hover:border-slate-300 px-3.5 py-1.5 rounded-xl shadow-2xs transition-all w-fit cursor-pointer"
