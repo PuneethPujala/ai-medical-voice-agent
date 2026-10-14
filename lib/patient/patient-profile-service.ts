@@ -73,15 +73,14 @@ export class PatientProfileService {
           )
           .orderBy(desc(patientProfilesTable.updatedAt));
 
-        if (rows && rows.length > 0) {
-          return rows.map((r) => this.mapToPatientProfile(r));
-        }
+        // Authoritative database result: return persisted profiles (empty array if none exist)
+        return (rows || []).map((r) => this.mapToPatientProfile(r));
       } catch (err) {
         console.warn("[PatientProfileService] DB query failed, falling back to memory store:", err);
       }
     }
 
-    // Memory fallback
+    // Memory fallback (used ONLY when database is unconfigured or throwing errors in offline dev)
     const list: PatientProfile[] = [];
     for (const p of memoryProfiles.values()) {
       if (p.userId === userId && !p.isDeleted) {
@@ -115,6 +114,8 @@ export class PatientProfileService {
         if (rows && rows.length > 0) {
           return this.mapToPatientProfile(rows[0]);
         }
+        // Authoritative DB execution returned 0 rows: profile does not exist in DB for this user
+        return null;
       } catch (err) {
         console.warn("[PatientProfileService] DB query failed, falling back to memory store:", err);
       }
@@ -157,6 +158,8 @@ export class PatientProfileService {
         if (rows && rows.length > 0) {
           return this.mapToPatientProfile(rows[0]);
         }
+        // Authoritative DB execution returned 0 rows: relationship profile does not exist in DB
+        return null;
       } catch (err) {
         console.warn("[PatientProfileService] DB query failed, falling back to memory store:", err);
       }
@@ -251,8 +254,10 @@ export class PatientProfileService {
       emergencyContact: data.emergencyContact !== undefined ? data.emergencyContact : existing?.emergencyContact,
       accessibilityPreferences: data.accessibilityPreferences !== undefined ? data.accessibilityPreferences : existing?.accessibilityPreferences,
       clinicalNotes: data.clinicalNotes !== undefined ? data.clinicalNotes : existing?.clinicalNotes,
-      consentGiven: data.consentGiven !== undefined ? data.consentGiven : (existing?.consentGiven ?? true),
-      consentTimestamp: data.consentTimestamp || existing?.consentTimestamp || now.toISOString(),
+      consentGiven: data.consentGiven !== undefined ? Boolean(data.consentGiven) : (existing?.consentGiven ?? false),
+      consentTimestamp: (data.consentGiven !== undefined ? Boolean(data.consentGiven) : (existing?.consentGiven ?? false))
+        ? (data.consentTimestamp || existing?.consentTimestamp || now.toISOString())
+        : (data.consentGiven === false ? undefined : existing?.consentTimestamp),
       isDeleted: false,
       createdAt: existing?.createdAt || now.toISOString(),
       updatedAt: now.toISOString(),
@@ -285,8 +290,8 @@ export class PatientProfileService {
           emergencyContact: updatedProfile.emergencyContact || null,
           accessibilityPreferences: updatedProfile.accessibilityPreferences || null,
           clinicalNotes: updatedProfile.clinicalNotes || null,
-          consentGiven: updatedProfile.consentGiven ?? true,
-          consentTimestamp: new Date(updatedProfile.consentTimestamp || now.toISOString()),
+          consentGiven: updatedProfile.consentGiven ?? false,
+          consentTimestamp: updatedProfile.consentTimestamp ? new Date(updatedProfile.consentTimestamp) : null,
           isDeleted: false,
           deletedAt: null,
           updatedAt: now,

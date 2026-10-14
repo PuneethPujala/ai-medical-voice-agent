@@ -13,6 +13,7 @@ import { extractSubfieldState } from "@/lib/triage/clinical-state";
 import { evaluatePreArbiter } from "@/lib/triage/pre-arbiter";
 import { PatientProfileService } from "@/lib/patient/patient-profile-service";
 import { CallerProfile, PatientProfile } from "@/lib/clinical-knowledge/types";
+import { getAuthContext } from "@/lib/auth/rbac";
 
 import {
   checkRateLimit,
@@ -34,6 +35,12 @@ export async function POST(request: Request) {
       return buildRateLimitResponse(rateLimit, "/api/voice/chat");
     }
 
+    // 2. Authoritative Session Identity: Server-side resolution only (never trust body.userId)
+    const auth = await getAuthContext(request);
+    const effectiveUserId = auth.userId === "unauthenticated" && auth.isDemoMode
+      ? "anon-user"
+      : auth.userId;
+
     const body = await request.json();
     const {
       doctorId = "dr-sarah-chen",
@@ -43,8 +50,7 @@ export async function POST(request: Request) {
       patientAge,
       patientId: requestedPatientId,
       patientRelationship,
-      patientProfile: inputProfile,
-      userId: bodyUserId,
+      // body.patientProfile and body.userId are intentionally discarded to enforce tenant isolation
       audioMetrics,
       isInterruption = false,
       interruptedAgent = "",
@@ -89,7 +95,7 @@ export async function POST(request: Request) {
       speech_features: body.speechFeatures,
       demographics: {
         age: body.interviewState?.patientDemographics?.age,
-        age_group: (body.interviewState?.patientDemographics?.age_group || "adult") as any,
+        age_group: (body.interviewState?.patientDemographics?.age_group || "unknown") as any,
       },
     });
 
@@ -139,7 +145,7 @@ export async function POST(request: Request) {
           body.interviewState?.slots?.known_facts?.some((f: string) => /EMERGENCY|ESI LEVEL [12]|CRITICAL/i.test(f));
 
         const closingDoctorReply = isEmergencyDecided
-          ? "Please remember this requires urgent emergency medical evaluation. If you haven't already, please call 108 or have someone take you to the nearest emergency department right now. Do not wait."
+          ? "Please remember this requires urgent emergency medical evaluation. If you haven't already, please call 112 or 108 immediately or have someone take you to the nearest emergency department right now. Do not wait."
           : "You're very welcome! Please don't hesitate to reach back out if your symptoms change or worsen. Take care and stay safe.";
 
         return NextResponse.json({
@@ -187,14 +193,23 @@ export async function POST(request: Request) {
       isLiveDsp: audioMetrics?.isLiveDsp,
     });
 
-    // Resolve target patient profile and subject attribution (self vs mother vs child vs other)
-    const { profile: resolvedProfile, inferredSubject } = await PatientProfileService.resolveTargetPatientProfile(
-      bodyUserId,
-      cleanMsg,
-      requestedPatientId,
-      patientRelationship
-    );
-    const activeProfile: PatientProfile | null = inputProfile || resolvedProfile;
+    // Resolve target patient profile strictly scoped to authenticated user
+    let activeProfile: PatientProfile | null = null;
+    let inferredSubject: "self" | "mother" | "child" | "third_party" = "self";
+
+    if (effectiveUserId !== "unauthenticated") {
+      const resolved = await PatientProfileService.resolveTargetPatientProfile(
+        effectiveUserId,
+        cleanMsg,
+        requestedPatientId,
+        patientRelationship
+      );
+      // Double check tenant isolation: profile must strictly belong to authenticated user
+      if (resolved.profile && resolved.profile.userId === effectiveUserId) {
+        activeProfile = resolved.profile;
+      }
+      inferredSubject = resolved.inferredSubject;
+    }
 
     let ageNum: number | null = null;
     let ageSource: "patient_reported" | "profile" | "unknown" = "unknown";
@@ -230,12 +245,13 @@ export async function POST(request: Request) {
     }
 
     // 2. Stateful Clinical Conversation Manager Turn Execution
+    // Invariant: Do not default unknown age to "adult" — preserve "unknown" so pediatric checks are not bypassed
     const turnResult = await conversationManager.processTurn(
       cleanMsg,
       body.interviewState,
       {
         age: ageNum ?? undefined,
-        age_group: ageGroup === "unknown" ? "adult" : ageGroup,
+        age_group: ageGroup,
         age_source: ageSource
       },
       undefined,
@@ -419,7 +435,7 @@ export async function POST(request: Request) {
 
     // 3. Generative Clinical Turn Response (NVIDIA NIM / Groq LLM with Pre-Arbiter Emergency Invariant)
     const callerProfile: CallerProfile = {
-      id: bodyUserId || "caller-session",
+      id: effectiveUserId || "caller-session",
       name: patientName,
       relationshipToPatient: inferredSubject === "mother" ? "child" : inferredSubject === "child" ? "parent" : "self",
     };
@@ -692,7 +708,7 @@ export async function POST(request: Request) {
       // Emergency preemption or post-decision turn: active conversational guidance takes absolute precedence
       finalDoctorReply = activeDoctorReply || turnResult.doctorReply || boardOutput?.doctor_reply || "";
       if (isEmergency && !/\b(108|112|emergency|ambulance|hospital|urgent|er\b|immediately)\b/i.test(finalDoctorReply)) {
-        finalDoctorReply = `This is a medical emergency. Please call 108 or proceed to the nearest emergency department immediately. ${finalDoctorReply}`.trim();
+        finalDoctorReply = `This is a medical emergency. Please call 112 or 108 immediately or proceed to the nearest emergency department. ${finalDoctorReply}`.trim();
       }
     } else if (boardOutput && boardOutput.doctor_reply) {
       // Pre-TTS Validator for non-emergency board reply: ensure no fabricated unassessed vitals

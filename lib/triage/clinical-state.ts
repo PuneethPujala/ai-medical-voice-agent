@@ -779,7 +779,8 @@ export function parseOnsetDimensions(text: string): ParsedOnset {
     // e.g. "then suddenly became severe", "suddenly got worse", "next day suddenly became too bad"
     const isSuddenWorsening =
       /\b(?:then|next\s+day|later|subsequently|after\s+that|suddenly)\s+(?:became|got|turned|grew|spiked)\s+(?:severe|worse|bad|intense|unbearable|too\s+bad)\b/i.test(clause) ||
-      /\bsuddenly\s+(?:worsened|increased|became\s+(?:severe|worse|too\s+bad))\b/i.test(clause);
+      /\bsuddenly\s+(?:worsened|increased|became\s+(?:severe|worse|too\s+bad))\b/i.test(clause) ||
+      /\b(?:became|got|turned|grew)\s+(?:severe|worse|bad|intense|unbearable|too\s+bad)\s+(?:suddenly|abruptly|all\s+of\s+a\s+sudden)\b/i.test(clause);
 
     // Check if this clause explicitly describes GRADUAL onset of symptom
     // e.g. "built up gradually", "started gradually", "came on slowly", "gradual onset", "slowly over time"

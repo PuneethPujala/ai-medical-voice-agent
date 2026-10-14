@@ -77,11 +77,11 @@ export async function POST(request: Request) {
     let spokenResponse = "";
     if (arbiter.isEmergency) {
       if (specialty === "cardiology") {
-        spokenResponse = "Emergency alert registered. I have detected acute cardiac distress indicators. Please rest and avoid exertion while we connect you with emergency services.";
+        spokenResponse = "Emergency alert registered. Acute cardiac distress indicators detected. Please rest, avoid physical exertion, and call 112 or 108 immediately for emergency medical assistance. Do not wait.";
       } else if (specialty === "neurology") {
-        spokenResponse = "Critical emergency registered. Your symptoms indicate acute neurological distress. Please remain stationary while emergency dispatch is initiated.";
+        spokenResponse = "Critical emergency registered. Acute neurological distress indicators detected. Please remain stationary and call 112 or 108 immediately for an emergency ambulance. Do not wait.";
       } else {
-        spokenResponse = `Emergency warning. Your symptoms require immediate emergency medical attention. Please call 911 or 108 immediately. ${arbiter.recommendedAction}`;
+        spokenResponse = `Emergency warning. Your symptoms require immediate emergency medical attention. Please call 112 or 108 immediately. ${arbiter.recommendedAction}`;
       }
     } else if (arbiter.triageLevel === "priority") {
       spokenResponse = `Your symptoms have been logged as priority. We recommend an urgent medical evaluation today. ${arbiter.recommendedAction}`;

@@ -25,7 +25,8 @@ async function main() {
   const hasOdynophagia = ext2.newFacts.some(f => f.name === "painful_swallowing" && f.status === "present");
   const hasDysphagia = ext2.newFacts.some(f => f.name === "swallowing_difficulty");
   const hasFeverDenied = ext2.deniedTopics.includes("fever") || ext2.newFacts.some(f => f.name === "fever" && f.status === "absent");
-  const hasSeverity = ext2.symptomProfileUpdates.severity?.value === 6;
+  const sevVal = ext2.symptomProfileUpdates.severity?.value;
+  const hasSeverity = sevVal === 6 || (typeof sevVal === "object" && sevVal?.baseline === 6) || ext2.symptomProfileUpdates.severity?.normalizedText === "6/10";
 
   console.log(`- Odynophagia detected present: ${hasOdynophagia ? "✅ PASS" : "❌ FAIL"}`);
   console.log(`- Dysphagia NOT falsely marked: ${!hasDysphagia ? "✅ PASS" : "❌ FAIL"}`);

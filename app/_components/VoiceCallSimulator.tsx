@@ -88,7 +88,47 @@ export function VoiceCallSimulator() {
 
   const [isWakeWordMode, setIsWakeWordMode] = useState<boolean>(true);
   const [isAwake, setIsAwake] = useState<boolean>(false);
+  const [isSpeechRecognitionSupported, setIsSpeechRecognitionSupported] = useState<boolean>(true);
   const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Browser STT Capability Detection & Resource Cleanup on Unmount
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const hasSpeech = Boolean((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition);
+      setIsSpeechRecognitionSupported(hasSpeech);
+    }
+
+    return () => {
+      if (silenceTimerRef.current) {
+        clearTimeout(silenceTimerRef.current);
+        silenceTimerRef.current = null;
+      }
+      if (speechRecognitionRef.current) {
+        try {
+          speechRecognitionRef.current.onend = null;
+          speechRecognitionRef.current.onerror = null;
+          speechRecognitionRef.current.onresult = null;
+          speechRecognitionRef.current.stop();
+        } catch (e) {}
+        speechRecognitionRef.current = null;
+      }
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+      if (micStreamRef.current) {
+        micStreamRef.current.getTracks().forEach((track) => track.stop());
+        micStreamRef.current = null;
+      }
+      if (audioContextRef.current && audioContextRef.current.state !== "closed") {
+        audioContextRef.current.close().catch(() => {});
+        audioContextRef.current = null;
+      }
+      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+    };
+  }, []);
 
   // Web Audio Synthetic Wake Chime
   const playWakeChime = () => {
@@ -320,7 +360,7 @@ export function VoiceCallSimulator() {
         };
 
         recognition.onend = () => {
-          if (isListening) {
+          if (isListening && speechRecognitionRef.current) {
             try {
               recognition.start();
             } catch (e) {}
@@ -329,9 +369,17 @@ export function VoiceCallSimulator() {
 
         recognition.start();
         speechRecognitionRef.current = recognition;
+        setIsListening(true);
+      } else {
+        setIsSpeechRecognitionSupported(false);
+        setIsListening(false);
+        if (stream) stream.getTracks().forEach((track) => track.stop());
+        micStreamRef.current = null;
+        if (audioCtx && audioCtx.state !== "closed") audioCtx.close().catch(() => {});
+        audioContextRef.current = null;
+        if (animationFrameRef.current) cancelAnimationFrame(animationFrameRef.current);
+        alert("Live Speech Recognition is not supported by your current browser. You can type your symptoms below or select any sample scenario.");
       }
-
-      setIsListening(true);
     } catch (err) {
       console.warn("Microphone access error:", err);
       alert("Microphone permission was not granted. You can type your symptoms or select a sample scenario below.");
@@ -350,6 +398,7 @@ export function VoiceCallSimulator() {
 
     if (speechRecognitionRef.current) {
       try {
+        speechRecognitionRef.current.onend = null;
         speechRecognitionRef.current.stop();
       } catch (e) {}
       speechRecognitionRef.current = null;
@@ -366,7 +415,7 @@ export function VoiceCallSimulator() {
     }
 
     if (audioContextRef.current && audioContextRef.current.state !== "closed") {
-      audioContextRef.current.close();
+      audioContextRef.current.close().catch(() => {});
       audioContextRef.current = null;
     }
 
@@ -378,6 +427,10 @@ export function VoiceCallSimulator() {
   };
 
   const handleMicToggle = () => {
+    if (!isSpeechRecognitionSupported) {
+      alert("Live speech-to-text is not supported in this browser. Please type your symptoms in the box below or click any scenario.");
+      return;
+    }
     if (isListening) {
       stopRealMicrophone();
     } else {
@@ -533,6 +586,16 @@ export function VoiceCallSimulator() {
               )}
             </div>
           </div>
+
+          {/* BROWSER COMPATIBILITY NOTICE */}
+          {!isSpeechRecognitionSupported && (
+            <div className="flex items-center gap-2.5 p-3.5 rounded-2xl bg-amber-50 border border-amber-200/90 text-amber-900 text-xs font-medium">
+              <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>
+                Live microphone speech-to-text is not supported in this browser. You can type symptoms into the box below or click any clinical scenario for instant audio triage evaluation.
+              </span>
+            </div>
+          )}
 
           {/* INPUT & CONTROL BAR */}
           <form onSubmit={handleSubmit} className="space-y-3">
