@@ -1262,15 +1262,23 @@ export function detectQuestionTargetSlot(questionText: string, defaultSlot?: str
   if (/\bdiarrh(?:oe)?a|loose\s+motions?|loose\s+stools?\b/i.test(lower)) return "diarrhea";
   if (/\bvomit/i.test(lower)) return "vomiting";
 
-  // 5. Severity (numerical scale / 0-10 / rate pain) vs Character (quality / sensation)
+  // 5. Severity (numerical scale / 0-10 / rate pain) vs Character (quality / sensation) vs Timing Pattern
   if (/scale|0\s*[-–to]\s*10|zero\s*[-–to]\s*ten|how\s+severe|severity|rate\s+your\s+pain/i.test(lower)) return "severity";
+  if (/constant\s+or\s+(?:does\s+it\s+)?come\s+and\s+go|comes\s+and\s+goes|in\s+waves|intermittent/i.test(lower)) return "timing_pattern";
   if (/what\s+(?:does\s+it|it)\s+feel\s+like|sharp|dull|burning|pressure|tightness|squeezing|character|crushing|throbbing/i.test(lower)) return "character";
 
-  // 5. Onset pattern (sudden vs gradual) vs Episodic duration/frequency vs Onset timeline
-  if (/sudden|gradual|come\s+on\s+all\s+at\s+once|build\s+up/i.test(lower)) return "onset_pattern";
+  // 5. Onset pattern (sudden vs gradual / clap of thunder) vs Episodic duration/frequency vs Onset timeline
+  if (/clap\s+of\s+thunder|thunderclap|sudden|gradual|come\s+on\s+all\s+at\s+once|build\s+up/i.test(lower)) return "onset_pattern";
   if (/how\s+long\s+(?:does\s+each|each\s+one\s+last)|duration\s+of\s+each/i.test(lower)) return "duration";
   if (/how\s+often|how\s+many\s+times\s+a\s+(?:day|month|week)|frequency/i.test(lower)) return "frequency";
   if (/when\s+did|how\s+long\s+have\s+you\s+had|how\s+many\s+days|how\s+many\s+hours|when\s+did\s+this\s+start/i.test(lower)) return "onset";
+
+  // Neurological laterality & weakness/numbness distribution
+  if (/(?:one\s+side|both\s+sides|which\s+side|affecting\s+one\s+side|unilateral|bilateral|where\s+do\s+you\s+feel\s+it)/i.test(lower)) {
+    if (/weak|weakness/i.test(lower)) return "weakness_distribution";
+    if (/numb|numbness/i.test(lower)) return "numbness_distribution";
+    return "laterality";
+  }
 
   // 6. Voice character
   if (/voice|hoarse|hoarseness|speak/i.test(lower)) return "voice_character";
@@ -1303,10 +1311,11 @@ export function detectQuestionTargetSlots(questionText: string): string[] {
   const lower = questionText.toLowerCase();
   const targets = new Set<string>();
 
-  const asksOnsetPattern = /sudden|gradual|come\s+on\s+all\s+at\s+once|build\s+up/.test(lower);
+  const asksOnsetPattern = /clap\s+of\s+thunder|thunderclap|sudden|gradual|come\s+on\s+all\s+at\s+once|build\s+up/.test(lower);
   if (asksOnsetPattern) targets.add("onset_pattern");
   if (/when\s+did|how\s+long\s+have\s+you\s+had|how\s+many\s+(?:days|hours)|when\s+did\s+this\s+start/.test(lower)) targets.add("onset_time");
   if (/scale|0\s*[-–to]\s*10|zero\s*[-–to]\s*ten|how\s+severe|severity|rate\s+your\s+pain/.test(lower)) targets.add("severity");
+  if (/constant\s+or\s+(?:does\s+it\s+)?come\s+and\s+go|comes\s+and\s+goes|in\s+waves|intermittent/.test(lower)) targets.add("timing_pattern");
   if (/what\s+(?:does\s+it|it)\s+feel\s+like|sharp|dull|burning|pressure|tightness|squeezing|character|crushing|throbbing/.test(lower)) targets.add("character");
   if (/bright\s+light|light\s+(?:bother|sensitivity)|sensitive\s+to\s+(?:bright\s+)?light|photophob|loud\s+(?:sound|noise)|sound\s+(?:bother|sensitivity)|sensitive\s+to\s+(?:sound|noise)|phonophob/.test(lower)) targets.add("associated_symptoms");
   if (/other\s+symptoms|associated|alongside/.test(lower)) targets.add("associated_symptoms");
@@ -1325,6 +1334,11 @@ export function detectQuestionTargetSlots(questionText: string): string[] {
   if (!asksOnsetPattern && /worse|better|improving|staying\s+the\s+same|course/.test(lower)) targets.add("course");
   if (/(?:radiat|travel|spread).*\b(?:arm|jaw|neck|back)\b|\b(?:arm|jaw|back)\b/.test(lower)) targets.add("radiation");
   if (/active|activity|exercis|stairs?|rest(?:ing)?|exert/.test(lower)) targets.add("exertional");
+  if (/(?:one\s+side|both\s+sides|which\s+side|affecting\s+one\s+side|unilateral|bilateral)/.test(lower)) {
+    if (/weak|weakness/.test(lower)) targets.add("weakness_distribution");
+    else if (/numb|numbness/.test(lower)) targets.add("numbness_distribution");
+    else targets.add("laterality");
+  }
   if (/weakness|facial\s+droop|speech|numbness/.test(lower)) targets.add("neurological_signs");
 
   return [...targets];
@@ -1352,7 +1366,14 @@ export function isTargetSlotMatch(expectedTopic: string, detectedSlot: string): 
   }
 
   // Neurological laterality / distribution
-  if ((exp === "weakness_distribution" || exp === "laterality") && (det === "weakness_distribution" || det === "laterality")) {
+  const lateralityGroup = new Set(["weakness_distribution", "numbness_distribution", "laterality"]);
+  if (lateralityGroup.has(exp) && lateralityGroup.has(det)) {
+    return true;
+  }
+
+  // Timing / Character / Severity pattern
+  const timingGroup = new Set(["timing_pattern", "severity_pattern", "character"]);
+  if (timingGroup.has(exp) && timingGroup.has(det)) {
     return true;
   }
 

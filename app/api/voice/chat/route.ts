@@ -493,6 +493,14 @@ export async function POST(request: Request) {
       }
     }
 
+    const history = turnResult.state.structuredHistory || (turnResult.state.structuredHistory = {} as any);
+    history.recentDoctorReplies = history.recentDoctorReplies || [];
+    if (history.recentDoctorReplies.length > 0) {
+      history.recentDoctorReplies[history.recentDoctorReplies.length - 1] = activeDoctorReply;
+    } else {
+      history.recentDoctorReplies.push(activeDoctorReply);
+    }
+
     // Structured multi-specialist intake deliberation messages
     const intakeDeliberationMessages: any[] = [];
     if (hasAnySymptoms) {

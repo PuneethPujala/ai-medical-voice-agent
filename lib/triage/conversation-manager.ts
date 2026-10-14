@@ -8,7 +8,7 @@ import { ConversationInterpreter } from "./conversation-interpreter";
 import { LocaleConfig, DEFAULT_LOCALE_CONFIG, getEmergencyDispatchInstructions } from "../config/locale";
 import { clinicalDecisionEngine } from "./clinical-decision-engine";
 import { responsePlanner, ResponsePlan } from "./response-planner";
-import { extractSubfieldState, extractNumericSeverity, extractEpisodicSeverity, extractGiAssociatedSymptoms, parseAbdominalLocations, ABDOMINAL_LOCATION_LABELS, NON_DENIABLE_SLOTS, parseOnsetDimensions, isAbdominalPresentation, controlledFactReconciliationEngine } from "./clinical-state";
+import { extractSubfieldState, extractNumericSeverity, extractEpisodicSeverity, extractGiAssociatedSymptoms, parseAbdominalLocations, ABDOMINAL_LOCATION_LABELS, NON_DENIABLE_SLOTS, parseOnsetDimensions, isAbdominalPresentation, controlledFactReconciliationEngine, isTargetSlotMatch, detectQuestionTargetSlot } from "./clinical-state";
 import { PatientProfile, CallerProfile, ConversationalAction, ServerTurnTelemetry, CandidateFactProposal } from "../clinical-knowledge/types";
 import { PresentationContext } from "../clinical-knowledge/presentation-types";
 import { presentationClassifier } from "../clinical-knowledge/presentation-classifier";
@@ -30,6 +30,7 @@ export interface ConversationMemory {
   riskFactors?: string;
   uncertainties: string[];
   slotAskCount?: Record<string, number>;
+  doNotRepeat?: string[];
 }
 
 export interface DomainSufficiencyStatus {
@@ -58,6 +59,7 @@ export interface ClinicalInterviewState {
     neurological_signs: string[];
     pediatric_signs: string[];
     known_facts: string[];
+    laterality?: string;
   };
   pendingQuestion: PendingQuestion | null;
   agentRequests: AgentRequest[];
@@ -522,8 +524,34 @@ export class ConversationManager {
         }
       }
 
-      // D. CHARACTER / QUALITY
-      if (slot === "character") {
+      // D. CHARACTER / QUALITY / TIMING / POSTURAL PATTERN
+      if (slot === "character" || slot === "severity" || slot === "timing_pattern" || slot === "severity_pattern") {
+        const isPostural = /\b(?:severe\s+when\s+i\s+stand|worse\s+when\s+standing|standing\s+up\s+and\s+walk|after\s+resting)\b/i.test(textLower);
+        const isConstant = /\b(constant|constantly|all\s+the\s+time|continuous)\b/i.test(textLower);
+        const isIntermittent = /\b(comes\s+and\s+goes|intermittent|in\s+waves)\b/i.test(textLower);
+
+        if (isConstant && isPostural) {
+          return {
+            intent: "answer_question",
+            resolvedSlot: slot === "character" ? "character" : slot === "severity" ? "severity" : "timing_pattern",
+            resolvedValue: "constant baseline, severe upon standing/walking"
+          };
+        }
+        if (isConstant) {
+          return {
+            intent: "answer_question",
+            resolvedSlot: slot === "character" ? "character" : "timing_pattern",
+            resolvedValue: "constant"
+          };
+        }
+        if (isIntermittent) {
+          return {
+            intent: "answer_question",
+            resolvedSlot: slot === "character" ? "character" : "timing_pattern",
+            resolvedValue: "intermittent / comes and goes"
+          };
+        }
+
         const charMatch = textLower.match(/\b(crushing|pressure|tightness|heavy|squeezing|sharp|stabbing|burning|throbbing|ache|dull|elephant|cramp(?:ing)?|colic(?:ky)?|spasm|gnawing)\b/i);
         if (charMatch) {
           return { intent: "answer_question", resolvedSlot: "character", resolvedValue: charMatch[0] };
@@ -617,16 +645,49 @@ export class ConversationManager {
         return { intent: "answer_question", resolvedSlot: "trismus", resolvedValue: hasSpecificDenial ? "denied" : (hasSpecificTrismus ? "trismus / limited jaw opening reported" : "denied") };
       }
 
-      // F. NEUROLOGICAL SIGNS
+      // M. WEAKNESS / NUMBNESS DISTRIBUTION & LATERALITY
+      if (slot === "weakness_distribution" || slot === "numbness_distribution" || slot === "laterality") {
+        const isHead = /\b(?:just\s+(?:in\s+my\s+)?head|only\s+(?:in\s+my\s+)?head|in\s+(?:my\s+)?head|cranial)\b/i.test(textLower);
+        const isSystemic = /\b(?:whole\s+(?:nervous\s+)?system|whole\s+body|all\s+over|everywhere|generalized)\b/i.test(textLower);
+        const isOneSided = /\b(?:one\s+side|left|right|unilateral|single\s+side)\b/i.test(textLower);
+        const isBothSided = /\b(?:both\s+sides|both|bilateral|symmetrical)\b/i.test(textLower);
+
+        let val = text;
+        if (isHead && isSystemic) {
+          val = "cranial sensation affecting whole nervous system (non-focal)";
+        } else if (isHead) {
+          val = "head only (non-focal)";
+        } else if (isOneSided) {
+          val = "unilateral (one-sided)";
+        } else if (isBothSided || isSystemic) {
+          val = "bilateral / generalized";
+        }
+
+        return {
+          intent: "answer_question",
+          resolvedSlot: slot,
+          resolvedValue: val,
+        };
+      }
+
+      // N. NEUROLOGICAL SIGNS
       if (slot === "neurological_signs") {
         const signs: string[] = [];
-        if (/\b(droop|face|asymmetry)\b/i.test(textLower)) signs.push("facial droop");
-        if (/\b(arm|weak|cannot\s+lift|drift|leg)\b/i.test(textLower)) signs.push("unilateral limb weakness");
+        if (/\b(droop|face|facial|asymmetry)\b/i.test(textLower)) signs.push("facial droop");
+        if (/\b(arm|weak|cannot\s+lift|drift|leg|paralysis)\b/i.test(textLower) && !/\b(no\s+weak|neither)\b/i.test(textLower)) {
+          signs.push("limb weakness");
+        }
+        if (/\b(numb|numbness|pins\s+and\s+needles|tingl(?:ing|e)?)\b/i.test(textLower) && !/\b(no\s+numb|neither)\b/i.test(textLower)) {
+          signs.push("numbness");
+        }
         if (/\b(speech|slurr|talk|words)\b/i.test(textLower)) signs.push("slurred speech / dysarthria");
+        if (/\b(vision|blurry|double\s+vision|diplopia)\b/i.test(textLower)) signs.push("vision changes");
+        if (/\b(dizz|dizzy|lightheaded|vertigo)\b/i.test(textLower)) signs.push("dizziness");
+
         if (signs.length > 0) {
           return { intent: "answer_question", resolvedSlot: "neurological_signs", resolvedValue: signs };
         }
-        if (/\b(no|none|denies|normal)\b/i.test(textLower)) {
+        if (/\b(no|none|denies|normal|neither)\b/i.test(textLower)) {
           return { intent: "answer_question", resolvedSlot: "neurological_signs", resolvedValue: ["none reported"] };
         }
       }
@@ -669,13 +730,46 @@ export class ConversationManager {
       }
     }
 
+    if (/\b(?:just\s+(?:in\s+my\s+)?head|only\s+(?:in\s+my\s+)?head|in\s+(?:my\s+)?head)\b/i.test(textLower)) {
+      return { intent: "answer_question", resolvedSlot: "laterality", resolvedValue: "head only (non-focal)" };
+    }
+
+    if (/\b(?:severe\s+when\s+i\s+stand|worse\s+when\s+standing|standing\s+up\s+and\s+walk)\b/i.test(textLower)) {
+      return { intent: "answer_question", resolvedSlot: "severity_pattern", resolvedValue: "constant baseline, severe upon standing/walking" };
+    }
+
     return { intent: "unrelated" };
   }
 
   /**
    * Coordinate the next turn: Pre-Arbiter screening -> Slot updating -> Specialist requests -> Next action
    */
+  private recordDoctorReply(state: ClinicalInterviewState, reply: string): void {
+    if (!reply) return;
+    const history = state.structuredHistory || (state.structuredHistory = {} as any);
+    history.recentDoctorReplies = history.recentDoctorReplies || [];
+    history.recentDoctorReplies.push(reply);
+    if (history.recentDoctorReplies.length > 8) {
+      history.recentDoctorReplies.shift();
+    }
+    if (state.conversationMemory) {
+      state.conversationMemory.lastDoctorQuestion = reply;
+    }
+  }
+
   public async processTurn(
+    patientUtterance: string,
+    existingState?: ClinicalInterviewState,
+    demographics: { age?: number | null; age_group?: any; age_source?: string } = { age: null, age_group: "unknown", age_source: "unknown" },
+    localeConfig: LocaleConfig = DEFAULT_LOCALE_CONFIG,
+    options?: ProcessTurnOptions
+  ): Promise<ConversationTurnResult> {
+    const result = await this.executeProcessTurnInternal(patientUtterance, existingState, demographics, localeConfig, options);
+    this.recordDoctorReply(result.state, result.doctorReply);
+    return result;
+  }
+
+  private async executeProcessTurnInternal(
     patientUtterance: string,
     existingState?: ClinicalInterviewState,
     demographics: { age?: number | null; age_group?: any; age_source?: string } = { age: null, age_group: "unknown", age_source: "unknown" },
@@ -1458,9 +1552,37 @@ export class ConversationManager {
       } else if (slot === "associated_symptoms" && Array.isArray(val)) {
         state.slots.associated_symptoms = Array.from(new Set([...state.slots.associated_symptoms, ...val]));
         state.slots.known_facts.push(`Associated: ${val.join(", ")}`);
-      } else if (slot === "neurological_signs" && Array.isArray(val)) {
-        state.slots.neurological_signs = Array.from(new Set([...state.slots.neurological_signs, ...val]));
-        state.slots.known_facts.push(`Neurological: ${val.join(", ")}`);
+      } else if (slot === "neurological_signs") {
+        const signs = Array.isArray(val) ? val : [String(val)];
+        state.slots.neurological_signs = Array.from(new Set([...state.slots.neurological_signs, ...signs]));
+        state.slots.known_facts.push(`Neurological: ${signs.join(", ")}`);
+      } else if (slot === "weakness_distribution" || slot === "numbness_distribution" || slot === "laterality") {
+        state.slots.laterality = String(val);
+        state.slots.known_facts.push(`DISTRIBUTION: ${val}`);
+        if (state.conversationMemory) {
+          state.conversationMemory.confirmedFacts.push(`Laterality / distribution: ${val}`);
+          if (!state.conversationMemory.questionsAlreadyAsked.includes("weakness_distribution")) {
+            state.conversationMemory.questionsAlreadyAsked.push("weakness_distribution");
+          }
+          if (!state.conversationMemory.questionsAlreadyAsked.includes("numbness_distribution")) {
+            state.conversationMemory.questionsAlreadyAsked.push("numbness_distribution");
+          }
+          if (!state.conversationMemory.questionsAlreadyAsked.includes("laterality")) {
+            state.conversationMemory.questionsAlreadyAsked.push("laterality");
+          }
+        }
+      } else if (slot === "timing_pattern" || slot === "severity_pattern") {
+        (state.slots as any)[slot] = String(val);
+        state.slots.known_facts.push(`TIMING_PATTERN: ${val}`);
+        if (state.conversationMemory) {
+          state.conversationMemory.confirmedFacts.push(`Timing pattern: ${val}`);
+          if (!state.conversationMemory.questionsAlreadyAsked.includes("timing_pattern")) {
+            state.conversationMemory.questionsAlreadyAsked.push("timing_pattern");
+          }
+          if (!state.conversationMemory.questionsAlreadyAsked.includes("severity_pattern")) {
+            state.conversationMemory.questionsAlreadyAsked.push("severity_pattern");
+          }
+        }
       } else if (slot === "onset_pattern") {
         const pattern = val === "sudden" ? "sudden" : "gradual";
         state.slots.acute_worsening = pattern === "sudden";
@@ -1509,7 +1631,7 @@ export class ConversationManager {
       }
 
       // Resolve pending question
-      if (state.pendingQuestion && state.pendingQuestion.targetSlot === slot) {
+      if (state.pendingQuestion && (state.pendingQuestion.targetSlot === slot || isTargetSlotMatch(state.pendingQuestion.targetSlot, slot))) {
         state.resolvedQuestions.push({
           questionId: state.pendingQuestion.id,
           askedBy: state.pendingQuestion.askedBy,
@@ -1524,7 +1646,7 @@ export class ConversationManager {
 
       // Mark corresponding AgentRequest as resolved
       state.agentRequests.forEach(r => {
-        if (r.targetSlot === slot && r.status === "pending") {
+        if ((r.targetSlot === slot || isTargetSlotMatch(r.targetSlot, slot)) && r.status === "pending") {
           r.status = "resolved";
         }
       });
@@ -1631,7 +1753,21 @@ export class ConversationManager {
       if (state.slots.neurological_signs.length === 0) missingNeuro.push("neurological_signs");
       if (!state.slots.onset) missingNeuro.push("onset");
 
-      const neuroSuff = state.slots.neurological_signs.length > 0 && state.slots.onset !== undefined;
+      const hasLateralityOrDist = Boolean(state.slots.laterality) ||
+        state.slots.known_facts.some(f => /laterality|distribution|bilateral|unilateral|head only/i.test(f)) ||
+        Boolean(state.conversationMemory && (state.conversationMemory.questionsAlreadyAsked.includes("weakness_distribution") || state.conversationMemory.questionsAlreadyAsked.includes("numbness_distribution")));
+      if (!hasLateralityOrDist) missingNeuro.push("laterality");
+
+      const hasPatternOrSev = Boolean(state.slots.character) ||
+        Boolean(state.slots.severity) ||
+        state.slots.known_facts.some(f => /constant|intermittent|severity|timing_pattern|severe|dull|sharp|throbbing/i.test(f));
+      if (!hasPatternOrSev) missingNeuro.push("character_or_timing");
+
+      const neuroSuff = state.slots.neurological_signs.length > 0 &&
+        state.slots.onset !== undefined &&
+        hasLateralityOrDist &&
+        hasPatternOrSev;
+
       state.domainSufficiency.neurology = {
         status: neuroSuff ? "sufficient" : "gathering",
         missing: missingNeuro
@@ -1673,20 +1809,29 @@ export class ConversationManager {
     // --- STEP 4: NEXT-ACTION POLICY SELECTION ---
     // If the consultation was ALREADY decided in a previous turn and patient asks a follow-up question:
     if (state.phase === "decided") {
-      const decision = clinicalDecisionEngine.decideNextAction(
-        clinicalDecisionEngine.classifyTurn(cleanMsg, state),
-        state,
-        preArbiterResult,
-        localeConfig
-      );
-      return {
-        action: "ASK_PATIENT",
-        doctorReply: decision.spokenDoctorReply,
-        doctorName: "Dr. Sarah Chen, MD",
-        specialty: "Internal Medicine & Critical Care Lead",
-        state,
-        preArbiterResult
-      };
+      const hasUnresolvedNeuro = state.domainSufficiency?.neurology?.status === "gathering";
+      const hasUnresolvedCardio = state.domainSufficiency?.cardiology?.status === "gathering";
+      const hasUnresolvedGeneral = state.domainSufficiency?.general?.status === "gathering";
+
+      if (hasUnresolvedNeuro || hasUnresolvedCardio || hasUnresolvedGeneral) {
+        state.phase = "active_inquiring";
+        state.informationState = "insufficient";
+      } else {
+        const decision = clinicalDecisionEngine.decideNextAction(
+          clinicalDecisionEngine.classifyTurn(cleanMsg, state),
+          state,
+          preArbiterResult,
+          localeConfig
+        );
+        return {
+          action: "ASK_PATIENT",
+          doctorReply: decision.spokenDoctorReply,
+          doctorName: "Dr. Sarah Chen, MD",
+          specialty: "Internal Medicine & Critical Care Lead",
+          state,
+          preArbiterResult
+        };
+      }
     }
 
     // A. Check if active domains are sufficient for decision
@@ -1701,7 +1846,7 @@ export class ConversationManager {
     // Comprehensive presentation bypass (e.g. benchmark vignettes)
     const isComprehensivePresentation =
       (hasChest && state.slots.onset && state.slots.character && (state.slots.radiation || state.slots.associated_symptoms.length > 0)) ||
-      (hasNeuro && state.slots.neurological_signs.length >= 2 && state.slots.onset) ||
+      (hasNeuro && state.slots.neurological_signs.length >= 2 && state.slots.onset && (Boolean(state.slots.character) || state.slots.known_facts.some(f => /laterality|distribution|bilateral|unilateral/i.test(f)))) ||
       (hasFatigue && (state.slots.onset || subfields.onset.isResolved) && (state.slots.severity || state.slots.known_facts.some(f => /severity|\d+\/10/i.test(f))) && state.slots.known_facts.length >= 4);
 
     if (allActiveSufficient || isComprehensivePresentation) {
@@ -1729,6 +1874,32 @@ export class ConversationManager {
 
     if (engineDecision.action !== "ADVANCE_INTERVIEW") {
       state.phase = engineDecision.action === "PROVIDE_EMERGENCY_GUIDANCE" ? "decided" : "active_inquiring";
+      const targetSlot = detectQuestionTargetSlot(engineDecision.spokenDoctorReply, "onset_pattern");
+      if (engineDecision.action !== "PROVIDE_EMERGENCY_GUIDANCE") {
+        state.pendingQuestion = {
+          id: `pq-engine-${Date.now()}`,
+          targetSlot,
+          askedBy: "sarah",
+          doctorName: engineDecision.doctorName || "Dr. Sarah Chen, MD",
+          patientFacingSpeaker: "sarah",
+          question: engineDecision.spokenDoctorReply,
+          purpose: "Clinical decision engine exploration",
+          required: true,
+          priority: "high",
+          status: "pending",
+          createdAt: new Date().toISOString(),
+          caseVersion: state.caseVersion,
+        };
+        if (state.conversationMemory) {
+          if (!state.conversationMemory.questionsAlreadyAsked.includes(targetSlot)) {
+            state.conversationMemory.questionsAlreadyAsked.push(targetSlot);
+          }
+          if (state.conversationMemory.askedTopics && !state.conversationMemory.askedTopics.includes(targetSlot)) {
+            state.conversationMemory.askedTopics.push(targetSlot);
+          }
+          state.conversationMemory.lastDoctorQuestion = engineDecision.spokenDoctorReply;
+        }
+      }
       return {
         action: engineDecision.action === "PROVIDE_EMERGENCY_GUIDANCE" ? "EMERGENCY_CONVENE_BOARD" : "ASK_PATIENT",
         doctorReply: engineDecision.spokenDoctorReply,
@@ -2182,14 +2353,27 @@ export class ConversationManager {
     // Deduplicate known facts
     state.slots.known_facts = Array.from(new Set(state.slots.known_facts));
 
-    if (/\b(weak|weakness|numb|numbness)\b/i.test(state.cumulativeTranscript) && !state.slots.neurological_signs.includes("transient weakness and numbness")) {
-      state.slots.neurological_signs.push("transient weakness and numbness");
-      const fact = "Reported: transient weakness and numbness";
+    const hasWeak = /\b(weak|weakness|cannot\s+lift|arm\s+weak|leg\s+weak|drift|paralysis)\b/i.test(state.cumulativeTranscript) && !/\b(no\s+weak|neither)\b/i.test(state.cumulativeTranscript);
+    const hasNumb = /\b(numb|numbness|pins\s+and\s+needles|tingl(?:ing|e)?)\b/i.test(state.cumulativeTranscript) && !/\b(no\s+numb|neither)\b/i.test(state.cumulativeTranscript);
+
+    if (hasWeak && !state.slots.neurological_signs.includes("weakness")) {
+      state.slots.neurological_signs.push("weakness");
+      const fact = "Reported: weakness";
       if (!state.slots.known_facts.includes(fact)) {
         state.slots.known_facts.push(fact);
       }
       if (state.conversationMemory && !state.conversationMemory.uncertainties.includes("weakness_distribution")) {
-        state.conversationMemory.uncertainties.push("distribution of weakness/numbness (unilateral vs bilateral)");
+        state.conversationMemory.uncertainties.push("distribution of weakness (unilateral vs bilateral)");
+      }
+    }
+    if (hasNumb && !state.slots.neurological_signs.includes("numbness")) {
+      state.slots.neurological_signs.push("numbness");
+      const fact = "Reported: numbness";
+      if (!state.slots.known_facts.includes(fact)) {
+        state.slots.known_facts.push(fact);
+      }
+      if (state.conversationMemory && !state.conversationMemory.uncertainties.includes("numbness_distribution")) {
+        state.conversationMemory.uncertainties.push("distribution of numbness (focal vs non-focal)");
       }
     }
 

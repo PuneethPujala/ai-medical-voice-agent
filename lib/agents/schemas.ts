@@ -343,12 +343,24 @@ export interface AgentRequest {
 }
 
 /**
+ * QUESTION SLOT STATUS SCHEMA
+ * Tracks the resolution of individual facts inside single or compound questions.
+ */
+export interface QuestionSlotStatus {
+  slot: string;
+  status: "answered" | "explicitly_denied" | "unknown" | "ambiguous" | "pending";
+  value?: string;
+  resolvedAtTurn?: number;
+}
+
+/**
  * PENDING QUESTION SCHEMA
  * The active question posed to the patient by Lead Clinician Dr. Sarah Chen.
  */
 export interface PendingQuestion {
   id: string;
   targetSlot: string;
+  targetSlots?: string[];
   askedBy: "sarah" | "marcus" | "arthur" | "elena" | "rajiv";
   doctorName: string;
   patientFacingSpeaker: "sarah";
@@ -356,7 +368,8 @@ export interface PendingQuestion {
   purpose: string;
   required: boolean;
   priority: "critical" | "high" | "normal";
-  status: "pending" | "resolved" | "ambiguous" | "superseded";
+  status: "pending" | "resolved" | "partially_resolved" | "ambiguous" | "superseded";
   createdAt: string;
   caseVersion: number;
+  slotStatuses?: Record<string, QuestionSlotStatus>;
 }
