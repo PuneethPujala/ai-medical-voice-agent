@@ -2,7 +2,7 @@ name: MedVoice CI & Governance Verification
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, 'test/**', 'fix/**', 'feat/**' ]
   pull_request:
     branches: [ main ]
 
