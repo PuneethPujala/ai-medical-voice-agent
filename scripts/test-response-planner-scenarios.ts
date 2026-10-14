@@ -33,12 +33,12 @@ async function runScenarioTests() {
 
   // Process turn in conversation manager with pre-existing chest symptoms
   let state1 = conversationManager.createInitialState();
-  state1.slots.known_facts.push("CHEST_TIGHTNESS: present", "SWEATING: present");
-  state1.cumulativeTranscript = "Patient: chest tightness and sweating\nDoctor: Do you have any known heart disease or risk factors?";
+  state1.slots.known_facts.push("HEADACHE: present", "TENSION_TYPE: suspected");
+  state1.cumulativeTranscript = "Patient: recurring headaches\nDoctor: Do you have any known triggers or risk factors?";
   state1.conversationMemory = {
-    confirmedFacts: ["chest tightness", "sweating"],
+    confirmedFacts: ["headache", "tension-type"],
     deniedSymptoms: [],
-    questionsAlreadyAsked: ["known heart disease", "cardiac risk factors"],
+    questionsAlreadyAsked: ["known triggers", "risk factors"],
     patientCorrections: [],
     patientObjections: [],
     patientConcerns: [],

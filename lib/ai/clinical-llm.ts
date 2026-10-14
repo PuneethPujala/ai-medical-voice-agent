@@ -791,6 +791,102 @@ export async function generateDoctorTurnResponse(
         };
       }
 
+      // 9a. Multi-Question Rejection: detect before parse truncates
+      if (!isEmergency) {
+        let rawResponseText = "";
+        try {
+          const jsonMatch = completion.content.replace(/<think>[\s\S]*?<\/think>/gi, "").match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const rawJson = JSON.parse(jsonMatch[0]);
+            rawResponseText = String(rawJson.patientResponse || rawJson.doctorReply || rawJson.reply || "");
+          }
+        } catch {}
+        if (!rawResponseText) rawResponseText = parsed.cleanReply;
+
+        const rawQuestionCount = (rawResponseText.match(/\?/g) || []).length;
+        if (rawQuestionCount > 1) {
+          console.warn(`[MedVoice Validator] Multi-question output detected on attempt ${attempt}: ${rawQuestionCount} questions`);
+          if (attempt === 1) {
+            messages.push({
+              role: "user",
+              content: `Your response contained ${rawQuestionCount} questions. Ask exactly ONE focused clinical question per turn.`,
+            });
+            continue;
+          }
+          return {
+            reply: effectiveFallback,
+            provider: "fallback",
+            model: activeModel,
+            latencyMs: totalLatency,
+            liveGenerated: false,
+            fallbackReason: `multi_question_rejected: ${rawQuestionCount} questions detected`,
+            telemetry: {
+              provider: "fallback",
+              model: activeModel,
+              liveGenerated: false,
+              latencyMs: totalLatency,
+              fallbackUsed: true,
+              fallbackReason: `multi_question_rejected: ${rawQuestionCount} questions`,
+              telemetryIntegrityHash: createTelemetryIntegrityHash(turnId, "fallback", activeModel, totalLatency, new Date().toISOString()),
+              timestamp: new Date().toISOString(),
+            },
+          };
+        }
+      }
+
+      // 9b. Target-Slot Validation: reject if LLM asks about wrong clinical topic
+      if (!isEmergency && effectiveInquiry?.topic && parsed.cleanReply.includes("?")) {
+        const llmDetectedTarget = detectQuestionTargetSlot(parsed.cleanReply, effectiveInquiry.topic);
+        const plannedTopic = effectiveInquiry.topic.toLowerCase();
+        const detectedTopic = llmDetectedTarget.toLowerCase();
+
+        // Allow if the detected target matches the planned topic or is generic/unknown
+        const genericTargets = new Set(["information", "symptoms", "general", "unknown", "chief_complaint"]);
+        const isTargetMatch = detectedTopic === plannedTopic || genericTargets.has(detectedTopic);
+
+        if (!isTargetMatch) {
+          // Also run mustAvoid/resolved-dimension check via existing validator
+          const targetValResult = validateDoctorReplyTarget(
+            parsed.cleanReply,
+            plan,
+            interviewState?.slots,
+            memory,
+            confirmedFacts,
+            deniedSymptoms,
+          );
+
+          // If detected target diverges from planned AND fails target validation, reject
+          if (!targetValResult.isValid || detectedTopic !== plannedTopic) {
+            console.warn(`[MedVoice Validator] Target-slot mismatch on attempt ${attempt}: planned '${plannedTopic}', detected '${detectedTopic}'`);
+            if (attempt === 1) {
+              messages.push({
+                role: "user",
+                content: `Your question was about '${detectedTopic}' but the clinical plan requires asking about '${plannedTopic}'. Please ask specifically about ${plannedTopic}.`,
+              });
+              continue;
+            }
+            return {
+              reply: effectiveFallback,
+              provider: "fallback",
+              model: activeModel,
+              latencyMs: totalLatency,
+              liveGenerated: false,
+              fallbackReason: `target_slot_mismatch: planned '${plannedTopic}' but LLM asked about '${detectedTopic}'`,
+              telemetry: {
+                provider: "fallback",
+                model: activeModel,
+                liveGenerated: false,
+                latencyMs: totalLatency,
+                fallbackUsed: true,
+                fallbackReason: `target_slot_mismatch: ${detectedTopic} vs ${plannedTopic}`,
+                telemetryIntegrityHash: createTelemetryIntegrityHash(turnId, "fallback", activeModel, totalLatency, new Date().toISOString()),
+                timestamp: new Date().toISOString(),
+              },
+            };
+          }
+        }
+      }
+
       // 10. Strict Deterministic Response Validator
       const valCheck = validateDoctorTurnResponse(
         parsed.cleanReply,

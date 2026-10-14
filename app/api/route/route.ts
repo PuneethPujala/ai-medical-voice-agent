@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { calculateDistanceKm } from "@/lib/hospitals-india-data";
 
-export function calculateCalibratedDriveTime(distanceKm: number, rawOsrmSeconds?: number): number {
+function calculateCalibratedDriveTime(distanceKm: number, rawOsrmSeconds?: number): number {
   if (rawOsrmSeconds && rawOsrmSeconds > 0) {
     const rawMinutes = rawOsrmSeconds / 60;
     if (distanceKm <= 4) {

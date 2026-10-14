@@ -3,7 +3,7 @@ import { INDIAN_HOSPITALS_DATASET, ALL_REGION_PRESETS, calculateDistanceKm, Hosp
 import { discoverHospitalsNearCoordinates } from "@/lib/care-network/osm-discovery";
 import { deduplicateAndMergeHospitals, isPlaceholderOrGenericHospitalName } from "@/lib/care-network/evaluator";
 
-export function calculateRealisticDriveTime(distanceKm: number): number {
+function calculateRealisticDriveTime(distanceKm: number): number {
   if (distanceKm <= 4) {
     // Dense city traffic: ~18 km/h + signal buffer
     return Math.max(4, Math.round((distanceKm / 18) * 60));

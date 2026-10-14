@@ -426,7 +426,10 @@ export class ConversationInterpreter {
       // Check Onset slot
       if (targetSlot === "onset") {
         const parsedOnset = parseOnsetDimensions(lower);
-        const val = parsedOnset.onsetTime || parsedOnset.onsetPattern;
+        let val = parsedOnset.onsetTime || parsedOnset.onsetPattern;
+        if (val && parsedOnset.acuteWorsening) {
+          val = `${val}, acute worsening`;
+        }
         if (val) {
           return {
             rawUtterance: text,

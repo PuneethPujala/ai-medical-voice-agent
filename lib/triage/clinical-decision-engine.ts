@@ -152,7 +152,7 @@ export class ClinicalDecisionEngine {
     }
 
     // F. Clarification or Correction ("Actually it started yesterday", "Actually, no.", "No, actually my left arm", "Like I said...")
-    const correctionPattern = /\b(actually(?:,\s*(?:no|wait))?|no[,\s]+actually|actually\s+(?:it|i|it's|it\s+was|it\s+started|mostly|think)|i\s+meant|not\s+(?:my\s+right|my\s+left|today|20\s+minutes|pain)|wait\s+no|i\s+said\s+[a-z]+|like\s+i\s+said|already\s+told\s+you|to\s+be\s+clear|let\s+me\s+correct)\b/i;
+    const correctionPattern = /\b(actually\s*,\s*(?:no|wait)|no[,\s]+actually|actually\s+(?:it\s+started|it\s+was|it's|i\s+meant|not\b)|i\s+meant|not\s+(?:my\s+right|my\s+left|today|20\s+minutes|yesterday)|wait\s+no|i\s+said\s+[a-z]+|like\s+i\s+said|already\s+told\s+you|to\s+be\s+clear|let\s+me\s+correct)\b/i;
     if (correctionPattern.test(lower)) {
       let target = "general";
       let val = text;
@@ -665,7 +665,12 @@ function extractVerbatimSymptomPhrase(text: string, defaultPhrase = "chest pain"
 }
 
     // CASE 0F: Turn 1 / Acute Presentation of Chest Discomfort -> Immediate Emergency Directive
-    if (isCardio && isEmergency && hist.turnCount <= 2 && !state.slots.radiation) {
+    const isAcuteCardioEmergency = isCardio && (
+      preArbiterResult.universal_red_flag_result?.level === "EMERGENCY_NOW" ||
+      preArbiterResult.pre_safety_flags.some(f => f.startsWith("UNI-") || f === "PRE_FLAG_ACS_RADIATION_OR_DIAPHORESIS") ||
+      state.informationState === "emergency_preempted"
+    );
+    if (isAcuteCardioEmergency && hist.turnCount <= 2 && !state.slots.radiation) {
       const subj = parseSubjectAttribution(state.cumulativeTranscript);
       const symptom = extractVerbatimSymptomPhrase(state.cumulativeTranscript, "chest pain");
       let reply: string;
@@ -965,10 +970,18 @@ function extractVerbatimSymptomPhrase(text: string, defaultPhrase = "chest pain"
     // CASE 3: Patient Corrects Previous Information ("Actually it started yesterday")
     if (classification.intent === "CLARIFICATION_OR_CORRECTION") {
       const val = classification.extractedEntities.correctionValue || "yesterday";
-      const reply = `Thank you for correcting that—I've noted that it actually started ${val}. Because unilateral weakness is still medically significant even when it started yesterday, are the symptoms still just as severe right now, or have they improved?`;
+      if (isNeuro) {
+        const reply = `Thank you for correcting that—I've noted that it actually started ${val}. Because unilateral weakness is still medically significant even when it started yesterday, are the symptoms still just as severe right now, or have they improved?`;
+        return {
+          action: "ACKNOWLEDGE_CORRECTION",
+          spokenDoctorReply: this.guardAgainstRepetition(reply, recentReplies, "correction"),
+          doctorName: "Dr. Sarah Chen, MD",
+          specialty: "Internal Medicine & Critical Care Lead"
+        };
+      }
       return {
-        action: "ACKNOWLEDGE_CORRECTION",
-        spokenDoctorReply: this.guardAgainstRepetition(reply, recentReplies, "correction"),
+        action: "ADVANCE_INTERVIEW",
+        spokenDoctorReply: this.guardAgainstRepetition(`Thank you for clarifying that—I've noted that it started ${val}.`, recentReplies, "correction general"),
         doctorName: "Dr. Sarah Chen, MD",
         specialty: "Internal Medicine & Critical Care Lead"
       };
