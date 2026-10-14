@@ -37,6 +37,7 @@ import AnimatedContent from "@/components/AnimatedContent";
 import ScrollReveal from "@/components/ScrollReveal";
 import { OptionWheel, OptionWheelItem } from "@/components/navigation/OptionWheel";
 import StarBorder from "@/components/ui/StarBorder";
+import { AuroraRibbonBackground } from "@/components/hero/AuroraRibbonBackground";
 
 
 // Clinical Scenarios for OptionWheel
@@ -379,6 +380,9 @@ export default function HomePage() {
         {/* 1. HERO SECTION: EDITORIAL COMPOSITION & CLINICAL PREVIEW       */}
         {/* ================================================================ */}
         <section style={{ paddingTop: '130px' }} className="relative pb-20 sm:pb-28 overflow-hidden">
+          {/* Mathematically Periodic Procedural Aurora Ribbon Background */}
+          <AuroraRibbonBackground mode="auto" />
+
           {/* Distinctive Geometric CursorGrid Background */}
           <div className="absolute inset-0 z-0 pointer-events-auto">
             <CursorGrid
