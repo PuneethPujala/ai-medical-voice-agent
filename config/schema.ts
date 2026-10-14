@@ -162,9 +162,6 @@ export const patientProfilesTable = pgTable("patient_profiles", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
-// Canonical alias for convenience
-export const patientProfiles = patientProfilesTable;
-
 /**
  * Clinical Knowledge Passages Table (MedlinePlus & Guidelines Hybrid Store)
  * Stores ingested medical guideline passages and optional dense vector embeddings.
@@ -181,5 +178,3 @@ export const clinicalKnowledgePassagesTable = pgTable("clinical_knowledge_passag
   embedding: json("embedding").$type<number[]>(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
-
-export const clinicalKnowledgePassages = clinicalKnowledgePassagesTable;
