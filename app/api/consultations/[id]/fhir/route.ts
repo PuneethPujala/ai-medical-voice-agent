@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/config/db";
 import { consultationsTable } from "@/config/schema";
 import { eq } from "drizzle-orm";
-import { generateFHIRBundle, ConsultationRecordFHIR } from "@/lib/fhir/bundle";
+import { generateFHIRBundle, ConsultationRecordFHIR, validateFhirR4Bundle } from "@/lib/fhir/bundle";
 import { memoryConsultations } from "../../route";
 import { getAuthContext, hasPermission } from "@/lib/auth/rbac";
 import { logAuditEventAsync } from "@/lib/audit/audit-logger";
@@ -191,6 +191,29 @@ export async function GET(
 
     // 4. Generate valid HL7 FHIR R4 Bundle
     const bundle = generateFHIRBundle(record);
+
+    // 4b. Deterministic HL7 FHIR R4 structural & cardinality validation
+    const validationResult = validateFhirR4Bundle(bundle as unknown as Record<string, unknown>);
+    if (!validationResult.valid) {
+      console.error("[FHIRValidationError] Generated bundle failed FHIR R4 validation:", validationResult.issues);
+      return NextResponse.json(
+        {
+          resourceType: "OperationOutcome",
+          issue: validationResult.issues.map((i) => ({
+            severity: i.severity === "error" ? "fatal" : "warning",
+            code: "structure",
+            diagnostics: `${i.location}: ${i.diagnostics}`,
+          })),
+        },
+        {
+          status: 500,
+          headers: {
+            "Content-Type": "application/fhir+json; charset=utf-8",
+            "X-FHIR-Version": "4.0.1",
+          },
+        }
+      );
+    }
 
     // 5. Durably log PHI export event in tamper-evident SHA-256 audit ledger
     await logAuditEventAsync({

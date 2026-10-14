@@ -657,7 +657,12 @@ export function KageThreeCanvas({ activeChapter = 0 }: { activeChapter?: number 
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
     };
-    window.addEventListener("resize", handleResize);
+    let isVoiceActive = false;
+    const handleVoiceSession = (e: Event) => {
+      const customEvent = e as CustomEvent<{ active?: boolean }>;
+      isVoiceActive = Boolean(customEvent.detail?.active);
+    };
+    window.addEventListener("medvoice:voice-session-active", handleVoiceSession);
 
     // -------------------------------------------------------------------------
     // ANIMATION LOOP
@@ -667,6 +672,12 @@ export function KageThreeCanvas({ activeChapter = 0 }: { activeChapter?: number 
     const dummy = new THREE.Object3D();
 
     const animate = (time: number) => {
+      if (document.visibilityState === "hidden" || isVoiceActive) {
+        // Suspend GPU rendering during active voice consultations or hidden tabs
+        animId = requestAnimationFrame(animate);
+        return;
+      }
+
       const dt = Math.min((time - lastTime) / 1000, 0.1);
       lastTime = time;
 
@@ -709,6 +720,7 @@ export function KageThreeCanvas({ activeChapter = 0 }: { activeChapter?: number 
     return () => {
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("resize", handleResize);
+      window.removeEventListener("medvoice:voice-session-active", handleVoiceSession);
       cancelAnimationFrame(animId);
       renderer.dispose();
       if (container.contains(renderer.domElement)) {

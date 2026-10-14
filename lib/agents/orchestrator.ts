@@ -627,3 +627,148 @@ export class TriageOrchestrator {
     return messages.map(m => ({ ...m, case_version: m.case_version || caseVersion }));
   }
 }
+
+import { PhiScrubber } from "../security/phi-scrubber";
+import { evaluatePreArbiter } from "../triage/pre-arbiter";
+import { conversationManager, ClinicalInterviewState } from "../triage/conversation-manager";
+import { ClinicalSynthesizer } from "./synthesizer";
+
+export interface OrchestratorTurnInput {
+  sessionId: string;
+  userId: string;
+  rawUtterance: string;
+  clinicalState?: ClinicalInterviewState | any;
+  patientName?: string;
+  acousticFeatures?: {
+    jitter?: number;
+    shimmer?: number;
+    respiratoryRateEst?: number;
+    vocalTremorScore?: number;
+  };
+}
+
+export interface FastLoopTurnOutput {
+  replyText: string;
+  updatedState: any;
+  isEmergencyTriggered: boolean;
+  esiLevel: 1 | 2 | 3 | 4 | 5;
+  latencyMs: number;
+  backgroundConsensusStatus: 'DISPATCHED' | 'COMPLETE' | 'SKIPPED_EMERGENCY';
+}
+
+// Ephemeral in-flight blackboard cache keyed by consultation sessionId
+const activeBlackboards = new Map<string, Blackboard>();
+
+export class DualLoopOrchestrator {
+  private orchestrator = new TriageOrchestrator();
+  private synthesizer = new ClinicalSynthesizer();
+
+  /**
+   * FAST LOOP: Executes synchronously on the voice hot-path (< 450ms target).
+   * Scrubs PHI, checks deterministic safety gates, executes conversational state planning,
+   * rehydrates tokens for authenticated patient display, and dispatches the slow loop.
+   */
+  async executeVoiceTurn(input: OrchestratorTurnInput): Promise<FastLoopTurnOutput> {
+    const startTime = performance.now();
+
+    // 1. Scrub PHI before any processing or logs
+    const { sanitizedText, vault } = PhiScrubber.scrub(input.rawUtterance, input.patientName);
+
+    // 2. Deterministic Pre-Arbiter Red Flag Gate (Negation-aware)
+    const preArbiterVerdict = evaluatePreArbiter({
+      transcript: sanitizedText,
+      detected_symptoms: input.clinicalState?.slots?.known_facts || [],
+    });
+
+    if (preArbiterVerdict.immediate_danger) {
+      const directive = preArbiterVerdict.universal_red_flag_result?.reason
+        || "This sounds like a medical emergency. Please call 112 or 108 immediately.";
+      return {
+        replyText: directive,
+        updatedState: { ...(input.clinicalState || {}), esiLevel: 1, redFlagTriggered: true },
+        isEmergencyTriggered: true,
+        esiLevel: 1,
+        latencyMs: Math.round(performance.now() - startTime),
+        backgroundConsensusStatus: 'SKIPPED_EMERGENCY',
+      };
+    }
+
+    // 3. Fast Conversational Turn Execution via Conversation Manager
+    const turnResult = await conversationManager.processTurn(
+      sanitizedText,
+      input.clinicalState,
+      undefined,
+      undefined,
+      undefined
+    );
+
+    const safeReply = turnResult.doctorReply || "I understand. Please tell me more about what you are feeling.";
+    const finalReply = PhiScrubber.rehydrate(safeReply, vault);
+
+    // 4. Fire-and-forget the Slow Loop (Multi-Agent Specialist Blackboard Deliberation)
+    this.dispatchSlowLoopBlackboard(input.sessionId, sanitizedText, turnResult.state).catch((err) => {
+      console.error(`[SlowLoopBlackboard Error] session=${input.sessionId}:`, err);
+    });
+
+    return {
+      replyText: finalReply,
+      updatedState: turnResult.state,
+      isEmergencyTriggered: false,
+      esiLevel: (turnResult.preArbiterResult?.immediate_danger ? 1 : 3) as any,
+      latencyMs: Math.round(performance.now() - startTime),
+      backgroundConsensusStatus: 'DISPATCHED',
+    };
+  }
+
+  /**
+   * SLOW LOOP: Runs asynchronously off the voice hot-path.
+   * Coordinates specialist agents on the blackboard without blocking the conversational reply.
+   */
+  private async dispatchSlowLoopBlackboard(
+    sessionId: string,
+    sanitizedUtterance: string,
+    stateSnapshot: any
+  ): Promise<void> {
+    const patientCase: PatientCase = {
+      patient_id: sessionId,
+      patient_name: "Patient",
+      transcript: stateSnapshot?.cumulativeTranscript || sanitizedUtterance,
+      conversation_history: [],
+      demographics: {
+        age_group: "adult",
+      },
+      speech_features: {
+        speech_pause_ratio: 0.15,
+        mean_pause_duration_ms: 350,
+        speech_rate_wpm: 130,
+        voice_energy_variability: 0.1,
+        pitch_variability: 0.12,
+        observations: [],
+        clinical_relevance: {
+          respiratory_distress_signal: "unlikely",
+          vocal_instability_signal: "none",
+          confidence: 0.5,
+        },
+      },
+      detected_symptoms: stateSnapshot?.slots?.known_facts || [],
+      vitals: {},
+      pre_safety_flags: [],
+      immediate_danger_detected: false,
+      provenance_evidence: [],
+      case_version: stateSnapshot?.caseVersion || 1,
+    };
+
+    await this.orchestrator.orchestrate(patientCase);
+  }
+
+  private getOrCreateBlackboard(sessionId: string, patientCase: PatientCase): Blackboard {
+    let board = activeBlackboards.get(sessionId);
+    if (!board) {
+      board = new Blackboard(patientCase);
+      activeBlackboards.set(sessionId, board);
+    }
+    return board;
+  }
+}
+
+export const dualLoopOrchestrator = new DualLoopOrchestrator();

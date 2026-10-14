@@ -435,6 +435,44 @@ export class AcousticDSPAnalyzer {
   }
 
   /**
+   * Asynchronously appends incoming samples, yielding to the browser event loop
+   * when processing large PCM buffers (> 4096 samples) to prevent main-thread UI frame drops.
+   */
+  public async appendSamplesAsync(newSamples: Float32Array, yieldInterval: number = 4096): Promise<void> {
+    if (!newSamples || newSamples.length === 0) return;
+
+    const combined = new Float32Array(this.pcmBuffer.length + newSamples.length);
+    combined.set(this.pcmBuffer, 0);
+    combined.set(newSamples, this.pcmBuffer.length);
+    this.pcmBuffer = combined;
+
+    let offset = 0;
+    let processedSamples = 0;
+    while (offset + this.windowSamples <= this.pcmBuffer.length) {
+      const frameSlice = this.pcmBuffer.subarray(offset, offset + this.windowSamples);
+      const result = analyzeAcousticFrame(frameSlice, this.sampleRate, this.vadThresholdDbfs);
+      this.frameResults.push(result);
+      offset += this.hopSamples;
+      processedSamples += this.hopSamples;
+
+      if (processedSamples >= yieldInterval) {
+        processedSamples = 0;
+        await new Promise<void>((resolve) => {
+          if (typeof setTimeout !== "undefined") {
+            setTimeout(resolve, 0);
+          } else {
+            resolve();
+          }
+        });
+      }
+    }
+
+    if (offset > 0) {
+      this.pcmBuffer = this.pcmBuffer.slice(offset);
+    }
+  }
+
+  /**
    * Finalizes the current recording session and computes aggregate acoustic metrics.
    */
   public finalize(): LiveAudioMetrics {
@@ -478,3 +516,45 @@ export class AcousticDSPAnalyzer {
     this.frameResults = [];
   }
 }
+
+/**
+ * Asynchronous / chunked audio buffer analyzer that yields to the event loop
+ * when processing large PCM buffers (> 4096 samples) so acoustic extraction
+ * never blocks main-thread React state transitions or WebRTC playback.
+ */
+export async function analyzeAudioBufferAsync(
+  pcmSamples: Float32Array,
+  sampleRate: number = 16000,
+  vadThresholdDbfs: number = -38,
+  chunkSize: number = 4096
+): Promise<LiveAudioMetrics> {
+  const windowMs = 25;
+  const hopMs = 10;
+  const windowSamples = Math.round((windowMs / 1000) * sampleRate);
+  const hopSamples = Math.round((hopMs / 1000) * sampleRate);
+
+  const frameResults: AcousticFrameResult[] = [];
+  let offset = 0;
+  let lastYieldOffset = 0;
+
+  while (offset + windowSamples <= pcmSamples.length) {
+    const frameSlice = pcmSamples.subarray(offset, offset + windowSamples);
+    const result = analyzeAcousticFrame(frameSlice, sampleRate, vadThresholdDbfs);
+    frameResults.push(result);
+    offset += hopSamples;
+
+    if (offset - lastYieldOffset >= chunkSize) {
+      lastYieldOffset = offset;
+      await new Promise<void>((resolve) => {
+        if (typeof setTimeout !== "undefined") {
+          setTimeout(resolve, 0);
+        } else {
+          resolve();
+        }
+      });
+    }
+  }
+
+  return aggregateAcousticMetrics(frameResults, sampleRate, hopMs);
+}
+

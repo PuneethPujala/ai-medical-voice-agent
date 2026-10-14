@@ -13,6 +13,23 @@ import {
 } from "./types";
 import { CURATED_GUIDELINES } from "./guidelines";
 import { normalizeClinicalSymptoms } from "./synonyms";
+import { getDb } from "@/config/db";
+import { clinicalKnowledgePassagesTable } from "@/config/schema";
+import { or, ilike } from "drizzle-orm";
+
+function computeCosineSimilarity(a: number[], b: number[]): number {
+  if (!a || !b || a.length !== b.length || a.length === 0) return 0;
+  let dot = 0;
+  let nA = 0;
+  let nB = 0;
+  for (let i = 0; i < a.length; i++) {
+    dot += a[i] * b[i];
+    nA += a[i] * a[i];
+    nB += b[i] * b[i];
+  }
+  if (nA === 0 || nB === 0) return 0;
+  return dot / (Math.sqrt(nA) * Math.sqrt(nB));
+}
 
 let cachedPassages: ClinicalPassage[] | null = null;
 
@@ -374,6 +391,117 @@ export class ClinicalKnowledgeRetriever {
       passages: [],
       conversationalGuidance: "Clinical evidence retrieval is inconclusive. Acknowledge uncertainty honestly: gather foundational clinical context (onset timeline, duration, constant vs intermittent, functional impact, and associated sensations) without pretending evidence supports any diagnosis."
     };
+  }
+
+  /**
+   * Primary Database Path:
+   * When DATABASE_URL is configured, queries clinicalKnowledgePassagesTable using Drizzle ORM
+   * with lexical matching, synonym expansion, and optional vector cosine similarity.
+   */
+  public async retrieveFromDatabase(
+    ctx: ContextAwareQuery,
+    queryEmbedding?: number[]
+  ): Promise<ClinicalPassage[] | null> {
+    if (!process.env.DATABASE_URL) return null;
+    const dbClient = getDb();
+    if (!dbClient) return null;
+
+    try {
+      const normalized = normalizeClinicalSymptoms(ctx.query);
+      const cleanQuery = normalized.normalizedQuery.toLowerCase().trim();
+      const tokens = cleanQuery.split(/[^a-z0-9-]+/).filter((t) => t.length > 2);
+      if (tokens.length === 0) return null;
+
+      const conditions = tokens.slice(0, 5).map((tok) =>
+        or(
+          ilike(clinicalKnowledgePassagesTable.title, `%${tok}%`),
+          ilike(clinicalKnowledgePassagesTable.text, `%${tok}%`)
+        )
+      );
+
+      const dbRows = await dbClient
+        .select()
+        .from(clinicalKnowledgePassagesTable)
+        .where(or(...conditions))
+        .limit(20);
+
+      if (!dbRows || dbRows.length === 0) return null;
+
+      const passages: ClinicalPassage[] = dbRows.map((row) => {
+        const titleLower = row.title.toLowerCase();
+        const textLower = row.text.toLowerCase();
+        let score = 0;
+
+        if (titleLower.includes(cleanQuery)) score += 35;
+        if (cleanQuery.includes(titleLower)) score += 25;
+
+        for (const t of tokens) {
+          if (titleLower.includes(t)) score += 10;
+          if (textLower.includes(t)) score += 2;
+          if (row.keywords && row.keywords.some((k) => k.toLowerCase().includes(t))) score += 5;
+        }
+
+        // Vector cosine similarity integration if embeddings are present
+        if (queryEmbedding && row.embedding && Array.isArray(row.embedding)) {
+          const cosSim = computeCosineSimilarity(queryEmbedding, row.embedding);
+          score += cosSim * 40;
+        }
+
+        const domain = inferDomainFromTopic(row.title, row.text);
+
+        return {
+          id: row.passageId,
+          topicId: row.topicId,
+          title: row.title,
+          section: (row.section as ClinicalSection) || "overview",
+          source: "MedlinePlus (PostgreSQL)",
+          sourceUrl: row.url || undefined,
+          releaseDate: row.updatedAt ? new Date(row.updatedAt).toISOString().split("T")[0] : "2026-09-05",
+          authority: "government_reference" as AuthorityTier,
+          domain,
+          content: row.text,
+          keyTerms: row.keywords || [],
+          relevanceScore: Math.round(score * 10) / 10,
+        };
+      });
+
+      passages.sort((a, b) => (b.relevanceScore || 0) - (a.relevanceScore || 0));
+      return passages;
+    } catch (err) {
+      console.warn("[Retriever] Database query fallback to local index:", (err as any)?.message || err);
+      return null;
+    }
+  }
+
+  /**
+   * Hybrid Dual-Path Retrieval:
+   * Queries PostgreSQL clinicalKnowledgePassagesTable first when available.
+   * If database query returns results, incorporates them; otherwise seamlessly falls back to
+   * the local zero-config MedlinePlus index.
+   */
+  public async retrieveHybrid(
+    ctx: ContextAwareQuery,
+    queryEmbedding?: number[]
+  ): Promise<KnowledgeContext> {
+    const dbPassages = await this.retrieveFromDatabase(ctx, queryEmbedding);
+    if (dbPassages && dbPassages.length > 0) {
+      const minScore = ctx.minScore || 5;
+      const topK = ctx.topK || 4;
+      const filtered = dbPassages.filter((p) => (p.relevanceScore || 0) >= minScore).slice(0, topK);
+      if (filtered.length > 0) {
+        return {
+          retrievedAt: new Date().toISOString(),
+          query: ctx.query,
+          domain: ctx.domain || "general",
+          passages: filtered,
+          authorityHierarchyApplied: true,
+          patientContextApplied: Boolean(ctx.patient || ctx.encounter),
+        };
+      }
+    }
+
+    // Seamless zero-config local fallback
+    return this.retrieveWithContext(ctx);
   }
 }
 

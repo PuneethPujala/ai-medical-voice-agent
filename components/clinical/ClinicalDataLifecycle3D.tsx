@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   Mic,
@@ -233,9 +233,11 @@ const STAGE_VISUAL_CONFIG: Record<
 function BrightCircularInstrumentCanvas({
   activeStageId,
   onSelectStageId,
+  isPaused = false,
 }: {
   activeStageId: string;
   onSelectStageId: (id: string) => void;
+  isPaused?: boolean;
 }) {
   return (
     <div className="relative w-full h-full min-h-[460px] sm:min-h-[500px] bg-white flex flex-col justify-between p-5 sm:p-7 overflow-hidden select-none">
@@ -291,7 +293,7 @@ function BrightCircularInstrumentCanvas({
           strokeWidth="3.5"
           strokeLinecap="round"
           strokeDasharray="8 8"
-          className="animate-[pulse_3s_ease-in-out_infinite]"
+          className={isPaused ? "" : "animate-[pulse_3s_ease-in-out_infinite]"}
         />
 
         {/* 2. Downward Branch A: Memory Purge (from 02 Local ASR down to 05A Purge) */}
@@ -546,6 +548,29 @@ export function ClinicalDataLifecycle3D({
 }) {
   // SINGLE AUTHORITATIVE SOURCE OF TRUTH FOR ACTIVE STAGE
   const [activeStageId, setActiveStageId] = useState<string>('audio_buffer');
+  const [isVoiceActive, setIsVoiceActive] = useState<boolean>(false);
+  const [isDocumentHidden, setIsDocumentHidden] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleVoiceSession = (e: Event) => {
+      const customEvent = e as CustomEvent<{ active?: boolean }>;
+      setIsVoiceActive(Boolean(customEvent.detail?.active));
+    };
+
+    const handleVisibilityChange = () => {
+      setIsDocumentHidden(document.visibilityState === 'hidden');
+    };
+
+    window.addEventListener('medvoice:voice-session-active', handleVoiceSession);
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener('medvoice:voice-session-active', handleVoiceSession);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+    };
+  }, []);
 
   const selectedStage = useMemo(
     () => LIFECYCLE_STAGES.find((s) => s.id === activeStageId) ?? LIFECYCLE_STAGES[0],
@@ -615,6 +640,7 @@ export function ClinicalDataLifecycle3D({
           <BrightCircularInstrumentCanvas
             activeStageId={activeStageId}
             onSelectStageId={setActiveStageId}
+            isPaused={isVoiceActive || isDocumentHidden}
           />
         </div>
 

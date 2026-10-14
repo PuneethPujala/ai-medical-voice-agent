@@ -442,3 +442,174 @@ export function generateFHIRBundle(record: ConsultationRecordFHIR): FHIRBundle {
     entry: entries,
   };
 }
+
+export interface FhirValidationIssue {
+  severity: "error" | "warning";
+  location: string;
+  diagnostics: string;
+}
+
+export interface FhirValidationResult {
+  valid: boolean;
+  issues: FhirValidationIssue[];
+}
+
+export const REQUIRED_CODING_SYSTEMS = new Set([
+  "http://snomed.info/sct",
+  "http://loinc.org",
+  "http://hl7.org/fhir/sid/icd-10",
+  "http://terminology.hl7.org/CodeSystem/condition-clinical",
+  "http://terminology.hl7.org/CodeSystem/observation-category",
+]);
+
+export function validateFhirR4Bundle(bundle: Record<string, unknown>): FhirValidationResult {
+  const issues: FhirValidationIssue[] = [];
+
+  if (!bundle || typeof bundle !== "object") {
+    return {
+      valid: false,
+      issues: [{ severity: "error", location: "Bundle", diagnostics: "Bundle must be a valid JSON object." }],
+    };
+  }
+
+  if (bundle.resourceType !== "Bundle") {
+    issues.push({
+      severity: "error",
+      location: "Bundle.resourceType",
+      diagnostics: `Expected resourceType 'Bundle', received '${String(bundle.resourceType)}'`,
+    });
+  }
+
+  if (bundle.type !== "collection" && bundle.type !== "document" && bundle.type !== "transaction") {
+    issues.push({
+      severity: "error",
+      location: "Bundle.type",
+      diagnostics: `Invalid FHIR R4 Bundle.type '${String(bundle.type)}'`,
+    });
+  }
+
+  const entries = Array.isArray(bundle.entry) ? (bundle.entry as Record<string, unknown>[]) : [];
+  if (entries.length === 0) {
+    issues.push({
+      severity: "error",
+      location: "Bundle.entry",
+      diagnostics: "Bundle must contain at least one resource entry (Patient/Encounter).",
+    });
+  }
+
+  const definedFullUrls = new Set<string>();
+  const definedResourceTargets = new Set<string>();
+  const resourceTypesPresent = new Set<string>();
+
+  entries.forEach((entry: Record<string, unknown>, idx: number) => {
+    const fullUrl = typeof entry.fullUrl === "string" ? entry.fullUrl : "";
+    if (!fullUrl.startsWith("urn:uuid:") && !fullUrl.startsWith("http")) {
+      issues.push({
+        severity: "error",
+        location: `Bundle.entry[${idx}].fullUrl`,
+        diagnostics: "Entry fullUrl must be a valid URI or urn:uuid.",
+      });
+    } else {
+      definedFullUrls.add(fullUrl);
+    }
+
+    const resource = entry.resource as Record<string, unknown> | undefined;
+    if (!resource || typeof resource.resourceType !== "string") {
+      issues.push({
+        severity: "error",
+        location: `Bundle.entry[${idx}].resource`,
+        diagnostics: "Entry is missing a valid FHIR resource object.",
+      });
+      return;
+    }
+
+    resourceTypesPresent.add(resource.resourceType);
+
+    if (!resource.id || typeof resource.id !== "string") {
+      issues.push({
+        severity: "error",
+        location: `Bundle.entry[${idx}].resource.id`,
+        diagnostics: `${resource.resourceType} resource is missing mandatory logical id.`,
+      });
+    } else {
+      definedResourceTargets.add(`${resource.resourceType}/${resource.id}`);
+      definedResourceTargets.add(resource.id);
+      if (fullUrl) {
+        definedResourceTargets.add(fullUrl);
+      }
+    }
+  });
+
+  if (!resourceTypesPresent.has("Patient")) {
+    issues.push({
+      severity: "error",
+      location: "Bundle.entry",
+      diagnostics: "FHIR Clinical Bundle must contain a Patient resource.",
+    });
+  }
+
+  if (bundle.type === "document" && entries.length > 0) {
+    const firstRes = entries[0].resource as Record<string, unknown> | undefined;
+    if (!firstRes || firstRes.resourceType !== "Composition") {
+      issues.push({
+        severity: "error",
+        location: "Bundle.entry[0].resource",
+        diagnostics: "Document Bundle first entry must be a Composition resource.",
+      });
+    }
+  }
+
+  // Validate internal reference integrity and coding systems
+  const checkReferencesAndCodings = (obj: any, path: string) => {
+    if (!obj || typeof obj !== "object") return;
+
+    if (typeof obj.reference === "string") {
+      const ref = obj.reference;
+      if (!definedResourceTargets.has(ref) && !definedFullUrls.has(ref) && !ref.startsWith("http")) {
+        issues.push({
+          severity: "warning",
+          location: `${path}.reference`,
+          diagnostics: `Reference '${ref}' does not resolve to an entry in this bundle.`,
+        });
+      }
+    }
+
+    if (Array.isArray(obj.coding)) {
+      obj.coding.forEach((coding: any, cIdx: number) => {
+        if (coding && typeof coding === "object") {
+          if (!coding.system || typeof coding.system !== "string") {
+            issues.push({
+              severity: "warning",
+              location: `${path}.coding[${cIdx}].system`,
+              diagnostics: "Coding missing system URI.",
+            });
+          }
+          if (!coding.code || typeof coding.code !== "string") {
+            issues.push({
+              severity: "warning",
+              location: `${path}.coding[${cIdx}].code`,
+              diagnostics: "Coding missing code identifier.",
+            });
+          }
+        }
+      });
+    }
+
+    for (const key of Object.keys(obj)) {
+      if (key !== "text" && typeof obj[key] === "object") {
+        checkReferencesAndCodings(obj[key], `${path}.${key}`);
+      }
+    }
+  };
+
+  entries.forEach((entry, idx) => {
+    if (entry.resource) {
+      checkReferencesAndCodings(entry.resource, `Bundle.entry[${idx}].resource`);
+    }
+  });
+
+  return {
+    valid: issues.every((i) => i.severity !== "error"),
+    issues,
+  };
+}

@@ -3,6 +3,7 @@ import { getDoctorById } from "@/config/doctors";
 import { clinicalBoard } from "@/lib/agents/clinical-board";
 import { extractSpeechFeatures } from "@/lib/acoustic/speech-features";
 import { PatientCase } from "@/lib/agents/schemas";
+import { PhiScrubber } from "@/lib/security/phi-scrubber";
 
 import { conversationManager } from "@/lib/triage/conversation-manager";
 import { clinicalKnowledgeRetriever } from "@/lib/clinical-knowledge/retriever";
@@ -23,6 +24,10 @@ import {
 } from "@/lib/security/rate-limiter";
 
 export async function POST(request: Request) {
+  const startTime = performance.now();
+  let redactionCount = 0;
+  let phiVault = new Map<string, string>();
+
   try {
     // 1. Abuse Protection: Rate limit per client IP
     const clientIp = getClientIp(request);
@@ -83,10 +88,31 @@ export async function POST(request: Request) {
       );
     }
 
-    const doctor = getDoctorById(doctorId);
-
-    const cleanMsg = message.trim();
+    // 2b. Zero-Trust PHI De-Identification before external LLMs, acoustic models, or debug logs
+    const scrubResult = PhiScrubber.scrub(message, patientName);
+    const cleanMsg = scrubResult.sanitizedText.trim();
     const cleanMsgLower = cleanMsg.toLowerCase();
+    redactionCount = scrubResult.redactionCount;
+    phiVault = scrubResult.vault as Map<string, string>;
+
+    const sanitizedConversationHistory = Array.isArray(conversationHistory)
+      ? conversationHistory.map((item: any) => ({
+          ...item,
+          text: typeof item.text === "string" ? PhiScrubber.scrub(item.text, patientName).sanitizedText : item.text,
+        }))
+      : [];
+
+    const buildJsonResponse = (payload: any, status = 200) => {
+      const headers = new Headers();
+      headers.set("x-fast-loop-latency-ms", String(Math.round(performance.now() - startTime)));
+      headers.set("x-phi-redactions", String(redactionCount));
+      if (payload && payload.doctorReply) {
+        payload.doctorReply = PhiScrubber.rehydrate(payload.doctorReply, phiVault);
+      }
+      return NextResponse.json(payload, { status, headers });
+    };
+
+    const doctor = getDoctorById(doctorId);
 
     // P0 SAFETY CHECK: Red-flag scan on incoming utterance MUST execute BEFORE greeting or acknowledgment shortcuts!
     // Ensures utterances like "ok but my chest hurts now" or "hi having chest pain" immediately enter emergency escalation.
@@ -123,7 +149,7 @@ export async function POST(request: Request) {
         };
         const doctorGreeting = greetingReplies[doctor.id] || `Hello! I'm ${doctor.name}. I'm here and ready to help. What symptoms are you experiencing?`;
 
-        return NextResponse.json({
+        return buildJsonResponse({
           doctorReply: doctorGreeting,
           doctor: {
             id: doctor.id,
@@ -148,7 +174,7 @@ export async function POST(request: Request) {
           ? "Please remember this requires urgent emergency medical evaluation. If you haven't already, please call 112 or 108 immediately or have someone take you to the nearest emergency department right now. Do not wait."
           : "You're very welcome! Please don't hesitate to reach back out if your symptoms change or worsen. Take care and stay safe.";
 
-        return NextResponse.json({
+        return buildJsonResponse({
           doctorReply: closingDoctorReply,
           doctor: {
             id: doctor.id,
@@ -168,7 +194,7 @@ export async function POST(request: Request) {
     }
 
     // Cumulative patient utterances for comprehensive clinical context (filtering out raw greetings)
-    const patientHistory = conversationHistory
+    const patientHistory = sanitizedConversationHistory
       .filter((m: any) => m.role === "patient" || m.role === "user")
       .map((m: any) => (m.text || m.content || "").trim())
       .filter((t: string) => t.length > 0 && !/^(hello|hi|hey|good\s+(morning|afternoon|evening)|can\s+you\s+hear\s+me)[.!?\s]*$/i.test(t));
@@ -442,7 +468,7 @@ export async function POST(request: Request) {
 
     const llmResult = await generateDoctorTurnResponse({
       patientUtterance: cleanMsg,
-      conversationHistory,
+      conversationHistory: sanitizedConversationHistory,
       interviewState: turnResult.state,
       preArbiterResult: turnResult.preArbiterResult,
       demographics: { age: ageNum ?? undefined, age_group: ageGroup, age_source: ageSource },
@@ -546,7 +572,38 @@ export async function POST(request: Request) {
 
     // If conversation manager determined patient follow-up or clarification is needed
     if (turnResult.action === "ASK_PATIENT" || turnResult.action === "CLARIFY") {
-      return NextResponse.json({
+      // Dual-loop non-blocking blackboard background deliberation:
+      // Fire non-blocking blackboard deliberation when symptoms exist to precompute specialist insights
+      if (hasAnySymptoms) {
+        try {
+          const bgPatientCase: PatientCase = {
+            patient_id: `PT-BG-${Date.now().toString().slice(-4)}`,
+            patient_name: patientName,
+            transcript: cumulativeTranscript,
+            conversation_history: sanitizedConversationHistory,
+            demographics: {
+              age: ageNum ?? undefined,
+              age_group: ageGroup as any,
+            },
+            detected_symptoms: turnResult.state.slots.known_facts,
+            vitals: {},
+            speech_features: speechFeatures,
+            pre_safety_flags: turnResult.preArbiterResult.pre_safety_flags,
+            immediate_danger_detected: turnResult.preArbiterResult.immediate_danger,
+            provenance_evidence: [],
+            is_interruption: Boolean(isInterruption),
+            interrupted_agent: interruptedAgent || undefined,
+            case_version: turnResult.state.caseVersion,
+          };
+          clinicalBoard.evaluate(bgPatientCase).catch((err: any) => {
+            console.debug("[DualLoopBackground] Non-blocking blackboard evaluation deferred:", err?.message);
+          });
+        } catch {
+          // non-blocking
+        }
+      }
+
+      return buildJsonResponse({
         doctorReply: activeDoctorReply,
         doctor: {
           id: doctor.id,
@@ -634,7 +691,7 @@ export async function POST(request: Request) {
       patient_id: patientId,
       patient_name: patientName,
       transcript: turnResult.state.cumulativeTranscript,
-      conversation_history: conversationHistory,
+      conversation_history: sanitizedConversationHistory,
       demographics: {
         age: ageNum ?? undefined,
         age_group: ageGroup as any,
@@ -735,7 +792,7 @@ export async function POST(request: Request) {
       }
     }
 
-    return NextResponse.json({
+    return buildJsonResponse({
       doctorReply: finalDoctorReply,
       doctor: {
         id: doctor.id,

@@ -3,12 +3,11 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from backend.config import settings
-from backend.routers.voice_router import router as voice_router
 
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
-    description="Python FastAPI Microservice & Audio/AI Processing Backend for AI Medical Voice Agent",
+    description="Python Audio Processing & Heavy DSP Microservice for MedVoice",
     docs_url="/docs",
     redoc_url="/redoc",
 )
@@ -35,9 +34,6 @@ async def add_security_headers(request, call_next):
         response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
         response.headers["Pragma"] = "no-cache"
     return response
-
-# Include Voice & Triage Router
-app.include_router(voice_router)
 
 @app.get("/")
 async def root():

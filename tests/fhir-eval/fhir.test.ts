@@ -1,4 +1,4 @@
-import { generateFHIRBundle } from "../../lib/fhir/bundle";
+import { generateFHIRBundle, validateFhirR4Bundle } from "../../lib/fhir/bundle";
 
 function runFHIRValidation() {
   console.log("==============================================================================");
@@ -89,9 +89,64 @@ function runFHIRValidation() {
     console.log(`  ✓ ICD-10 Condition: [${code}] ${display}`);
   });
 
+  // 7. Deterministic validateFhirR4Bundle Engine Verification
+  console.log(`\n[7/7] Validating with validateFhirR4Bundle Validator Engine:`);
+  const validationResult = validateFhirR4Bundle(bundle as unknown as Record<string, unknown>);
+  if (!validationResult.valid) {
+    throw new Error(`Generated bundle unexpectedly failed validator: ${JSON.stringify(validationResult.issues)}`);
+  }
+  console.log(`  ✓ Valid Bundle: PASS (0 errors)`);
+
+  // Negative Invariant 1: Invalid resourceType
+  const badTypeResult = validateFhirR4Bundle({ ...bundle, resourceType: "Patient" } as any);
+  if (badTypeResult.valid || !badTypeResult.issues.some((i) => i.location === "Bundle.resourceType")) {
+    throw new Error("Failed to catch invalid Bundle.resourceType");
+  }
+  console.log(`  ✓ Reject Non-Bundle Root: PASS`);
+
+  // Negative Invariant 2: Invalid bundle type
+  const badBundleTypeResult = validateFhirR4Bundle({ ...bundle, type: "searchset" } as any);
+  if (badBundleTypeResult.valid || !badBundleTypeResult.issues.some((i) => i.location === "Bundle.type")) {
+    throw new Error("Failed to catch invalid Bundle.type");
+  }
+  console.log(`  ✓ Reject Unsupported Bundle Type: PASS`);
+
+  // Negative Invariant 3: Empty entry array
+  const emptyEntryResult = validateFhirR4Bundle({ ...bundle, entry: [] } as any);
+  if (emptyEntryResult.valid || !emptyEntryResult.issues.some((i) => i.location === "Bundle.entry")) {
+    throw new Error("Failed to catch empty Bundle.entry");
+  }
+  console.log(`  ✓ Reject Empty Entry Array: PASS`);
+
+  // Negative Invariant 4: Missing Patient resource
+  const noPatientResult = validateFhirR4Bundle({
+    ...bundle,
+    entry: bundle.entry.filter((e) => e.resource.resourceType !== "Patient"),
+  } as any);
+  if (noPatientResult.valid || !noPatientResult.issues.some((i) => i.diagnostics.includes("Patient resource"))) {
+    throw new Error("Failed to catch missing Patient resource");
+  }
+  console.log(`  ✓ Reject Missing Patient Resource: PASS`);
+
+  // Negative Invariant 5: Resource missing logical id
+  const noIdResult = validateFhirR4Bundle({
+    ...bundle,
+    entry: [
+      {
+        fullUrl: "urn:uuid:test-1",
+        resource: { resourceType: "Patient" },
+      },
+    ],
+  } as any);
+  if (noIdResult.valid || !noIdResult.issues.some((i) => i.diagnostics.includes("missing mandatory logical id"))) {
+    throw new Error("Failed to catch resource missing logical id");
+  }
+  console.log(`  ✓ Reject Resource Without Logical Id: PASS`);
+
   console.log("\n==============================================================================");
   console.log("✅ ALL HL7 FHIR R4 SPECIFICATION & CONFORMANCE TESTS PASSED (100% VALID)");
   console.log("==============================================================================\n");
 }
 
 runFHIRValidation();
+

@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { getAuthContext } from "@/lib/auth/rbac";
 import { logAuditEventAsync } from "@/lib/audit/audit-logger";
-import { PatientProfileService } from "@/lib/patient/patient-profile-service";
+import { PatientProfileService, PatientProfileDatabaseError } from "@/lib/patient/patient-profile-service";
+import { sanitizeErrorMessage } from "@/lib/security/error-sanitizer";
 
 /**
  * GET /api/patient/profile
@@ -12,6 +13,7 @@ import { PatientProfileService } from "@/lib/patient/patient-profile-service";
  * - default -> returns "self" profile
  */
 export async function GET(request: Request) {
+  const requestId = request.headers.get("x-request-id") || crypto.randomUUID();
   try {
     const auth = await getAuthContext(request);
 
@@ -21,8 +23,9 @@ export async function GET(request: Request) {
           success: false,
           error: "Unauthorized: Authentication required to view patient profiles.",
           code: "UNAUTHORIZED",
+          requestId,
         },
-        { status: 401 }
+        { status: 401, headers: { "x-request-id": requestId } }
       );
     }
 
@@ -51,23 +54,38 @@ export async function GET(request: Request) {
       resourceType: "patient",
       resourceId: profile?.id || auth.userId,
       status: "SUCCESS",
-      metadata: { relationship, getAll, found: Boolean(profile) },
+      metadata: { relationship, getAll, found: Boolean(profile), requestId },
     });
 
-    return NextResponse.json({
-      success: true,
-      profile,
-      profiles,
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        profile,
+        profiles,
+        requestId,
+      },
+      { headers: { "x-request-id": requestId } }
+    );
   } catch (error: any) {
     console.error("[GET /api/patient/profile] Error:", error);
+    if (error instanceof PatientProfileDatabaseError) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Patient profile datastore is temporarily offline. Please retry shortly.",
+          code: "DATASTORE_OFFLINE",
+          requestId,
+        },
+        { status: 503, headers: { "Retry-After": "10", "x-request-id": requestId } }
+      );
+    }
     return NextResponse.json(
       {
         success: false,
-        error: "Failed to retrieve patient profile.",
-        details: error?.message,
+        error: sanitizeErrorMessage(error, "Failed to retrieve patient profile."),
+        requestId,
       },
-      { status: 500 }
+      { status: 500, headers: { "x-request-id": requestId } }
     );
   }
 }
@@ -78,6 +96,7 @@ export async function GET(request: Request) {
  * Supports optional partial updates, multi-patient representation, and DPDP compliance.
  */
 export async function POST(request: Request) {
+  const requestId = request.headers.get("x-request-id") || crypto.randomUUID();
   try {
     const auth = await getAuthContext(request);
 
@@ -87,8 +106,9 @@ export async function POST(request: Request) {
           success: false,
           error: "Unauthorized: Authentication required to save patient profile.",
           code: "UNAUTHORIZED",
+          requestId,
         },
-        { status: 401 }
+        { status: 401, headers: { "x-request-id": requestId } }
       );
     }
 
@@ -99,8 +119,8 @@ export async function POST(request: Request) {
       const numAge = Number(body.age);
       if (isNaN(numAge) || numAge < 0 || numAge > 130) {
         return NextResponse.json(
-          { success: false, error: "Validation Error: Age must be a number between 0 and 130." },
-          { status: 400 }
+          { success: false, error: "Validation Error: Age must be a number between 0 and 130.", requestId },
+          { status: 400, headers: { "x-request-id": requestId } }
         );
       }
       body.age = numAge;
@@ -108,8 +128,8 @@ export async function POST(request: Request) {
 
     if (body.name && typeof body.name === "string" && body.name.length > 128) {
       return NextResponse.json(
-        { success: false, error: "Validation Error: Name cannot exceed 128 characters." },
-        { status: 400 }
+        { success: false, error: "Validation Error: Name cannot exceed 128 characters.", requestId },
+        { status: 400, headers: { "x-request-id": requestId } }
       );
     }
 
@@ -128,23 +148,39 @@ export async function POST(request: Request) {
         age: savedProfile.age,
         conditionCount: savedProfile.knownConditions?.length || 0,
         medicationCount: savedProfile.currentMedications?.length || 0,
+        requestId,
       },
     });
 
-    return NextResponse.json({
-      success: true,
-      profile: savedProfile,
-      message: "Patient profile saved successfully.",
-    });
+    return NextResponse.json(
+      {
+        success: true,
+        profile: savedProfile,
+        message: "Patient profile saved successfully.",
+        requestId,
+      },
+      { headers: { "x-request-id": requestId } }
+    );
   } catch (error: any) {
     console.error("[POST /api/patient/profile] Error:", error);
+    if (error instanceof PatientProfileDatabaseError) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Patient profile datastore is temporarily offline. Please retry shortly.",
+          code: "DATASTORE_OFFLINE",
+          requestId,
+        },
+        { status: 503, headers: { "Retry-After": "10", "x-request-id": requestId } }
+      );
+    }
     return NextResponse.json(
       {
         success: false,
-        error: "Failed to save patient profile.",
-        details: error?.message,
+        error: sanitizeErrorMessage(error, "Failed to save patient profile."),
+        requestId,
       },
-      { status: 500 }
+      { status: 500, headers: { "x-request-id": requestId } }
     );
   }
 }

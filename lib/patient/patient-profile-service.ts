@@ -10,10 +10,21 @@ import {
 import { PatientProfileManager } from "./profile";
 
 /**
- * In-memory fallback profile store for local development, demo sessions,
- * or when the database connection is offline/testing.
+ * In-memory fallback profile store for automated testing (NODE_ENV === 'test').
+ * In production/staging, in-memory fallback is disabled for HIPAA compliance.
  */
 export const memoryProfiles = new Map<string, PatientProfile>();
+
+export class PatientProfileDatabaseError extends Error {
+  constructor(message: string, public readonly cause?: unknown) {
+    super(message);
+    this.name = 'PatientProfileDatabaseError';
+  }
+}
+
+function shouldEnforceDatabase(): boolean {
+  return process.env.NODE_ENV === "production" || (Boolean(process.env.DATABASE_URL) && process.env.NODE_ENV !== "test");
+}
 
 export class PatientProfileService {
   /**
@@ -76,11 +87,16 @@ export class PatientProfileService {
         // Authoritative database result: return persisted profiles (empty array if none exist)
         return (rows || []).map((r) => this.mapToPatientProfile(r));
       } catch (err) {
-        console.warn("[PatientProfileService] DB query failed, falling back to memory store:", err);
+        console.warn("[PatientProfileService] DB query failed:", err);
+        if (shouldEnforceDatabase()) {
+          throw new PatientProfileDatabaseError("Failed to list patient profiles from database. In-memory fallback is disabled in production.", err);
+        }
       }
+    } else if (shouldEnforceDatabase()) {
+      throw new PatientProfileDatabaseError("Database client unavailable. In-memory fallback is disabled in production.");
     }
 
-    // Memory fallback (used ONLY when database is unconfigured or throwing errors in offline dev)
+    // Memory fallback (used strictly in test runner when DB is offline)
     const list: PatientProfile[] = [];
     for (const p of memoryProfiles.values()) {
       if (p.userId === userId && !p.isDeleted) {
@@ -117,8 +133,13 @@ export class PatientProfileService {
         // Authoritative DB execution returned 0 rows: profile does not exist in DB for this user
         return null;
       } catch (err) {
-        console.warn("[PatientProfileService] DB query failed, falling back to memory store:", err);
+        console.warn("[PatientProfileService] DB query failed:", err);
+        if (shouldEnforceDatabase()) {
+          throw new PatientProfileDatabaseError("Failed to retrieve profile from database. In-memory fallback is disabled in production.", err);
+        }
       }
+    } else if (shouldEnforceDatabase()) {
+      throw new PatientProfileDatabaseError("Database client unavailable. In-memory fallback is disabled in production.");
     }
 
     const cached = memoryProfiles.get(profileId);
@@ -161,8 +182,13 @@ export class PatientProfileService {
         // Authoritative DB execution returned 0 rows: relationship profile does not exist in DB
         return null;
       } catch (err) {
-        console.warn("[PatientProfileService] DB query failed, falling back to memory store:", err);
+        console.warn("[PatientProfileService] DB query failed:", err);
+        if (shouldEnforceDatabase()) {
+          throw new PatientProfileDatabaseError("Failed to retrieve profile by relationship from database. In-memory fallback is disabled in production.", err);
+        }
       }
+    } else if (shouldEnforceDatabase()) {
+      throw new PatientProfileDatabaseError("Database client unavailable. In-memory fallback is disabled in production.");
     }
 
     for (const p of memoryProfiles.values()) {
@@ -314,8 +340,13 @@ export class PatientProfileService {
           });
         }
       } catch (err) {
-        console.warn("[PatientProfileService] DB write failed, saving to memory cache:", err);
+        console.warn("[PatientProfileService] DB write failed:", err);
+        if (shouldEnforceDatabase()) {
+          throw new PatientProfileDatabaseError("Failed to persist patient profile to database. In-memory fallback is disabled in production.", err);
+        }
       }
+    } else if (shouldEnforceDatabase()) {
+      throw new PatientProfileDatabaseError("Database client unavailable. In-memory fallback is disabled in production.");
     }
 
     // 2. Always maintain memory cache for immediate low-latency read-after-write
@@ -354,7 +385,12 @@ export class PatientProfileService {
           );
       } catch (err) {
         console.warn("[PatientProfileService] DB delete failed:", err);
+        if (shouldEnforceDatabase()) {
+          throw new PatientProfileDatabaseError("Failed to delete patient profile from database. In-memory fallback is disabled in production.", err);
+        }
       }
+    } else if (shouldEnforceDatabase()) {
+      throw new PatientProfileDatabaseError("Database client unavailable. In-memory fallback is disabled in production.");
     }
 
     const cached = memoryProfiles.get(profileId);
@@ -431,4 +467,23 @@ export class PatientProfileService {
     const selfProfile = await this.getProfileByRelationship(userId, "self");
     return { profile: selfProfile, inferredSubject };
   }
+}
+
+/**
+ * Convenience functional exports for single-line profile retrieval & upsert
+ */
+export async function getPatientProfileById(
+  userId: string,
+  actorId: string = userId
+): Promise<PatientProfile | null> {
+  const profiles = await PatientProfileService.listProfiles(userId);
+  return profiles.find((p) => p.relationshipToUser === "self") || profiles[0] || null;
+}
+
+export async function upsertPatientProfile(
+  userId: string,
+  payload: Partial<PatientProfile>,
+  actorId: string = userId
+): Promise<PatientProfile> {
+  return PatientProfileService.upsertProfile(userId, payload);
 }

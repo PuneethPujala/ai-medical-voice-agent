@@ -480,6 +480,23 @@ export default function ConsultPage() {
     voiceEngine: "Kokoro",
   });
   const [callActive, setCallActive] = useState<boolean>(false);
+
+  // WebGL & DSP Thread Isolation: Dispatch global event to pause background canvases when voice session is active
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      window.dispatchEvent(
+        new CustomEvent("medvoice:voice-session-active", { detail: { active: callActive } })
+      );
+    }
+    return () => {
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("medvoice:voice-session-active", { detail: { active: false } })
+        );
+      }
+    };
+  }, [callActive]);
+
   const [audioState, setAudioState] = useState<AudioState>("IDLE");
 
   const [callDuration, setCallDuration] = useState<number>(0);
