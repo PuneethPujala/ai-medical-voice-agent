@@ -1,0 +1,67 @@
+name: MedVoice CI & Governance Verification
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify & Validate (Node ${{ matrix.node-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    strategy:
+      fail-fast: false
+      matrix:
+        node-version: [20.x, 22.x]
+
+    env:
+      NODE_ENV: test
+      NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_Y2xlcmsuZXhhbXBsZS5jb20k
+      CLERK_SECRET_KEY: sk_test_mock_secret_key_for_ci_pipeline
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/medvoice_ci
+      INTERNAL_TEST_SECRET: medvoice-argon-ci-test-secret-2026
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+
+      - name: Install dependencies via lockfile
+        run: npm ci
+
+      - name: Gate 1 — TypeScript Static Compilation
+        run: npx tsc --noEmit
+
+      - name: Gate 2 — Static Code Analysis & Linting
+        run: npm run lint
+
+      - name: Gate 3 — Zero-Trust Security, Auth RBAC & Consultation Invariants
+        run: |
+          npx tsx tests/security-eval/cors-rbac-audit.test.ts
+          npx tsx tests/security-eval/consultation-lifecycle.test.ts
+          npx tsx tests/security-eval/chat-identity-isolation.test.ts
+
+      - name: Gate 4 — Clinical Safety, Red-Flag Pre-Arbiter & HL7 FHIR R4 Conformance
+        run: |
+          npx tsx tests/fhir-eval/fhir.test.ts
+          npx tsx scripts/test-classifier-independence.ts
+          npx tsx scripts/test-safety-arbiter-decision.ts
+          npx tsx scripts/test-clinical-safety-integration.ts
+
+      - name: Gate 5 — Full Canonical 31-Suite Regression Battery
+        run: npm run test:all
+
+      - name: Gate 6 — Next.js 16.3 Turbopack Production Build
+        run: npm run build
