@@ -25,7 +25,6 @@ jobs:
       NODE_ENV: test
       NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: pk_test_Y2xlcmsuZXhhbXBsZS5jb20k
       CLERK_SECRET_KEY: sk_test_mock_secret_key_for_ci_pipeline
-      INTERNAL_TEST_SECRET: medvoice-argon-ci-test-secret-2026
 
     steps:
       - name: Check out repository
