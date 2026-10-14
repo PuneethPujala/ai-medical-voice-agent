@@ -128,13 +128,13 @@ export class ClinicalSynthesizer {
     let synthesized_reply_narrative = "";
     if (consensus_risk === "critical") {
       if (hasHighCardio && hasHighNeuro) {
-        synthesized_reply_narrative = "I need you to stay seated and keep someone nearby with you right now. Your combination of symptoms is concerning for both an acute cardiac and neurological event that requires immediate emergency care. Let's get emergency medical services dispatched right away.";
+        synthesized_reply_narrative = "I need you to stay seated and keep someone nearby with you right now. Your combination of symptoms is concerning for both an acute cardiac and neurological event that requires immediate emergency care. Please call 108, 112, or 911 right now to request emergency medical services.";
       } else if (hasHighCardio) {
-        synthesized_reply_narrative = "I'm very concerned about the discomfort and pressure you're feeling in your chest. Please sit down comfortably right now, stay completely still, and have someone dial 911 immediately. If you're by yourself, let's call emergency services right away on speakerphone—please do not exert yourself or walk around.";
+        synthesized_reply_narrative = "I'm very concerned about the discomfort and pressure you're feeling in your chest. Please sit down comfortably right now, stay completely still, and have someone dial 108, 112, or 911 immediately. If you're by yourself, please call emergency services right away on speakerphone—do not exert yourself or walk around.";
       } else if (hasHighNeuro) {
-        synthesized_reply_narrative = "The sudden facial drooping and arm weakness you described are critical warning signs of a stroke. Every minute matters, so please stay right where you are and do not try to stand up or walk. We are initiating emergency stroke protocols right now—let's get an ambulance to you immediately.";
+        synthesized_reply_narrative = "The sudden facial drooping and arm weakness you described are critical warning signs of a stroke. Every minute matters, so please stay right where you are, do not exert yourself, and call 108, 112, or 911 immediately to request an emergency ambulance.";
       } else {
-        synthesized_reply_narrative = "Your clinical symptoms require urgent emergency care. Please sit down comfortably, remain calm, and call 911 or emergency services right away.";
+        synthesized_reply_narrative = "Your clinical symptoms require urgent emergency care. Please sit down comfortably, remain calm, and call 108, 112, or 911 right away.";
       }
     } else if (consensus_risk === "urgent") {
       synthesized_reply_narrative = "Thank you for explaining what you're feeling. Based on your symptoms, our clinical team recommends an urgent in-person medical evaluation today. Please keep a close eye on your temperature and vitals.";

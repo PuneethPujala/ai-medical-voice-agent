@@ -420,6 +420,42 @@ export default function ConsultPage() {
     }
   }, [user?.id]);
 
+  // Recover transient session draft on page mount if user navigated away or reloaded
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.sessionStorage) return;
+    try {
+      for (let i = 0; i < window.sessionStorage.length; i++) {
+        const key = window.sessionStorage.key(i);
+        if (key && key.startsWith("medvoice_transient_draft_")) {
+          const raw = window.sessionStorage.getItem(key);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed.expiresAt && Date.now() < parsed.expiresAt && parsed.payload?.transcript?.length > 0) {
+              if (messages.length === 0 && !callActiveRef.current) {
+                stableEncounterIdRef.current = parsed.payload.id;
+                setCurrentEncounterId(parsed.payload.id);
+                setMessages(parsed.payload.transcript);
+                setCallDuration(parsed.payload.durationSeconds || 0);
+                setPersistenceStatus("saved");
+                setClinicalToasts((prev) => [
+                  ...prev,
+                  {
+                    id: `draft-restored-${Date.now()}`,
+                    type: "info",
+                    title: "Active Encounter Draft Restored",
+                    description: `Recovered ${parsed.payload.transcript.length} turns from previous session (${parsed.payload.id}).`
+                  }
+                ]);
+              }
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("[MedVoice] Session draft restore notice:", err);
+    }
+  }, []);
+
   const patientDisplayName = activeProfile?.name || user?.fullName || user?.firstName || "Patient";
 
   const [sessionMode, setSessionMode] = useState<ConsultSessionMode>("CONSULT_LOBBY");
@@ -1820,17 +1856,54 @@ export default function ConsultPage() {
   const persistEncounterRecord = async (
     encId: string,
     durationSecs: number,
-    statusOverride: "completed_pending_review" | "approved" = "completed_pending_review"
+    statusOverride: "in_progress" | "incomplete_intake" | "completed_pending_review" | "approved" = "completed_pending_review",
+    customMessages?: ChatMessage[],
+    customTriage?: any
   ) => {
     setPersistenceStatus("saving");
     setPersistenceError(null);
 
-    const patientUtterances = messages.filter((m) => m.role === "patient");
+    const activeMessages = customMessages || messages;
+    const activeTriage = customTriage !== undefined ? customTriage : triageData;
+
+    const patientUtterances = activeMessages.filter((m) => m.role === "patient");
     const chiefConcern = patientUtterances.length > 0
       ? patientUtterances[0].text.replace(/^"|"$/g, "")
-      : triageData?.detectedSymptoms?.length
-      ? triageData.detectedSymptoms.join(", ")
+      : activeTriage?.detectedSymptoms?.length
+      ? activeTriage.detectedSymptoms.join(", ")
       : "Clinical voice intake consultation";
+
+    const hasCompleteSoap = Boolean(activeTriage?.soap?.subjective && activeTriage?.soap?.assessment);
+    const isEarlyTermination = !hasCompleteSoap && statusOverride === "completed_pending_review";
+
+    const soapSubjective = activeTriage?.soap?.subjective || (
+      isEarlyTermination
+        ? `[INCOMPLETE INTAKE - GATHERING HISTORY]\nChief Concern: ${chiefConcern}\nDialogue turns recorded: ${activeMessages.length}. Patient ended consultation prior to formal multi-agent clinical consensus.`
+        : statusOverride === "in_progress"
+        ? `[IN PROGRESS DRAFT - GATHERING HISTORY]\nChief Concern: ${chiefConcern}\nTurns recorded: ${activeMessages.length}.`
+        : ""
+    );
+    const soapObjective = activeTriage?.soap?.objective || (
+      isEarlyTermination
+        ? "[INCOMPLETE INTAKE] Telemetry and physical examination unassessed. Physical presence not established."
+        : statusOverride === "in_progress"
+        ? "[IN PROGRESS] History gathering in progress. Physical telemetry unassessed."
+        : ""
+    );
+    const soapAssessment = activeTriage?.soap?.assessment || (
+      isEarlyTermination
+        ? "[INCOMPLETE INTAKE] Intake terminated prior to multi-agent deliberation. Formal differential diagnosis deferred pending complete history."
+        : statusOverride === "in_progress"
+        ? "[IN PROGRESS] Clinical evaluation in progress. Differential diagnosis deferred."
+        : ""
+    );
+    const soapPlan = activeTriage?.soap?.plan || (
+      isEarlyTermination
+        ? "[INCOMPLETE INTAKE] Recommend re-initiating full clinical intake or scheduling an in-person evaluation with a physician."
+        : statusOverride === "in_progress"
+        ? "[IN PROGRESS] Continue clinical intake dialogue."
+        : ""
+    );
 
     const payload = {
       id: encId,
@@ -1841,25 +1914,41 @@ export default function ConsultPage() {
       doctorName: selectedDoctor.name,
       specialty: selectedDoctor.department || selectedDoctor.specialty,
       chiefComplaint: chiefConcern,
-      transcript: messages.map((m) => ({
+      transcript: activeMessages.map((m) => ({
         role: m.role,
         text: m.text,
         timestamp: m.timestamp,
       })),
-      triageLevel: triageData?.triageLevel || (boardData?.phase === "decided" ? "priority" : "routine"),
-      triageTitle: triageData?.triageTitle || "Clinical Voice Consultation Evaluation",
-      esiScore: triageData?.esiScore ?? null,
-      icd10Codes: triageData?.icdCodes || [],
-      detectedSymptoms: triageData?.detectedSymptoms || [],
-      soapSubjective: triageData?.soap?.subjective || "",
-      soapObjective: triageData?.soap?.objective || "",
-      soapAssessment: triageData?.soap?.assessment || "",
-      soapPlan: triageData?.soap?.plan || "",
+      triageLevel: activeTriage?.triageLevel || (boardData?.phase === "decided" ? "priority" : "routine"),
+      triageTitle: isEarlyTermination
+        ? "INCOMPLETE INTAKE: GATHERING HISTORY"
+        : activeTriage?.triageTitle || "Clinical Voice Consultation Evaluation",
+      esiScore: activeTriage?.esiScore ?? null,
+      icd10Codes: activeTriage?.icdCodes || [],
+      detectedSymptoms: activeTriage?.detectedSymptoms || [],
+      soapSubjective,
+      soapObjective,
+      soapAssessment,
+      soapPlan,
       recommendedSpecialists: selectedDoctor?.department ? [selectedDoctor.department] : [],
-      recommendedAction: triageData?.recommendedAction || "Consultation complete.",
+      recommendedAction: isEarlyTermination
+        ? "Consultation ended early. Please schedule an in-person evaluation or restart clinical intake."
+        : activeTriage?.recommendedAction || "Consultation complete.",
       durationSeconds: durationSecs,
       status: statusOverride,
     };
+
+    // Client-side transient recovery cache update (tab-isolated with 15-minute TTL)
+    if (typeof window !== "undefined" && window.sessionStorage) {
+      try {
+        const recoveryRecord = {
+          payload,
+          savedAt: Date.now(),
+          expiresAt: Date.now() + 15 * 60 * 1000,
+        };
+        window.sessionStorage.setItem(`medvoice_transient_draft_${encId}`, JSON.stringify(recoveryRecord));
+      } catch {}
+    }
 
     try {
       const res = await fetch("/api/consultations", {
@@ -1871,11 +1960,12 @@ export default function ConsultPage() {
       if (res.ok) {
         setPersistenceStatus("saved");
         setPersistenceError(null);
-        // Immediate hygiene cleanup: Purge transient recovery buffer upon verified server persistence
-        if (typeof window !== "undefined" && window.sessionStorage) {
-          try {
-            window.sessionStorage.removeItem(`medvoice_transient_draft_${encId}`);
-          } catch {}
+        if (statusOverride === "completed_pending_review" || statusOverride === "approved") {
+          if (typeof window !== "undefined" && window.sessionStorage) {
+            try {
+              window.sessionStorage.removeItem(`medvoice_transient_draft_${encId}`);
+            } catch {}
+          }
         }
       } else {
         const data = await res.json().catch(() => ({}));
@@ -1885,18 +1975,6 @@ export default function ConsultPage() {
       console.error("Auto-persist encounter error:", err);
       setPersistenceStatus("error");
       setPersistenceError(err?.message || "Encounter sync failed.");
-      // Strict PHI hygiene: Store in sessionStorage (tab-isolated, non-persistent across browser sessions)
-      // with a strict 15-minute Time-To-Live (TTL) to prevent data accumulation.
-      if (typeof window !== "undefined" && window.sessionStorage) {
-        try {
-          const recoveryRecord = {
-            payload,
-            savedAt: Date.now(),
-            expiresAt: Date.now() + 15 * 60 * 1000,
-          };
-          window.sessionStorage.setItem(`medvoice_transient_draft_${encId}`, JSON.stringify(recoveryRecord));
-        } catch {}
-      }
     }
   };
 
@@ -1934,8 +2012,10 @@ export default function ConsultPage() {
 
     setSessionMode("CONSULT_COMPLETE");
 
-    // Automatically persist completed consultation as pending review
-    persistEncounterRecord(stableEncounterIdRef.current, elapsedSeconds, "completed_pending_review");
+    // Distinguish incomplete intake from completed clinical assessment
+    const hasCompleteSoap = Boolean(triageData?.soap?.subjective && triageData?.soap?.assessment);
+    const finalStatus = hasCompleteSoap ? "completed_pending_review" : "incomplete_intake";
+    persistEncounterRecord(stableEncounterIdRef.current, elapsedSeconds, finalStatus);
   };
 
   // Return to lobby and start new consultation
@@ -2110,6 +2190,17 @@ export default function ConsultPage() {
           setActiveRightTab("context");
         }
       }
+
+      // Autosave turn-by-turn draft encounter so navigating away never loses dialogue state
+      if (!stableEncounterIdRef.current) {
+        const genId = `ENC-${Date.now().toString().slice(-6)}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
+        stableEncounterIdRef.current = genId;
+        setCurrentEncounterId(genId);
+      }
+      const currentStartedAt = consultationStartedAtRef.current || Date.now();
+      const currentElapsed = Math.max(1, Math.round((Date.now() - currentStartedAt) / 1000));
+      const turnMessages = [...messages, userMessage, newDoctorMessage];
+      persistEncounterRecord(stableEncounterIdRef.current, currentElapsed, "in_progress", turnMessages, data.triage);
 
       speakDoctorResponse(doctorReplyText, respondingDoctorId, undefined, {
         clinicalReceivedAt: clinicalReceivedTime,

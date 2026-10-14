@@ -111,7 +111,9 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      message: "Emergency pre-arrival alert transmitted and acknowledged by receiving hospital ED.",
+      isSimulation: true,
+      simulationNotice: "SIMULATION ONLY: Receiving hospital pre-arrival telemetry simulated in demonstration environment. No municipal 911 or real-world ambulance dispatched.",
+      message: "Emergency pre-arrival alert transmitted and acknowledged by receiving hospital ED (Simulated).",
       receipt,
     });
   } catch (error: any) {

@@ -609,7 +609,11 @@ export default function DashboardPage() {
                         <div className="flex items-center justify-between mb-2">
                           <span className="font-extrabold text-slate-900 text-sm truncate">{item.doctorName}</span>
                           <div className="flex items-center gap-1.5 flex-shrink-0">
-                            {item.status === "approved" ? (
+                            {item.soapSubjective?.includes("[INCOMPLETE INTAKE") || item.status === "in_progress" ? (
+                              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 uppercase">
+                                Incomplete
+                              </span>
+                            ) : item.status === "approved" ? (
                               <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase">
                                 Approved
                               </span>
@@ -632,8 +636,8 @@ export default function DashboardPage() {
                           <span className="text-cyan-700 font-bold">{item.specialty}</span>
                           <div className="flex items-center gap-2">
                             {dispatches[item.id] && (
-                              <span className="text-[10px] bg-rose-50 text-rose-700 border border-rose-200 px-1.5 py-0.5 rounded font-bold">
-                                ED DISPATCHED
+                              <span className="text-[10px] bg-amber-50 text-amber-800 border border-amber-300 px-1.5 py-0.5 rounded font-bold font-mono">
+                                SIMULATED ED ALERT
                               </span>
                             )}
                             <span>{dateStr}</span>
@@ -735,24 +739,42 @@ export default function DashboardPage() {
                     </div>
                   </div>
 
+                  {/* INCOMPLETE INTAKE ALERT BANNER */}
+                  {(selectedReport.soapSubjective?.includes("[INCOMPLETE INTAKE") || selectedReport.status === "in_progress") && (
+                    <div className="p-4 rounded-2xl border border-amber-300 bg-amber-50/80 text-amber-900 space-y-1.5 shadow-2xs">
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle className="w-4 h-4 text-amber-700 flex-shrink-0" />
+                        <span className="text-xs font-mono font-bold uppercase tracking-wider text-amber-800">
+                          Incomplete Intake Encounter — History Gathering Phase
+                        </span>
+                      </div>
+                      <p className="text-xs text-amber-950 font-medium leading-relaxed pl-6">
+                        This voice consultation ended prior to formal multi-agent clinical consensus. Telemetry, vital signs, and complete differential diagnosis are unassessed. Re-consultation or formal in-person clinical evaluation is recommended.
+                      </p>
+                    </div>
+                  )}
+
                   {/* EMERGENCY PRE-ARRIVAL DISPATCH TELEMETRY BANNER */}
                   {selectedReport.triageLevel === "emergency" && (
                     <div className="p-4 rounded-2xl border bg-gradient-to-r from-rose-50/70 to-amber-50/70 border-rose-200 space-y-3">
                       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <Radio className={`w-4 h-4 ${activeDispatch ? "text-rose-600 animate-ping" : "text-rose-600"}`} />
                           <span className="text-xs font-mono font-extrabold uppercase tracking-wider text-rose-900">
                             Pre-Arrival Hospital Telemetry Webhook
                           </span>
+                          <span className="text-[10px] font-mono font-extrabold uppercase bg-amber-200 text-amber-900 px-2 py-0.5 rounded-md border border-amber-300">
+                            Simulation Only · Training Environment
+                          </span>
                         </div>
                         {activeDispatch ? (
-                          <span className="text-[11px] font-mono font-bold bg-emerald-100 text-emerald-800 border border-emerald-300 px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
-                            <CheckCircle className="w-3 h-3" />
-                            <span>ED BAY RESERVED (~<CountUp to={activeDispatch.etaMinutes} duration={0.8} />m ETA)</span>
+                          <span className="text-[11px] font-mono font-bold bg-amber-100 text-amber-900 border border-amber-300 px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
+                            <CheckCircle className="w-3 h-3 text-emerald-600" />
+                            <span>SIMULATED ED ALERT TRANSMITTED (~<CountUp to={activeDispatch.etaMinutes} duration={0.8} />m ETA)</span>
                           </span>
                         ) : (
                           <span className="text-[11px] font-mono text-slate-500 font-medium">
-                            Status: Awaiting Clinician Transmission
+                            Status: Awaiting Clinician Transmission (Simulation)
                           </span>
                         )}
                       </div>
@@ -761,11 +783,11 @@ export default function DashboardPage() {
                         <div className="bg-white/90 rounded-xl p-3.5 border border-rose-200/80 space-y-2 text-xs">
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                             <div>
-                              <span className="text-[10px] font-mono uppercase text-slate-400 font-bold block">Assigned Intake Bay:</span>
+                              <span className="text-[10px] font-mono uppercase text-slate-400 font-bold block">Assigned Intake Bay (Demo):</span>
                               <span className="font-extrabold text-slate-900">{activeDispatch.assignedHospitalBay}</span>
                             </div>
                             <div>
-                              <span className="text-[10px] font-mono uppercase text-slate-400 font-bold block">On-Call Attending:</span>
+                              <span className="text-[10px] font-mono uppercase text-slate-400 font-bold block">On-Call Attending (Demo):</span>
                               <span className="font-bold text-slate-800">{activeDispatch.attendingPhysicianOnCall}</span>
                             </div>
                           </div>
@@ -784,13 +806,13 @@ export default function DashboardPage() {
 
                           <div className="text-[10px] font-mono text-slate-500 flex items-center justify-between border-t border-slate-100 pt-1.5">
                             <span>Receipt ID: {activeDispatch.dispatchId}</span>
-                            <span className="text-emerald-700 font-bold">✓ Cryptographically Verified</span>
+                            <span className="text-emerald-700 font-bold">✓ Cryptographically Verified (Simulation)</span>
                           </div>
                         </div>
                       ) : (
                         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white/70 rounded-xl p-3 border border-rose-200/60">
                           <p className="text-xs text-slate-700 font-medium">
-                            Life-threat criteria detected. Alert the receiving emergency department and Cath/Stroke team prior to patient arrival.
+                            Life-threat criteria detected. Alert the receiving emergency department and Cath/Stroke team prior to patient arrival. (Simulation mode: no real-world dispatch occurs).
                           </p>
                           <button
                             onClick={handleTransmitPreArrival}
@@ -798,7 +820,7 @@ export default function DashboardPage() {
                             className="inline-flex items-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white px-3.5 py-1.5 rounded-xl text-xs font-extrabold shadow-sm transition-all flex-shrink-0 disabled:opacity-50"
                           >
                             <Send className="w-3.5 h-3.5" />
-                            <span>{isDispatching ? "Transmitting..." : "Dispatch ED Alert"}</span>
+                            <span>{isDispatching ? "Transmitting..." : "Simulate ED Alert"}</span>
                           </button>
                         </div>
                       )}

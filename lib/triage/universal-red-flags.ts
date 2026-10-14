@@ -418,6 +418,13 @@ function checkAffirmativeMatch(
       continue;
     }
 
+    // 5b. Third-party attribution isolation when caller reports for themselves
+    const isThirdPartyClause = /\b(?:my\s+(?:mother|father|mom|dad|wife|husband|friend|colleague|brother|sister|son|daughter)|someone\s+else)\s+(?:has|had|is\s+having|complains?\s+of)\b/i.test(windowText);
+    const callerReportsForSelf = /\b(?:i\s+am|i\s+have|i'?m|for\s+myself|my\s+own)\b/i.test(text);
+    if (isThirdPartyClause && callerReportsForSelf && !/\b(?:both\s+of\s+us|we\s+both|me\s+too)\b/i.test(text)) {
+      continue;
+    }
+
     // 6. Active preceding negation
     const hasPrecedingNegation = /\b(?:no|not|don'?t|doesn'?t|didn'?t|without|denies|denied|negative|never|none|neither|free\s+of|ruled\s+out|nahi|nahin|na\s+hai|ledu|kadhu)\b/i.test(windowText);
     const hasFollowingNegation = /\b(?:nahi\s+hai|nahin\s+hai|ledu|kadhu|absent|ruled\s+out)\b/i.test(followingText);

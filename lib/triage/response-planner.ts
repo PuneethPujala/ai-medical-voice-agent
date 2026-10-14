@@ -216,7 +216,7 @@ export class ResponsePlanner {
         nextHighValueInquiry: {
           topic: "emergency_care_accessibility",
           clinicalRationale: "Connect patient to accessible public care facilities while confirming safety.",
-          suggestedPhrasing: `We can guide you to government district hospitals or dispatch the ${ambulanceNum} ambulance service where standard public rates apply. Would you like to review nearby public care options?`,
+          suggestedPhrasing: `We can guide you to government district hospitals or assist you in contacting the ${ambulanceNum} emergency ambulance service where standard public rates apply. Would you like to review nearby public care options?`,
         },
         bedsideTone: "empathic_and_calm",
         suggestedSpokenReply: `I understand that costs are a heavy worry, especially when you are feeling unwell. Public district hospitals and the ${ambulanceNum} ambulance service operate under standard public healthcare rates. Let's make sure you get safe medical attention without worrying about expensive private fees.`,

@@ -159,12 +159,37 @@ export class TriageOrchestrator {
       "Primary Care outpatient follow-up if symptoms persist past 3 days"
     ];
 
+    const hasAcuteAbdomen = /\b(right lower|rlq|appendix|appendicitis|rebound|periumbilical|navel|acute abdomen|guarding|peritonitis)\b/i.test(text) ||
+      (patientCase.detected_symptoms || []).some((s) => /right lower|appendix|appendicitis|rlq|acute abdomen/i.test(s)) ||
+      (patientCase.pre_safety_flags || []).some((f) => /acute_abdomen|appendicitis/i.test(f));
+
+    const hasRSIorCarpalTunnel = (/\b(thumb|index finger|typing|laptop|keyboard|wrist|hands?|carpal|median nerve)\b/i.test(text) &&
+      /\b(tingling|pins and needles|numbness|paresthesia|strain)\b/i.test(text)) ||
+      (patientCase.detected_symptoms || []).some((s) => /thumb|carpal|paresthesia|typing|ergonomic|repetitive/i.test(s));
+
     if (isRefill) {
       hypothesis = "Maintenance Medication Refill";
       concerns = ["Routine Prescription Maintenance", "Medication Adherence Review"];
       actions = [
         "Review last recorded blood pressure log",
         "Authorize maintenance medication refill pending physician sign-off"
+      ];
+    } else if (hasAcuteAbdomen) {
+      hypothesis = "Acute Appendicitis / Acute Surgical Abdomen";
+      concerns = ["Acute Appendicitis", "Acute Surgical Abdomen", "Peritonitis"];
+      citations = ["MPLUS-1002-OVERVIEW"];
+      actions = [
+        "Immediate emergency surgical consultation",
+        "Maintain strict NPO status (nothing by mouth)",
+        "Obtain abdominal ultrasound or contrast-enhanced CT scan and CBC"
+      ];
+    } else if (hasRSIorCarpalTunnel) {
+      hypothesis = "Carpal Tunnel Syndrome / Repetitive Strain Injury";
+      concerns = ["Carpal Tunnel Syndrome", "Repetitive Strain Injury", "Median Nerve Paresthesia"];
+      actions = [
+        "Neutral wrist splinting during ergonomic computer work",
+        "Ergonomic workstation adjustment and regular rest breaks",
+        "Outpatient follow-up for nerve conduction testing if numbness persists"
       ];
     } else if (hasLegNerveMuscle) {
       hypothesis = "Sciatic Nerve Irritation / Lumbar Radiculopathy vs. Acute Muscle Spasm";

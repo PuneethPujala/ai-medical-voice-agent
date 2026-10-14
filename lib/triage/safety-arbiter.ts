@@ -462,7 +462,7 @@ function consolidateStructuredEvidence(
 export function extractClinicalFeatures(text: string, patientAge?: number): ClinicalFeatures {
   const lower = ' ' + text.toLowerCase() + ' ';
 
-  // Checks pattern with robust 60-character negation lookbehind window respecting punctuation boundaries
+  // Checks pattern with robust negation, uncertainty, third-party attribution, and temporal resolution inspection
   const matchesPattern = (regex: RegExp): boolean => {
     const flags = regex.flags.includes('g') ? regex.flags : regex.flags + 'g';
     const gRegex = new RegExp(regex.source, flags);
@@ -470,6 +470,7 @@ export function extractClinicalFeatures(text: string, patientAge?: number): Clin
     let foundUnnegated = false;
 
     while ((match = gRegex.exec(lower)) !== null) {
+      // 1. Preceding text up to punctuation / clause boundary
       const preceding = lower.substring(Math.max(0, match.index - 70), match.index);
       const lastBoundary = Math.max(
         preceding.lastIndexOf('.'),
@@ -480,8 +481,43 @@ export function extractClinicalFeatures(text: string, patientAge?: number): Clin
         preceding.lastIndexOf(' but ')
       );
       const effectivePreceding = lastBoundary !== -1 ? preceding.slice(lastBoundary) : preceding;
-      const isNegated = /\b(no|not|never|never had|denies|denied|without|negative for|neither|none of|asked if|checking if|wondering if)\b/i.test(effectivePreceding);
-      if (!isNegated) {
+
+      // 2. Following text up to punctuation / clause boundary
+      const matchEnd = match.index + match[0].length;
+      const following = lower.substring(matchEnd, Math.min(lower.length, matchEnd + 80));
+      const nextBoundaries = [
+        following.indexOf('.'),
+        following.indexOf(';'),
+        following.indexOf('!'),
+        following.indexOf('?'),
+        following.indexOf('\n'),
+      ].filter((idx) => idx !== -1);
+      const nextBoundary = nextBoundaries.length > 0 ? Math.min(...nextBoundaries) : -1;
+      const effectiveFollowing = nextBoundary !== -1 ? following.slice(0, nextBoundary) : following;
+
+      // Check negation in preceding
+      const isNegatedPreceding = /\b(no|not|never|never had|denies|denied|without|negative for|neither|none of|absence of|zero)\b/i.test(effectivePreceding);
+
+      // Check uncertainty in preceding (e.g. "I don't know whether he has a fever", "uncertain if")
+      const isUncertainPreceding = /\b(don't know|do not know|not sure|unknown|uncertain|unclear|wondering if|checking if|asked if)\b/i.test(effectivePreceding);
+
+      // Check third-party attribution when caller reports for themselves (e.g. "I am feeling fine ... but my mother has chest pain")
+      const callerReportsForSelf = /\b(i\s+am|i\s+have|i'?m|my\s+own|for\s+me)\b/i.test(lower);
+      const isThirdPartyPreceding = callerReportsForSelf &&
+        /\b(my (?:mother|father|mom|dad|wife|husband|friend|colleague|brother|sister|son|daughter)|someone else)\b/i.test(effectivePreceding) &&
+        !/\b(we both|both of us|me too)\b/i.test(effectivePreceding);
+
+      // Check resolution or negation in following (e.g. "chest pain yesterday, now resolved", "went away within 5 minutes", "100% fine", "is negative")
+      const isResolvedFollowing = /\b(resolved|now resolved|went away|cleared up|completely gone|gone|stopped|no longer present|was yesterday.*?today.*?(?:fine|normal|ok)|100% (?:fine|normal|ok)|negative|none|absent|false)\b/i.test(effectiveFollowing);
+
+      // Combined clause check for historical resolution (e.g. "had mild chest tightness yesterday... went away")
+      const clauseContext = `${effectivePreceding} ${match[0]} ${effectiveFollowing}`;
+      const isHistoricalResolved = /\b(yesterday|in the past|hours ago|days ago)\b/i.test(clauseContext) &&
+        /\b(went away|resolved|disappeared|stopped|feels? 100% (?:normal|fine|ok)|today.*?(?:normal|fine|ok))\b/i.test(clauseContext);
+
+      const isDisqualified = isNegatedPreceding || isUncertainPreceding || isThirdPartyPreceding || isResolvedFollowing || isHistoricalResolved;
+
+      if (!isDisqualified) {
         foundUnnegated = true;
         break;
       }
@@ -492,10 +528,7 @@ export function extractClinicalFeatures(text: string, patientAge?: number): Clin
   const isPediatric = (patientAge !== undefined && patientAge <= 14) ||
     /\b(child|baby|infant|toddler|pediatric|my son|my daughter|newborn)\b|\b\d+\s*(months?|weeks?|years?)\s*old\b/i.test(lower);
 
-  const chestMentioned = /chest|heart|sternal|substernal|ribs/i.test(lower);
-  const painOrPressure = /pain|pressure|tight|crush|heav|squeez|burn|weight|elephant/i.test(lower);
-  const hasChestPainOrPressure = matchesPattern(/(chest|precordial|substernal).*?(pain|pressure|tight|crush|weight|elephant|discomfort)|(pain|pressure|crush|tight|weight|elephant).*?(chest|precordium|substernal)/i) ||
-    (chestMentioned && painOrPressure && !matchesPattern(/no\s+chest/i));
+  const hasChestPainOrPressure = matchesPattern(/(chest|precordial|substernal).*?(pain|pressure|tight|crush|weight|elephant|discomfort)|(pain|pressure|crush|tight|weight|elephant).*?(chest|precordium|substernal)/i);
 
   const features: ClinicalFeatures = {
     // Cardiovascular
@@ -712,7 +745,7 @@ export function evaluateSafetyArbiter(input: EvaluateSafetyArbiterOptions): Arbi
     redFlags.push('IMMEDIATE_AIRWAY_OR_HEMODYNAMIC_COLLAPSE');
     rules.push('ESI-1.1: Airway obstruction / Unresponsive state / Anaphylactic shock');
     protocol = 'CRITICAL: Call 911 / 108 immediately. Prepare bag-valve-mask, IM Epinephrine 0.3mg if anaphylaxis, continuous cardiac telemetry.';
-    action = 'Immediate emergency medical dispatch. Do NOT drive self. Call 108 / 911 now.';
+    action = 'Call 108 / 911 immediately for emergency medical transport. Do NOT drive self.';
     if (features.throatTightness || features.tongueSwelling) icd10.add('T78.2XXA'); // Anaphylaxis
     if (features.lossOfConsciousness) icd10.add('R55'); // Syncope / Unresponsive
     if (features.stridor) icd10.add('R06.1'); // Stridor
@@ -770,7 +803,7 @@ export function evaluateSafetyArbiter(input: EvaluateSafetyArbiterOptions): Arbi
       redFlags.push('BE_FAST_ACUTE_ISCHEMIC_STROKE_SYMPTOMS');
       rules.push('ESI-2.2A: Focal neurological deficit within acute thrombolytic window');
       protocol = 'Emergency Code Stroke activation. Non-contrast CT scan within 20 minutes. Evaluate for IV thrombolysis (tPA/TNK) and endovascular thrombectomy. NPO.';
-      action = 'Immediate ambulance dispatch to certified Primary Stroke Center.';
+      action = 'Call 108 / 911 immediately to request emergency ambulance transport to certified Primary Stroke Center.';
       icd10.add('I63.9'); // Cerebral infarction
       icd10.add('R47.01'); // Aphasia / Dysarthria
     }
@@ -830,19 +863,25 @@ export function evaluateSafetyArbiter(input: EvaluateSafetyArbiterOptions): Arbi
   }
 
   // =========================================================================
-  // RULE 6: ESI TIER 3 - URGENT ACUTE ABDOMEN / SURGICAL SUSPICION
+  // RULE 6: ESI TIER 2 / 3 - ACUTE ABDOMEN / SURGICAL SUSPICION / PERITONITIS
   // =========================================================================
   else if (features.severeAbdominalPain || features.rightLowerQuadrantPain || features.rigidAbdomen || features.vomitingBloodOrMelena) {
-    esiScore = features.rigidAbdomen || features.vomitingBloodOrMelena ? 2 : 3;
+    const isPeritonealEmergency = features.rigidAbdomen || features.vomitingBloodOrMelena ||
+      (features.rightLowerQuadrantPain && (rawTextLower.includes('rebound') || rawTextLower.includes('severe') || rawTextLower.includes('guarding') || rawTextLower.includes('peritonitis') || features.highFever));
+    esiScore = isPeritonealEmergency ? 2 : 3;
     triageLevel = esiScore === 2 ? 'emergency' : 'priority';
     esiTitle = esiScore === 2 ? 'ESI LEVEL 2: EMERGENT — Acute Surgical Abdomen / Hemorrhage Protocol' : 'ESI LEVEL 3: URGENT — Acute Abdominal Evaluation Protocol';
-    if (features.rigidAbdomen || features.vomitingBloodOrMelena) {
-      redFlags.push('ACUTE_PERITONITIS_OR_UPPER_GI_HEMORRHAGE');
-      rules.push('ESI-2.5: Board-like abdominal rigidity or active hematemesis');
+    if (isPeritonealEmergency) {
+      redFlags.push('ACUTE_PERITONITIS_OR_SURGICAL_ABDOMEN');
+      rules.push('ESI-2.5: Board-like abdominal rigidity, active hematemesis, or high-risk acute surgical abdomen / peritonitis');
       protocol = 'Two large-bore IVs, type and screen, urgent surgical consultation, NPO.';
       action = 'Immediate surgical emergency department transfer.';
       if (features.vomitingBloodOrMelena) icd10.add('K92.0'); // Hematemesis
       if (features.rigidAbdomen) icd10.add('R19.8'); // Rigid abdomen
+      if (features.rightLowerQuadrantPain) {
+        icd10.add('K35.80'); // Unspecified acute appendicitis
+        icd10.add('R10.31'); // Right lower quadrant pain
+      }
     } else {
       rules.push('ESI-3.1: Acute RLQ abdominal pain (Appendicitis risk) requiring multiple resources');
       protocol = 'Abdominal ultrasound / IV contrast CT scan, CBC with differential, surgical consult, serial abdominal exams.';
@@ -914,7 +953,7 @@ export function evaluateSafetyArbiter(input: EvaluateSafetyArbiterOptions): Arbi
       triageLevel = 'emergency';
       esiTitle = 'ESI LEVEL 1: IMMEDIATE RESUSCITATION REQUIRED — Critical Airway / Physiological Compromise';
       protocol = 'CRITICAL: Call 112 / 108 immediately. Prepare bag-valve-mask, IM Epinephrine 0.3mg if anaphylaxis, continuous telemetry.';
-      action = 'Immediate emergency medical dispatch. Do NOT drive self. Call 112 / 108 now.';
+      action = 'Call 112 / 108 immediately for emergency medical care. Do NOT drive self.';
       symptoms.add('Universal airway / physiological collapse red flag');
     } else if (esiScore > 2) {
       esiScore = 2;

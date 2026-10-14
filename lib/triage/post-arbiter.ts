@@ -26,6 +26,64 @@ function computeChainedHash(payload: string, previousHash: string): string {
   return crypto.createHash("sha256").update(payload + previousHash).digest("hex");
 }
 
+export interface ParsedSymptomFact {
+  raw: string;
+  concept: string;
+  status: 'present' | 'absent' | 'unknown';
+  temporalScope: 'current' | 'historical' | 'resolved';
+  attribution: 'patient' | 'third_party' | 'uncertain';
+  confidence: number;
+}
+
+export function parseSymptomFact(raw: string): ParsedSymptomFact {
+  const text = (raw || '').trim();
+  const lower = text.toLowerCase();
+
+  // 1. Third-party attribution check (e.g. "my mother has chest pain", "my father's fever")
+  const thirdPartyRegex = /\b(my mother|my father|my mom|my dad|my wife|my husband|my friend|my colleague|my brother|my sister|someone else|his|her)\b/i;
+  const isThirdParty = thirdPartyRegex.test(lower) && !/\b(we both|both of us|me too)\b/i.test(lower);
+  const attribution = isThirdParty ? 'third_party' : 'patient';
+
+  // 2. Clinical uncertainty check (e.g. "don't know if fever", "uncertain")
+  const uncertainRegex = /\b(don't know|do not know|not sure|unknown|uncertain|unclear|wondering if|checking if|asked if)\b/i;
+  const isUncertain = uncertainRegex.test(lower);
+
+  // 3. Negation & Resolution check
+  const negationRegex = /\b(absence of|no\s+|not\s+|denies|denied|without|negative for|neither|none\b|zero\b|free of|100% (?:fine|normal|ok)|never|never had)\b/i;
+  const resolutionRegex = /\b(resolved|now resolved|went away|cleared up|gone|completely gone|stopped|past\b|yesterday|formerly|previously|no longer)\b/i;
+
+  const isNegated = negationRegex.test(lower);
+  const isResolved = resolutionRegex.test(lower);
+
+  let status: 'present' | 'absent' | 'unknown' = 'present';
+  let temporalScope: 'current' | 'historical' | 'resolved' = 'current';
+
+  if (isThirdParty) {
+    status = 'absent';
+  } else if (isUncertain) {
+    status = 'unknown';
+  } else if (isNegated || isResolved) {
+    status = 'absent';
+    temporalScope = isResolved ? 'resolved' : 'current';
+  }
+
+  // Extract clean concept name by stripping negation/temporal prefixes/suffixes
+  let cleanConcept = text
+    .replace(/^(?:absence of|denies|denied|no|not|without|negative for|rule out)\s+/i, '')
+    .replace(/\s+(?:yesterday|now resolved|resolved|went away|gone|is fine|is normal|is 100% fine)$/i, '')
+    .replace(/^(?:my (?:mother|father|mom|dad|wife|husband|friend|colleague|brother|sister)(?:'s)?\s+(?:has\s+)?)/i, '')
+    .trim();
+
+  return {
+    raw,
+    concept: cleanConcept || text,
+    status,
+    temporalScope,
+    attribution,
+    confidence: isUncertain ? 0.5 : 1.0,
+  };
+}
+
 /**
  * DETERMINISTIC POST-ARBITER SAFETY ENFORCEMENT & AUDIT HASH CHAINING
  * 
@@ -50,19 +108,22 @@ export function evaluatePostArbiter(
     structuredState: {
       vitals: patientCase.vitals,
       provenanceEvidence: patientCase.provenance_evidence,
-      facts: patientCase.detected_symptoms?.map((s, idx) => ({
-        id: `symptom-${idx}`,
-        name: s,
-        label: s,
-        category: 'associated_symptom' as const,
-        status: 'present' as const,
-        value: s,
-        normalizedText: s,
-        confidence: 1.0,
-        source: 'patient_reported' as const,
-        turnId: 1,
-        timestamp: new Date().toISOString(),
-      })),
+      facts: patientCase.detected_symptoms?.map((s, idx) => {
+        const parsed = parseSymptomFact(s);
+        return {
+          id: `symptom-${idx}`,
+          name: parsed.concept,
+          label: s,
+          category: 'associated_symptom' as const,
+          status: parsed.status,
+          value: s,
+          normalizedText: parsed.temporalScope === 'resolved' ? `${s} (resolved/historical)` : s,
+          confidence: parsed.confidence,
+          source: 'patient_reported' as const,
+          turnId: 1,
+          timestamp: new Date().toISOString(),
+        };
+      }),
     },
     llmSuggestedLevel: consensus.recommended_disposition === "emergency_evaluation" ? "emergency" :
                        consensus.recommended_disposition === "urgent_outpatient" ? "priority" : "routine"

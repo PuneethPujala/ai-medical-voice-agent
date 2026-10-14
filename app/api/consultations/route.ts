@@ -405,7 +405,7 @@ export async function POST(request: Request) {
       }
 
       // STATE MACHINE RULE 1: Stale Downgrade Rejection
-      // If a consultation is already approved, it can NEVER be downgraded to pending review or draft.
+      // If a consultation is already approved, it can NEVER be downgraded to pending review, incomplete intake, or draft.
       if (existingRecord.status === "approved" && requestedStatus && requestedStatus !== "approved") {
         return NextResponse.json(
           {
@@ -427,6 +427,33 @@ export async function POST(request: Request) {
           isExisting: true,
           message: "Idempotent retry: Existing approved clinical record preserved.",
         });
+      }
+
+      // STATE MACHINE RULE 3: Completed Intake Protection
+      // A consultation that reached completed_pending_review cannot be downgraded back to in_progress or incomplete_intake
+      if (existingRecord.status === "completed_pending_review" && (requestedStatus === "in_progress" || requestedStatus === "incomplete_intake")) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Conflict: Consultation record is completed and pending review. Cannot downgrade to in-progress or incomplete intake.",
+            code: "STATUS_CONFLICT",
+          },
+          { status: 409 }
+        );
+      }
+
+      // STATE MACHINE RULE 4: Optimistic Concurrency Check
+      if (body.version !== undefined && existingRecord.version !== undefined) {
+        if (body.version < existingRecord.version) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: `Concurrency conflict: Submitted version (${body.version}) is behind datastore version (${existingRecord.version}).`,
+              code: "CONCURRENCY_CONFLICT",
+            },
+            { status: 409 }
+          );
+        }
       }
 
       const isTransitioningToApproved = isApprovingRequested && existingRecord.status !== "approved";
@@ -453,6 +480,7 @@ export async function POST(request: Request) {
         recommendedAction: recommendedAction || existingRecord.recommendedAction,
         durationSeconds: durationSeconds || existingRecord.durationSeconds,
         status: finalStatus,
+        version: body.version !== undefined ? Number(body.version) : (existingRecord.version ? existingRecord.version + 1 : 2),
       };
 
       if (isTransitioningToApproved) {
@@ -462,9 +490,10 @@ export async function POST(request: Request) {
 
       if (dbClient) {
         try {
+          const { version, ...dbUpdateData } = updateData;
           await dbClient
             .update(consultationsTable)
-            .set(updateData)
+            .set(dbUpdateData)
             .where(
               and(
                 eq(consultationsTable.id, id),
@@ -557,6 +586,7 @@ export async function POST(request: Request) {
       recommendedAction,
       durationSeconds,
       status: initialStatus,
+      version: body.version !== undefined ? Number(body.version) : 1,
       approvedAt: initialStatus === "approved" ? new Date() : null,
       approvedBy: initialStatus === "approved" ? auth.userId : null,
       createdAt: new Date(),
@@ -564,7 +594,8 @@ export async function POST(request: Request) {
 
     if (dbClient) {
       try {
-        await dbClient.insert(consultationsTable).values(newRecord as any);
+        const { version, ...dbRecord } = newRecord;
+        await dbClient.insert(consultationsTable).values(dbRecord as any);
       } catch (dbErr: any) {
         const isUniqueViolation =
           dbErr?.code === "23505" ||
