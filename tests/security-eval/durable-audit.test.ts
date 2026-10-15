@@ -1,9 +1,5 @@
 import dotenv from "dotenv";
-if (process.env.MEDVOICE_OFFLINE_TESTS === "1") {
-  delete process.env.DATABASE_URL;
-} else {
-  dotenv.config();
-}
+dotenv.config();
 
 import {
   logAuditEvent,

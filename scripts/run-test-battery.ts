@@ -114,6 +114,12 @@ export async function runTestBattery() {
     console.log(`\n${indexLabel} RUNNING ${suite.id} -> ${suite.file}`);
     console.log(`     Description: ${suite.description}`);
 
+    if (suite.requiresDatabase && !enableLiveDb) {
+      console.log(`  ℹ️  ${suite.id}: SKIPPED (Real PostgreSQL datastore required; skipped in offline mode).`);
+      results.push({ suite, status: "SKIPPED_DB", durationMs: 0 });
+      continue;
+    }
+
     const suiteStartTime = Date.now();
     const env: NodeJS.ProcessEnv = {
       ...process.env,
@@ -145,15 +151,8 @@ export async function runTestBattery() {
       process.exit(child.status || 1);
     }
 
-    let status: "PASS" | "SKIPPED_DB" = "PASS";
-    if (suite.requiresDatabase && !enableLiveDb) {
-      status = "SKIPPED_DB";
-      console.log(`  ℹ️  ${suite.id}: PASSED offline mock; Live PostgreSQL verification SKIPPED.`);
-    } else {
-      console.log(`  ✓  ${suite.id}: PASSED (${durationMs}ms)`);
-    }
-
-    results.push({ suite, status, durationMs });
+    console.log(`  ✓  ${suite.id}: PASSED (${durationMs}ms)`);
+    results.push({ suite, status: "PASS", durationMs });
   }
 
   const totalDuration = ((Date.now() - overallStartTime) / 1000).toFixed(2);

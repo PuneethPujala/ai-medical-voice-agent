@@ -65,17 +65,26 @@ All environment configurations are loaded from system environment variables or `
 
 ---
 
-## 3. Empirical Latency Benchmarks & SLAs
+## 3. Latency Benchmarks, SLAs & Pipeline Realities
 
-MedVoice achieves conversational fluency by separating deterministic safety evaluation from slow generative audio synthesis:
+### 3.1. Disentangled Component Benchmarks vs. End-to-End Latency Reality
+MedVoice achieves conversational fluency by separating deterministic safety evaluation from slow generative audio synthesis. However, component-level benchmarks must not be conflated with full-pipeline voice turnaround:
 
-| Metric | Target SLA | Measured Benchmark Baseline | Architectural Mechanism |
+| Metric / Pipeline Stage | Scope | Measured Baseline | Operational Reality & Limitations |
 | :--- | :---: | :---: | :--- |
-| **Safety Arbiter Latency** | $< 5.0\text{ ms}$ | **0.39 ms mean** (P50: **0.14 ms**) | In-memory compiled regular expressions, deterministic decision trees, no network I/O. |
-| **Deterministic Lexical RAG** | $< 20.0\text{ ms}$ | **4.2 ms mean** (P95: **8.1 ms**) | In-memory multi-field token index over 2,112 curated MedlinePlus passages; zero external vector DB overhead. |
-| **Time-to-First-Audio (TTFA)** | $< 2.0\text{ s}$ | **1.1–1.6 s** (compound turns) | **Adaptive First-Chunking**: Immediately synthesizes the introductory 4–8 word clause via Kokoro-82M q4 CPU while remaining sentences are queued. |
-| **Audio Starvation Between Chunks** | $0.0\text{ ms}$ | **0.0 ms measured** | Audio playback buffer queues subsequent PCM chunks before the first finishes playing. |
-| **Barge-In Interruption Latency** | $< 100\text{ ms}$ | **< 40 ms** | Client-side monotonic session invalidation: immediately clears queued buffers upon VAD activity. |
+| **Safety Arbiter Latency** | Component (Isolated) | **0.39 ms mean** (P50: **0.14 ms**) | In-memory compiled regular expressions and decision trees; zero network I/O. |
+| **Deterministic Lexical RAG** | Component (Isolated) | **4.2 ms mean** (P95: **8.1 ms**) | In-memory token index over 2,112 curated MedlinePlus passages; zero vector DB overhead. |
+| **Time-to-First-Audio (TTFA)** | Speech Synthesis Only | **1.1–1.6 s** (compound turns) | **Adaptive First-Chunking**: Immediately synthesizes introductory 4–8 words via Kokoro-82M q4 CPU while subsequent sentences queue. |
+| **Audio Starvation Between Chunks** | Playback Buffer | **0.0 ms measured** | Audio playback buffer queues subsequent PCM chunks before the first finishes playing. |
+| **Barge-In Interruption Latency** | Client Interruption | **< 40 ms** | Client-side monotonic session token invalidation: immediately clears queued buffers upon VAD activity. |
+| **Full End-to-End Voice Turnaround** | Full Pipeline (Mic $\rightarrow$ Speaker) | **2.5–5.0+ s** | Involves client audio recording, Whisper ASR transit, remote cloud LLM generation (Groq/NVIDIA), neural TTS synthesis, and audio buffering. **Sub-second turnaround applies ONLY to local pre-arbiter checks and pre-cached alerts, not full generative turns.** |
+
+### 3.2. Speech-to-Text (STT) Infrastructure Status & Blockers
+- **Local Whisper Bridge (`/api/voice/stt`)**: Proxies audio multipart payloads to an external FastAPI Whisper service (`FASTAPI_URL`, default: `http://127.0.0.1:8000/api/v1/stt`).
+- **External Dependency**: The Python Whisper service (`backend/services/audio_service.py`) relies on Python 3.10+, PyTorch, faster-whisper, and ffmpeg. It is **not bundled or self-contained within the Node.js / Next.js runtime**.
+- **Development & Production Reality**:
+  - In local development without the Python process running, browser clients rely on native Web Speech API or simulated transcript injection.
+  - Production release requires containerizing and deploying the Python Whisper ASR service as an independent microservice with GPU or multi-core CPU compute.
 
 ---
 

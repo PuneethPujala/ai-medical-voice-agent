@@ -100,13 +100,11 @@ flowchart TD
   - **Anti-Leakage & Sanitization**: Filters out internal system prompts, developer tokens, ungrounded diagnostic claims, or inappropriate medication prescriptions before client transmission.
 
 ### 3.3. Bounded Multi-Specialist Board & Clinical Blackboard (`lib/agents/`)
-- **Architecture**: A coordinated council of domain specialist agents:
-  - *Lead Internist*: Directs overall clinical interview flow, symptom characterization, and differential formulation.
-  - *Cardiology Specialist*: Evaluates ischemic equivalents, exertional dyspnea, hemodynamic instability, and clinical risk rules (e.g., TIMI criteria).
-  - *Neurology Specialist*: Evaluates focal neurological deficits, BE-FAST criteria, thunderclap headache patterns, and altered mental status.
-  - *Pediatrics Specialist*: Evaluates pediatric-specific vital ranges, fever thresholds ($<3\text{ months}$), hydration status, and respiratory retraction.
-- **In-Memory Blackboard (`ClinicalBlackboard`)**: Acts as a synchronized, shared workspace where agents post hypotheses, findings, and diagnostic confidence scores.
-- **Bounded Execution**: Specialist reasoning is bounded by hard iteration limits (maximum 2 deliberation rounds) and token budgets to prevent recursion, latency spikes, or deliberation loops.
+- **Implementation Reality (Heuristic Decision Modules)**: The specialist board operates as an in-memory heuristic coordination pattern. Specialist personas (Lead Internist, Cardiology, Neurology, Pediatrics, ENT) execute deterministic rule filters, slot extractors, and bounded prompt templates with simulated deliberation rounds. They do **not** function as autonomous, unconstrained LLM physician agents or concurrent independent cognitive entities.
+- **Diagnostic & Clinical Scoring Tools (`lib/agents/tools/clinical-tools.ts`)**:
+  - Scoring functions (e.g., TIMI, BE-FAST, NIHSS, PEWS criteria) are **software heuristic calculation rules** evaluating patient-reported symptoms, textual survey inputs, and self-reported vital ranges.
+  - **Zero Sensor / Hardware Integration**: MedVoice has **no** direct hardware interface, no biological sensor connection, and **no 12-lead ECG hardware acquisition**. Any ECG-related parameters evaluate patient-reported verbal descriptors only and must never be treated as certified clinical biometric telemetry.
+- **In-Memory Blackboard (`ClinicalBlackboard`)**: Acts as a synchronized, shared data structure where specialist decision modules post intermediate findings, hypothesis tags, and confidence scores across bounded iteration budgets (maximum 2 deliberation passes).
 
 ### 3.4. Deterministic Multi-Field Clinical RAG Engine (`lib/care-network/`, `lib/clinical-knowledge/`)
 - **Local Knowledge Base**: 2,112 processed MedlinePlus clinical guideline passages and curated emergency practice guidelines stored locally.
@@ -119,12 +117,18 @@ flowchart TD
   - $\alpha_{\text{auth}}$ enforces authority weighting for peer-reviewed guideline sources.
 - **Offline Reliability**: Does not depend on external vector database endpoints or live third-party network APIs during triage evaluation.
 
-### 3.5. Local Neural Audio Pipeline & Low-Latency TTS (`lib/audio/`)
-- **Adaptive First-Chunking**: Splits conversational turns into an immediate introductory clause (4–8 words) and subsequent paragraphs.
-- **Speech Synthesis**: Synthesizes the initial clause through local Kokoro-82M q4 CPU ONNX neural TTS while remaining speech sentences are scheduled.
-- **Latency Performance**:
-  - Time-to-First-Audio (TTFA): **1.1–1.6 seconds** for compound turns (a 61.4% reduction from non-chunked ~4.2s baselines).
-  - Deterministic Arbiter Latency: Mean **0.39 ms** (P50: **0.14 ms**).
+### 3.5. Local Neural Audio Pipeline, STT Status & End-to-End Latency Profile (`lib/audio/`)
+- **Speech-to-Text (STT) Infrastructure Status**:
+  - `/api/voice/stt` functions as an HTTP proxy bridge forwarding audio multipart payloads to an external FastAPI Whisper service (`http://127.0.0.1:8000/api/v1/stt`).
+  - **Python STT Runtime Dependency**: The Python Whisper backend (`backend/services/audio_service.py`) requires external Python dependencies (PyTorch, faster-whisper, ffmpeg) and is **not bundled or self-contained within the Node.js runtime**.
+  - When the external Python service is offline, browser clients fall back to the native Web Speech API or simulated transcript input. Production deployment requires dedicated provisioning of the Python Whisper ASR container.
+- **Adaptive First-Chunking & TTS Pipeline**:
+  - Splits conversational turns into an immediate introductory clause (4–8 words) and subsequent paragraphs.
+  - Synthesizes the initial clause through local Kokoro-82M q4 CPU ONNX neural TTS while remaining speech sentences are scheduled.
+- **Disentangled Latency Profile (Component vs. Full Pipeline Reality)**:
+  - *Safety Arbiter Latency*: **0.39 ms mean** (P50: **0.14 ms**) — purely in-memory deterministic rule evaluation.
+  - *Kokoro-82M CPU TTS First-Chunk*: **1.1–1.6 seconds** TTFA for introductory clauses.
+  - *Full End-to-End Conversational Turnaround*: In a live voice session involving user microphone capture, external ASR transcription, cloud LLM synthesis (Groq/NVIDIA), and audio delivery, end-to-end turnaround is **2.5–5.0+ seconds**. Sub-second turnaround applies **only** to local deterministic safety pre-arbiter checks and pre-cached emergency alerts.
 - **Monotonic Barge-In Cancellation**: Tracks audio playback via incrementing monotonic session tokens. When user speech interruption or VAD activity is detected, the current token is invalidated immediately, halting playback and clearing queued audio buffers.
 
 ---
