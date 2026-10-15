@@ -92,7 +92,7 @@ export class GroqClient {
       `[Groq Cloud] Calling endpoint: ${endpoint} | Model: ${model} | Messages: ${messages.length} | MaxTokens: ${max_tokens}`
     );
 
-    const maxRetries = 2;
+    const maxRetries = 3;
     let attempt = 0;
 
     while (attempt <= maxRetries) {
@@ -100,22 +100,28 @@ export class GroqClient {
       const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
       try {
-        const response = await fetch(endpoint, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: JSON.stringify({
+        const bodyPayload: Record<string, any> = {
             model,
             messages,
             temperature,
             max_tokens,
             stream: false,
-            reasoning_effort: options.reasoning_effort ?? "none",
-          }),
-          signal: controller.signal,
-        });
+          };
+          if (options.reasoning_effort && options.reasoning_effort !== "none") {
+            bodyPayload.reasoning_effort = options.reasoning_effort;
+          } else if (model.startsWith("openai/")) {
+            bodyPayload.reasoning_effort = "low";
+          }
+
+          const response = await fetch(endpoint, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${apiKey}`,
+            },
+            body: JSON.stringify(bodyPayload),
+            signal: controller.signal,
+          });
 
         clearTimeout(timeoutId);
 
@@ -127,12 +133,17 @@ export class GroqClient {
           if (response.status === 429) {
             errorCategory = "RATE_LIMIT_EXCEEDED";
             userFacingReason = "Groq Cloud rate limit exceeded. Backing off.";
-            if (attempt < maxRetries) {
+            const isDailyLimit = /tokens per day|TPD/i.test(errorText);
+            const waitMatch = errorText.match(/try again in ([0-9.]+)s/i);
+            const waitSec = waitMatch && waitMatch[1] ? parseFloat(waitMatch[1]) : 3.5;
+
+            // Only retry short-term bursts (RPM/TPM). For daily quotas (TPD) or waits > 20s, fail immediately.
+            if (!isDailyLimit && waitSec <= 20 && attempt < maxRetries) {
               attempt++;
               const retryAfterHeader = response.headers.get("retry-after");
               const backoffMs = retryAfterHeader
-                ? Math.min(parseInt(retryAfterHeader, 10) * 1000, 6000)
-                : (attempt * 1500 + Math.random() * 500);
+                ? Math.min(parseInt(retryAfterHeader, 10) * 1000, 25000)
+                : Math.max(Math.ceil(waitSec) * 1000 + 800, attempt * 2500);
               console.warn(`[Groq Cloud 429 Rate Limit] Retrying in ${Math.round(backoffMs)}ms (attempt ${attempt}/${maxRetries})...`);
               await new Promise(r => setTimeout(r, backoffMs));
               continue;

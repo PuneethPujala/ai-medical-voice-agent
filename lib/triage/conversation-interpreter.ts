@@ -517,6 +517,98 @@ export class ConversationInterpreter {
           confidence: 0.93,
         };
       }
+
+      // Check Weakness / Numbness Distribution & Laterality slot
+      if (targetSlot === "weakness_distribution" || targetSlot === "numbness_distribution" || targetSlot === "laterality") {
+        const isHead = /\b(?:just\s+(?:in\s+my\s+)?head|only\s+(?:in\s+my\s+)?head|in\s+(?:my\s+)?head|cranial)\b/i.test(lower);
+        const isSystemic = /\b(?:whole\s+(?:nervous\s+)?system|whole\s+body|all\s+over|everywhere|generalized)\b/i.test(lower);
+        const isOneSided = /\b(?:one\s+side|left|right|unilateral|single\s+side)\b/i.test(lower);
+        const isBothSided = /\b(?:both\s+sides|both|bilateral|symmetrical)\b/i.test(lower);
+
+        let val = text;
+        if (isHead && isSystemic) {
+          val = "cranial sensation affecting whole nervous system (non-focal)";
+        } else if (isHead) {
+          val = "head only (non-focal)";
+        } else if (isOneSided) {
+          val = "unilateral (one-sided)";
+        } else if (isBothSided || isSystemic) {
+          val = "bilateral / generalized";
+        }
+
+        return {
+          rawUtterance: text,
+          intent: "answer_pending_question",
+          resolvedQuestionId: pendingQuestion.id,
+          resolvedSlot: targetSlot,
+          resolvedValue: val,
+          isConfirmationOrRepetition: false,
+          isEmergencyInquiry: false,
+          newEvidence: [{ slot: targetSlot, value: val }],
+          ambiguities: [],
+          confidence: 0.94,
+        };
+      }
+
+      // Check Neurological Signs slot
+      if (targetSlot === "neurological_signs") {
+        const signs: string[] = [];
+        if (/\b(droop|face|facial|asymmetry)\b/i.test(lower)) signs.push("facial droop");
+        if (/\b(weak|weakness|cannot\s+lift|drift|paralysis|arm|leg)\b/i.test(lower) && !/\b(no\s+weak|neither)\b/i.test(lower)) {
+          signs.push("limb weakness");
+        }
+        if (/\b(numb|numbness|pins\s+and\s+needles|tingl(?:ing|e)?)\b/i.test(lower) && !/\b(no\s+numb|neither)\b/i.test(lower)) {
+          signs.push("numbness");
+        }
+        if (/\b(slur|speech|talk|words)\b/i.test(lower)) signs.push("speech difficulty");
+        if (/\b(vision|blurry|double\s+vision|diplopia)\b/i.test(lower)) signs.push("vision changes");
+        if (/\b(dizz|dizzy|lightheaded|vertigo)\b/i.test(lower)) signs.push("dizziness");
+
+        const isExplicitDenial = /^(?:no|none|neither|nope|normal|denies)[.!?\s]*$/i.test(lower);
+        const val = isExplicitDenial ? "denied" : signs.length > 0 ? signs.join(", ") : text;
+
+        return {
+          rawUtterance: text,
+          intent: "answer_pending_question",
+          resolvedQuestionId: pendingQuestion.id,
+          resolvedSlot: "neurological_signs",
+          resolvedValue: val,
+          isConfirmationOrRepetition: false,
+          isEmergencyInquiry: false,
+          newEvidence: signs.map(s => ({ slot: "neurological_signs", value: s })),
+          ambiguities: [],
+          confidence: 0.92,
+        };
+      }
+
+      // Check Timing Pattern / Severity Pattern slot
+      if (targetSlot === "timing_pattern" || targetSlot === "severity_pattern") {
+        const isConstant = /\b(constant|constantly|all\s+the\s+time|continuous|never\s+stops)\b/i.test(lower);
+        const isIntermittent = /\b(comes\s+and\s+goes|intermittent|in\s+waves|episodic|spasms?)\b/i.test(lower);
+        const isPostural = /\b(stand|walk|getting\s+up|sitting\s+down|upright|resting)\b/i.test(lower);
+
+        let val = text;
+        if (isConstant && isPostural) {
+          val = "constant baseline, severe upon standing or walking after resting";
+        } else if (isConstant) {
+          val = "constant";
+        } else if (isIntermittent) {
+          val = "intermittent / comes and goes";
+        }
+
+        return {
+          rawUtterance: text,
+          intent: "answer_pending_question",
+          resolvedQuestionId: pendingQuestion.id,
+          resolvedSlot: targetSlot,
+          resolvedValue: val,
+          isConfirmationOrRepetition: false,
+          isEmergencyInquiry: false,
+          newEvidence: [{ slot: targetSlot, value: val }],
+          ambiguities: [],
+          confidence: 0.94,
+        };
+      }
     }
 
     // 6. Generic Symptom Report
@@ -533,6 +625,9 @@ export class ConversationInterpreter {
     }
     if (/stomach\s+ache|stomach\s+pain|abdominal\s+pain|belly\s+ache/i.test(lower)) {
       extracted.push({ slot: "chief_complaint", value: "abdominal pain" });
+    }
+    if (/headache|migraine|head\s+pain/i.test(lower)) {
+      extracted.push({ slot: "chief_complaint", value: "headache" });
     }
     if (/voice\s+has\s+been\s+ruined|voice\s+changed|voice\s+is\s+different|lost\s+my\s+voice|hoarse|hoarseness/i.test(lower)) {
       extracted.push({ slot: "associated_symptoms", value: "voice change" });
@@ -557,13 +652,27 @@ export class ConversationInterpreter {
         slot: "character",
         value: isPostural ? "postural dizziness upon standing" : "dizziness"
       });
+      extracted.push({ slot: "associated_symptoms", value: "dizziness" });
       if (isPostural) {
         extracted.push({ slot: "onset", value: "intermittent upon standing after prolonged sitting" });
       }
     }
-    if (/\b(weak|weakness|numb|numbness)\b/i.test(lower) && !lower.includes("no weak") && !lower.includes("no numb")) {
-      extracted.push({ slot: "neurological_signs", value: "transient weakness and numbness" });
+    // Independent extraction for weakness vs numbness — NEVER conflate!
+    const hasWeak = /\b(weak|weakness|cannot\s+lift|arm\s+weak|leg\s+weak|drift|paralysis)\b/i.test(lower) && !/\b(no\s+weak|neither)\b/i.test(lower);
+    const hasNumb = /\b(numb|numbness|pins\s+and\s+needles|tingl(?:ing|e)?)\b/i.test(lower) && !/\b(no\s+numb|neither)\b/i.test(lower);
+    if (hasWeak) {
+      extracted.push({ slot: "neurological_signs", value: "weakness" });
     }
+    if (hasNumb) {
+      extracted.push({ slot: "neurological_signs", value: "numbness" });
+    }
+
+    // Positional exacerbation / orthostatic headache pattern
+    if (/\b(?:severe\s+when\s+i\s+stand|worse\s+when\s+standing|standing\s+up\s+and\s+walk)\b/i.test(lower)) {
+      extracted.push({ slot: "severity_pattern", value: "constant baseline, severe upon standing/walking" });
+      extracted.push({ slot: "orthostatic_exacerbation", value: "worsens standing or walking after resting" });
+    }
+
     const durationMatch = lower.match(/\b(?:for\s+)?(\d+\s*(?:minutes?|hours?|seconds?|days?)|a\s+minute|few\s+seconds|few\s+minutes)\b/i);
     if (durationMatch) {
       extracted.push({ slot: "duration", value: `approx. ${durationMatch[0]}` });

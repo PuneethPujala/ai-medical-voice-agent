@@ -38,11 +38,14 @@ export interface GenerateTurnOptions {
   targetSubject?: "self" | "mother" | "child" | "third_party";
   turnId?: number;
   onCandidateSafetyConcern?: (concern: string) => void;
+  isClarificationRequest?: boolean;
+  clarificationGuidance?: string;
 }
 
 export interface GeneratedTurnResult {
   reply: string;
-  provider: "groq" | "nvidia" | "fallback";
+  provider: "groq" | "nvidia" | "fallback" | "safety_arbiter_deterministic";
+  responseProvenance: "llm_generative_dialogue" | "validated_fallback" | "deterministic_safety_arbiter";
   model?: string;
   latencyMs: number;
   rejectionReason?: string;
@@ -52,6 +55,8 @@ export interface GeneratedTurnResult {
   understoodContext?: string;
   conversationalAction?: ConversationalAction;
   candidateFacts?: CandidateFactProposal[];
+  unmappedObservations?: string[];
+  intendedTargets?: string[];
   candidateSafetyConcern?: string;
 }
 
@@ -146,7 +151,7 @@ export function createTelemetryIntegrityHash(
 export interface ValidatorCheckResult {
   isValid: boolean;
   reason?: string;
-  category?: "attribution" | "provenance" | "diagnosis_inflation" | "medication_safety" | "emergency_instruction";
+  category?: "attribution" | "provenance" | "diagnosis_inflation" | "medication_safety" | "emergency_instruction" | "false_dispatch_claim";
 }
 
 export function validateDoctorTurnResponse(
@@ -241,7 +246,29 @@ export function validateDoctorTurnResponse(
     }
   }
 
-  // 5. Emergency Policy Adherence: Tier 1/2 must include 112/108/emergency services
+  // 5. False Emergency-Dispatch Prohibition: MedVoice is an intake/triage tool, NOT a CAD (Computer Aided Dispatch)
+  // NEVER allow claiming that an ambulance, paramedics, or emergency responders have been dispatched, sent, or are en route.
+  const falseDispatchRegex = new RegExp(
+    [
+      "\\b(?:(?:i(?:'ve|\\s+have)?|we(?:'ve|\\s+have)?)\\s+(?:dispatched|sent|called|contacted|ordered|alerted)\\s+(?:an?\\s+)?(?:ambulance|paramedics?|first\\s+responders?|help|emergency\\s+services|a\\s+unit))\\b",
+      "\\b(?:(?:ambulance|paramedics?|first\\s+responders?|help|emergency\\s+services)\\s+(?:is|are|has\\s+been|have\\s+been)\\s+(?:on\\s+(?:the|their|its)\\s+way|en\\s*route|dispatched|sent|called))\\b",
+      "\\b(?:an?\\s+ambulance\\s+(?:is|has\\s+been)\\s+(?:on\\s+(?:the|its)\\s+way|en\\s*route|called|dispatched|sent))\\b",
+      "\\b(?:help\\s+is\\s+(?:on\\s+the\\s+way|en\\s*route))\\b",
+      "\\b(?:i(?:'ve|\\s+have)?\\s+called\\s+(?:an?\\s+ambulance|emergency(?:\\s+services)?|112|108|911)\\s+for\\s+you)\\b",
+      "\\b(?:don'?t\\s+worry,?\\s+(?:an?\\s+ambulance|help|emergency))\\b",
+    ].join("|"),
+    "i"
+  );
+
+  if (falseDispatchRegex.test(candidateReply)) {
+    return {
+      isValid: false,
+      category: "false_dispatch_claim",
+      reason: "False emergency-dispatch claim detected: MedVoice cannot dispatch emergency responders or confirm an ambulance is en route.",
+    };
+  }
+
+  // 6. Emergency Policy Adherence: Tier 1/2 must include 112/108/emergency services
   if (isEmergency) {
     const emergencyRegex = new RegExp(`\\b(${primaryEmergencyNumber}|${ambulanceNumber}|emergency|er|urgent|hospital)\\b`, "i");
     if (!emergencyRegex.test(candidateReply)) {
@@ -263,6 +290,8 @@ export interface ParsedDoctorReply {
   understoodContext?: string;
   conversationalAction?: ConversationalAction;
   candidateFacts?: CandidateFactProposal[];
+  unmappedObservations?: string[];
+  intendedTargets?: string[];
   candidateSafetyConcern?: string;
   rejectedReason?: string;
 }
@@ -276,6 +305,8 @@ export function parseAndSanitizeDoctorReply(
   let understoodContext: string | undefined = undefined;
   let conversationalAction: ConversationalAction | undefined = undefined;
   let candidateFacts: CandidateFactProposal[] = [];
+  let unmappedObservations: string[] = [];
+  let intendedTargets: string[] = [];
   let candidateSafetyConcern: string | undefined = undefined;
 
   // 1. Strip <think> tags if present
@@ -301,6 +332,12 @@ export function parseAndSanitizeDoctorReply(
         }
         if (Array.isArray(parsed.candidateFacts)) {
           candidateFacts = parsed.candidateFacts.filter((f: any) => f && typeof f.concept === "string");
+        }
+        if (Array.isArray(parsed.unmappedObservations)) {
+          unmappedObservations = parsed.unmappedObservations.filter((o: any) => typeof o === "string" && o.trim()).map((o: string) => o.trim());
+        }
+        if (Array.isArray(parsed.intendedTargets)) {
+          intendedTargets = parsed.intendedTargets.filter((t: any) => typeof t === "string" && t.trim()).map((t: string) => t.trim());
         }
         if (typeof parsed.candidateSafetyConcern === "string" && parsed.candidateSafetyConcern.trim()) {
           candidateSafetyConcern = parsed.candidateSafetyConcern.trim();
@@ -359,9 +396,6 @@ export function parseAndSanitizeDoctorReply(
   // 8. Clean residual markdown formatting
   candidate = candidate.replace(/[*_#`\[\]]/g, "").trim();
 
-  // 9. Output Guard: Strip robotic 'I hear...' template filler openings
-  candidate = candidate.replace(/^I hear\s+(?:that\s+)?(?:you're|your|the|you\s+have|it\s+started)\s+[^.!?]+[.!?]\s*/i, "").trim();
-
   // 10. Output Guard: Enforce focused questioning (max 1 question per turn)
   if ((candidate.match(/\?/g) || []).length > 1) {
     const firstQIdx = candidate.indexOf("?");
@@ -377,11 +411,18 @@ export function parseAndSanitizeDoctorReply(
     return { cleanReply: fallbackReply, rejectedReason: "Empty candidate after cleaning" };
   }
 
+  if (intendedTargets.length === 0 && candidate.includes("?")) {
+    const detected = detectQuestionTargetSlot(candidate);
+    if (detected) intendedTargets = [detected];
+  }
+
   return {
     cleanReply: candidate,
     understoodContext,
     conversationalAction,
     candidateFacts,
+    unmappedObservations,
+    intendedTargets,
     candidateSafetyConcern,
   };
 }
@@ -404,6 +445,12 @@ export interface SystemPromptConfig {
   retrievedPassagesSummary?: string;
   primaryEmergencyNumber?: string;
   ambulanceNumber?: string;
+  unmappedObservations?: string[];
+  timelineAnchor?: string;
+  unansweredDimensions?: string[];
+  advisoryInquiryTopic?: string;
+  isClarificationRequest?: boolean;
+  clarificationGuidance?: string;
 }
 
 export function buildDoctorSystemPrompt(
@@ -500,9 +547,13 @@ Confirmed Drug Allergies: ${confirmedAllergies}.
 Surgical History: ${surgicalHistory}.
 Communication / Preferences: ${communicationPref}.
 3. ENCOUNTER STATE LAYER:
-- Active Reported Facts: ${confirmedFacts.slice(-4).join("; ") || "Initial intake"}
+${cfg.timelineAnchor ? `- Chief Complaint & Timeline Anchor: ${cfg.timelineAnchor}` : ""}
+- Active Reported Facts: ${confirmedFacts.slice(-10).join("; ") || "Initial intake"}
 ${deniedSymptoms.length > 0 ? `- Denied Findings (DO NOT RE-ASK): ${deniedSymptoms.join(", ")}` : ""}
 ${uncertainties.length > 0 ? `- Uncertain Findings: ${uncertainties.join("; ")}` : ""}
+${cfg.unmappedObservations && cfg.unmappedObservations.length > 0 ? `- Unmapped Nuances / Raw Observations: ${cfg.unmappedObservations.join("; ")}` : ""}
+${cfg.unansweredDimensions && cfg.unansweredDimensions.length > 0 ? `- Unresolved Dimensions: ${cfg.unansweredDimensions.join(", ")}` : ""}
+${cfg.advisoryInquiryTopic ? `- Specialist Advisory Suggestion (optional): ${cfg.advisoryInquiryTopic}` : ""}
 - Safety Triage Status: ${isEmergency ? `CRITICAL EMERGENCY (${flags.join(", ")})` : "AMBULATORY CLINICAL INTAKE"}
 
 OPEN-WORLD EVIDENCE CONTEXT (${evidenceAnalysis.situation}):
@@ -512,6 +563,15 @@ ${retrievedPassagesSummary ? `Retrieved Guidelines:\n${retrievedPassagesSummary}
 CONVERSATIONAL ACTION PALETTE:
 Select from: "INQUIRE", "ANSWER_QUESTION", "ACKNOWLEDGE_CORRECTION", "EXPLAIN_CLINICAL_RATIONALE", "SUMMARIZE_AND_CHECK", "EMERGENCY_DIRECTIVE", "PROVIDE_SUPPORT".
 You do NOT need to ask a question on every turn if answering, acknowledging, or providing emergency guidance is more appropriate.
+${
+  cfg.isClarificationRequest
+    ? `
+AMBIGUITY CLARIFICATION OBJECTIVE:
+The patient's latest statement was ambiguous, fragmented, or unclear.
+${cfg.clarificationGuidance ? `Context/Suggested Clarification: "${cfg.clarificationGuidance}"` : ""}
+Do NOT blindly repeat a rigid canned script. Respond with empathetic bedside manner, acknowledge what was heard, and ask a natural, spoken clarifying question. Keep it under 2 short sentences.`
+    : ""
+}
 
 CRITICAL CLINICAL RULES:
 1. Preserve symptom provenance: Ground strictly in what was stated. NEVER invent unmentioned symptoms (e.g. do not add "tight pressure" when only "chest pain" was stated; do not mention "fever" when fever was denied).
@@ -534,9 +594,13 @@ ${
 - If the patient provides a correction to a profile fact (e.g. "I stopped taking metformin last week"), acknowledge the correction, use the updated fact, and prioritize the real-time statement over the stored profile. Patient corrections always override stored profile facts.
 - Treat unknown profile information as unknown—NEVER assume an absent allergy or condition means it is negative.
 - Emergency safety screening ALWAYS takes strict precedence over routine profile queries.
+7. PROHIBITION OF FALSE EMERGENCY DISPATCH CLAIMS: NEVER state, imply, or promise that you or MedVoice have dispatched an ambulance, called emergency services, or that help/paramedics are on the way. MedVoice cannot dispatch emergency responders. Always instruct the caller/patient to dial ${primaryEmergencyNumber} or ${ambulanceNumber} themselves immediately.
+8. EMPATHY & ANXIETY VALIDATION: When a patient expresses fear, panic, anxiety, or emotional distress (e.g. terrified due to family medical history, stress, or feeling overwhelmed), ALWAYS validate their feelings with a warm, empathetic opening clause (e.g. "I understand this is very frightening, especially with your father's history" or "I hear how scary and stressful this feels right now") before asking your focused clinical question. Never ignore patient distress or treat emotional statements as irrelevant noise.
+9. PATIENT CORRECTIONS & TIMELINE REVISIONS: When a patient clarifies or corrects information stated earlier (such as correcting a symptom from constant to postural/positional, or revising a timeline), ALWAYS explicitly acknowledge their correction and the revised detail in your opening clause (e.g. "Thank you for clarifying that it goes away when lying down and surges when standing" or "I understand that sitting or standing triggers it"). Then proceed with your focused inquiry based on the corrected presentation.
 
 OUTPUT FORMAT (STRICT JSON ONLY):
 {
+  "patientResponse": "<1-2 short spoken sentences, strictly under 35 words total. When conversationalAction is 'INQUIRE', you MUST end with exactly ONE focused clinical question ending in '?' (e.g. 'I understand... [brief reflection]. Could you tell me [focused question]?')>",
   "understoodContext": "<concise clinical reflection of what was expressed>",
   "candidateFacts": [
     {
@@ -546,11 +610,115 @@ OUTPUT FORMAT (STRICT JSON ONLY):
       "temporalScope": "current | historical"
     }
   ],
+  "unmappedObservations": ["<patient descriptions or nuances not fitting standard slots>"],
   "conversationalAction": "<action from palette>",
-  "candidateSafetyConcern": "<any subtle unscripted danger sign observed, or null>",
-  "patientResponse": "<1-2 short spoken sentences, strictly under 35 words total>"
+  "intendedTargets": ["<clinical topic targeted if asking question, e.g. 'orthostatic_timing', 'dizziness_character', 'laterality'>"],
+  "candidateSafetyConcern": "<any subtle unscripted danger sign observed, or null>"
 }
 `;
+}
+
+// ─── TOKEN-BUDGETED, LOSS-AWARE CONTEXT ASSEMBLER ────────────────────────────
+
+export interface AssembleContextOptions {
+  systemPrompt: string;
+  conversationHistory: Array<{ role: "patient" | "doctor" | "assistant"; text?: string; content?: string }>;
+  currentUtterance: string;
+  timelineAnchor?: string;
+  maxTokensBudget?: number;
+}
+
+export function assembleLossAwareConversationContext(options: AssembleContextOptions): NvidiaChatMessage[] {
+  const { systemPrompt, conversationHistory = [], currentUtterance, maxTokensBudget = 2000 } = options;
+  const messages: NvidiaChatMessage[] = [{ role: "system", content: systemPrompt }];
+  const cleanCurrentUtterance = currentUtterance.trim();
+
+  // If conversation is short (<= 8 turns), include all turns with character capping
+  if (conversationHistory.length <= 8) {
+    for (const turn of conversationHistory) {
+      const role = turn.role === "doctor" || turn.role === "assistant" ? "assistant" : "user";
+      let content = (turn.text || turn.content || "").trim();
+      if (content.length > 350) content = content.slice(0, 350) + "...";
+      if (content) messages.push({ role, content });
+    }
+  } else {
+    // Extended conversation (> 8 turns):
+    // 1. PIN TURN 1 (Chief complaint & initial framing)
+    const turn1 = conversationHistory[0];
+    const role1 = turn1.role === "doctor" || turn1.role === "assistant" ? "assistant" : "user";
+    let content1 = (turn1.text || turn1.content || "").trim();
+    if (content1.length > 350) content1 = content1.slice(0, 350) + "...";
+    if (content1) messages.push({ role: role1, content: content1 });
+
+    // If turn 2 is the patient's initial response to greeting, pin turn 2 as anchor
+    if (conversationHistory.length > 1 && role1 === "assistant") {
+      const turn2 = conversationHistory[1];
+      const role2 = turn2.role === "doctor" || turn2.role === "assistant" ? "assistant" : "user";
+      let content2 = (turn2.text || turn2.content || "").trim();
+      if (content2.length > 350) content2 = content2.slice(0, 350) + "...";
+      if (content2) messages.push({ role: role2, content: content2 });
+    }
+
+    // 2. COMPRESS INTERMEDIATE TURNS (Between anchor turns and last 6 turns)
+    const recentTurnCount = 6;
+    const startIndex = (role1 === "assistant" && conversationHistory.length > 1) ? 2 : 1;
+    const endIndex = conversationHistory.length - recentTurnCount;
+
+    if (endIndex > startIndex) {
+      const intermediateTurns = conversationHistory.slice(startIndex, endIndex);
+      const intermediateSummaryLines: string[] = [];
+      for (const turn of intermediateTurns) {
+        const speaker = turn.role === "doctor" || turn.role === "assistant" ? "Doctor" : "Patient";
+        const text = (turn.text || turn.content || "").trim();
+        if (text) {
+          const snippet = text.length > 120 ? text.slice(0, 120) + "..." : text;
+          intermediateSummaryLines.push(`${speaker}: ${snippet}`);
+        }
+      }
+
+      if (intermediateSummaryLines.length > 0) {
+        messages.push({
+          role: "system",
+          content: `[Encounter Dialogue Summary — Turns ${startIndex + 1} to ${endIndex}]:\n${intermediateSummaryLines.join("\n")}`,
+        });
+      }
+    }
+
+    // 3. RETAIN RECENT 6 TURNS VERBATIM
+    const recentTurns = conversationHistory.slice(-recentTurnCount);
+    for (const turn of recentTurns) {
+      const role = turn.role === "doctor" || turn.role === "assistant" ? "assistant" : "user";
+      let content = (turn.text || turn.content || "").trim();
+      if (content.length > 350) content = content.slice(0, 350) + "...";
+      if (content) messages.push({ role, content });
+    }
+  }
+
+  // Ensure latest patient utterance is included at the tail
+  const lastMsg = messages[messages.length - 1];
+  if (!lastMsg || lastMsg.role !== "user" || lastMsg.content !== cleanCurrentUtterance) {
+    if (cleanCurrentUtterance) {
+      messages.push({ role: "user", content: cleanCurrentUtterance });
+    }
+  }
+
+  // 4. Token budgeting: approximate 4 chars per token, max budget = ~2000 tokens (approx 8000 chars)
+  let totalChars = messages.reduce((sum, m) => sum + m.content.length, 0);
+  const maxChars = maxTokensBudget * 4;
+
+  if (totalChars > maxChars) {
+    // Compress intermediate messages while strictly preserving system prompt and last 2 messages
+    for (let i = 1; i < messages.length - 2 && totalChars > maxChars; i++) {
+      if (messages[i].content.length > 100) {
+        const diff = totalChars - maxChars;
+        const trimAmount = Math.min(diff, messages[i].content.length - 100);
+        messages[i].content = messages[i].content.slice(0, messages[i].content.length - trimAmount) + "...";
+        totalChars -= trimAmount;
+      }
+    }
+  }
+
+  return messages;
 }
 
 // ─── GENERATIVE CLINICAL CONVERSATION ENGINE ─────────────────────────────────
@@ -576,8 +744,33 @@ export async function generateDoctorTurnResponse(
     onCandidateSafetyConcern,
   } = options;
 
-  const isEmergency = preArbiterResult.immediate_danger;
-  const flags = preArbiterResult.pre_safety_flags;
+  const isEmergency = Boolean(preArbiterResult?.immediate_danger || interviewState?.informationState === "emergency_preempted");
+  if (isEmergency) {
+    const primaryEmergencyNumber = localeConfig.emergencyNumber || "112";
+    const ambulanceNumber = localeConfig.alternateEmergencyNumbers?.[0] || "108";
+    const emergencyDirective = fallbackReply ||
+      `This is a medical emergency. Please call ${primaryEmergencyNumber} or ${ambulanceNumber} immediately for an ambulance. Do not drive yourself.`;
+    const emergencyTs = new Date().toISOString();
+    return {
+      reply: emergencyDirective,
+      provider: "safety_arbiter_deterministic",
+      responseProvenance: "deterministic_safety_arbiter",
+      latencyMs: 0,
+      liveGenerated: false,
+      conversationalAction: "EMERGENCY_DIRECTIVE",
+      telemetry: {
+        provider: "safety_arbiter_deterministic",
+        model: "pre_arbiter_emergency_preemption",
+        liveGenerated: false,
+        latencyMs: 0,
+        fallbackUsed: false,
+        telemetryIntegrityHash: createTelemetryIntegrityHash(turnId, "pre_arbiter", "deterministic", 0, emergencyTs),
+        timestamp: emergencyTs,
+      },
+    };
+  }
+
+  const flags = preArbiterResult?.pre_safety_flags || [];
   const knownFacts = interviewState?.slots.known_facts || [];
 
   // Determine Target Subject (self vs mother vs child)
@@ -599,7 +792,7 @@ export async function generateDoctorTurnResponse(
   const deniedSymptoms = memory?.deniedSymptoms || [];
   const uncertainties = memory?.uncertainties || [];
   const questionsAlreadyAsked = memory?.questionsAlreadyAsked || [];
-  const mustAvoid = rawPlan?.mustAvoidAsking && rawPlan.mustAvoidAsking.length > 0
+  const rawMustAvoid = rawPlan?.mustAvoidAsking && rawPlan.mustAvoidAsking.length > 0
     ? rawPlan.mustAvoidAsking
     : questionsAlreadyAsked;
 
@@ -609,10 +802,34 @@ export async function generateDoctorTurnResponse(
     suggestedPhrasing: fallbackReply || pendingQ.question,
   } : undefined);
 
+  const activeTargetSlot = effectiveInquiry?.topic || pendingQ?.targetSlot;
+  const correctedSlots = new Set<string>();
+  if (memory?.patientCorrections && Array.isArray(memory.patientCorrections)) {
+    for (const c of memory.patientCorrections) {
+      if ((c as any).target) correctedSlots.add(String((c as any).target).toLowerCase().trim());
+      if ((c as any).slot) correctedSlots.add(String((c as any).slot).toLowerCase().trim());
+    }
+  }
+  if (/\b(?:correct|correction|not constant|need to correct|instead|said earlier|actually)\b/i.test(patientUtterance)) {
+    correctedSlots.add("character");
+    correctedSlots.add("onset_pattern");
+    correctedSlots.add("timing_pattern");
+    correctedSlots.add("course");
+    correctedSlots.add("orthostatic_timing");
+  }
+
+  const filteredMustAvoid = rawMustAvoid.filter(item => {
+    if (!item) return false;
+    const itemLower = item.toLowerCase().trim();
+    if (activeTargetSlot && itemLower === activeTargetSlot.toLowerCase().trim()) return false;
+    if (correctedSlots.has(itemLower)) return false;
+    return true;
+  });
+
   const plan = {
     primaryGoal: rawPlan?.primaryGoal || "ADVANCE_CLINICAL_INTAKE",
     conversationalFocus: rawPlan?.conversationalFocus || pendingQ?.purpose || `Inquire about ${pendingQ?.targetSlot || "clinical symptoms"}`,
-    mustAvoidAsking: rawPlan?.mustAvoidAsking && rawPlan.mustAvoidAsking.length > 0 ? rawPlan.mustAvoidAsking : mustAvoid,
+    mustAvoidAsking: filteredMustAvoid,
     nextHighValueInquiry: effectiveInquiry,
     suggestedSpokenReply: rawPlan?.suggestedSpokenReply || fallbackReply || pendingQ?.question || "Could you tell me more about what you're experiencing?",
   };
@@ -622,11 +839,11 @@ export async function generateDoctorTurnResponse(
   const rawFallback = fallbackReply || plan?.suggestedSpokenReply || "Could you tell me more about what you're experiencing?";
 
   let effectiveFallback = rawFallback;
-  if (!isEmergency && (mustAvoid.length > 0 || deniedSymptoms.length > 0)) {
+  if (!isEmergency && (rawMustAvoid.length > 0 || deniedSymptoms.length > 0)) {
     const activeTargetSlot = effectiveInquiry?.topic || pendingQ?.targetSlot;
     const fallbackTargetSlot = detectQuestionTargetSlot(rawFallback, activeTargetSlot);
     const permittedFallbackTargets = new Set([activeTargetSlot, fallbackTargetSlot].filter(Boolean).map(target => target!.toLowerCase()));
-    const fallbackMustAvoid = mustAvoid.filter(item => !permittedFallbackTargets.has(item.toLowerCase()));
+    const fallbackMustAvoid = rawMustAvoid.filter(item => !permittedFallbackTargets.has(item.toLowerCase()));
     const fallbackValidation = validateDoctorReplyTarget(
       rawFallback,
       { mustAvoidAsking: fallbackMustAvoid },
@@ -650,6 +867,7 @@ export async function generateDoctorTurnResponse(
     return {
       reply: effectiveFallback,
       provider: "fallback",
+      responseProvenance: "validated_fallback",
       latencyMs: 0,
       liveGenerated: false,
       fallbackReason: "no_provider_configured",
@@ -688,6 +906,10 @@ export async function generateDoctorTurnResponse(
   const evidenceAnalysis = clinicalKnowledgeRetriever.evaluateEvidenceSituation(minimizedUtterance);
   const retrievedPassagesSummary = evidenceAnalysis.passages.map(p => `[${p.title}]: ${p.content.slice(0, 200)}`).join("\n");
 
+  const timelineAnchor = interviewState?.structuredHistory?.timeline?.anchor ||
+    (interviewState?.slots?.onset ? `Onset: ${interviewState.slots.onset}` : undefined);
+  const unmappedObsStrings = interviewState?.unmappedObservations?.map(o => o.rawEvidence) || [];
+
   // 6. Build 3-Tier Context System Prompt
   const systemPrompt = buildDoctorSystemPrompt({
     doctor,
@@ -705,21 +927,22 @@ export async function generateDoctorTurnResponse(
     retrievedPassagesSummary,
     primaryEmergencyNumber,
     ambulanceNumber,
+    unmappedObservations: unmappedObsStrings,
+    timelineAnchor,
+    unansweredDimensions: interviewState?.structuredHistory?.unansweredDimensions,
+    advisoryInquiryTopic: effectiveInquiry?.topic,
+    isClarificationRequest: options.isClarificationRequest,
+    clarificationGuidance: options.clarificationGuidance,
   });
 
-  // 7. Message Assembly (Last 5 turns)
-  const messages: NvidiaChatMessage[] = [{ role: "system", content: systemPrompt }];
-  for (const turn of conversationHistory.slice(-5)) {
-    const role = turn.role === "doctor" || turn.role === "assistant" ? "assistant" : "user";
-    let content = (turn.text || turn.content || "").trim();
-    if (content.length > 250) content = content.slice(0, 250) + "...";
-    if (content) messages.push({ role, content });
-  }
-
-  const lastMsg = messages[messages.length - 1];
-  if (!lastMsg || lastMsg.role !== "user" || lastMsg.content !== minimizedUtterance.trim()) {
-    messages.push({ role: "user", content: minimizedUtterance.trim() });
-  }
+  // 7. Token-Budgeted, Loss-Aware Context Assembly (pins Turn 1 anchor + timeline, compresses intermediate turns, retains recent 6 verbatim)
+  const messages = assembleLossAwareConversationContext({
+    systemPrompt,
+    conversationHistory,
+    currentUtterance: minimizedUtterance,
+    timelineAnchor,
+    maxTokensBudget: 2000,
+  });
 
   // 8. Invoke Provider with Telemetry Measurement & 1-Retry on Validator Rejection
   const t0 = Date.now();
@@ -731,21 +954,23 @@ export async function generateDoctorTurnResponse(
       let completion: { content: string; model: string; latencyMs: number };
 
       if (isGroq) {
+        const tokenLimit = activeModel.startsWith("openai/") ? 800 : 420;
         try {
           completion = await groqClient.createChatCompletion(messages, {
             model: activeModel,
-            max_tokens: 280,
+            max_tokens: tokenLimit,
             temperature: 0.2,
             timeoutMs: 12000,
           });
         } catch (groqErr: any) {
-          const backupModel = process.env.GROQ_BACKUP_MODEL || "qwen/qwen3.8-27b";
+          const backupModel = process.env.GROQ_BACKUP_MODEL || "openai/gpt-oss-120b";
           if (activeModel !== backupModel) {
-            console.warn(`[MedVoice AI] Primary model ${activeModel} failed. Retrying with ${backupModel}...`);
+            console.warn(`[MedVoice AI] Primary model ${activeModel} failed (${groqErr.message}). Retrying with backup model ${backupModel}...`);
             activeModel = backupModel;
+            const backupLimit = backupModel.startsWith("openai/") ? 800 : 420;
             completion = await groqClient.createChatCompletion(messages, {
               model: backupModel,
-              max_tokens: 280,
+              max_tokens: backupLimit,
               temperature: 0.2,
               timeoutMs: 12000,
             });
@@ -755,7 +980,7 @@ export async function generateDoctorTurnResponse(
         }
       } else {
         completion = await nvidiaClient.createChatCompletion(messages, {
-          max_tokens: 280,
+          max_tokens: 420,
           temperature: 0.2,
           timeoutMs: 20000,
         });
@@ -774,6 +999,7 @@ export async function generateDoctorTurnResponse(
         return {
           reply: effectiveFallback,
           provider: "fallback",
+          responseProvenance: "validated_fallback",
           model: activeModel,
           latencyMs: totalLatency,
           liveGenerated: false,
@@ -816,6 +1042,7 @@ export async function generateDoctorTurnResponse(
           return {
             reply: effectiveFallback,
             provider: "fallback",
+            responseProvenance: "validated_fallback",
             model: activeModel,
             latencyMs: totalLatency,
             liveGenerated: false,
@@ -834,56 +1061,54 @@ export async function generateDoctorTurnResponse(
         }
       }
 
-      // 9b. Target-Slot Validation: reject if LLM asks about wrong clinical topic
-      if (!isEmergency && effectiveInquiry?.topic && parsed.cleanReply.includes("?")) {
-        const llmDetectedTarget = detectQuestionTargetSlot(parsed.cleanReply, effectiveInquiry.topic);
-        const plannedTopic = effectiveInquiry.topic.toLowerCase();
+      // 9b. Contextual Target-Slot Validation: ensure question is clinically grounded and satisfies safety invariants
+      if (!isEmergency && parsed.cleanReply.includes("?")) {
+        const llmDetectedTarget = (parsed.intendedTargets && parsed.intendedTargets[0]) || detectQuestionTargetSlot(parsed.cleanReply, effectiveInquiry?.topic);
+        const plannedTopic = effectiveInquiry?.topic ? effectiveInquiry.topic.toLowerCase() : "";
         const detectedTopic = llmDetectedTarget.toLowerCase();
 
-        // Allow if the detected target matches the planned topic or is generic/unknown
-        const genericTargets = new Set(["information", "symptoms", "general", "unknown", "chief_complaint"]);
-        const isTargetMatch = detectedTopic === plannedTopic || genericTargets.has(detectedTopic);
+        // Also run mustAvoid/resolved-dimension/relevance check via contextual validator
+        const targetValResult = validateDoctorReplyTarget(
+          parsed.cleanReply,
+          {
+            ...plan,
+            patientUtterance: safeUtterance,
+          },
+          interviewState?.slots,
+          memory,
+          confirmedFacts,
+          deniedSymptoms,
+        );
 
-        if (!isTargetMatch) {
-          // Also run mustAvoid/resolved-dimension check via existing validator
-          const targetValResult = validateDoctorReplyTarget(
-            parsed.cleanReply,
-            plan,
-            interviewState?.slots,
-            memory,
-            confirmedFacts,
-            deniedSymptoms,
-          );
-
-          // If detected target diverges from planned AND fails target validation, reject
-          if (!targetValResult.isValid || detectedTopic !== plannedTopic) {
-            console.warn(`[MedVoice Validator] Target-slot mismatch on attempt ${attempt}: planned '${plannedTopic}', detected '${detectedTopic}'`);
-            if (attempt === 1) {
-              messages.push({
-                role: "user",
-                content: `Your question was about '${detectedTopic}' but the clinical plan requires asking about '${plannedTopic}'. Please ask specifically about ${plannedTopic}.`,
-              });
-              continue;
-            }
-            return {
-              reply: effectiveFallback,
+        if (!targetValResult.isValid) {
+          console.warn(`[MedVoice Validator] Target validation rejected on attempt ${attempt}: ${targetValResult.reason}`);
+          if (attempt === 1) {
+            messages.push({
+              role: "user",
+              content: `Correction required: ${targetValResult.reason}. Please ask specifically about an unresolved symptom or clinical dimension.`,
+            });
+            continue;
+          }
+          return {
+            reply: effectiveFallback,
+            provider: "fallback",
+            responseProvenance: "validated_fallback",
+            model: activeModel,
+            latencyMs: totalLatency,
+            liveGenerated: false,
+            fallbackReason: `target_slot_mismatch: ${targetValResult.reason}`,
+            intendedTargets: [plannedTopic || "symptoms"],
+            telemetry: {
               provider: "fallback",
               model: activeModel,
-              latencyMs: totalLatency,
               liveGenerated: false,
-              fallbackReason: `target_slot_mismatch: planned '${plannedTopic}' but LLM asked about '${detectedTopic}'`,
-              telemetry: {
-                provider: "fallback",
-                model: activeModel,
-                liveGenerated: false,
-                latencyMs: totalLatency,
-                fallbackUsed: true,
-                fallbackReason: `target_slot_mismatch: ${detectedTopic} vs ${plannedTopic}`,
-                telemetryIntegrityHash: createTelemetryIntegrityHash(turnId, "fallback", activeModel, totalLatency, new Date().toISOString()),
-                timestamp: new Date().toISOString(),
-              },
-            };
-          }
+              latencyMs: totalLatency,
+              fallbackUsed: true,
+              fallbackReason: `target_slot_mismatch: ${detectedTopic} vs ${plannedTopic}`,
+              telemetryIntegrityHash: createTelemetryIntegrityHash(turnId, "fallback", activeModel, totalLatency, new Date().toISOString()),
+              timestamp: new Date().toISOString(),
+            },
+          };
         }
       }
 
@@ -912,6 +1137,7 @@ export async function generateDoctorTurnResponse(
         return {
           reply: effectiveFallback,
           provider: "fallback",
+          responseProvenance: "validated_fallback",
           model: activeModel,
           latencyMs: totalLatency,
           liveGenerated: false,
@@ -940,12 +1166,15 @@ export async function generateDoctorTurnResponse(
       return {
         reply: parsed.cleanReply,
         provider: activeProvider,
+        responseProvenance: "llm_generative_dialogue",
         model: activeModel,
         latencyMs: totalLatency,
         liveGenerated: true,
         understoodContext: parsed.understoodContext,
         conversationalAction: parsed.conversationalAction || "INQUIRE",
         candidateFacts: parsed.candidateFacts,
+        unmappedObservations: parsed.unmappedObservations,
+        intendedTargets: parsed.intendedTargets,
         candidateSafetyConcern: parsed.candidateSafetyConcern,
         telemetry: {
           provider: activeProvider,
@@ -972,6 +1201,7 @@ export async function generateDoctorTurnResponse(
   return {
     reply: effectiveFallback,
     provider: "fallback",
+    responseProvenance: "validated_fallback",
     model: activeModel,
     latencyMs: finalLatency,
     liveGenerated: false,

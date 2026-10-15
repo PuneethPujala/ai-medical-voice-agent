@@ -13,7 +13,8 @@ export type AuditAction =
   | "ROLE_ELEVATION_ATTEMPT"
   | "PATIENT_PROFILE_ACCESSED"
   | "PATIENT_PROFILE_SAVED"
-  | "PATIENT_PROFILE_DELETED";
+  | "PATIENT_PROFILE_DELETED"
+  | "AUDIO_PLAYBACK_TELEMETRY_RECORDED";
 
 export type AuditActorRole = "patient" | "clinician" | "admin" | "system";
 

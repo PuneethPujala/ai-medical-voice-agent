@@ -277,6 +277,19 @@ export class ResponsePlanner {
       const topLower = topic.toLowerCase();
       // Generic slot repetition guard: if asked 2 or more times without being filled, mark exhausted!
       if ((slotAskCount[topLower] || 0) >= 2) return true;
+      if (topLower === "weakness_distribution" || topLower === "numbness_distribution" || topLower === "laterality") {
+        return askedQuestions.has("weakness_distribution") ||
+          askedQuestions.has("numbness_distribution") ||
+          askedQuestions.has("laterality") ||
+          Boolean((state.slots as any).laterality) ||
+          state.slots.known_facts.some(f => /laterality|distribution|head only|bilateral|unilateral|one side|both sides/i.test(f)) ||
+          Boolean(memory.askedTopics && memory.askedTopics.some(t => /distribution|laterality/i.test(t)));
+      }
+      if (topLower === "timing_pattern" || topLower === "severity_pattern") {
+        return askedQuestions.has("timing_pattern") ||
+          askedQuestions.has("severity_pattern") ||
+          state.slots.known_facts.some(f => /constant|intermittent|comes and goes|severity_pattern|timing_pattern/i.test(f));
+      }
       if (topLower === "onset_pattern") {
         return subfields.onset.onsetPattern !== "unknown" || (slotAskCount[topLower] || 0) >= 2;
       }
@@ -288,6 +301,9 @@ export class ResponsePlanner {
       }
       if (askedQuestions.has(topLower)) return true;
       if (deniedSymptoms.has(topLower)) return true;
+      if (memory.askedTopics && memory.askedTopics.includes(topLower)) return true;
+      if (memory.doNotRepeat && memory.doNotRepeat.includes(topLower)) return true;
+      if (state.resolvedQuestions && state.resolvedQuestions.some(q => q.resolvedSlot === topLower)) return true;
       if (topLower === "location" || topLower === "abdominal_location") {
         return Boolean(state.slots.location) || state.slots.known_facts.some(f => /^Abdominal location:/i.test(f));
       }
@@ -528,13 +544,25 @@ export class ResponsePlanner {
         }
       }
     } else if (hasNeuro) {
-      const weaknessReported = state.slots.neurological_signs.some(s => /weak|numb/i.test(s));
+      const weaknessReported = state.slots.neurological_signs.some(s => /weak|drift|paralysis|cannot lift/i.test(s));
+      const numbnessReported = state.slots.neurological_signs.some(s => /numb|pins|tingl/i.test(s));
+      const lateralityAddressed = isTopicAddressed("weakness_distribution") ||
+        isTopicAddressed("numbness_distribution") ||
+        isTopicAddressed("laterality") ||
+        Boolean((state.slots as any).laterality) ||
+        state.slots.known_facts.some(f => /laterality|distribution|head only|bilateral|unilateral|one side|both sides/i.test(f));
 
-      if (weaknessReported && !isTopicAddressed("weakness_distribution") && !isTopicAddressed("laterality")) {
+      if (weaknessReported && !lateralityAddressed) {
         nextInquiry = {
           topic: "weakness_distribution",
-          clinicalRationale: "Clarify whether weakness/numbness is unilateral (higher concern for focal stroke/TIA) or bilateral/generalized (more consistent with orthostatic presyncope or peripheral cause).",
-          suggestedPhrasing: "When that weakness and numbness happens, is it on one side of your body, or on both sides?",
+          clinicalRationale: "Clarify whether weakness is unilateral (focal stroke/TIA) or bilateral/generalized.",
+          suggestedPhrasing: "When that weakness happens, is it on one side of your body, or on both sides?",
+        };
+      } else if (numbnessReported && !lateralityAddressed) {
+        nextInquiry = {
+          topic: "numbness_distribution",
+          clinicalRationale: "Clarify whether numbness is unilateral/focal or non-focal/generalized.",
+          suggestedPhrasing: "Is that numbness on one side of your body or both sides, or where do you feel it?",
         };
       } else if (state.slots.neurological_signs.length === 0 && !isTopicAddressed("neurological_signs") && !deniedSymptoms.has("facial drooping")) {
         nextInquiry = {
@@ -568,6 +596,24 @@ export class ResponsePlanner {
             suggestedPhrasing: "When did you first notice these symptoms, and did they come on all of a sudden?",
           };
         }
+      } else if (!isTopicAddressed("timing_pattern") && !state.slots.known_facts.some(f => /constant|intermittent|comes and goes|severity_pattern/i.test(f))) {
+        nextInquiry = {
+          topic: "timing_pattern",
+          clinicalRationale: "Clarify whether headache and sensory symptoms are constant or fluctuate/come and go.",
+          suggestedPhrasing: "Does the headache feel constant, or does it come and go in waves?",
+        };
+      } else if (!isTopicAddressed("orthostatic_exacerbation") && !state.slots.known_facts.some(f => /stand|walk|postur|position|lying down/i.test(f))) {
+        nextInquiry = {
+          topic: "orthostatic_exacerbation",
+          clinicalRationale: "Check if headache or dizziness worsens upon standing or walking (orthostatic/positional headache).",
+          suggestedPhrasing: "Does the headache or dizziness get worse when you stand up or walk around?",
+        };
+      } else if (!isTopicAddressed("red_flag_screen") && !state.slots.known_facts.some(f => /neck stiffness|vision changes/i.test(f))) {
+        nextInquiry = {
+          topic: "red_flag_screen",
+          clinicalRationale: "Screen for secondary headache red flags (neck stiffness, vision changes, high fever).",
+          suggestedPhrasing: "Have you noticed any stiff neck, fever, or changes in your vision alongside this?",
+        };
       }
     } else {
       const hasVoiceChange = /\b(voice\s+has\s+been\s+ruined|voice\s+changed|voice\s+is\s+different|lost\s+my\s+voice|hoarse|hoarseness)\b/i.test(patientUtterance) ||

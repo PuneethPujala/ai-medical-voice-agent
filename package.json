@@ -51,7 +51,16 @@
     "test:consultation-lifecycle": "tsx tests/security-eval/consultation-lifecycle.test.ts",
     "test:chat-isolation": "tsx tests/security-eval/chat-identity-isolation.test.ts",
     "test:unknown-age": "tsx tests/triage/unknown-age-pediatric.test.ts",
-    "test:all": "npm run test:security && npm run test:durable-audit && npm run test:consultation-lifecycle && npm run test:profile-persistence && npm run test:context-chat && npm run test:chat-isolation && npm run test:unknown-age && npm run test:goldendialogue && npm run test:safetyarbiter && npm run test:safetyintegration && npm run test:remediations && npm run test:severity && npm run test:voicestate && npm run test:subfield && npm run test:interpreter && npm run test:planner && npm run test:engine && npm run test:adversarial && npm run test:multiclause && npm run test:provenance && npm run test:rag && npm run test:explanatory && npm run test:manager && npm run test:board && npm run test:clinical && npm run test:interview && npm run test:bargein && npm run test:discussion && npm run test:acceptance && npm run test:fhir && npm run test:dispatch"
+    "test:question-state": "tsx tests/triage/question-state-repetition.test.ts",
+    "test:dialogue-reasoning": "tsx tests/triage/dialogue-reasoning-eval.ts",
+    "test:false-dispatch": "tsx tests/triage/false-dispatch-prevention.test.ts",
+    "test:clarify-dialogue": "tsx tests/triage/clarify-natural-dialogue.test.ts",
+    "test:fact-reconciliation": "tsx tests/triage/structured-fact-reconciliation.test.ts",
+    "test:loss-aware-context": "tsx tests/triage/loss-aware-context-assembler.test.ts",
+    "test:concurrency-durable": "tsx tests/security-eval/optimistic-concurrency-durable-state.test.ts",
+    "test:atomic-concurrency": "tsx tests/security-eval/atomic-concurrency-idempotency.test.ts",
+    "test:voice-telemetry": "tsx tests/security-eval/voice-telemetry-lifecycle.test.ts",
+    "test:all": "npm run test:security && npm run test:durable-audit && npm run test:consultation-lifecycle && npm run test:concurrency-durable && npm run test:atomic-concurrency && npm run test:voice-telemetry && npm run test:profile-persistence && npm run test:context-chat && npm run test:chat-isolation && npm run test:unknown-age && npm run test:question-state && npm run test:dialogue-reasoning && npm run test:false-dispatch && npm run test:clarify-dialogue && npm run test:fact-reconciliation && npm run test:loss-aware-context && npm run test:goldendialogue && npm run test:safetyarbiter && npm run test:safetyintegration && npm run test:remediations && npm run test:severity && npm run test:voicestate && npm run test:subfield && npm run test:interpreter && npm run test:planner && npm run test:engine && npm run test:adversarial && npm run test:multiclause && npm run test:provenance && npm run test:rag && npm run test:explanatory && npm run test:manager && npm run test:board && npm run test:clinical && npm run test:interview && npm run test:bargein && npm run test:discussion && npm run test:acceptance && npm run test:fhir && npm run test:dispatch"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

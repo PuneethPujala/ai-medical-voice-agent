@@ -1033,7 +1033,11 @@ function extractVerbatimSymptomPhrase(text: string, defaultPhrase = "chest pain"
       const symName = sym ? sym.name : "that new symptom";
 
       if (symName.includes("vision")) {
-        const reply = "Vision changes alongside unilateral weakness and facial drooping are critical neurological signs. Did the blurry vision start at the exact same moment as the weakness, or did it begin earlier?";
+        const hasWeaknessOrDroop = state.slots.neurological_signs.some(s => /weak|droop|asymmetry|paralysis/i.test(s)) ||
+          /\b(facial\s+droop|arm\s+weakness|leg\s+weakness|weakness)\b/i.test(state.cumulativeTranscript);
+        const reply = hasWeaknessOrDroop
+          ? "Vision changes alongside unilateral weakness and facial drooping are critical neurological signs. Did the blurry vision start at the exact same moment as the weakness, or did it begin earlier?"
+          : "Vision changes require careful assessment. Did the blurry vision start suddenly out of nowhere, or did it develop gradually?";
         return {
           action: "EXPLORE_NEW_SYMPTOM",
           spokenDoctorReply: this.guardAgainstRepetition(reply, recentReplies, "vision symptom"),
@@ -1043,7 +1047,11 @@ function extractVerbatimSymptomPhrase(text: string, defaultPhrase = "chest pain"
       }
 
       if (symName.includes("burning")) {
-        const reply = "That burning sensation on your head could be related to nerve irritation, but the facial drooping and arm weakness remain our primary urgent concern. Did that burning feeling start at the exact same time as the weakness, or come on before?";
+        const hasWeaknessOrDroop = state.slots.neurological_signs.some(s => /weak|droop|asymmetry|paralysis/i.test(s)) ||
+          /\b(facial\s+droop|arm\s+weakness|leg\s+weakness|weakness)\b/i.test(state.cumulativeTranscript);
+        const reply = hasWeaknessOrDroop
+          ? "That burning sensation on your head could be related to nerve irritation, but the facial drooping and arm weakness remain our primary urgent concern. Did that burning feeling start at the exact same time as the weakness, or come on before?"
+          : "That burning sensation on your head could be related to nerve irritation. Did that burning feeling start suddenly, or build up gradually?";
         return {
           action: "EXPLORE_NEW_SYMPTOM",
           spokenDoctorReply: this.guardAgainstRepetition(reply, recentReplies, "burning head"),
@@ -1053,7 +1061,11 @@ function extractVerbatimSymptomPhrase(text: string, defaultPhrase = "chest pain"
       }
 
       if (symName.includes("headache")) {
-        const reply = "A severe headache alongside weakness and facial drooping increases our urgency. Did this headache hit you suddenly like a clap of thunder, or did it build up gradually?";
+        const hasWeaknessOrDroop = state.slots.neurological_signs.some(s => /weak|droop|asymmetry|paralysis/i.test(s)) ||
+          /\b(facial\s+droop|arm\s+weakness|leg\s+weakness|weakness)\b/i.test(state.cumulativeTranscript);
+        const reply = hasWeaknessOrDroop
+          ? "A severe headache alongside weakness and facial drooping increases our urgency. Did this headache hit you suddenly like a clap of thunder, or did it build up gradually?"
+          : "To evaluate this headache carefully: did it hit you suddenly like a clap of thunder, or did it build up gradually?";
         return {
           action: "EXPLORE_NEW_SYMPTOM",
           spokenDoctorReply: this.guardAgainstRepetition(reply, recentReplies, "headache"),
@@ -1199,7 +1211,10 @@ function extractVerbatimSymptomPhrase(text: string, defaultPhrase = "chest pain"
         specialty: "Internal Medicine & Primary Triage"
       };
     }
-    if (!state.slots.severity) {
+    const hasSeverityOrPattern = Boolean(state.slots.severity) ||
+      Boolean(state.slots.character) ||
+      state.slots.known_facts.some(f => /constant|intermittent|severity|\d+\/10|dull|sharp|throbbing|severe|postural/i.test(f));
+    if (!hasSeverityOrPattern) {
       const defaultReply = "How would you describe the feeling—is it a dull ache, sharp pain, or throbbing, and is it constant or does it come and go?";
       return {
         action: "ADVANCE_INTERVIEW",
@@ -1208,7 +1223,11 @@ function extractVerbatimSymptomPhrase(text: string, defaultPhrase = "chest pain"
         specialty: "Internal Medicine & Primary Triage"
       };
     }
-    const defaultReply = "Thank you for that context. While there are no immediate red flags, I cannot perform a physical examination over voice. Have you noticed any swelling, redness, or numbness?";
+    const hasNumbness = state.slots.neurological_signs.some(s => /numb/i.test(s)) ||
+      state.slots.known_facts.some(f => /numb/i.test(f));
+    const defaultReply = hasNumbness
+      ? "Thank you for that context. While there are no focal red flags right now, I cannot perform a physical examination over voice. Have you had any neck stiffness, fever, or vision changes along with this?"
+      : "Thank you for that context. While there are no immediate red flags, I cannot perform a physical examination over voice. Have you noticed any swelling, redness, or numbness?";
     return {
       action: "ADVANCE_INTERVIEW",
       spokenDoctorReply: this.guardAgainstRepetition(defaultReply, recentReplies, "general intake follow-up"),
@@ -1232,7 +1251,7 @@ function extractVerbatimSymptomPhrase(text: string, defaultPhrase = "chest pain"
       return candidateReply;
     }
 
-    const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9\s]/g, "").trim();
+    const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
     const candNorm = normalize(candidateReply);
     const candTokens = new Set(candNorm.split(/\s+/).filter(w => w.length > 2));
 
@@ -1240,13 +1259,14 @@ function extractVerbatimSymptomPhrase(text: string, defaultPhrase = "chest pain"
       const prevNorm = normalize(prev);
       if (prevNorm === candNorm) return true;
 
-      // Jaccard similarity
+      // Jaccard similarity and directional containment
       const prevTokens = new Set(prevNorm.split(/\s+/).filter(w => w.length > 2));
       let intersection = 0;
       candTokens.forEach(t => { if (prevTokens.has(t)) intersection++; });
       const union = new Set([...candTokens, ...prevTokens]).size;
       const jaccard = union > 0 ? intersection / union : 0;
-      return jaccard > 0.72;
+      const containment = candTokens.size > 0 ? intersection / candTokens.size : 0;
+      return jaccard > 0.55 || containment > 0.65;
     });
 
     if (!isDuplicate) {
@@ -1272,6 +1292,11 @@ function extractVerbatimSymptomPhrase(text: string, defaultPhrase = "chest pain"
       "timeline shift": [
         "I want to be certain we have your timeline correct. Are you describing symptoms that occurred over several days, or did this acute episode begin earlier?",
         "Let's make sure I understand the sequence. Are you saying the symptoms persisted over the following days, or did a new symptom develop later on?"
+      ],
+      "general severity inquiry": [
+        "To evaluate this carefully, have you noticed if changing positions, lying down, or standing up makes this better or worse?",
+        "Have you had any neck stiffness, vision changes, or sensitivity to light or loud sounds along with this?",
+        "How would you rate the intensity on a scale of 0 to 10, and does it interfere with resting or walking?"
       ],
       "general intake follow-up": [
         "Thank you for that context. While there are no immediate red flags, are you noticing any lightheadedness or changes when you stand up?",

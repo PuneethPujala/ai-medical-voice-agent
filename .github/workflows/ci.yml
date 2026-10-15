@@ -50,6 +50,9 @@ jobs:
           npx tsx tests/security-eval/cors-rbac-audit.test.ts
           npx tsx tests/security-eval/consultation-lifecycle.test.ts
           npx tsx tests/security-eval/chat-identity-isolation.test.ts
+          npx tsx tests/security-eval/optimistic-concurrency-durable-state.test.ts
+          npx tsx tests/security-eval/atomic-concurrency-idempotency.test.ts
+          npx tsx tests/security-eval/voice-telemetry-lifecycle.test.ts
 
       - name: Gate 4 — Clinical Safety, Red-Flag Pre-Arbiter & HL7 FHIR R4 Conformance
         run: |

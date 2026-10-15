@@ -343,12 +343,24 @@ export interface AgentRequest {
 }
 
 /**
+ * QUESTION SLOT STATUS SCHEMA
+ * Tracks the resolution of individual facts inside single or compound questions.
+ */
+export interface QuestionSlotStatus {
+  slot: string;
+  status: "answered" | "explicitly_denied" | "unknown" | "ambiguous" | "pending";
+  value?: string;
+  resolvedAtTurn?: number;
+}
+
+/**
  * PENDING QUESTION SCHEMA
  * The active question posed to the patient by Lead Clinician Dr. Sarah Chen.
  */
 export interface PendingQuestion {
   id: string;
   targetSlot: string;
+  targetSlots?: string[];
   askedBy: "sarah" | "marcus" | "arthur" | "elena" | "rajiv";
   doctorName: string;
   patientFacingSpeaker: "sarah";
@@ -356,7 +368,83 @@ export interface PendingQuestion {
   purpose: string;
   required: boolean;
   priority: "critical" | "high" | "normal";
-  status: "pending" | "resolved" | "ambiguous" | "superseded";
+  status: "pending" | "resolved" | "partially_resolved" | "ambiguous" | "superseded";
   createdAt: string;
   caseVersion: number;
+  slotStatuses?: Record<string, QuestionSlotStatus>;
+}
+
+/**
+ * 6-DIMENSIONAL EPISTEMIC CLINICAL FACT
+ * Decouples clinical assertion status from question resolution status.
+ */
+export type FactAssertionStatus = "present" | "absent" | "uncertain";
+export type FactTemporality = "current" | "historical" | "resolved";
+export type FactAttribution = "patient" | "third_party" | "caregiver_report";
+export type FactAssessmentCoverage = "unassessed" | "partially_assessed" | "assessed";
+
+export interface AttributedClinicalFactV3 {
+  id: string;
+  concept: string;
+  assertionStatus: FactAssertionStatus;
+  temporality: FactTemporality;
+  attribution: FactAttribution;
+  coverage: FactAssessmentCoverage;
+  sourceUtterance: string;
+  sourceSpeaker: "patient" | "caregiver" | "clinician";
+  turnId: number;
+  confidence: "deterministic_flag" | "calibrated_score" | "explicit_unknown";
+  timestamp: string;
+}
+
+/**
+ * OPEN-WORLD UNMAPPED OBSERVATION
+ * Preserves raw patient descriptions without forcing them into existing slots or promoting them to facts.
+ */
+export interface UnmappedObservation {
+  id: string;
+  rawEvidence: string;
+  inferredConcept?: string;
+  status: "unverified_proposal" | "acknowledged_by_clinician";
+  turnId: number;
+  timestamp: string;
+}
+
+/**
+ * QUESTION RESOLUTION STATUS
+ */
+export type QuestionResolutionStatus =
+  | "unanswered"
+  | "partially_answered"
+  | "answered"
+  | "awaiting_clarification"
+  | "superseded";
+
+/**
+ * CONVERSATIONAL ACTION PALETTE
+ */
+export type ConversationalActionType =
+  | "INQUIRE"
+  | "CLARIFY_AMBIGUITY"
+  | "EXPLAIN_RATIONALE"
+  | "ACKNOWLEDGE_AND_UPDATE"
+  | "SUMMARIZE_AND_ALIGN"
+  | "CONVENE_BOARD"
+  | "EMERGENCY_ESCALATION";
+
+/**
+ * DELIVERED TURN RECORD
+ * Distinguishes generated response, delivered response, and playback status.
+ */
+export interface DeliveredTurnRecord {
+  turnId: number;
+  deliveredText: string;
+  conversationalAction: ConversationalActionType;
+  intendedTargets: string[];
+  targetResolutionStatuses: Record<string, QuestionResolutionStatus>;
+  relevantEvidenceRefs: string[];
+  caseVersion: number;
+  timestamp: string;
+  audioDeliveryStatus?: "pending" | "synthesizing" | "delivered" | "interrupted" | "failed";
+  audioDeliveryResult?: { playedDurationMs?: number; confirmedAt?: string };
 }
