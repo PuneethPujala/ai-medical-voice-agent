@@ -468,7 +468,7 @@ export async function POST(request: Request) {
       );
 
       if (isIdempotencyMatch) {
-        // Material payload mismatch check: If the same idempotency key is submitted with conflicting critical intent
+        // Material payload mismatch check: If the same idempotency key or encounter ID is submitted with conflicting critical intent
         const doctorMismatch = Boolean(body.doctorId && existingRecord.doctorId && body.doctorId !== existingRecord.doctorId);
         const complaintMismatch = Boolean(
           body.chiefComplaint &&
@@ -476,8 +476,13 @@ export async function POST(request: Request) {
           body.chiefComplaint.trim().toLowerCase() !== existingRecord.chiefComplaint.trim().toLowerCase()
         );
         const specialtyMismatch = Boolean(body.specialty && existingRecord.specialty && body.specialty !== existingRecord.specialty);
+        const patientMismatch = Boolean(
+          body.patientName &&
+          existingRecord.patientName &&
+          body.patientName.trim().toLowerCase() !== existingRecord.patientName.trim().toLowerCase()
+        );
 
-        if (doctorMismatch || complaintMismatch || specialtyMismatch) {
+        if (doctorMismatch || complaintMismatch || specialtyMismatch || patientMismatch) {
           return NextResponse.json(
             {
               success: false,
@@ -635,8 +640,8 @@ export async function POST(request: Request) {
               .update(consultationsTable)
               .set({
                 status: existingRecord.status,
-                approvedAt: existingRecord.approvedAt || null,
-                approvedBy: existingRecord.approvedBy || null,
+                approvedAt: existingRecord.approvedAt ?? null,
+                approvedBy: existingRecord.approvedBy ?? null,
               })
               .where(eq(consultationsTable.id, id));
           } catch {}
@@ -738,8 +743,13 @@ export async function POST(request: Request) {
               body.chiefComplaint.trim().toLowerCase() !== existing.chiefComplaint.trim().toLowerCase()
             );
             const specialtyMismatch = Boolean(body.specialty && existing.specialty && body.specialty !== existing.specialty);
+            const patientMismatch = Boolean(
+              body.patientName &&
+              existing.patientName &&
+              body.patientName.trim().toLowerCase() !== existing.patientName.trim().toLowerCase()
+            );
 
-            if (doctorMismatch || complaintMismatch || specialtyMismatch) {
+            if (doctorMismatch || complaintMismatch || specialtyMismatch || patientMismatch) {
               return NextResponse.json(
                 {
                   success: false,
@@ -773,7 +783,10 @@ export async function POST(request: Request) {
         (c) => c.id === id || (body.idempotencyKey && c.userId === effectiveUserId && c.idempotencyKey === body.idempotencyKey)
       );
       if (existingMem) {
-        if (body.idempotencyKey && existingMem.idempotencyKey === body.idempotencyKey) {
+        if (
+          (body.idempotencyKey && existingMem.idempotencyKey === body.idempotencyKey) ||
+          (body.id && existingMem.id === body.id)
+        ) {
           const doctorMismatch = Boolean(body.doctorId && existingMem.doctorId && body.doctorId !== existingMem.doctorId);
           const complaintMismatch = Boolean(
             body.chiefComplaint &&
@@ -781,8 +794,13 @@ export async function POST(request: Request) {
             body.chiefComplaint.trim().toLowerCase() !== existingMem.chiefComplaint.trim().toLowerCase()
           );
           const specialtyMismatch = Boolean(body.specialty && existingMem.specialty && body.specialty !== existingMem.specialty);
+          const patientMismatch = Boolean(
+            body.patientName &&
+            existingMem.patientName &&
+            body.patientName.trim().toLowerCase() !== existingMem.patientName.trim().toLowerCase()
+          );
 
-          if (doctorMismatch || complaintMismatch || specialtyMismatch) {
+          if (doctorMismatch || complaintMismatch || specialtyMismatch || patientMismatch) {
             return NextResponse.json(
               {
                 success: false,

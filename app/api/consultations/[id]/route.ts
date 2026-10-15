@@ -364,22 +364,22 @@ export async function PATCH(
     // Capture full previous state snapshot for compensating rollback if audit fails
     const previousSnapshot: any = {
       status: record.status,
-      approvedAt: record.approvedAt || null,
-      approvedBy: record.approvedBy || null,
-      caseVersion: record.caseVersion || 1,
-      soapSubjective: record.soapSubjective || null,
-      soapObjective: record.soapObjective || null,
-      soapAssessment: record.soapAssessment || null,
-      soapPlan: record.soapPlan || null,
-      interviewState: record.interviewState || null,
-      deliveredTurnRecords: record.deliveredTurnRecords || null,
-      attributedFacts: record.attributedFacts || null,
-      unmappedObservations: record.unmappedObservations || null,
-      idempotencyKey: record.idempotencyKey || null,
+      approvedAt: record.approvedAt ?? null,
+      approvedBy: record.approvedBy ?? null,
+      caseVersion: record.caseVersion ?? 1,
+      soapSubjective: record.soapSubjective ?? null,
+      soapObjective: record.soapObjective ?? null,
+      soapAssessment: record.soapAssessment ?? null,
+      soapPlan: record.soapPlan ?? null,
+      interviewState: record.interviewState ?? null,
+      deliveredTurnRecords: record.deliveredTurnRecords ?? null,
+      attributedFacts: record.attributedFacts ?? null,
+      unmappedObservations: record.unmappedObservations ?? null,
+      idempotencyKey: record.idempotencyKey ?? null,
     };
     const previousStatus = record.status;
-    const previousApprovedAt = record.approvedAt || null;
-    const previousApprovedBy = record.approvedBy || null;
+    const previousApprovedAt = record.approvedAt ?? null;
+    const previousApprovedBy = record.approvedBy ?? null;
 
     const nextVersion = submittedVersion !== undefined ? submittedVersion : (expectedVersion + 1);
 

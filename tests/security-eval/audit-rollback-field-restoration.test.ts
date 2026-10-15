@@ -33,6 +33,8 @@ async function runAuditRollbackFieldRestorationTests() {
   const encounterId = `ENC-ROLLBACK-${Date.now()}`;
   const dbClient = getDb();
 
+  console.log(`[Datastore Mode]: ${dbClient ? `LIVE NEON POSTGRESQL (${new URL(process.env.DATABASE_URL!).host})` : "IN-MEMORY FALLBACK"}`);
+
   try {
     // -------------------------------------------------------------------------
     // STEP 1: Create initial consultation with multiple baseline fields
@@ -87,6 +89,7 @@ async function runAuditRollbackFieldRestorationTests() {
       body: JSON.stringify({
         expectedVersion: 1,
         soapSubjective: "Clinician Confirmed Subjective: Unilateral throbbing pain.",
+        soapPlan: "", // Explicit empty string to verify falsy value preservation under nullish coalescing
       }),
     });
 
@@ -197,8 +200,8 @@ async function runAuditRollbackFieldRestorationTests() {
     );
     assert.strictEqual(
       currentRecord.soapPlan,
-      "Baseline Plan: Sumatriptan 50mg, dark room, hydration.",
-      "Plan field restored"
+      "",
+      "Plan field restored to exact empty string (nullish coalescing ?? preserved falsy value)"
     );
 
     // 4. Clinical State & Attributes

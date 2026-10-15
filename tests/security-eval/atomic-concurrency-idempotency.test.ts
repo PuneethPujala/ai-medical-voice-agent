@@ -283,6 +283,51 @@ async function runAtomicConcurrencyTests() {
     assert.strictEqual(doctorMismatchJson.code, "IDEMPOTENCY_PAYLOAD_MISMATCH");
     console.log("  ✓ Doctor-only mismatch guard verified (422 IDEMPOTENCY_PAYLOAD_MISMATCH).");
 
+    // Test 4c: Patient-name mismatch (same key, same doctor & complaint, conflicting patient)
+    console.log("  [4c] Testing patient-name mismatch on key replay...");
+    const patientMismatchReq = new Request("https://medvoice.org/api/consultations", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...createTestHeaders("patient", userAlice),
+      },
+      body: JSON.stringify({
+        id: `ENC-MISMATCH-PATIENT-${Date.now()}`,
+        patientName: "Impostor Patient Name", // Conflicting patient!
+        doctorId: "dr-sarah-chen",
+        doctorName: "Dr. Sarah Chen, MD",
+        specialty: "Internal Medicine",
+        chiefComplaint: "Alice complaint",
+        idempotencyKey: tenantKey,
+      }),
+    });
+    const patientMismatchRes = await postConsultation(patientMismatchReq);
+    assert.strictEqual(patientMismatchRes.status, 422, "Patient-name mismatch must return 422");
+    const patientMismatchJson = await patientMismatchRes.json();
+    assert.strictEqual(patientMismatchJson.code, "IDEMPOTENCY_PAYLOAD_MISMATCH");
+    console.log("  ✓ Patient-name mismatch guard verified (422 IDEMPOTENCY_PAYLOAD_MISMATCH).");
+
+    // Test 4d: Encounter ID retry mismatch without idempotency key (repeated POST by ID with altered data)
+    console.log("  [4d] Testing encounter ID retry mismatch without idempotencyKey...");
+    const encRetryMismatchReq = new Request("https://medvoice.org/api/consultations", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...createTestHeaders("patient", userAlice),
+      },
+      body: JSON.stringify({
+        id: encAlice, // Re-submitting Alice's existing encounter ID directly
+        patientName: "Conflicting Name For Existing ID", // Altered patient!
+        doctorId: "dr-sarah-chen",
+        chiefComplaint: "Alice complaint",
+      }),
+    });
+    const encRetryMismatchRes = await postConsultation(encRetryMismatchReq);
+    assert.strictEqual(encRetryMismatchRes.status, 422, "Encounter ID retry with conflicting patient must return 422");
+    const encRetryMismatchJson = await encRetryMismatchRes.json();
+    assert.strictEqual(encRetryMismatchJson.code, "IDEMPOTENCY_PAYLOAD_MISMATCH");
+    console.log("  ✓ Encounter ID retry mismatch guard verified (422 IDEMPOTENCY_PAYLOAD_MISMATCH).");
+
     console.log("\n================================================================================");
     console.log("  ALL ATOMIC CAS & DATABASE-ENFORCED IDEMPOTENCY TESTS PASSED (100% VERIFIED)  ");
     console.log("================================================================================");
