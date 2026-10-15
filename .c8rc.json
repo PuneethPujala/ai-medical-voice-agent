@@ -1,0 +1,36 @@
+{
+  "all": true,
+  "extension": [
+    ".ts",
+    ".tsx",
+    ".js"
+  ],
+  "include": [
+    "lib/**",
+    "config/**",
+    "app/api/**"
+  ],
+  "exclude": [
+    "**/*.d.ts",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "tests/**",
+    "scripts/**",
+    "node_modules/**",
+    ".next/**",
+    "coverage/**"
+  ],
+  "reporter": [
+    "text",
+    "text-summary",
+    "lcov",
+    "cobertura"
+  ],
+  "reports-dir": "./coverage",
+  "clean": true,
+  "check-coverage": true,
+  "lines": 60,
+  "branches": 65,
+  "functions": 75,
+  "statements": 60
+}
