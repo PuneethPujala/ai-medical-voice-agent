@@ -245,6 +245,66 @@ export async function GET(request: Request) {
   }
 }
 
+/**
+ * Idempotency Payload Mismatch Validator
+ * Enforces equivalent material-payload consistency across:
+ * 1. Initial State Machine Rule 0 idempotency match check
+ * 2. Neon PostgreSQL unique index conflict resolution
+ * 3. In-memory datastore fallback
+ */
+function checkIdempotencyPayloadMismatch(
+  incomingBody: any,
+  existing: {
+    userId?: string | null;
+    patientName?: string | null;
+    doctorId?: string | null;
+    specialty?: string | null;
+    chiefComplaint?: string | null;
+  },
+  effectiveUserId: string
+): { hasMismatch: boolean; reason?: string } {
+  // 1. Stable patient / tenant identity check:
+  // Must match the server-authoritative owner ID. Cross-tenant or cross-patient ID replay is strictly prohibited.
+  if (existing.userId && effectiveUserId && existing.userId !== effectiveUserId) {
+    return { hasMismatch: true, reason: "Patient user identity conflict" };
+  }
+
+  // 2. Patient name check:
+  // Catches altered names, as well as blank/empty strings attempting to bypass identity checks
+  if (incomingBody.patientName !== undefined) {
+    const normIncoming = typeof incomingBody.patientName === "string" ? incomingBody.patientName.trim().toLowerCase() : "";
+    const normExisting = typeof existing.patientName === "string" ? existing.patientName.trim().toLowerCase() : "";
+    if (normIncoming !== normExisting && (normIncoming !== "" || normExisting !== "")) {
+      return { hasMismatch: true, reason: "Patient name mismatch" };
+    }
+  }
+
+  // 3. Doctor assignment check
+  if (incomingBody.doctorId !== undefined && existing.doctorId !== undefined) {
+    if (String(incomingBody.doctorId).trim() !== String(existing.doctorId).trim()) {
+      return { hasMismatch: true, reason: "Doctor mismatch" };
+    }
+  }
+
+  // 4. Clinical specialty check
+  if (incomingBody.specialty !== undefined && existing.specialty !== undefined) {
+    if (String(incomingBody.specialty).trim().toLowerCase() !== String(existing.specialty).trim().toLowerCase()) {
+      return { hasMismatch: true, reason: "Specialty mismatch" };
+    }
+  }
+
+  // 5. Chief complaint check (including empty/cleared complaint attempts)
+  if (incomingBody.chiefComplaint !== undefined) {
+    const normIncoming = typeof incomingBody.chiefComplaint === "string" ? incomingBody.chiefComplaint.trim().toLowerCase() : "";
+    const normExisting = typeof existing.chiefComplaint === "string" ? existing.chiefComplaint.trim().toLowerCase() : "";
+    if (normIncoming !== normExisting && (normIncoming !== "" || normExisting !== "")) {
+      return { hasMismatch: true, reason: "Chief complaint mismatch" };
+    }
+  }
+
+  return { hasMismatch: false };
+}
+
 export async function POST(request: Request) {
   try {
     const auth = await getAuthContext(request);
@@ -468,25 +528,13 @@ export async function POST(request: Request) {
       );
 
       if (isIdempotencyMatch) {
-        // Material payload mismatch check: If the same idempotency key or encounter ID is submitted with conflicting critical intent
-        const doctorMismatch = Boolean(body.doctorId && existingRecord.doctorId && body.doctorId !== existingRecord.doctorId);
-        const complaintMismatch = Boolean(
-          body.chiefComplaint &&
-          existingRecord.chiefComplaint &&
-          body.chiefComplaint.trim().toLowerCase() !== existingRecord.chiefComplaint.trim().toLowerCase()
-        );
-        const specialtyMismatch = Boolean(body.specialty && existingRecord.specialty && body.specialty !== existingRecord.specialty);
-        const patientMismatch = Boolean(
-          body.patientName &&
-          existingRecord.patientName &&
-          body.patientName.trim().toLowerCase() !== existingRecord.patientName.trim().toLowerCase()
-        );
-
-        if (doctorMismatch || complaintMismatch || specialtyMismatch || patientMismatch) {
+        // Material payload mismatch check: Unified validator enforces patient identity, name, doctor, specialty, and complaint consistency
+        const mismatch = checkIdempotencyPayloadMismatch(body, existingRecord, effectiveUserId);
+        if (mismatch.hasMismatch) {
           return NextResponse.json(
             {
               success: false,
-              error: "Idempotency key payload mismatch: Request parameters conflict with previously recorded encounter for this key.",
+              error: `Idempotency key payload mismatch: Request parameters conflict with previously recorded encounter (${mismatch.reason}).`,
               code: "IDEMPOTENCY_PAYLOAD_MISMATCH",
             },
             { status: 422 }
@@ -736,24 +784,12 @@ export async function POST(request: Request) {
             .limit(1);
           if (reFetched.length > 0) {
             const existing = reFetched[0];
-            const doctorMismatch = Boolean(body.doctorId && existing.doctorId && body.doctorId !== existing.doctorId);
-            const complaintMismatch = Boolean(
-              body.chiefComplaint &&
-              existing.chiefComplaint &&
-              body.chiefComplaint.trim().toLowerCase() !== existing.chiefComplaint.trim().toLowerCase()
-            );
-            const specialtyMismatch = Boolean(body.specialty && existing.specialty && body.specialty !== existing.specialty);
-            const patientMismatch = Boolean(
-              body.patientName &&
-              existing.patientName &&
-              body.patientName.trim().toLowerCase() !== existing.patientName.trim().toLowerCase()
-            );
-
-            if (doctorMismatch || complaintMismatch || specialtyMismatch || patientMismatch) {
+            const mismatch = checkIdempotencyPayloadMismatch(body, existing, effectiveUserId);
+            if (mismatch.hasMismatch) {
               return NextResponse.json(
                 {
                   success: false,
-                  error: "Idempotency key payload mismatch: Request parameters conflict with previously recorded encounter for this key.",
+                  error: `Idempotency key payload mismatch: Request parameters conflict with previously recorded encounter (${mismatch.reason}).`,
                   code: "IDEMPOTENCY_PAYLOAD_MISMATCH",
                 },
                 { status: 422 }
@@ -787,24 +823,12 @@ export async function POST(request: Request) {
           (body.idempotencyKey && existingMem.idempotencyKey === body.idempotencyKey) ||
           (body.id && existingMem.id === body.id)
         ) {
-          const doctorMismatch = Boolean(body.doctorId && existingMem.doctorId && body.doctorId !== existingMem.doctorId);
-          const complaintMismatch = Boolean(
-            body.chiefComplaint &&
-            existingMem.chiefComplaint &&
-            body.chiefComplaint.trim().toLowerCase() !== existingMem.chiefComplaint.trim().toLowerCase()
-          );
-          const specialtyMismatch = Boolean(body.specialty && existingMem.specialty && body.specialty !== existingMem.specialty);
-          const patientMismatch = Boolean(
-            body.patientName &&
-            existingMem.patientName &&
-            body.patientName.trim().toLowerCase() !== existingMem.patientName.trim().toLowerCase()
-          );
-
-          if (doctorMismatch || complaintMismatch || specialtyMismatch || patientMismatch) {
+          const mismatch = checkIdempotencyPayloadMismatch(body, existingMem, effectiveUserId);
+          if (mismatch.hasMismatch) {
             return NextResponse.json(
               {
                 success: false,
-                error: "Idempotency key payload mismatch: Request parameters conflict with previously recorded encounter for this key.",
+                error: `Idempotency key payload mismatch: Request parameters conflict with previously recorded encounter (${mismatch.reason}).`,
                 code: "IDEMPOTENCY_PAYLOAD_MISMATCH",
               },
               { status: 422 }

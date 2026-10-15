@@ -328,6 +328,51 @@ async function runAtomicConcurrencyTests() {
     assert.strictEqual(encRetryMismatchJson.code, "IDEMPOTENCY_PAYLOAD_MISMATCH");
     console.log("  ✓ Encounter ID retry mismatch guard verified (422 IDEMPOTENCY_PAYLOAD_MISMATCH).");
 
+    // Test 4e: Empty/blank patient name cannot bypass identity constraint on named encounter
+    console.log("  [4e] Testing empty/blank patient name attempt to bypass identity...");
+    const emptyPatientMismatchReq = new Request("https://medvoice.org/api/consultations", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...createTestHeaders("patient", userAlice),
+      },
+      body: JSON.stringify({
+        id: `ENC-MISMATCH-EMPTY-${Date.now()}`,
+        patientName: "", // Empty string attempt!
+        doctorId: "dr-sarah-chen",
+        chiefComplaint: "Alice complaint",
+        idempotencyKey: tenantKey,
+      }),
+    });
+    const emptyPatientMismatchRes = await postConsultation(emptyPatientMismatchReq);
+    assert.strictEqual(emptyPatientMismatchRes.status, 422, "Empty patient name must return 422");
+    const emptyPatientMismatchJson = await emptyPatientMismatchRes.json();
+    assert.strictEqual(emptyPatientMismatchJson.code, "IDEMPOTENCY_PAYLOAD_MISMATCH");
+    console.log("  ✓ Empty/blank patient name guard verified (422 IDEMPOTENCY_PAYLOAD_MISMATCH).");
+
+    // Test 4f: Specialty mismatch
+    console.log("  [4f] Testing specialty mismatch on key replay...");
+    const specialtyMismatchReq = new Request("https://medvoice.org/api/consultations", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...createTestHeaders("patient", userAlice),
+      },
+      body: JSON.stringify({
+        id: `ENC-MISMATCH-SPEC-${Date.now()}`,
+        patientName: "Alice Tenant",
+        doctorId: "dr-sarah-chen",
+        specialty: "Orthopedics", // Conflicting specialty!
+        chiefComplaint: "Alice complaint",
+        idempotencyKey: tenantKey,
+      }),
+    });
+    const specialtyMismatchRes = await postConsultation(specialtyMismatchReq);
+    assert.strictEqual(specialtyMismatchRes.status, 422, "Specialty mismatch must return 422");
+    const specialtyMismatchJson = await specialtyMismatchRes.json();
+    assert.strictEqual(specialtyMismatchJson.code, "IDEMPOTENCY_PAYLOAD_MISMATCH");
+    console.log("  ✓ Specialty mismatch guard verified (422 IDEMPOTENCY_PAYLOAD_MISMATCH).");
+
     console.log("\n================================================================================");
     console.log("  ALL ATOMIC CAS & DATABASE-ENFORCED IDEMPOTENCY TESTS PASSED (100% VERIFIED)  ");
     console.log("================================================================================");
