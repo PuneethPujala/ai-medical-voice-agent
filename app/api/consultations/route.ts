@@ -442,13 +442,25 @@ export async function POST(request: Request) {
         );
       }
 
-      // STATE MACHINE RULE 4: Optimistic Concurrency Check
-      if (body.version !== undefined && existingRecord.version !== undefined) {
-        if (body.version < existingRecord.version) {
+      // STATE MACHINE RULE 0: Idempotent Retry Check
+      if (body.idempotencyKey && existingRecord.idempotencyKey && body.idempotencyKey === existingRecord.idempotencyKey) {
+        return NextResponse.json({
+          success: true,
+          consultation: existingRecord,
+          isExisting: true,
+          isIdempotentRetry: true,
+        });
+      }
+
+      // STATE MACHINE RULE 4: Optimistic Concurrency Check (caseVersion & version)
+      const submittedVersion = body.caseVersion !== undefined ? Number(body.caseVersion) : (body.version !== undefined ? Number(body.version) : undefined);
+      const existingVersion = existingRecord.caseVersion !== undefined ? Number(existingRecord.caseVersion) : (existingRecord.version !== undefined ? Number(existingRecord.version) : undefined);
+      if (submittedVersion !== undefined && existingVersion !== undefined) {
+        if (submittedVersion < existingVersion) {
           return NextResponse.json(
             {
               success: false,
-              error: `Concurrency conflict: Submitted version (${body.version}) is behind datastore version (${existingRecord.version}).`,
+              error: `Concurrency conflict: Submitted version (${submittedVersion}) is behind datastore version (${existingVersion}).`,
               code: "CONCURRENCY_CONFLICT",
             },
             { status: 409 }
@@ -480,7 +492,13 @@ export async function POST(request: Request) {
         recommendedAction: recommendedAction || existingRecord.recommendedAction,
         durationSeconds: durationSeconds || existingRecord.durationSeconds,
         status: finalStatus,
-        version: body.version !== undefined ? Number(body.version) : (existingRecord.version ? existingRecord.version + 1 : 2),
+        version: submittedVersion !== undefined ? submittedVersion : (existingRecord.version ? existingRecord.version + 1 : 2),
+        caseVersion: submittedVersion !== undefined ? submittedVersion : (existingRecord.caseVersion ? existingRecord.caseVersion + 1 : 2),
+        interviewState: body.interviewState !== undefined ? body.interviewState : existingRecord.interviewState,
+        deliveredTurnRecords: body.deliveredTurnRecords !== undefined ? body.deliveredTurnRecords : existingRecord.deliveredTurnRecords,
+        attributedFacts: body.attributedFacts !== undefined ? body.attributedFacts : existingRecord.attributedFacts,
+        unmappedObservations: body.unmappedObservations !== undefined ? body.unmappedObservations : existingRecord.unmappedObservations,
+        idempotencyKey: body.idempotencyKey || existingRecord.idempotencyKey,
       };
 
       if (isTransitioningToApproved) {
@@ -587,6 +605,12 @@ export async function POST(request: Request) {
       durationSeconds,
       status: initialStatus,
       version: body.version !== undefined ? Number(body.version) : 1,
+      caseVersion: body.caseVersion !== undefined ? Number(body.caseVersion) : (body.version !== undefined ? Number(body.version) : 1),
+      interviewState: body.interviewState || null,
+      deliveredTurnRecords: body.deliveredTurnRecords || [],
+      attributedFacts: body.attributedFacts || [],
+      unmappedObservations: body.unmappedObservations || [],
+      idempotencyKey: body.idempotencyKey || null,
       approvedAt: initialStatus === "approved" ? new Date() : null,
       approvedBy: initialStatus === "approved" ? auth.userId : null,
       createdAt: new Date(),

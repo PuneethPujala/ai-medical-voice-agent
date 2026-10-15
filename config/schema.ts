@@ -1,4 +1,6 @@
 import { integer, serial, pgTable, varchar, text, doublePrecision, boolean, timestamp, jsonb, json } from "drizzle-orm/pg-core";
+import type { AttributedClinicalFactV3, UnmappedObservation, DeliveredTurnRecord } from "@/lib/agents/schemas";
+import type { ClinicalInterviewState } from "@/lib/triage/conversation-manager";
 
 export const usersTable = pgTable("users", {
   id: integer().primaryKey().generatedAlwaysAsIdentity(),
@@ -93,7 +95,15 @@ export const consultationsTable = pgTable("consultations", {
   status: varchar("status", { length: 64 }).default("completed_pending_review"), // "in_progress" | "completed_pending_review" | "approved"
   approvedAt: timestamp("approved_at"),
   approvedBy: varchar("approved_by", { length: 128 }),
-  createdAt: timestamp("created_at").defaultNow()
+  createdAt: timestamp("created_at").defaultNow(),
+
+  // Server-Authoritative Durable Encounter State & Optimistic Concurrency
+  interviewState: jsonb("interview_state").$type<ClinicalInterviewState>(),
+  deliveredTurnRecords: jsonb("delivered_turn_records").$type<DeliveredTurnRecord[]>(),
+  attributedFacts: jsonb("attributed_facts").$type<AttributedClinicalFactV3[]>(),
+  unmappedObservations: jsonb("unmapped_observations").$type<UnmappedObservation[]>(),
+  caseVersion: integer("case_version").default(1),
+  idempotencyKey: varchar("idempotency_key", { length: 128 })
 });
 
 /**

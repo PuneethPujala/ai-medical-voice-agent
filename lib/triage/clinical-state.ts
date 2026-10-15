@@ -1280,14 +1280,24 @@ export function detectQuestionTargetSlot(questionText: string, defaultSlot?: str
     return "laterality";
   }
 
+  // Orthostatic / postural timing
+  if (/\b(?:stand(?:ing)?\s+up|sitting\s+up|lying\s+down|postur(?:e|al)|orthostatic|when\s+you\s+walk)\b/i.test(lower)) {
+    return "orthostatic_timing";
+  }
+
+  // Dizziness character & vestibular signs
+  if (/\b(?:dizz(?:y|iness)|lightheaded(?:ness)?|room\s+spinning|vertigo|unsteady|loss\s+of\s+balance)\b/i.test(lower)) {
+    return "dizziness_character";
+  }
+
   // 6. Voice character
-  if (/voice|hoarse|hoarseness|speak/i.test(lower)) return "voice_character";
+  if (/\b(?:voice|hoarse|hoarseness|loss of voice|raspy voice)\b/i.test(lower)) return "voice_character";
 
   // 7. Course & progression
   if (/worse|better|improving|staying\s+the\s+same|course/i.test(lower)) return "course";
 
-  // 8. Radiation
-  if (/radiat|travel|spread|arm|jaw|back/i.test(lower)) return "radiation";
+  // 8. Radiation (must involve spreading/radiating/traveling pain)
+  if (/\b(?:radiat\w*|travel\w*|spread\w*)\b/i.test(lower)) return "radiation";
 
   // 9. Exertional
   if (/active|activity|exercis|stairs?|rest(?:ing)?|exert/i.test(lower)) return "exertional";
@@ -1332,14 +1342,26 @@ export function detectQuestionTargetSlots(questionText: string): string[] {
   // separate course question. Course is distinct only when no onset pattern is
   // being requested in the same sentence.
   if (!asksOnsetPattern && /worse|better|improving|staying\s+the\s+same|course/.test(lower)) targets.add("course");
-  if (/(?:radiat|travel|spread).*\b(?:arm|jaw|neck|back)\b|\b(?:arm|jaw|back)\b/.test(lower)) targets.add("radiation");
+  if (/\b(?:radiat\w*|travel\w*|spread\w*)\b/i.test(lower)) targets.add("radiation");
   if (/active|activity|exercis|stairs?|rest(?:ing)?|exert/.test(lower)) targets.add("exertional");
   if (/(?:one\s+side|both\s+sides|which\s+side|affecting\s+one\s+side|unilateral|bilateral)/.test(lower)) {
     if (/weak|weakness/.test(lower)) targets.add("weakness_distribution");
     else if (/numb|numbness/.test(lower)) targets.add("numbness_distribution");
     else targets.add("laterality");
   }
-  if (/weakness|facial\s+droop|speech|numbness/.test(lower)) targets.add("neurological_signs");
+  if (/\b(?:dizz(?:y|iness)|lightheaded(?:ness)?|room\s+spinning|vertigo|unsteady|loss\s+of\s+balance)\b/.test(lower)) {
+    targets.add("dizziness_character");
+  }
+  if (/\b(?:stand(?:ing)?\s+up|sitting\s+up|lying\s+down|postur(?:e|al)|orthostatic|when\s+you\s+walk)\b/.test(lower)) {
+    targets.add("orthostatic_timing");
+  }
+  if (/facial\s+droop|speech/.test(lower)) {
+    targets.add("neurological_signs");
+  } else if (!targets.has("weakness_distribution") && /weakness/.test(lower)) {
+    targets.add("neurological_signs");
+  } else if (!targets.has("numbness_distribution") && /numbness/.test(lower)) {
+    targets.add("neurological_signs");
+  }
 
   return [...targets];
 }
@@ -1366,13 +1388,17 @@ export function isTargetSlotMatch(expectedTopic: string, detectedSlot: string): 
   }
 
   // Neurological laterality / distribution
-  const lateralityGroup = new Set(["weakness_distribution", "numbness_distribution", "laterality"]);
+  const lateralityGroup = new Set([
+    "weakness_distribution",
+    "numbness_distribution",
+    "laterality",
+  ]);
   if (lateralityGroup.has(exp) && lateralityGroup.has(det)) {
     return true;
   }
 
-  // Timing / Character / Severity pattern
-  const timingGroup = new Set(["timing_pattern", "severity_pattern", "character"]);
+  // Timing / Severity pattern
+  const timingGroup = new Set(["timing_pattern", "severity_pattern"]);
   if (timingGroup.has(exp) && timingGroup.has(det)) {
     return true;
   }
@@ -1429,6 +1455,8 @@ export function validateDoctorReplyTarget(
     primaryGoal?: string;
     mustAvoidAsking?: string[];
     nextHighValueInquiry?: { topic: string; clinicalRationale: string; suggestedPhrasing: string };
+    patientUtterance?: string;
+    strictTargetSlot?: boolean;
   },
   slots?: Record<string, any>,
   memory?: any,
@@ -1454,17 +1482,43 @@ export function validateDoctorReplyTarget(
     return { isValid: false, detectedTarget: "multiple", reason: "LLM_MULTIPLE_QUESTIONS" };
   }
 
-  const distinctTargets = detectQuestionTargetSlots(clean);
-  if (distinctTargets.length > 1) {
-    return {
-      isValid: false,
-      detectedTarget: "multiple",
-      reason: `LLM_MULTIPLE_CLINICAL_TARGETS: ${distinctTargets.join(", ")}`,
-    };
+  // Extract the interrogative clause/sentence containing '?' so that empathetic acknowledgements
+  // in earlier sentences do not trigger false multi-target rejections when combined with the question.
+  let questionClause = clean;
+  const qMarkIndex = clean.lastIndexOf("?");
+  if (qMarkIndex !== -1) {
+    const priorPeriod = Math.max(clean.lastIndexOf(".", qMarkIndex), clean.lastIndexOf("!", qMarkIndex));
+    questionClause = priorPeriod !== -1 ? clean.slice(priorPeriod + 1, qMarkIndex + 1).trim() : clean.slice(0, qMarkIndex + 1).trim();
   }
 
-  // Detect the target slot of the generated question
-  const detectedTarget = detectQuestionTargetSlot(clean);
+  const distinctTargets = detectQuestionTargetSlots(questionClause);
+  if (distinctTargets.length > 1) {
+    // Permit closely related clinical subfields within a single focused inquiry
+    const isRelated =
+      distinctTargets.includes("severity") || // Severity qualified by posture, trigger, or character
+      distinctTargets.includes("character") || // Character qualified by posture, trigger, or timing
+      (distinctTargets.includes("timing_pattern") && distinctTargets.includes("orthostatic_timing")) ||
+      (distinctTargets.includes("dizziness_character") && distinctTargets.includes("orthostatic_timing")) ||
+      (distinctTargets.includes("course") && distinctTargets.includes("orthostatic_timing")) ||
+      (distinctTargets.includes("course") && distinctTargets.includes("triggers")) ||
+      (distinctTargets.includes("course") && distinctTargets.includes("timing_pattern")) ||
+      (distinctTargets.includes("onset_pattern") && distinctTargets.includes("onset_time")) ||
+      (distinctTargets.includes("weakness_distribution") && distinctTargets.includes("laterality")) ||
+      (distinctTargets.includes("numbness_distribution") && distinctTargets.includes("laterality")) ||
+      (distinctTargets.includes("weakness_distribution") && distinctTargets.includes("neurological_signs")) ||
+      (distinctTargets.includes("numbness_distribution") && distinctTargets.includes("neurological_signs"));
+
+    if (!isRelated) {
+      return {
+        isValid: false,
+        detectedTarget: "multiple",
+        reason: `LLM_MULTIPLE_CLINICAL_TARGETS: ${distinctTargets.join(", ")}`,
+      };
+    }
+  }
+
+  // Detect the target slot of the generated question clause
+  const detectedTarget = detectQuestionTargetSlot(questionClause);
 
   // C. Does the generated question violate responsePlan.mustAvoidAsking?
   const mustAvoid = plan?.mustAvoidAsking || [];
@@ -1475,7 +1529,7 @@ export function validateDoctorReplyTarget(
     if (!itemLower) continue;
 
     // Check direct slot match
-    if (itemLower === detectedTarget) {
+    if (itemLower === detectedTarget || isTargetSlotMatch(itemLower, detectedTarget)) {
       return {
         isValid: false,
         detectedTarget,
@@ -1483,8 +1537,8 @@ export function validateDoctorReplyTarget(
       };
     }
 
-    // Check phrase match (for phrases with 4+ characters)
-    if (itemLower.length >= 4 && lower.includes(itemLower)) {
+    // Check forbidden phrase match (for multi-word phrases within the question clause)
+    if (itemLower.includes(" ") && itemLower.length >= 6 && questionClause.toLowerCase().includes(itemLower)) {
       return {
         isValid: false,
         detectedTarget,
@@ -1513,8 +1567,9 @@ export function validateDoctorReplyTarget(
     }
   }
 
-  // Check subfields resolved:
-  if (slots) {
+  // Check subfields resolved (unless patient is explicitly offering a self-correction):
+  const isSelfCorrection = Boolean(plan?.patientUtterance && /\b(?:correct|correction|not constant|need to correct|instead|said earlier|actually)\b/i.test(plan.patientUtterance));
+  if (slots && !isSelfCorrection) {
     const subfields = extractSubfieldState(slots, confirmedFacts || slots.known_facts || [], memory);
 
     // If duration is resolved, cannot ask onset timeline again
@@ -1569,12 +1624,15 @@ export function validateDoctorReplyTarget(
   const chiefComplaint = String(slots?.chief_complaint || "").toLowerCase();
   const location = String(slots?.location || "").toLowerCase();
 
+  const patientUtterance = plan?.patientUtterance?.toLowerCase() || "";
+
   // 1. Unsupported Chest Discomfort / Cardiac Radiation
   const asksChestOrCardiac = /\b(chest|precordial|substernal|angina|heart\s+attack)\b/i.test(lower) ||
     (/\b(radiat|travel|spread)\b/i.test(lower) && /\b(arm|jaw|neck|back)\b/i.test(lower));
   const hasChestSupport = location === "chest" ||
     /\b(chest|heart|angina|substernal)\b/i.test(factsText) ||
     /\b(chest|heart|angina)\b/i.test(chiefComplaint) ||
+    /\b(chest|heart|angina|cardiac|coronary|infarct)\b/i.test(patientUtterance) ||
     expectedTopic === "radiation" ||
     expectedTopic === "exertional" ||
     expectedTopic === "chest" ||
@@ -1595,6 +1653,7 @@ export function validateDoctorReplyTarget(
     location === "brain" ||
     /\b(stroke|headache|weakness|numbness|droop|speech|dizz)\b/i.test(factsText) ||
     /\b(stroke|headache|weakness|numbness|droop|speech|dizz)\b/i.test(chiefComplaint) ||
+    /\b(stroke|headache|weakness|numbness|droop|speech|dizz|facial|arm|leg)\b/i.test(patientUtterance) ||
     expectedTopic === "weakness_distribution" ||
     expectedTopic === "neurological_signs" ||
     expectedTopic === "laterality" ||
@@ -1625,15 +1684,39 @@ export function validateDoctorReplyTarget(
     };
   }
 
-  // B. Does the detected question target match responsePlan.nextHighValueInquiry.topic?
+  // B. Does the detected question target match responsePlan.nextHighValueInquiry.topic or active grounded narrative?
   if (plan?.nextHighValueInquiry?.topic) {
     const expTopic = plan.nextHighValueInquiry.topic;
     if (!isTargetSlotMatch(expTopic, detectedTarget)) {
-      return {
-        isValid: false,
-        detectedTarget,
-        reason: `LLM_QUESTION_TARGET_MISMATCH: expected '${expTopic}', detected '${detectedTarget}'`,
-      };
+      // Check if candidate target is clinically grounded in active presentation, facts, or patient narrative
+      const narrative = (((plan as any)?.patientUtterance || "") + " " + factsText + " " + chiefComplaint).toLowerCase();
+      const isGrounded =
+        /radiat|spread|travel|neck|shoulder|arm|jaw/i.test(detectedTarget) ||
+        /character|quality|sensation|throbbing|pressure|sharp|dull/i.test(detectedTarget) ||
+        /severity|scale|intensity/i.test(detectedTarget) ||
+        /trigger|aggravat|reliev|worse|better|provok/i.test(detectedTarget) ||
+        /nausea|vomit|eating|appetite|gi/i.test(detectedTarget) ||
+        /tinnitus|ringing|ear/i.test(detectedTarget) ||
+        /muscle|tension|tightness/i.test(detectedTarget) ||
+        /voice|speech|swallow/i.test(detectedTarget) ||
+        (detectedTarget.includes("orthostatic") && /stand|sit|walk|rest|postur/i.test(narrative)) ||
+        (detectedTarget.includes("dizz") && /dizz|unsteady|spinning|lighthead/i.test(narrative)) ||
+        (detectedTarget.includes("numb") && /numb|tingl|pins|sens/i.test(narrative)) ||
+        (detectedTarget.includes("head") && /head|migrain/i.test(narrative)) ||
+        (detectedTarget.includes("weak") && /weak|droop|heav/i.test(narrative)) ||
+        (detectedTarget.includes("vision") && /vision|see|blur|sight/i.test(narrative)) ||
+        (detectedTarget.includes("hearing") && /hear|ear|sound/i.test(narrative)) ||
+        (detectedTarget.includes("throat") && /throat|swallow/i.test(narrative)) ||
+        (detectedTarget.includes("timing") || detectedTarget.includes("pattern") || detectedTarget.includes("duration") || detectedTarget.includes("course") || detectedTarget.includes("onset")) ||
+        (!Boolean((plan as any)?.strictTargetSlot) && narrative.trim().length > 0 && detectedTarget !== "none" && detectedTarget !== "empty");
+
+      if (!isGrounded || (plan as any)?.strictTargetSlot === true) {
+        return {
+          isValid: false,
+          detectedTarget,
+          reason: `LLM_QUESTION_TARGET_MISMATCH: expected '${expTopic}', detected '${detectedTarget}'`,
+        };
+      }
     }
   }
 

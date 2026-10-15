@@ -1,4 +1,4 @@
-import { AgentRequest, PendingQuestion, PatientCase } from "../agents/schemas";
+import { AgentRequest, PendingQuestion, PatientCase, AttributedClinicalFactV3, UnmappedObservation, DeliveredTurnRecord } from "../agents/schemas";
 import { evaluatePreArbiter, PreArbiterResult } from "./pre-arbiter";
 import { CardiologyAgent } from "../agents/specialists/cardiology-agent";
 import { NeurologyAgent } from "../agents/specialists/neurology-agent";
@@ -9,7 +9,7 @@ import { LocaleConfig, DEFAULT_LOCALE_CONFIG, getEmergencyDispatchInstructions }
 import { clinicalDecisionEngine } from "./clinical-decision-engine";
 import { responsePlanner, ResponsePlan } from "./response-planner";
 import { extractSubfieldState, extractNumericSeverity, extractEpisodicSeverity, extractGiAssociatedSymptoms, parseAbdominalLocations, ABDOMINAL_LOCATION_LABELS, NON_DENIABLE_SLOTS, parseOnsetDimensions, isAbdominalPresentation, controlledFactReconciliationEngine, isTargetSlotMatch, detectQuestionTargetSlot } from "./clinical-state";
-import { PatientProfile, CallerProfile, ConversationalAction, ServerTurnTelemetry, CandidateFactProposal } from "../clinical-knowledge/types";
+import { PatientProfile, CallerProfile, ConversationalAction, ServerTurnTelemetry, CandidateFactProposal, AttributedClinicalFact } from "../clinical-knowledge/types";
 import { PresentationContext } from "../clinical-knowledge/presentation-types";
 import { presentationClassifier } from "../clinical-knowledge/presentation-classifier";
 import { generateDoctorTurnResponse } from "../ai/clinical-llm";
@@ -118,6 +118,9 @@ export interface ClinicalInterviewState {
   responsePlan?: ResponsePlan;
   patientProfile?: PatientProfile;
   presentationContext?: PresentationContext;
+  attributedFacts?: AttributedClinicalFactV3[];
+  unmappedObservations?: UnmappedObservation[];
+  deliveredTurnRecords?: DeliveredTurnRecord[];
 }
 
 export interface ConversationTurnResult {
@@ -1096,6 +1099,45 @@ export class ConversationManager {
           resolvedSlot: slot,
           slotValue: String(val)
         });
+        const allTargets = (state.pendingQuestion.targetSlots && state.pendingQuestion.targetSlots.length > 0)
+          ? state.pendingQuestion.targetSlots
+          : [state.pendingQuestion.targetSlot];
+        const unaddressedTargets = allTargets.filter(t => t && t !== slot && !isTargetSlotMatch(t, slot));
+
+        if (unaddressedTargets.length > 0) {
+          if (!state.structuredHistory) {
+            state.structuredHistory = {
+              chiefComplaint: undefined,
+              timeline: {},
+              unansweredDimensions: [],
+              patientCorrections: [],
+              patientQuestions: [],
+              recentDoctorReplies: [],
+              turnCount: 0,
+              accessConstraints: {
+                financial: false,
+                remoteLocation: false,
+                transportation: "unknown",
+              }
+            };
+          }
+          const hist = state.structuredHistory!;
+          if (!hist.unansweredDimensions) {
+            hist.unansweredDimensions = [];
+          }
+          for (const rem of unaddressedTargets) {
+            if (!hist.unansweredDimensions.includes(rem)) {
+              hist.unansweredDimensions.push(rem);
+            }
+          }
+        }
+
+        if (state.structuredHistory?.unansweredDimensions) {
+          state.structuredHistory.unansweredDimensions = state.structuredHistory.unansweredDimensions.filter(
+            d => d !== slot && !isTargetSlotMatch(d, slot)
+          );
+        }
+
         state.pendingQuestion.status = "resolved";
         state.pendingQuestion = null;
 
@@ -1236,13 +1278,47 @@ export class ConversationManager {
           allergies: []
         };
 
+        const existingAttributed: AttributedClinicalFact[] = (state.attributedFacts || []).map(f => ({
+          id: f.id,
+          targetPatientId: patientForRecon.id,
+          reporterId: callerForRecon.id,
+          concept: f.concept,
+          assertionStatus: f.assertionStatus,
+          verificationStatus: "unverified",
+          temporalScope: f.temporality === "historical" ? "historical" : "current",
+          source: f.attribution === "caregiver_report" ? "caregiver_reported" : "patient_reported",
+          turnId: f.turnId,
+          timestamp: f.timestamp,
+          provenanceDetails: {
+            reliability: "moderate",
+            clinicalType: "subjective_symptom"
+          },
+          normalizedText: f.sourceUtterance,
+          confidence: f.confidence === "calibrated_score" ? 0.9 : 0.6,
+          requiresReconfirmation: f.assertionStatus === "uncertain"
+        }));
+
         const recon = controlledFactReconciliationEngine.reconcileCandidateFacts(
-          [],
+          existingAttributed,
           liveResult.candidateFacts,
           callerForRecon,
           patientForRecon,
           state.caseVersion
         );
+
+        state.attributedFacts = recon.acceptedFacts.map(fact => ({
+          id: fact.id,
+          concept: fact.concept,
+          assertionStatus: fact.assertionStatus,
+          temporality: fact.temporalScope === "historical" ? "historical" : "current",
+          attribution: fact.source === "caregiver_reported" ? "caregiver_report" : (callerForRecon.relationshipToPatient === "child" ? "third_party" : "patient"),
+          coverage: "assessed",
+          sourceUtterance: fact.normalizedText || `${fact.concept}: ${fact.assertionStatus}`,
+          sourceSpeaker: fact.source === "caregiver_reported" ? "caregiver" : "patient",
+          turnId: fact.turnId,
+          confidence: fact.assertionStatus === "uncertain" ? "explicit_unknown" : "calibrated_score",
+          timestamp: fact.timestamp
+        }));
 
         for (const fact of recon.acceptedFacts) {
           const factText = `${fact.concept}: ${fact.assertionStatus}`;
@@ -1255,12 +1331,64 @@ export class ConversationManager {
         }
       }
 
+      if ((liveResult as any).unmappedObservations && Array.isArray((liveResult as any).unmappedObservations)) {
+        if (!state.unmappedObservations) state.unmappedObservations = [];
+        for (const rawObs of (liveResult as any).unmappedObservations) {
+          const obsStr = typeof rawObs === "string" ? rawObs : (rawObs.rawEvidence || "");
+          if (obsStr && !state.unmappedObservations.some(o => o.rawEvidence.toLowerCase() === obsStr.toLowerCase())) {
+            state.unmappedObservations.push({
+              id: `obs-${Date.now()}-${state.unmappedObservations.length + 1}`,
+              rawEvidence: obsStr,
+              status: "unverified_proposal",
+              turnId: turnNum,
+              timestamp: new Date().toISOString()
+            });
+          }
+        }
+      }
+
       if (liveResult.conversationalAction === "CONVENE_BOARD") {
         state.phase = "decided";
         state.informationState = "sufficient_for_decision";
       } else {
         state.phase = "active_inquiring";
+        if (liveResult.reply.includes("?")) {
+          const targets = (liveResult as any).intendedTargets || [];
+          const detectedTarget = targets[0] || detectQuestionTargetSlot(liveResult.reply);
+          state.pendingQuestion = {
+            id: `req-live-${Date.now()}`,
+            targetSlot: detectedTarget,
+            targetSlots: targets.length > 0 ? targets : [detectedTarget],
+            askedBy: "sarah",
+            doctorName: doctorProfile.name,
+            patientFacingSpeaker: "sarah",
+            question: liveResult.reply,
+            purpose: liveResult.understoodContext || `Inquire regarding ${detectedTarget}`,
+            required: true,
+            priority: "normal",
+            status: "pending",
+            createdAt: new Date().toISOString(),
+            caseVersion: state.caseVersion,
+          };
+          if (state.conversationMemory) {
+            state.conversationMemory.lastDoctorQuestion = liveResult.reply;
+          }
+        }
       }
+
+      const deliveredRecord: DeliveredTurnRecord = {
+        turnId: turnNum,
+        deliveredText: liveResult.reply,
+        conversationalAction: (liveResult.conversationalAction as any) || "INQUIRE",
+        intendedTargets: (liveResult as any).intendedTargets || (state.pendingQuestion?.targetSlot ? [state.pendingQuestion.targetSlot] : []),
+        targetResolutionStatuses: {},
+        relevantEvidenceRefs: [],
+        caseVersion: state.caseVersion,
+        timestamp: new Date().toISOString(),
+        audioDeliveryStatus: "pending"
+      };
+      if (!state.deliveredTurnRecords) state.deliveredTurnRecords = [];
+      state.deliveredTurnRecords.push(deliveredRecord);
 
       if (!state.structuredHistory) {
         state.structuredHistory = {
@@ -1640,6 +1768,45 @@ export class ConversationManager {
           resolvedSlot: slot,
           slotValue: String(val)
         });
+        const allTargets = (state.pendingQuestion.targetSlots && state.pendingQuestion.targetSlots.length > 0)
+          ? state.pendingQuestion.targetSlots
+          : [state.pendingQuestion.targetSlot];
+        const unaddressedTargets = allTargets.filter(t => t && t !== slot && !isTargetSlotMatch(t, slot));
+
+        if (unaddressedTargets.length > 0) {
+          if (!state.structuredHistory) {
+            state.structuredHistory = {
+              chiefComplaint: undefined,
+              timeline: {},
+              unansweredDimensions: [],
+              patientCorrections: [],
+              patientQuestions: [],
+              recentDoctorReplies: [],
+              turnCount: 0,
+              accessConstraints: {
+                financial: false,
+                remoteLocation: false,
+                transportation: "unknown",
+              }
+            };
+          }
+          const hist = state.structuredHistory!;
+          if (!hist.unansweredDimensions) {
+            hist.unansweredDimensions = [];
+          }
+          for (const rem of unaddressedTargets) {
+            if (!hist.unansweredDimensions.includes(rem)) {
+              hist.unansweredDimensions.push(rem);
+            }
+          }
+        }
+
+        if (state.structuredHistory?.unansweredDimensions) {
+          state.structuredHistory.unansweredDimensions = state.structuredHistory.unansweredDimensions.filter(
+            d => d !== slot && !isTargetSlotMatch(d, slot)
+          );
+        }
+
         state.pendingQuestion.status = "resolved";
         state.pendingQuestion = null;
       }
@@ -2388,6 +2555,26 @@ export class ConversationManager {
     if (/\b(cannot\s+open\s+mouth|hard\s+to\s+open\s+jaw|jaw\s+stiff|trismus|mouth\s+won'?t\s+open)\b/i.test(state.cumulativeTranscript)) {
       if (!state.slots.known_facts.some(f => /TRISMUS/i.test(f))) {
         state.slots.known_facts.push("TRISMUS: limited jaw opening present");
+      }
+    }
+
+    // Opportunistic Photophobia / Light Sensitivity
+    const hasPhotoDenial = /\b(no\s+(?:sensitivity\s+to\s+)?(?:bright\s+)?lights?|lights?\s+(?:do\s+not|don'?t)\s+bother|not\s+sensitive\s+to\s+lights?|no\s+photophob)\b/i.test(state.cumulativeTranscript);
+    const hasPhotoPresent = !hasPhotoDenial && /\b(sensitive\s+to\s+(?:bright\s+)?lights?|lights?\s+(?:bother|hurt)|photophob)\b/i.test(state.cumulativeTranscript);
+
+    if (hasPhotoDenial) {
+      if (state.conversationMemory && !state.conversationMemory.deniedSymptoms.includes("photophobia")) {
+        state.conversationMemory.deniedSymptoms.push("photophobia");
+      }
+      if (!state.slots.known_facts.some(f => /denied:\s*photophobia/i.test(f))) {
+        state.slots.known_facts.push("Denied: photophobia");
+      }
+    } else if (hasPhotoPresent) {
+      if (!state.slots.associated_symptoms.includes("photophobia")) {
+        state.slots.associated_symptoms.push("photophobia");
+      }
+      if (!state.slots.known_facts.some(f => /photophobia/i.test(f))) {
+        state.slots.known_facts.push("PHOTOPHOBIA: light sensitivity present");
       }
     }
   }

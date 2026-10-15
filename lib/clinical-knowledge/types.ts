@@ -278,8 +278,9 @@ export type ConversationalAction =
   | "CONVENE_BOARD";
 
 export interface ServerTurnTelemetry {
-  provider: "groq" | "nvidia" | "fallback";
+  provider: "groq" | "nvidia" | "fallback" | "safety_arbiter_deterministic";
   model: string;
+  responseProvenance?: "llm_generative_dialogue" | "validated_fallback" | "deterministic_safety_arbiter";
   liveGenerated: boolean;
   latencyMs: number;
   fallbackUsed: boolean;

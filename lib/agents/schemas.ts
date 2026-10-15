@@ -373,3 +373,78 @@ export interface PendingQuestion {
   caseVersion: number;
   slotStatuses?: Record<string, QuestionSlotStatus>;
 }
+
+/**
+ * 6-DIMENSIONAL EPISTEMIC CLINICAL FACT
+ * Decouples clinical assertion status from question resolution status.
+ */
+export type FactAssertionStatus = "present" | "absent" | "uncertain";
+export type FactTemporality = "current" | "historical" | "resolved";
+export type FactAttribution = "patient" | "third_party" | "caregiver_report";
+export type FactAssessmentCoverage = "unassessed" | "partially_assessed" | "assessed";
+
+export interface AttributedClinicalFactV3 {
+  id: string;
+  concept: string;
+  assertionStatus: FactAssertionStatus;
+  temporality: FactTemporality;
+  attribution: FactAttribution;
+  coverage: FactAssessmentCoverage;
+  sourceUtterance: string;
+  sourceSpeaker: "patient" | "caregiver" | "clinician";
+  turnId: number;
+  confidence: "deterministic_flag" | "calibrated_score" | "explicit_unknown";
+  timestamp: string;
+}
+
+/**
+ * OPEN-WORLD UNMAPPED OBSERVATION
+ * Preserves raw patient descriptions without forcing them into existing slots or promoting them to facts.
+ */
+export interface UnmappedObservation {
+  id: string;
+  rawEvidence: string;
+  inferredConcept?: string;
+  status: "unverified_proposal" | "acknowledged_by_clinician";
+  turnId: number;
+  timestamp: string;
+}
+
+/**
+ * QUESTION RESOLUTION STATUS
+ */
+export type QuestionResolutionStatus =
+  | "unanswered"
+  | "partially_answered"
+  | "answered"
+  | "awaiting_clarification"
+  | "superseded";
+
+/**
+ * CONVERSATIONAL ACTION PALETTE
+ */
+export type ConversationalActionType =
+  | "INQUIRE"
+  | "CLARIFY_AMBIGUITY"
+  | "EXPLAIN_RATIONALE"
+  | "ACKNOWLEDGE_AND_UPDATE"
+  | "SUMMARIZE_AND_ALIGN"
+  | "CONVENE_BOARD"
+  | "EMERGENCY_ESCALATION";
+
+/**
+ * DELIVERED TURN RECORD
+ * Distinguishes generated response, delivered response, and playback status.
+ */
+export interface DeliveredTurnRecord {
+  turnId: number;
+  deliveredText: string;
+  conversationalAction: ConversationalActionType;
+  intendedTargets: string[];
+  targetResolutionStatuses: Record<string, QuestionResolutionStatus>;
+  relevantEvidenceRefs: string[];
+  caseVersion: number;
+  timestamp: string;
+  audioDeliveryStatus?: "pending" | "synthesizing" | "delivered" | "interrupted" | "failed";
+  audioDeliveryResult?: { playedDurationMs?: number; confirmedAt?: string };
+}

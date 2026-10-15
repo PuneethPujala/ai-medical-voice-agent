@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getDoctorById } from "@/config/doctors";
 import { clinicalBoard } from "@/lib/agents/clinical-board";
 import { extractSpeechFeatures } from "@/lib/acoustic/speech-features";
-import { PatientCase } from "@/lib/agents/schemas";
+import { PatientCase, DeliveredTurnRecord } from "@/lib/agents/schemas";
 import { PhiScrubber } from "@/lib/security/phi-scrubber";
 
 import { conversationManager } from "@/lib/triage/conversation-manager";
@@ -10,10 +10,10 @@ import { clinicalKnowledgeRetriever } from "@/lib/clinical-knowledge/retriever";
 import { generateDoctorTurnResponse } from "@/lib/ai/clinical-llm";
 import { hospitalRagService } from "@/lib/care-network/hospital-rag";
 import { buildProvenanceEvidenceFromClinicalState } from "@/lib/agents/provenance";
-import { extractSubfieldState } from "@/lib/triage/clinical-state";
+import { extractSubfieldState, detectQuestionTargetSlot, controlledFactReconciliationEngine } from "@/lib/triage/clinical-state";
 import { evaluatePreArbiter } from "@/lib/triage/pre-arbiter";
 import { PatientProfileService } from "@/lib/patient/patient-profile-service";
-import { CallerProfile, PatientProfile } from "@/lib/clinical-knowledge/types";
+import { CallerProfile, PatientProfile, AttributedClinicalFact } from "@/lib/clinical-knowledge/types";
 import { getAuthContext } from "@/lib/auth/rbac";
 
 import {
@@ -479,17 +479,162 @@ export async function POST(request: Request) {
       callerProfile,
       patientProfile: activeProfile || undefined,
       targetSubject: inferredSubject,
+      isClarificationRequest: turnResult.action === "CLARIFY",
+      clarificationGuidance: turnResult.action === "CLARIFY" ? turnResult.doctorReply : undefined,
     });
 
-    const activeDoctorReply = turnResult.action === "CLARIFY" ? turnResult.doctorReply : (llmResult.reply || turnResult.doctorReply);
-    
-    // Ensure state's pending question question wording and last question match what the doctor articulated.
-    // NOTE: pendingQuestion.targetSlot is strictly preserved from the deterministic planner/state machine.
-    // LLM generation must NEVER rewrite or corrupt the planned targetSlot.
-    if (turnResult.state.pendingQuestion) {
-      turnResult.state.pendingQuestion.question = activeDoctorReply;
+    // LLM-First Dialogue Resolution:
+    // If the LLM generated a safe, validated reply, use it even on clarification turns.
+    // Retain turnResult.doctorReply as deterministic fallback when generation fails, is empty, or falls back.
+    const activeDoctorReply = (llmResult.liveGenerated && llmResult.reply)
+      ? llmResult.reply
+      : turnResult.doctorReply;
+
+    // Ingest candidate clinical facts into durable state through controlled reconciliation
+    if (llmResult.candidateFacts && Array.isArray(llmResult.candidateFacts) && llmResult.candidateFacts.length > 0) {
+      const callerForRecon: CallerProfile = callerProfile || {
+        id: "caller-session",
+        name: "Caller",
+        relationshipToPatient: "self",
+        authorizedPatientIds: [activeProfile?.id || "pt-session"],
+      };
+      const patientForRecon: PatientProfile = activeProfile || {
+        id: "pt-session",
+        name: patientName || "Patient",
+        age: ageNum ?? 35,
+        gender: "other",
+        language: "en",
+        conditions: [],
+        medications: [],
+        allergies: [],
+      };
+
+      const existingAttributed: AttributedClinicalFact[] = (turnResult.state.attributedFacts || []).map(f => ({
+        id: f.id,
+        targetPatientId: patientForRecon.id,
+        reporterId: callerForRecon.id,
+        concept: f.concept,
+        assertionStatus: f.assertionStatus,
+        verificationStatus: "unverified",
+        temporalScope: f.temporality === "historical" ? "historical" : "current",
+        source: f.attribution === "caregiver_report" ? "caregiver_reported" : "patient_reported",
+        turnId: f.turnId,
+        timestamp: f.timestamp,
+        provenanceDetails: {
+          reliability: "moderate",
+          clinicalType: "subjective_symptom",
+        },
+        normalizedText: f.sourceUtterance,
+        confidence: f.confidence === "calibrated_score" ? 0.9 : 0.6,
+        requiresReconfirmation: f.assertionStatus === "uncertain",
+      }));
+
+      const recon = controlledFactReconciliationEngine.reconcileCandidateFacts(
+        existingAttributed,
+        llmResult.candidateFacts,
+        callerForRecon,
+        patientForRecon,
+        turnResult.state.caseVersion
+      );
+
+      turnResult.state.attributedFacts = recon.acceptedFacts.map(fact => ({
+        id: fact.id,
+        concept: fact.concept,
+        assertionStatus: fact.assertionStatus,
+        temporality: fact.temporalScope === "historical" ? "historical" : "current",
+        attribution: fact.source === "caregiver_reported" ? "caregiver_report" : (callerForRecon.relationshipToPatient === "child" ? "third_party" : "patient"),
+        coverage: "assessed",
+        sourceUtterance: fact.normalizedText || `${fact.concept}: ${fact.assertionStatus}`,
+        sourceSpeaker: fact.source === "caregiver_reported" ? "caregiver" : "patient",
+        turnId: fact.turnId,
+        confidence: fact.assertionStatus === "uncertain" ? "explicit_unknown" : "calibrated_score",
+        timestamp: fact.timestamp,
+      }));
+
+      for (const fact of recon.acceptedFacts) {
+        const factText = `${fact.concept}: ${fact.assertionStatus}`;
+        if (!turnResult.state.slots.known_facts.includes(factText)) {
+          turnResult.state.slots.known_facts.push(factText);
+        }
+        if (turnResult.state.conversationMemory && !turnResult.state.conversationMemory.confirmedFacts.includes(factText)) {
+          turnResult.state.conversationMemory.confirmedFacts.push(factText);
+        }
+      }
+    }
+
+    // Ingest unmapped observations into durable state
+    if (llmResult.unmappedObservations && Array.isArray(llmResult.unmappedObservations)) {
+      if (!turnResult.state.unmappedObservations) turnResult.state.unmappedObservations = [];
+      for (const rawObs of llmResult.unmappedObservations) {
+        const obsStr = typeof rawObs === "string" ? rawObs : ((rawObs as any).rawEvidence || "");
+        if (obsStr && !turnResult.state.unmappedObservations.some(o => o.rawEvidence.toLowerCase() === obsStr.toLowerCase())) {
+          turnResult.state.unmappedObservations.push({
+            id: `obs-${Date.now()}-${turnResult.state.unmappedObservations.length + 1}`,
+            rawEvidence: obsStr,
+            status: "unverified_proposal",
+            turnId: turnResult.state.structuredHistory?.turnCount || 1,
+            timestamp: new Date().toISOString(),
+          });
+        }
+      }
+    }
+
+    const turnCount = turnResult.state.structuredHistory?.turnCount || 1;
+    const targets = llmResult.liveGenerated && llmResult.intendedTargets && llmResult.intendedTargets.length > 0
+      ? llmResult.intendedTargets
+      : (turnResult.state.pendingQuestion?.targetSlot ? [turnResult.state.pendingQuestion.targetSlot] : []);
+
+    // Record DeliveredTurnRecord (tracks generated vs delivered vs heard)
+    const deliveredRecord: DeliveredTurnRecord = {
+      turnId: turnCount,
+      deliveredText: activeDoctorReply,
+      conversationalAction: (llmResult.conversationalAction as any) || (turnResult.action === "CLARIFY" ? "CLARIFY_AMBIGUITY" : "INQUIRE"),
+      intendedTargets: targets,
+      targetResolutionStatuses: {},
+      relevantEvidenceRefs: [],
+      caseVersion: turnResult.state.caseVersion,
+      timestamp: new Date().toISOString(),
+      audioDeliveryStatus: "pending",
+    };
+    if (!turnResult.state.deliveredTurnRecords) turnResult.state.deliveredTurnRecords = [];
+    turnResult.state.deliveredTurnRecords.push(deliveredRecord);
+
+    // Synchronize pendingQuestion: Bind both question text and targetSlot to the doctor's spoken question
+    if (activeDoctorReply.includes("?")) {
+      const activeTarget = targets[0] || detectQuestionTargetSlot(activeDoctorReply);
+      if (!turnResult.state.pendingQuestion) {
+        turnResult.state.pendingQuestion = {
+          id: `req-active-${Date.now()}`,
+          targetSlot: activeTarget,
+          targetSlots: targets.length > 0 ? targets : [activeTarget],
+          askedBy: "sarah",
+          doctorName: doctor.name,
+          patientFacingSpeaker: "sarah",
+          question: activeDoctorReply,
+          purpose: llmResult.understoodContext || `Inquire regarding ${activeTarget}`,
+          required: true,
+          priority: "normal",
+          status: "pending",
+          createdAt: new Date().toISOString(),
+          caseVersion: turnResult.state.caseVersion,
+        };
+      } else {
+        turnResult.state.pendingQuestion.question = activeDoctorReply;
+        if (llmResult.liveGenerated && targets.length > 0) {
+          turnResult.state.pendingQuestion.targetSlot = targets[0];
+          turnResult.state.pendingQuestion.targetSlots = targets;
+        }
+      }
       if (turnResult.state.conversationMemory) {
         turnResult.state.conversationMemory.lastDoctorQuestion = activeDoctorReply;
+        if (activeTarget && !turnResult.state.conversationMemory.questionsAlreadyAsked.includes(activeTarget)) {
+          turnResult.state.conversationMemory.questionsAlreadyAsked.push(activeTarget);
+        }
+      }
+    } else {
+      if (turnResult.state.pendingQuestion && ((llmResult.conversationalAction as any) === "EMERGENCY_ESCALATION" || llmResult.conversationalAction === "EMERGENCY_DIRECTIVE" || (llmResult.conversationalAction as any) === "CONVENE_BOARD")) {
+        turnResult.state.pendingQuestion.status = "superseded";
+        turnResult.state.pendingQuestion = null;
       }
     }
 
@@ -630,6 +775,13 @@ export async function POST(request: Request) {
           model: llmResult.model,
           latencyMs: llmResult.latencyMs,
           fallbackReason: llmResult.fallbackReason,
+          responseProvenance: (llmResult as any).responseProvenance || (
+            (turnResult.preArbiterResult.immediate_danger || (turnResult.action as string) === "EMERGENCY_CONVENE_BOARD")
+              ? "deterministic_safety_arbiter"
+              : (llmResult.liveGenerated && llmResult.reply)
+                ? "llm_generative_dialogue"
+                : "validated_fallback"
+          ),
         },
         board: {
           phase: turnResult.state.phase,
@@ -823,6 +975,13 @@ export async function POST(request: Request) {
         model: llmResult.model,
         latencyMs: llmResult.latencyMs,
         fallbackReason: llmResult.fallbackReason,
+        responseProvenance: (llmResult as any).responseProvenance || (
+          (turnResult.preArbiterResult.immediate_danger || turnResult.action === "EMERGENCY_CONVENE_BOARD")
+            ? "deterministic_safety_arbiter"
+            : (llmResult.liveGenerated && llmResult.reply)
+              ? "llm_generative_dialogue"
+              : "validated_fallback"
+        ),
       },
       sufficiency,
       board: {

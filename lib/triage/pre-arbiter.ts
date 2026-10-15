@@ -77,15 +77,17 @@ export function evaluatePreArbiter(patientCase: Partial<PatientCase>): PreArbite
   // 1. Cardiovascular / Acute Coronary Syndrome (ACS) Red Flags
   const hasChestPain = !isPastResolved && (hasAffirmative([
     "chest pain", "chest pressure", "crushing chest", "heavy chest", "tightness in chest",
-    "elephant on chest", "squeezing chest", "pain radiating to left arm", "substernal",
-    "tight pressure in the center", "tight pressure in the middle", "pressure under breastbone"
-  ]) || hasAffirmativeRegex(/\b(crushing|heavy|tightness|tight|pressure|squeezing)[^.,;!?\n]*chest\b/i)
-     || hasAffirmativeRegex(/\bchest[^.,;!?\n]*(pressure|tight|squeeze|crush|heav|pain)\b/i)
-     || (hasAffirmative(["breastbone", "center of my chest", "middle of my chest"]) && hasAffirmative(["pressure", "tight", "squeezing", "heavy", "weight"])));
+    "elephant on chest", "squeezing chest", "pain radiating to left arm", "substernal", "retrosternal",
+    "tight pressure in the center", "tight pressure in the middle", "pressure under breastbone",
+    "behind my sternum", "behind the sternum", "sternum"
+  ]) || hasAffirmativeRegex(/\b(crushing|heavy|tightness|tight|pressure|squeezing)[^.,;!?\n]*(chest|sternum|breastbone)\b/i)
+     || hasAffirmativeRegex(/\b(chest|sternum|breastbone)[^.,;!?\n]*(pressure|tight|squeeze|crush|heav|pain)\b/i)
+     || (hasAffirmative(["breastbone", "sternum", "center of my chest", "middle of my chest"]) && hasAffirmative(["pressure", "tight", "squeezing", "heavy", "weight"])));
 
   const hasCardiacRadiation = hasAffirmative([
-    "left arm", "jaw pain", "neck pain", "between shoulder blades", "cold sweats", "diaphoresis"
-  ]) || hasAffirmativeRegex(/radiat[^.,;!?\n]*(left arm|arm|jaw)/i);
+    "left arm", "jaw pain", "neck pain", "between shoulder blades", "cold sweats", "cold sweat", "sweating cold", "diaphoresis"
+  ]) || hasAffirmativeRegex(/radiat[^.,;!?\n]*(left arm|arm|jaw)/i)
+     || hasAffirmativeRegex(/sweat\w*\s+cold|cold\s+sweat\w*/i);
 
   if (hasChestPain) {
     pre_safety_flags.push("PRE_FLAG_ACUTE_CHEST_PAIN");

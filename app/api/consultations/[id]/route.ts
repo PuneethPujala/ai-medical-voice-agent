@@ -309,6 +309,31 @@ export async function PATCH(
       );
     }
 
+    // STATE MACHINE RULE 0: Idempotent Retry Check
+    if (body.idempotencyKey && record.idempotencyKey && body.idempotencyKey === record.idempotencyKey) {
+      return NextResponse.json({
+        success: true,
+        consultation: record,
+        isIdempotentRetry: true,
+      });
+    }
+
+    // STATE MACHINE RULE 0.5: Optimistic Concurrency Check (caseVersion & version)
+    const submittedVersion = body.caseVersion !== undefined ? Number(body.caseVersion) : (body.version !== undefined ? Number(body.version) : undefined);
+    const existingVersion = record.caseVersion !== undefined ? Number(record.caseVersion) : (record.version !== undefined ? Number(record.version) : undefined);
+    if (submittedVersion !== undefined && existingVersion !== undefined) {
+      if (submittedVersion < existingVersion) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Concurrency conflict: Submitted version (${submittedVersion}) is behind datastore version (${existingVersion}).`,
+            code: "CONCURRENCY_CONFLICT",
+          },
+          { status: 409 }
+        );
+      }
+    }
+
     // STATE MACHINE RULE 1: Stale Downgrade Rejection
     // If a consultation is already approved, it can NEVER be downgraded to pending review or draft.
     if (record.status === "approved" && body.status && body.status !== "approved") {
@@ -334,6 +359,20 @@ export async function PATCH(
     const updateFields: any = {
       status: nextStatus,
     };
+
+    if (submittedVersion !== undefined) {
+      updateFields.caseVersion = submittedVersion;
+      updateFields.version = submittedVersion;
+    } else if (existingVersion) {
+      updateFields.caseVersion = existingVersion + 1;
+      updateFields.version = existingVersion + 1;
+    }
+
+    if (body.interviewState !== undefined) updateFields.interviewState = body.interviewState;
+    if (body.deliveredTurnRecords !== undefined) updateFields.deliveredTurnRecords = body.deliveredTurnRecords;
+    if (body.attributedFacts !== undefined) updateFields.attributedFacts = body.attributedFacts;
+    if (body.unmappedObservations !== undefined) updateFields.unmappedObservations = body.unmappedObservations;
+    if (body.idempotencyKey !== undefined) updateFields.idempotencyKey = body.idempotencyKey;
 
     if (isTransitioningToApproved) {
       updateFields.approvedAt = new Date();
