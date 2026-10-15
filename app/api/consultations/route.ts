@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/config/db";
 import { consultationsTable } from "@/config/schema";
-import { and, desc, eq, ne } from "drizzle-orm";
+import { and, desc, eq, ne, or } from "drizzle-orm";
 import { getAuthContext, hasPermission } from "@/lib/auth/rbac";
 import { logAuditEventAsync } from "@/lib/audit/audit-logger";
 
@@ -359,10 +359,19 @@ export async function POST(request: Request) {
     let existingRecord: any = null;
     if (dbClient) {
       try {
+        const queryConditions = [eq(consultationsTable.id, id)];
+        if (body.idempotencyKey) {
+          queryConditions.push(
+            and(
+              eq(consultationsTable.userId, effectiveUserId),
+              eq(consultationsTable.idempotencyKey, body.idempotencyKey)
+            )!
+          );
+        }
         const existingList = await dbClient
           .select()
           .from(consultationsTable)
-          .where(eq(consultationsTable.id, id))
+          .where(queryConditions.length > 1 ? or(...queryConditions) : eq(consultationsTable.id, id))
           .limit(1);
         if (existingList.length > 0) {
           existingRecord = existingList[0];
@@ -375,7 +384,9 @@ export async function POST(request: Request) {
         );
       }
     } else {
-      existingRecord = memoryConsultations.find((c) => c.id === id);
+      existingRecord = memoryConsultations.find(
+        (c) => c.id === id || (body.idempotencyKey && c.userId === effectiveUserId && c.idempotencyKey === body.idempotencyKey)
+      );
     }
 
     // 4. If record exists: verify ownership and perform idempotent update
@@ -443,7 +454,26 @@ export async function POST(request: Request) {
       }
 
       // STATE MACHINE RULE 0: Idempotent Retry Check
-      if (body.idempotencyKey && existingRecord.idempotencyKey && body.idempotencyKey === existingRecord.idempotencyKey) {
+      const isIdempotencyMatch = Boolean(
+        body.idempotencyKey &&
+        existingRecord.idempotencyKey === body.idempotencyKey &&
+        (existingRecord.userId === effectiveUserId || auth.role === "admin")
+      );
+
+      if (isIdempotencyMatch) {
+        // Material payload mismatch check: If the same idempotency key is submitted with conflicting critical intent
+        const doctorMismatch = body.doctorId && existingRecord.doctorId && body.doctorId !== existingRecord.doctorId;
+        if (doctorMismatch) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: "Idempotency key payload mismatch: Request parameters conflict with previously recorded encounter for this key.",
+              code: "IDEMPOTENCY_PAYLOAD_MISMATCH",
+            },
+            { status: 422 }
+          );
+        }
+
         return NextResponse.json({
           success: true,
           consultation: existingRecord,
@@ -453,20 +483,32 @@ export async function POST(request: Request) {
       }
 
       // STATE MACHINE RULE 4: Optimistic Concurrency Check (caseVersion & version)
+      const expectedVersion = existingRecord.caseVersion !== undefined ? Number(existingRecord.caseVersion) : (existingRecord.version !== undefined ? Number(existingRecord.version) : 1);
       const submittedVersion = body.caseVersion !== undefined ? Number(body.caseVersion) : (body.version !== undefined ? Number(body.version) : undefined);
-      const existingVersion = existingRecord.caseVersion !== undefined ? Number(existingRecord.caseVersion) : (existingRecord.version !== undefined ? Number(existingRecord.version) : undefined);
-      if (submittedVersion !== undefined && existingVersion !== undefined) {
-        if (submittedVersion < existingVersion) {
+      if (submittedVersion !== undefined) {
+        if (submittedVersion <= expectedVersion) {
           return NextResponse.json(
             {
               success: false,
-              error: `Concurrency conflict: Submitted version (${submittedVersion}) is behind datastore version (${existingVersion}).`,
+              error: `Concurrency conflict: Submitted version (${submittedVersion}) is behind or equal to datastore version (${expectedVersion}).`,
               code: "CONCURRENCY_CONFLICT",
             },
             { status: 409 }
           );
         }
       }
+      if (body.expectedVersion !== undefined && Number(body.expectedVersion) !== expectedVersion) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Concurrency conflict: Expected version (${body.expectedVersion}) does not match datastore version (${expectedVersion}).`,
+            code: "CONCURRENCY_CONFLICT",
+          },
+          { status: 409 }
+        );
+      }
+
+      const nextVersion = submittedVersion !== undefined ? submittedVersion : (expectedVersion + 1);
 
       const isTransitioningToApproved = isApprovingRequested && existingRecord.status !== "approved";
       const finalStatus = isApprovingRequested ? "approved" : (requestedStatus || existingRecord.status || "completed_pending_review");
@@ -492,8 +534,8 @@ export async function POST(request: Request) {
         recommendedAction: recommendedAction || existingRecord.recommendedAction,
         durationSeconds: durationSeconds || existingRecord.durationSeconds,
         status: finalStatus,
-        version: submittedVersion !== undefined ? submittedVersion : (existingRecord.version ? existingRecord.version + 1 : 2),
-        caseVersion: submittedVersion !== undefined ? submittedVersion : (existingRecord.caseVersion ? existingRecord.caseVersion + 1 : 2),
+        version: nextVersion,
+        caseVersion: nextVersion,
         interviewState: body.interviewState !== undefined ? body.interviewState : existingRecord.interviewState,
         deliveredTurnRecords: body.deliveredTurnRecords !== undefined ? body.deliveredTurnRecords : existingRecord.deliveredTurnRecords,
         attributedFacts: body.attributedFacts !== undefined ? body.attributedFacts : existingRecord.attributedFacts,
@@ -509,15 +551,28 @@ export async function POST(request: Request) {
       if (dbClient) {
         try {
           const { version, ...dbUpdateData } = updateData;
-          await dbClient
+          const updatedRows = await dbClient
             .update(consultationsTable)
             .set(dbUpdateData)
             .where(
               and(
-                eq(consultationsTable.id, id),
+                eq(consultationsTable.id, existingRecord.id),
+                eq(consultationsTable.caseVersion, expectedVersion),
                 auth.role === "admin" ? undefined : eq(consultationsTable.userId, effectiveUserId)
               )
+            )
+            .returning({ id: consultationsTable.id, caseVersion: consultationsTable.caseVersion });
+
+          if (updatedRows.length === 0) {
+            return NextResponse.json(
+              {
+                success: false,
+                error: `Concurrency conflict: Row version was modified by a concurrent transaction. Expected version ${expectedVersion}.`,
+                code: "CONCURRENCY_CONFLICT",
+              },
+              { status: 409 }
             );
+          }
         } catch (dbErr) {
           console.error("Neon DB update error:", dbErr);
           return NextResponse.json(
@@ -526,7 +581,22 @@ export async function POST(request: Request) {
           );
         }
       } else {
-        Object.assign(existingRecord, updateData);
+        const memIdx = memoryConsultations.findIndex((c) => c.id === existingRecord.id);
+        if (memIdx !== -1) {
+          if ((memoryConsultations[memIdx].caseVersion || 1) !== expectedVersion) {
+            return NextResponse.json(
+              {
+                success: false,
+                error: `Concurrency conflict: Row version was modified by a concurrent transaction. Expected version ${expectedVersion}.`,
+                code: "CONCURRENCY_CONFLICT",
+              },
+              { status: 409 }
+            );
+          }
+          Object.assign(memoryConsultations[memIdx], updateData);
+        } else {
+          Object.assign(existingRecord, updateData);
+        }
       }
 
       try {
@@ -631,16 +701,26 @@ export async function POST(request: Request) {
 
         if (isUniqueViolation) {
           console.log(`Concurrent insert race resolved for encounter ${id}`);
+          const queryConditions = [eq(consultationsTable.id, id)];
+          if (body.idempotencyKey) {
+            queryConditions.push(
+              and(
+                eq(consultationsTable.userId, effectiveUserId),
+                eq(consultationsTable.idempotencyKey, body.idempotencyKey)
+              )!
+            );
+          }
           const reFetched = await dbClient
             .select()
             .from(consultationsTable)
-            .where(eq(consultationsTable.id, id))
+            .where(queryConditions.length > 1 ? or(...queryConditions) : eq(consultationsTable.id, id))
             .limit(1);
           if (reFetched.length > 0) {
             return NextResponse.json({
               success: true,
               consultation: reFetched[0],
               isExisting: true,
+              isIdempotentRetry: true,
             });
           }
         }
@@ -655,6 +735,17 @@ export async function POST(request: Request) {
         );
       }
     } else {
+      const existingMem = memoryConsultations.find(
+        (c) => c.id === id || (body.idempotencyKey && c.userId === effectiveUserId && c.idempotencyKey === body.idempotencyKey)
+      );
+      if (existingMem) {
+        return NextResponse.json({
+          success: true,
+          consultation: existingMem,
+          isExisting: true,
+          isIdempotentRetry: true,
+        });
+      }
       memoryConsultations.push(newRecord);
     }
 

@@ -14,7 +14,7 @@ async function runMigration() {
   }
 
   console.log("================================================================================");
-  console.log("  MEDVOICE POSTGRESQL DURABLE STATE MIGRATION RUNNER                           ");
+  console.log("  MEDVOICE POSTGRESQL DURABLE STATE & UNIQUE IDEMPOTENCY MIGRATION RUNNER      ");
   console.log("================================================================================");
 
   const sql = neon(dbUrl);
@@ -25,18 +25,23 @@ async function runMigration() {
   const preCount = preCountResult[0]?.count || 0;
   console.log(`  Existing consultations record count: ${preCount}`);
 
-  const preCols = await sql`
-    SELECT column_name, data_type
-    FROM information_schema.columns
-    WHERE table_name = 'consultations'
-    ORDER BY ordinal_position;
+  // Check for any potential duplicates before applying unique constraint
+  const dupes = await sql`
+    SELECT user_id, idempotency_key, count(*) as cnt
+    FROM consultations
+    WHERE idempotency_key IS NOT NULL
+    GROUP BY user_id, idempotency_key
+    HAVING count(*) > 1;
   `;
-  console.log(`  Current column count on consultations: ${preCols.length}`);
+  if (dupes.length > 0) {
+    throw new Error(`CRITICAL: Found duplicate idempotency keys in consultations table! Migration aborted to avoid data corruption.`);
+  }
+  console.log("  ✓ Confirmed zero duplicate (user_id, idempotency_key) groups in database.");
 
   // 2. Define migration statements explicitly
   const statements = [
     {
-      name: "Add durable state and concurrency columns",
+      name: "0001: Add durable state and concurrency columns",
       sql: `
         ALTER TABLE "consultations"
           ADD COLUMN IF NOT EXISTS "interview_state" jsonb,
@@ -48,7 +53,7 @@ async function runMigration() {
       `
     },
     {
-      name: "Backfill legacy rows case_version",
+      name: "0001: Backfill legacy rows case_version",
       sql: `
         UPDATE "consultations"
         SET "case_version" = 1
@@ -56,24 +61,31 @@ async function runMigration() {
       `
     },
     {
-      name: "Create index idx_consultations_idempotency_key",
-      sql: `
-        CREATE INDEX IF NOT EXISTS "idx_consultations_idempotency_key"
-        ON "consultations"("idempotency_key");
-      `
-    },
-    {
-      name: "Create index idx_consultations_case_version",
+      name: "0001: Create index idx_consultations_case_version",
       sql: `
         CREATE INDEX IF NOT EXISTS "idx_consultations_case_version"
         ON "consultations"("case_version");
       `
     },
     {
-      name: "Create index idx_consultations_user_id",
+      name: "0001: Create index idx_consultations_user_id",
       sql: `
         CREATE INDEX IF NOT EXISTS "idx_consultations_user_id"
         ON "consultations"("user_id");
+      `
+    },
+    {
+      name: "0002: Drop non-unique idempotency_key index if present",
+      sql: `
+        DROP INDEX IF EXISTS "idx_consultations_idempotency_key";
+      `
+    },
+    {
+      name: "0002: Create partial unique index on (user_id, idempotency_key)",
+      sql: `
+        CREATE UNIQUE INDEX IF NOT EXISTS "idx_consultations_user_idempotency_unique"
+        ON "consultations"("user_id", "idempotency_key")
+        WHERE "idempotency_key" IS NOT NULL;
       `
     }
   ];
@@ -92,42 +104,25 @@ async function runMigration() {
 
   // 4. Post-migration verification
   console.log("\n[Step 4] Verifying post-migration schema integrity...");
-  const postCols = await sql`
-    SELECT column_name, data_type, is_nullable, column_default
-    FROM information_schema.columns
-    WHERE table_name = 'consultations'
-    ORDER BY ordinal_position;
-  `;
-
-  const newColNames = [
-    "interview_state",
-    "delivered_turn_records",
-    "attributed_facts",
-    "unmapped_observations",
-    "case_version",
-    "idempotency_key",
-  ];
-
-  const colMap = new Map(postCols.map((c: any) => [c.column_name, c]));
-  for (const colName of newColNames) {
-    if (!colMap.has(colName)) {
-      throw new Error(`CRITICAL: Expected column '${colName}' not found in consultations table after migration!`);
-    }
-    const c = colMap.get(colName)!;
-    console.log(`  ✓ Column '${colName}' verified (type=${c.data_type}, nullable=${c.is_nullable}, default=${c.column_default})`);
-  }
-
-  // Verify indexes
   const indexes = await sql`
-    SELECT indexname
+    SELECT indexname, indexdef
     FROM pg_indexes
     WHERE tablename = 'consultations'
     ORDER BY indexname;
   `;
   console.log(`\n  Verified indexes on consultations (${indexes.length} total):`);
+  let hasUniqueIdempotency = false;
   for (const idx of indexes) {
     console.log(`    - ${idx.indexname}`);
+    if (idx.indexname === "idx_consultations_user_idempotency_unique") {
+      hasUniqueIdempotency = true;
+    }
   }
+
+  if (!hasUniqueIdempotency) {
+    throw new Error("CRITICAL: idx_consultations_user_idempotency_unique not found in database post-migration!");
+  }
+  console.log("  ✓ Partial unique index on (user_id, idempotency_key) verified.");
 
   // Verify record count preservation
   const postCountResult = await sql`SELECT count(*)::int as count FROM consultations;`;
@@ -138,31 +133,50 @@ async function runMigration() {
   }
   console.log("  ✓ All existing records preserved with 100% integrity.");
 
-  // 5. Verification: Write and Read back test record using new columns
-  console.log("\n[Step 5] Testing read/write against newly migrated schema...");
-  const testId = `ENC-MIG-VERIFY-${Date.now()}`;
+  // 5. Smoke test unique constraint enforcement on duplicate idempotency key
+  console.log("\n[Step 5] Testing unique constraint enforcement against duplicate idempotencyKey...");
+  const testId1 = `ENC-MIG-IDEM-1-${Date.now()}`;
+  const testId2 = `ENC-MIG-IDEM-2-${Date.now()}`;
+  const testKey = `test-key-smoke-${Date.now()}`;
+  const testUser = "smoke-test-user";
+
   await sql`
     INSERT INTO consultations (
-      id, doctor_id, doctor_name, specialty, chief_complaint,
-      case_version, idempotency_key, interview_state, attributed_facts
+      id, user_id, doctor_id, doctor_name, specialty, chief_complaint,
+      case_version, idempotency_key
     ) VALUES (
-      ${testId}, 'dr-sarah-chen', 'Dr. Sarah Chen, MD', 'Internal Medicine', 'Migration smoke test',
-      1, 'smoke-key-1', ${JSON.stringify({ phase: "active_inquiring" })}, ${JSON.stringify([{ concept: "smoke_test" }])}
+      ${testId1}, ${testUser}, 'dr-sarah-chen', 'Dr. Sarah Chen, MD', 'Internal Medicine', 'Smoke test 1',
+      1, ${testKey}
     );
   `;
-  const readBack = await sql`
-    SELECT id, case_version, idempotency_key, interview_state, attributed_facts
-    FROM consultations
-    WHERE id = ${testId};
-  `;
-  if (readBack.length !== 1 || readBack[0].case_version !== 1 || readBack[0].idempotency_key !== "smoke-key-1") {
-    throw new Error("Smoke test readback verification failed!");
-  }
-  console.log("  ✓ Test row inserted and read back successfully.");
 
-  // Clean up smoke test row
-  await sql`DELETE FROM consultations WHERE id = ${testId};`;
-  console.log("  ✓ Test row cleaned up.");
+  let caughtExpected23505 = false;
+  try {
+    await sql`
+      INSERT INTO consultations (
+        id, user_id, doctor_id, doctor_name, specialty, chief_complaint,
+        case_version, idempotency_key
+      ) VALUES (
+        ${testId2}, ${testUser}, 'dr-sarah-chen', 'Dr. Sarah Chen, MD', 'Internal Medicine', 'Smoke test 2',
+        1, ${testKey}
+      );
+    `;
+  } catch (err: any) {
+    if (err?.code === "23505" || err?.message?.includes("unique")) {
+      caughtExpected23505 = true;
+      console.log("  ✓ Duplicate insert under same user was strictly blocked by database (23505 unique violation).");
+    } else {
+      throw err;
+    }
+  }
+
+  if (!caughtExpected23505) {
+    throw new Error("Database failed to enforce uniqueness constraint on duplicate idempotency_key!");
+  }
+
+  // Clean up smoke test rows
+  await sql`DELETE FROM consultations WHERE id IN (${testId1}, ${testId2});`;
+  console.log("  ✓ Smoke test rows cleaned up.");
 
   console.log("\n================================================================================");
   console.log("  MIGRATION COMPLETE: 100% SUCCESSFUL AND VERIFIED                              ");

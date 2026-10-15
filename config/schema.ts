@@ -1,4 +1,5 @@
-import { integer, serial, pgTable, varchar, text, doublePrecision, boolean, timestamp, jsonb, json } from "drizzle-orm/pg-core";
+import { integer, serial, pgTable, varchar, text, doublePrecision, boolean, timestamp, jsonb, json, uniqueIndex } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 import type { AttributedClinicalFactV3, UnmappedObservation, DeliveredTurnRecord } from "@/lib/agents/schemas";
 import type { ClinicalInterviewState } from "@/lib/triage/conversation-manager";
 
@@ -104,7 +105,11 @@ export const consultationsTable = pgTable("consultations", {
   unmappedObservations: jsonb("unmapped_observations").$type<UnmappedObservation[]>(),
   caseVersion: integer("case_version").default(1),
   idempotencyKey: varchar("idempotency_key", { length: 128 })
-});
+}, (table) => [
+  uniqueIndex("idx_consultations_user_idempotency_unique")
+    .on(table.userId, table.idempotencyKey)
+    .where(sql`${table.idempotencyKey} IS NOT NULL`)
+]);
 
 /**
  * Tamper-Evident Cryptographic SHA-256 Audit Chain Ledger

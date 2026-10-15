@@ -319,19 +319,29 @@ export async function PATCH(
     }
 
     // STATE MACHINE RULE 0.5: Optimistic Concurrency Check (caseVersion & version)
+    const expectedVersion = record.caseVersion !== undefined ? Number(record.caseVersion) : (record.version !== undefined ? Number(record.version) : 1);
     const submittedVersion = body.caseVersion !== undefined ? Number(body.caseVersion) : (body.version !== undefined ? Number(body.version) : undefined);
-    const existingVersion = record.caseVersion !== undefined ? Number(record.caseVersion) : (record.version !== undefined ? Number(record.version) : undefined);
-    if (submittedVersion !== undefined && existingVersion !== undefined) {
-      if (submittedVersion < existingVersion) {
+    if (submittedVersion !== undefined) {
+      if (submittedVersion <= expectedVersion) {
         return NextResponse.json(
           {
             success: false,
-            error: `Concurrency conflict: Submitted version (${submittedVersion}) is behind datastore version (${existingVersion}).`,
+            error: `Concurrency conflict: Submitted version (${submittedVersion}) is behind or equal to datastore version (${expectedVersion}).`,
             code: "CONCURRENCY_CONFLICT",
           },
           { status: 409 }
         );
       }
+    }
+    if (body.expectedVersion !== undefined && Number(body.expectedVersion) !== expectedVersion) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: `Concurrency conflict: Expected version (${body.expectedVersion}) does not match datastore version (${expectedVersion}).`,
+          code: "CONCURRENCY_CONFLICT",
+        },
+        { status: 409 }
+      );
     }
 
     // STATE MACHINE RULE 1: Stale Downgrade Rejection
@@ -356,17 +366,13 @@ export async function PATCH(
     const previousApprovedAt = record.approvedAt || null;
     const previousApprovedBy = record.approvedBy || null;
 
+    const nextVersion = submittedVersion !== undefined ? submittedVersion : (expectedVersion + 1);
+
     const updateFields: any = {
       status: nextStatus,
+      version: nextVersion,
+      caseVersion: nextVersion,
     };
-
-    if (submittedVersion !== undefined) {
-      updateFields.caseVersion = submittedVersion;
-      updateFields.version = submittedVersion;
-    } else if (existingVersion) {
-      updateFields.caseVersion = existingVersion + 1;
-      updateFields.version = existingVersion + 1;
-    }
 
     if (body.interviewState !== undefined) updateFields.interviewState = body.interviewState;
     if (body.deliveredTurnRecords !== undefined) updateFields.deliveredTurnRecords = body.deliveredTurnRecords;
@@ -386,15 +392,28 @@ export async function PATCH(
 
     if (dbClient) {
       try {
-        await dbClient
+        const updated = await dbClient
           .update(consultationsTable)
           .set(updateFields)
           .where(
             and(
               eq(consultationsTable.id, id),
+              eq(consultationsTable.caseVersion, expectedVersion),
               isAdmin || canApprove ? undefined : eq(consultationsTable.userId, record.userId)
             )
+          )
+          .returning({ id: consultationsTable.id, caseVersion: consultationsTable.caseVersion });
+
+        if (updated.length === 0) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: `Concurrency conflict: Row version was modified by a concurrent transaction. Expected version ${expectedVersion}.`,
+              code: "CONCURRENCY_CONFLICT",
+            },
+            { status: 409 }
           );
+        }
       } catch (dbErr) {
         console.error("Neon DB update error on PATCH:", dbErr);
         return NextResponse.json(
@@ -403,6 +422,16 @@ export async function PATCH(
         );
       }
     } else {
+      if ((record.caseVersion || 1) !== expectedVersion) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Concurrency conflict: Row version was modified by a concurrent transaction. Expected version ${expectedVersion}.`,
+            code: "CONCURRENCY_CONFLICT",
+          },
+          { status: 409 }
+        );
+      }
       Object.assign(record, updateFields);
     }
 
