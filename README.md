@@ -88,10 +88,9 @@ flowchart TD
 This specification documents the verified codebase implementation across clinical reasoning, safety, audio latency, and infrastructure:
 
 ### 1. Bounded Multi-Specialist Decision Architecture
-* **Implementation Reality**: Specialist modules, an orchestrator, a clinical board, and bounded specialist execution routines exist as software decision modules. They operate within bounded execution budgets rather than functioning as unconstrained or autonomous human-like physicians.
-* **Architecture**: A bounded multi-specialist clinical decision architecture comprising generalist and specialty reasoning modules (Lead Internist, Cardiology, Neurology, Pediatrics) orchestrated within a constrained clinical board.
-* **Blackboard Model**: A bounded asynchronous in-memory clinical blackboard coordinates specialist observations, hypotheses, and clinical synthesis across iterative turns.
-* **Diagnostic Scoring**: Clinical scoring tools (e.g., TIMI, BE-FAST, NIHSS, PEWS criteria) evaluate patient-reported signs, structured clinical facts, and available telemetry parameters; ECG-related scoring evaluates reported telemetry indicators and does not imply direct 12-lead hardware acquisition.
+* **Implementation Reality (Heuristic Decision Modules)**: Specialist modules (Lead Internist, Cardiology, Neurology, Pediatrics, ENT) operate as an in-memory heuristic coordination pattern. They execute deterministic rule filters, slot extractors, and bounded prompt templates with simulated deliberation rounds. They do **not** function as autonomous, unconstrained LLM physician agents or concurrent independent cognitive entities.
+* **Diagnostic & Clinical Scoring Tools**: Clinical scoring tools (e.g., TIMI, BE-FAST, NIHSS, PEWS criteria) are **software heuristic calculation rules** evaluating patient-reported symptoms, textual survey inputs, and self-reported vital ranges. The system has **zero biological sensor connections, zero direct 12-lead ECG hardware acquisition, and zero certified medical device interfaces**. Any ECG-related parameters evaluate patient-reported verbal descriptors only and are unvalidated for acute clinical diagnosis.
+* **Blackboard Model**: A bounded asynchronous in-memory clinical blackboard coordinates specialist observations, hypotheses, and clinical synthesis across bounded execution rounds (maximum 2 deliberation passes).
 
 ### 2. Deterministic Dual-Arbiter Safety Shield
 * **Pre-Arbiter & Post-Arbiter**: Deterministic safety arbiters execute before and after LLM synthesis:
@@ -104,14 +103,12 @@ This specification documents the verified codebase implementation across clinica
 * **Benchmark Scope**: The evaluation harness contains 35 standardized clinical benchmark scenarios: 22 high-acuity emergency cases and 13 non-emergency control cases across cardiac, neurological, pediatric, and general medicine domains.
 * **Concordance Rate**: Achieved **100% emergency sensitivity (22/22)** on the evaluated 35-case benchmark. The system correctly separated all 22 life-threatening presentations from controls without false-negative downgrades. (Note: Evaluated on this finite test population; not a claim of universal population-level clinical accuracy).
 
-### 4. Latency Profiles & Adaptive First-Chunk TTS
+### 4. Latency Profiles, STT Dependency & Pipeline Reality
 * **Arbiter Latency**: Mean deterministic safety-arbiter latency was **0.39 ms** in local Node.js benchmarks, with **P50 at 0.14 ms**.
 * **Kokoro-82M TTS Baseline**: Engine-level Kokoro-82M q4 CPU synthesis latency is approximately 0.93–0.96 s P50 for short 5-word inputs.
-* **Adaptive First-Chunk Optimization**: To eliminate compound response lag, the audio engine adaptively partitions speech into an immediate introductory clause (4–8 words) synthesized ahead of subsequent paragraphs.
-* **Time-to-First-Audio (TTFA)**:
-  - Reduced compound-turn end-to-end TTFA by **61.4% on average** (from ~4.2 s down to **1.1–1.6 s** in tested scenarios).
-  - Zero measured playback starvation between consecutive audio buffers.
-  - Interactive turn turnaround: sub-second for short acknowledgments, and ~1.1–1.6 s TTFA for complex compound clinical responses.
+* **Adaptive First-Chunk Optimization**: To eliminate compound response lag, the audio engine adaptively partitions speech into an immediate introductory clause (4–8 words) synthesized ahead of subsequent paragraphs (TTFA: **1.1–1.6 s** with zero measured playback buffer starvation).
+* **Full End-to-End Voice Latency Reality**: In a live voice consultation (Microphone $\rightarrow$ STT $\rightarrow$ Remote LLM $\rightarrow$ TTS $\rightarrow$ Playback), full conversational turn turnaround is **2.5–5.0+ seconds**. Sub-second turnaround applies **only** to local deterministic safety pre-arbiter evaluations and pre-cached emergency alerts.
+* **Speech-to-Text (STT) Infrastructure Status**: The Next.js `/api/voice/stt` bridge proxies audio to an external local FastAPI Whisper service (`FASTAPI_URL`), which is an external Python dependency not bundled in the Node.js runtime. Without the separate Python service running, clients fall back to native Web Speech API or simulated transcript input. Local Python STT is an external deployment dependency.
 
 ### 5. Runtime Paralinguistic Acoustic DSP Analyzer
 * **Microphone DSP Pipeline**: The browser runtime extracts short-term acoustic features from live microphone PCM input via Web Audio API using **25 ms analysis windows** and **10 ms hop intervals**.
@@ -162,14 +159,14 @@ The following matrix documents the verified technical alignment across all 20 ev
 
 | # | Topic | Status | Code Reality & Verification | Adopted Specification & Paper Language |
 |:---:|:---|:---:|:---|:---|
-| **1** | Multi-Agent Board | 🟢 | Software decision modules with bounded execution rounds; not autonomous physicians. | Bounded multi-specialist clinical decision architecture comprising generalist and specialty modules orchestrated within a constrained clinical board. |
+| **1** | Multi-Agent Board | 🟢 | Software decision heuristics and prompt templates with bounded execution rounds; not autonomous physicians. | Bounded multi-specialist heuristic decision architecture comprising generalist and specialty modules with simulated deliberation. |
 | **2** | Shared Blackboard | 🟢 | In-memory blackboard coordinating specialist observations with bounded execution rounds. | Bounded asynchronous in-memory clinical blackboard coordinating specialist observations and synthesis. |
-| **3** | Diagnostic Tools | 🟢 | Rule tools evaluate patient-reported symptoms and telemetry; no direct ECG acquisition. | Clinical scoring tools evaluate patient-reported signs and available telemetry; ECG scoring does not imply direct 12-lead hardware acquisition. |
+| **3** | Diagnostic Tools | 🟢 | Deterministic heuristic rules evaluate patient-reported symptoms; zero 12-lead ECG sensor or hardware acquisition. | Clinical scoring tools evaluate patient-reported signs and survey inputs; ECG scoring does not imply direct 12-lead hardware acquisition. |
 | **4** | Dual-Arbiter Shield | 🟢 | Deterministic pre/post arbiters enforce emergency floor, missing-vs-denied semantics, and non-downgrade. | Retained as primary safety guarantee enforcing $\text{ESI}_{\text{final}} = \min(\text{ESI}_{\text{pre}}, \text{ESI}_{\text{llm}})$. |
 | **5** | Triage Concordance | 🟡 | 35-case benchmark harness (22 emergency, 13 controls). | Achieved 100% emergency sensitivity (22/22) on the evaluated 35-case benchmark; no claim of universal population accuracy. |
 | **6** | Arbiter Latency | 🟢 | Node.js v22 CPU benchmark measurements. | Mean safety-arbiter latency was 0.39 ms in the local Node.js benchmark; P50 was 0.14 ms. |
 | **7** | Kokoro-82M TTFA | 🔴 | Engine-level 5-word is ~0.93–0.96 s P50. Adaptive first-chunk synthesis gives 1.1–1.6 s TTFA (61.4% drop) with 0 ms starvation. | Kokoro-82M q4 CPU engine-level synthesis latency was approximately 0.93–0.96 s P50 for short 5-word inputs. Adaptive first-chunk synthesis reduced compound-turn TTFA by 61.4% (1.1–1.6 s) with 0 ms starvation. |
-| **8** | Turn-Taking | 🟡 | Short responses are sub-second; compound responses are 1.1–1.6 s TTFA. | Low-latency local interactive voice consultation, with sub-second turnaround for short responses and ~1.1–1.6 s TTFA for compound turns. |
+| **8** | Turn-Taking & Latency | 🟡 | Pre-arbiter is sub-millisecond (0.39 ms); full end-to-end voice turnaround is 2.5–5.0+ s in live network conditions. | Local interactive voice consultation with sub-second arbiter safety checks; compound end-to-end dialogue turnaround is 2.5–5.0+ s. |
 | **9** | Paralinguistic DSP | 🟢 | Live MediaStream PCM, 25 ms/10 ms framing, RMS/dBFS VAD, pause statistics, and autocorrelation $f_0$. | Browser runtime extracts short-term acoustic features as observational telemetry only; not used as autonomous diagnostic biomarkers. |
 | **10** | MedlinePlus RAG | 🟢 | 2,112 processed passages + curated guidelines loaded locally. | Offline MedlinePlus XML-derived passages indexed locally alongside curated clinical practice guidelines. |
 | **11** | RAG Math | 🔴 | Replaced Eq. 8 (no BM25 or DPR). Deterministic lexical, domain, section, and authority formula. | Evaluated with implemented formula: $S(d, q) = (L_{\text{multi-field}}(d, q) + \Delta_{\text{domain}}) \times \gamma_{\text{section}} + \alpha_{\text{auth}}$. |

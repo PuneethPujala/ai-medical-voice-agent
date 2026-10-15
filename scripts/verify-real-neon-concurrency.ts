@@ -56,11 +56,11 @@ async function runRealNeonVerification() {
         },
         body: JSON.stringify({
           id: raceEncounterId,
-          patientName: "Concurrent Neon Patient",
+          patientName: `Concurrent Neon Patient ${i}`,
           doctorId: assignedDoctor,
           doctorName: "Dr. Sarah Chen, MD",
           specialty: "Internal Medicine",
-          chiefComplaint: "Concurrent Neon Test complaint",
+          chiefComplaint: `Concurrent Neon Test complaint iteration ${i}`,
           triageLevel: "routine",
           status: "completed_pending_review",
           durationSeconds: 150,
