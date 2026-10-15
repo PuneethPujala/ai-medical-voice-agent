@@ -5,9 +5,13 @@ import { DEFAULT_INTERNAL_TEST_SECRET, INTERNAL_TEST_SECRET_HEADER, Role } from 
 import { neon } from "@neondatabase/serverless";
 import * as dotenv from "dotenv";
 
-dotenv.config({ path: ".env.local" });
-if (!process.env.DATABASE_URL) {
-  dotenv.config({ path: ".env" });
+if (process.env.MEDVOICE_OFFLINE_TESTS === "1") {
+  delete process.env.DATABASE_URL;
+} else {
+  dotenv.config({ path: ".env.local" });
+  if (!process.env.DATABASE_URL) {
+    dotenv.config({ path: ".env" });
+  }
 }
 
 (process.env as Record<string, string | undefined>).NODE_ENV = "test";
@@ -130,7 +134,7 @@ async function runAtomicConcurrencyTests() {
           doctorId: "dr-sarah-chen",
           doctorName: "Dr. Sarah Chen, MD",
           specialty: "Internal Medicine",
-          chiefComplaint: "Chest pressure iteration " + i,
+          chiefComplaint: "Chest pressure across retries",
           idempotencyKey: sharedKey2,
         }),
       });

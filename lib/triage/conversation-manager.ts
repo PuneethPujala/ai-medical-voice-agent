@@ -780,6 +780,31 @@ export class ConversationManager {
     options?: ProcessTurnOptions
   ): Promise<ConversationTurnResult> {
     const state: ClinicalInterviewState = existingState || this.createInitialState();
+    if (!state.resolvedQuestions) state.resolvedQuestions = [];
+    if (!state.agentRequests) state.agentRequests = [];
+    if (!state.slots) state.slots = this.createInitialState().slots;
+    if (!state.slots.known_facts) state.slots.known_facts = [];
+    if (!state.slots.associated_symptoms) state.slots.associated_symptoms = [];
+    if (!state.slots.neurological_signs) state.slots.neurological_signs = [];
+    if (!state.conversationMemory) {
+      state.conversationMemory = this.createInitialState().conversationMemory;
+    } else {
+      if (!state.conversationMemory.confirmedFacts) state.conversationMemory.confirmedFacts = [];
+      if (!state.conversationMemory.deniedSymptoms) state.conversationMemory.deniedSymptoms = [];
+      if (!state.conversationMemory.questionsAlreadyAsked) state.conversationMemory.questionsAlreadyAsked = [];
+      if (!state.conversationMemory.askedTopics) state.conversationMemory.askedTopics = [];
+      if (!state.conversationMemory.patientCorrections) state.conversationMemory.patientCorrections = [];
+      if (!state.conversationMemory.patientObjections) state.conversationMemory.patientObjections = [];
+      if (!state.conversationMemory.patientConcerns) state.conversationMemory.patientConcerns = [];
+      if (!state.conversationMemory.accessConstraints) state.conversationMemory.accessConstraints = [];
+      if (!state.conversationMemory.uncertainties) state.conversationMemory.uncertainties = [];
+    }
+    if (state.structuredHistory) {
+      if (!state.structuredHistory.unansweredDimensions) state.structuredHistory.unansweredDimensions = [];
+      if (!state.structuredHistory.patientCorrections) state.structuredHistory.patientCorrections = [];
+      if (!state.structuredHistory.patientQuestions) state.structuredHistory.patientQuestions = [];
+      if (!state.structuredHistory.recentDoctorReplies) state.structuredHistory.recentDoctorReplies = [];
+    }
     const cleanMsg = patientUtterance.trim();
 
     if (options?.patientProfile) {

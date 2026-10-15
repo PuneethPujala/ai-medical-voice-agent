@@ -1,7 +1,7 @@
 import assert from "assert";
 import { POST as postVoiceChat } from "../../app/api/voice/chat/route";
 import { DEFAULT_INTERNAL_TEST_SECRET, INTERNAL_TEST_SECRET_HEADER, Role } from "../../lib/auth/rbac";
-import { ClinicalInterviewState } from "../../lib/triage/clinical-state";
+import { ClinicalInterviewState } from "../../lib/triage/conversation-manager";
 import * as dotenv from "dotenv";
 
 dotenv.config({ path: ".env.local" });
@@ -37,7 +37,7 @@ async function runRouteVoiceChatDialogueTests() {
       phase: "active_inquiring",
       caseVersion: 1,
       cumulativeTranscript: "Patient presented with severe headache.",
-      informationState: "partial",
+      informationState: "insufficient",
       slots: {
         location: "head",
         character: "throbbing",
@@ -48,6 +48,7 @@ async function runRouteVoiceChatDialogueTests() {
         exertional: false,
         associated_symptoms: [],
         neurological_signs: [],
+        pediatric_signs: [],
         known_facts: ["Chief Complaint: severe headache", "Severity: 7", "Duration: 2 days"],
       },
       pendingQuestion: {
@@ -178,6 +179,7 @@ async function runRouteVoiceChatDialogueTests() {
         exertional: false,
         associated_symptoms: [],
         neurological_signs: [],
+        pediatric_signs: [],
         known_facts: ["Sore throat", "Onset: yesterday"],
       },
       pendingQuestion: {
@@ -252,6 +254,7 @@ async function runRouteVoiceChatDialogueTests() {
         exertional: false,
         associated_symptoms: [],
         neurological_signs: [],
+        pediatric_signs: [],
         known_facts: ["LOCATION: throat", "ONSET: 3 days", "SEVERITY: 8"],
       },
       structuredHistory: {

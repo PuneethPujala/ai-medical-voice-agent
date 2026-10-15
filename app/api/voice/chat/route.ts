@@ -441,6 +441,8 @@ export async function POST(request: Request) {
 
     if (slots.severity) earnedPoints += 10; // Numeric severity rating
 
+    const completenessScore = Math.min(100, earnedPoints);
+
     // Invariant: Preserve unanswered dimensions already tracked by conversationManager
     // (e.g. compound question sub-targets such as fever, neck_stiffness, nausea).
     // Do NOT overwrite with a generic checklist; merge them and prune already resolved facts.
