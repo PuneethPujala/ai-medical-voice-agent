@@ -468,31 +468,79 @@ export async function PATCH(
       });
     } catch (auditErr: any) {
       console.error("Critical: Audit ledger write failure during consultation mutation:", auditErr);
+      const rollbackSnapshot: any = {
+        status: previousSnapshot.status,
+        approvedAt: previousSnapshot.approvedAt,
+        approvedBy: previousSnapshot.approvedBy,
+        caseVersion: previousSnapshot.caseVersion,
+        soapSubjective: previousSnapshot.soapSubjective,
+        soapObjective: previousSnapshot.soapObjective,
+        soapAssessment: previousSnapshot.soapAssessment,
+        soapPlan: previousSnapshot.soapPlan,
+        interviewState: previousSnapshot.interviewState,
+        deliveredTurnRecords: previousSnapshot.deliveredTurnRecords,
+        attributedFacts: previousSnapshot.attributedFacts,
+        unmappedObservations: previousSnapshot.unmappedObservations,
+        idempotencyKey: previousSnapshot.idempotencyKey,
+      };
+
       if (dbClient) {
         try {
-          await dbClient
+          const rollbackUpdated = await dbClient
             .update(consultationsTable)
-            .set({
-              status: previousStatus,
-              approvedAt: previousApprovedAt,
-              approvedBy: previousApprovedBy,
-            })
-            .where(eq(consultationsTable.id, id));
+            .set(rollbackSnapshot)
+            .where(
+              and(
+                eq(consultationsTable.id, id),
+                eq(consultationsTable.caseVersion, nextVersion),
+                isAdmin || canApprove ? undefined : eq(consultationsTable.userId, record.userId)
+              )
+            )
+            .returning({ id: consultationsTable.id, caseVersion: consultationsTable.caseVersion });
+
+          if (rollbackUpdated.length === 0) {
+            console.error(
+              `Critical: Rollback conflict for encounter ${id}. Row was modified concurrently after PATCH.`
+            );
+            return NextResponse.json(
+              {
+                success: false,
+                error: "Audit ledger persistence failure and rollback conflict: Record was concurrently modified. Manual reconciliation required.",
+                code: "AUDIT_ROLLBACK_CONFLICT",
+              },
+              { status: 500 }
+            );
+          }
         } catch (rollbackErr) {
           console.error("Critical: Rollback error after audit ledger failure:", rollbackErr);
+          return NextResponse.json(
+            {
+              success: false,
+              error: "Audit ledger persistence failure and database rollback error. Record integrity alert flagged.",
+              code: "AUDIT_ROLLBACK_ERROR",
+            },
+            { status: 500 }
+          );
         }
       } else {
-        Object.assign(record, {
-          status: previousStatus,
-          approvedAt: previousApprovedAt,
-          approvedBy: previousApprovedBy,
-        });
+        if ((record.caseVersion || 1) !== nextVersion) {
+          console.error(`Critical: In-memory rollback conflict for encounter ${id}. Row was modified concurrently.`);
+          return NextResponse.json(
+            {
+              success: false,
+              error: "Audit ledger persistence failure and in-memory rollback conflict: Record was concurrently modified.",
+              code: "AUDIT_ROLLBACK_CONFLICT",
+            },
+            { status: 500 }
+          );
+        }
+        Object.assign(record, rollbackSnapshot);
       }
 
       return NextResponse.json(
         {
           success: false,
-          error: "Audit ledger persistence failure. Operation aborted to preserve compliance integrity.",
+          error: "Audit ledger persistence failure. Operation aborted and consultation state rolled back to preserve compliance integrity.",
           code: "AUDIT_FAILURE",
         },
         { status: 500 }

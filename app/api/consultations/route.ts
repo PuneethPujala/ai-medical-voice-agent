@@ -455,9 +455,16 @@ export async function POST(request: Request) {
 
       // STATE MACHINE RULE 0: Idempotent Retry Check
       const isIdempotencyMatch = Boolean(
-        body.idempotencyKey &&
-        existingRecord.idempotencyKey === body.idempotencyKey &&
-        (existingRecord.userId === effectiveUserId || auth.role === "admin")
+        (body.idempotencyKey &&
+          existingRecord.idempotencyKey === body.idempotencyKey &&
+          (existingRecord.userId === effectiveUserId || auth.role === "admin")) ||
+        (body.id &&
+          existingRecord.id === body.id &&
+          !body.idempotencyKey &&
+          (existingRecord.userId === effectiveUserId || auth.role === "admin") &&
+          !body.caseVersion &&
+          !body.expectedVersion &&
+          !body.action)
       );
 
       if (isIdempotencyMatch) {
