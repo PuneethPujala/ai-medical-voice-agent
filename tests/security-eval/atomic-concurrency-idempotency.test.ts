@@ -5,9 +5,13 @@ import { DEFAULT_INTERNAL_TEST_SECRET, INTERNAL_TEST_SECRET_HEADER, Role } from 
 import { neon } from "@neondatabase/serverless";
 import * as dotenv from "dotenv";
 
-dotenv.config({ path: ".env.local" });
-if (!process.env.DATABASE_URL) {
-  dotenv.config({ path: ".env" });
+if (process.env.MEDVOICE_OFFLINE_TESTS === "1") {
+  delete process.env.DATABASE_URL;
+} else {
+  dotenv.config({ path: ".env.local" });
+  if (!process.env.DATABASE_URL) {
+    dotenv.config({ path: ".env" });
+  }
 }
 
 (process.env as Record<string, string | undefined>).NODE_ENV = "test";
@@ -27,8 +31,11 @@ async function runAtomicConcurrencyTests() {
 
   const dbUrl = process.env.DATABASE_URL;
   if (!dbUrl) {
+    if (process.env.REQUIRE_LIVE_DB === "true") {
+      throw new Error("FATAL: REQUIRE_LIVE_DB is set to true, but DATABASE_URL is missing from environment!");
+    }
     console.warn("⚠️  SKIPPED: DATABASE_URL not set. Real PostgreSQL datastore required for live CAS tests.");
-    console.warn("   Passing in offline/mock CI environment.");
+    console.warn("   Passing in offline/mock CI environment. Set REQUIRE_LIVE_DB=true to enforce live DB check.");
     return;
   }
 
@@ -127,7 +134,7 @@ async function runAtomicConcurrencyTests() {
           doctorId: "dr-sarah-chen",
           doctorName: "Dr. Sarah Chen, MD",
           specialty: "Internal Medicine",
-          chiefComplaint: "Chest pressure iteration " + i,
+          chiefComplaint: "Chest pressure across retries",
           idempotencyKey: sharedKey2,
         }),
       });
@@ -227,28 +234,54 @@ async function runAtomicConcurrencyTests() {
     // TEST 4: Material Payload Mismatch on Idempotent Key Replay
     // -------------------------------------------------------------------------
     console.log("\n[Test 4] Payload Mismatch Detection on Repeated Idempotency Key");
-    const mismatchReq = new Request("https://medvoice.org/api/consultations", {
+    
+    // Test 4a: Chief complaint-only mismatch (same doctorId, altered complaint)
+    console.log("  [4a] Testing chief-complaint-only mismatch (same doctor, changed complaint)...");
+    const complaintMismatchReq = new Request("https://medvoice.org/api/consultations", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         ...createTestHeaders("patient", userAlice),
       },
       body: JSON.stringify({
-        id: `ENC-MISMATCH-${Date.now()}`,
+        id: `ENC-MISMATCH-COMPLAINT-${Date.now()}`,
+        patientName: "Alice Tenant",
+        doctorId: "dr-sarah-chen", // Identical doctor
+        doctorName: "Dr. Sarah Chen, MD",
+        specialty: "Internal Medicine",
+        chiefComplaint: "Altered complaint without changing doctor", // Conflicting complaint!
+        idempotencyKey: tenantKey,
+      }),
+    });
+    const complaintMismatchRes = await postConsultation(complaintMismatchReq);
+    assert.strictEqual(complaintMismatchRes.status, 422, "Complaint-only mismatch must return 422");
+    const complaintMismatchJson = await complaintMismatchRes.json();
+    assert.strictEqual(complaintMismatchJson.code, "IDEMPOTENCY_PAYLOAD_MISMATCH");
+    console.log("  ✓ Complaint-only mismatch guard verified (422 IDEMPOTENCY_PAYLOAD_MISMATCH).");
+
+    // Test 4b: Doctor-only mismatch (identical complaint, altered doctor)
+    console.log("  [4b] Testing doctor-only mismatch (same complaint, changed doctor)...");
+    const doctorMismatchReq = new Request("https://medvoice.org/api/consultations", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...createTestHeaders("patient", userAlice),
+      },
+      body: JSON.stringify({
+        id: `ENC-MISMATCH-DOC-${Date.now()}`,
         patientName: "Alice Tenant",
         doctorId: "dr-arthur-pendelton", // Conflicting doctor!
         doctorName: "Dr. Arthur Pendelton, MD",
         specialty: "Neurology",
-        chiefComplaint: "Completely different acute symptom",
-        idempotencyKey: tenantKey, // Replaying Alice's key with conflicting intent
+        chiefComplaint: "Alice complaint", // Identical complaint
+        idempotencyKey: tenantKey,
       }),
     });
-
-    const mismatchRes = await postConsultation(mismatchReq);
-    assert.strictEqual(mismatchRes.status, 422, "Conflicting payload with same idempotencyKey must be rejected (422)");
-    const mismatchJson = await mismatchRes.json();
-    assert.strictEqual(mismatchJson.code, "IDEMPOTENCY_PAYLOAD_MISMATCH");
-    console.log("  ✓ Payload mismatch guard verified: Conflicting critical parameters rejected with 422 IDEMPOTENCY_PAYLOAD_MISMATCH.");
+    const doctorMismatchRes = await postConsultation(doctorMismatchReq);
+    assert.strictEqual(doctorMismatchRes.status, 422, "Doctor-only mismatch must return 422");
+    const doctorMismatchJson = await doctorMismatchRes.json();
+    assert.strictEqual(doctorMismatchJson.code, "IDEMPOTENCY_PAYLOAD_MISMATCH");
+    console.log("  ✓ Doctor-only mismatch guard verified (422 IDEMPOTENCY_PAYLOAD_MISMATCH).");
 
     console.log("\n================================================================================");
     console.log("  ALL ATOMIC CAS & DATABASE-ENFORCED IDEMPOTENCY TESTS PASSED (100% VERIFIED)  ");

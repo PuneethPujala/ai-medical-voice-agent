@@ -15,6 +15,10 @@ import { evaluatePreArbiter } from "@/lib/triage/pre-arbiter";
 import { PatientProfileService } from "@/lib/patient/patient-profile-service";
 import { CallerProfile, PatientProfile, AttributedClinicalFact } from "@/lib/clinical-knowledge/types";
 import { getAuthContext } from "@/lib/auth/rbac";
+import { getDb } from "@/config/db";
+import { consultationsTable } from "@/config/schema";
+import { and, eq } from "drizzle-orm";
+import { memoryConsultations } from "@/app/api/consultations/route";
 
 import {
   checkRateLimit,
@@ -55,6 +59,8 @@ export async function POST(request: Request) {
       patientAge,
       patientId: requestedPatientId,
       patientRelationship,
+      encounterId: rawEncounterId,
+      consultationId,
       // body.patientProfile and body.userId are intentionally discarded to enforce tenant isolation
       audioMetrics,
       isInterruption = false,
@@ -62,6 +68,7 @@ export async function POST(request: Request) {
       userLocation,
       locationPermission,
     } = body;
+    const encounterId = rawEncounterId || consultationId;
 
     // 2. Abuse Protection: Enforce strict payload constraints before expensive AI reasoning
     if (!message || typeof message !== "string" || !message.trim()) {
@@ -270,11 +277,44 @@ export async function POST(request: Request) {
       }
     }
 
-    // 2. Stateful Clinical Conversation Manager Turn Execution
+    // 2. Server-Authoritative State Resolution:
+    // If encounterId is provided, query authoritative state from primary datastore / memory store,
+    // falling back to client-provided body.interviewState only if no server state exists yet.
+    let authoritativeInterviewState = body.interviewState;
+    if (encounterId && effectiveUserId !== "unauthenticated") {
+      const dbClient = getDb();
+      if (dbClient) {
+        try {
+          const existingEncounter = await dbClient
+            .select()
+            .from(consultationsTable)
+            .where(
+              auth.role === "admin"
+                ? eq(consultationsTable.id, encounterId)
+                : and(eq(consultationsTable.id, encounterId), eq(consultationsTable.userId, effectiveUserId))
+            )
+            .limit(1);
+          if (existingEncounter.length > 0 && existingEncounter[0].interviewState) {
+            authoritativeInterviewState = existingEncounter[0].interviewState as any;
+          }
+        } catch (fetchErr) {
+          console.warn("[VoiceChat] Server encounter state fetch notice:", fetchErr);
+        }
+      } else {
+        const memEncounter = memoryConsultations.find(
+          c => c.id === encounterId && (c.userId === effectiveUserId || auth.role === "admin" || effectiveUserId === "anon-user")
+        );
+        if (memEncounter && memEncounter.interviewState) {
+          authoritativeInterviewState = memEncounter.interviewState;
+        }
+      }
+    }
+
+    // Stateful Clinical Conversation Manager Turn Execution
     // Invariant: Do not default unknown age to "adult" — preserve "unknown" so pediatric checks are not bypassed
     const turnResult = await conversationManager.processTurn(
       cleanMsg,
-      body.interviewState,
+      authoritativeInterviewState,
       {
         age: ageNum ?? undefined,
         age_group: ageGroup,
@@ -401,10 +441,32 @@ export async function POST(request: Request) {
 
     if (slots.severity) earnedPoints += 10; // Numeric severity rating
 
-    const completenessScore = hasAnySymptoms ? Math.min(0.95, Math.round(earnedPoints) / 100) : 0;
-    const missingDims = calculatedMissingDims;
+    const completenessScore = Math.min(100, earnedPoints);
+
+    // Invariant: Preserve unanswered dimensions already tracked by conversationManager
+    // (e.g. compound question sub-targets such as fever, neck_stiffness, nausea).
+    // Do NOT overwrite with a generic checklist; merge them and prune already resolved facts.
+    const existingUnanswered = turnResult.state.structuredHistory?.unansweredDimensions || [];
+    const mergedUnanswered = Array.from(new Set([...existingUnanswered, ...calculatedMissingDims])).filter(dim => {
+      const dimLower = dim.toLowerCase();
+      if (dimLower === "fever" && (turnResult.state.slots.known_facts.some(f => /fever/i.test(f)) || turnResult.state.conversationMemory?.deniedSymptoms.includes("fever"))) {
+        return false;
+      }
+      if (dimLower === "neck_stiffness" && (turnResult.state.slots.known_facts.some(f => /neck/i.test(f)) || turnResult.state.conversationMemory?.deniedSymptoms.some(d => /neck/i.test(d)))) {
+        return false;
+      }
+      if (dimLower === "nausea" && (turnResult.state.slots.known_facts.some(f => /nausea/i.test(f)) || turnResult.state.conversationMemory?.deniedSymptoms.includes("nausea"))) {
+        return false;
+      }
+      if ((dimLower === "onset_pattern" || dimLower === "sudden_vs_gradual") && turnResult.state.slots.known_facts.some(f => /onset_type|onset pattern|sudden|gradual/i.test(f))) {
+        return false;
+      }
+      return true;
+    });
+
+    const missingDims = mergedUnanswered;
     if (turnResult.state.structuredHistory) {
-      turnResult.state.structuredHistory.unansweredDimensions = calculatedMissingDims;
+      turnResult.state.structuredHistory.unansweredDimensions = mergedUnanswered;
     }
 
     // Conditioned Care Network RAG Trigger:
@@ -632,7 +694,9 @@ export async function POST(request: Request) {
         }
       }
     } else {
-      if (turnResult.state.pendingQuestion && ((llmResult.conversationalAction as any) === "EMERGENCY_ESCALATION" || llmResult.conversationalAction === "EMERGENCY_DIRECTIVE" || (llmResult.conversationalAction as any) === "CONVENE_BOARD")) {
+      // Invariant: If doctor reply does not ask a question (e.g. ACKNOWLEDGE, EXPLAIN, REASSURE, PROVIDE_SUPPORT, EMERGENCY_DIRECTIVE, CONVENE_BOARD),
+      // clear pendingQuestion so stale questions from previous turns do not linger and miscapture subsequent patient statements.
+      if (turnResult.state.pendingQuestion) {
         turnResult.state.pendingQuestion.status = "superseded";
         turnResult.state.pendingQuestion = null;
       }
@@ -723,6 +787,81 @@ export async function POST(request: Request) {
       turnResult.state.informationState = "emergency_preempted";
     }
 
+    const persistTurnStateAsync = async (stateToPersist: any) => {
+      if (!encounterId || effectiveUserId === "unauthenticated") return;
+      const dbClient = getDb();
+      if (dbClient) {
+        try {
+          const existingRows = await dbClient
+            .select()
+            .from(consultationsTable)
+            .where(
+              auth.role === "admin"
+                ? eq(consultationsTable.id, encounterId)
+                : and(eq(consultationsTable.id, encounterId), eq(consultationsTable.userId, effectiveUserId))
+            )
+            .limit(1);
+
+          if (existingRows.length > 0) {
+            await dbClient
+              .update(consultationsTable)
+              .set({
+                interviewState: stateToPersist,
+                deliveredTurnRecords: stateToPersist.deliveredTurnRecords,
+                attributedFacts: stateToPersist.attributedFacts,
+                unmappedObservations: stateToPersist.unmappedObservations,
+                caseVersion: stateToPersist.caseVersion,
+              })
+              .where(eq(consultationsTable.id, encounterId));
+          } else {
+            await dbClient.insert(consultationsTable).values({
+              id: encounterId,
+              userId: effectiveUserId,
+              doctorId: doctor.id,
+              doctorName: doctor.name,
+              specialty: doctor.specialty,
+              chiefComplaint: cleanMsg.slice(0, 200),
+              interviewState: stateToPersist,
+              deliveredTurnRecords: stateToPersist.deliveredTurnRecords,
+              attributedFacts: stateToPersist.attributedFacts,
+              unmappedObservations: stateToPersist.unmappedObservations,
+              caseVersion: stateToPersist.caseVersion,
+              status: "in_progress",
+            } as any);
+          }
+        } catch (persistErr) {
+          console.warn("[VoiceChat] Server turn state persistence notice:", persistErr);
+        }
+      } else {
+        const mem = memoryConsultations.find(
+          c => c.id === encounterId && (c.userId === effectiveUserId || auth.role === "admin" || effectiveUserId === "anon-user")
+        );
+        if (mem) {
+          mem.interviewState = stateToPersist;
+          mem.deliveredTurnRecords = stateToPersist.deliveredTurnRecords;
+          mem.attributedFacts = stateToPersist.attributedFacts;
+          mem.unmappedObservations = stateToPersist.unmappedObservations;
+          mem.caseVersion = stateToPersist.caseVersion;
+        } else {
+          memoryConsultations.push({
+            id: encounterId,
+            userId: effectiveUserId,
+            doctorId: doctor.id,
+            doctorName: doctor.name,
+            specialty: doctor.specialty,
+            chiefComplaint: cleanMsg.slice(0, 200),
+            interviewState: stateToPersist,
+            deliveredTurnRecords: stateToPersist.deliveredTurnRecords,
+            attributedFacts: stateToPersist.attributedFacts,
+            unmappedObservations: stateToPersist.unmappedObservations,
+            caseVersion: stateToPersist.caseVersion,
+            status: "in_progress",
+            transcript: [],
+          });
+        }
+      }
+    };
+
     // If conversation manager determined patient follow-up or clarification is needed
     if (turnResult.action === "ASK_PATIENT" || turnResult.action === "CLARIFY") {
       // Dual-loop non-blocking blackboard background deliberation:
@@ -755,6 +894,8 @@ export async function POST(request: Request) {
           // non-blocking
         }
       }
+
+      await persistTurnStateAsync(turnResult.state);
 
       return buildJsonResponse({
         doctorReply: activeDoctorReply,
@@ -927,17 +1068,20 @@ export async function POST(request: Request) {
       if (isEmergency && !/\b(108|112|emergency|ambulance|hospital|urgent|er\b|immediately)\b/i.test(finalDoctorReply)) {
         finalDoctorReply = `This is a medical emergency. Please call 112 or 108 immediately or proceed to the nearest emergency department. ${finalDoctorReply}`.trim();
       }
+    } else if (activeDoctorReply) {
+      // LLM-first conversational response controls patient-facing dialogue
+      finalDoctorReply = activeDoctorReply;
     } else if (boardOutput && boardOutput.doctor_reply) {
-      // Pre-TTS Validator for non-emergency board reply: ensure no fabricated unassessed vitals
+      // Pre-TTS Validator for non-emergency board reply fallback: ensure no fabricated unassessed vitals
       const text = boardOutput.doctor_reply.toLowerCase();
       const hasFabricatedVitals = /\b(blood\s+pressure\s+is\s+\d+|bp\s+is\s+\d+|heart\s+rate\s+is\s+\d+)\b/i.test(text);
       if (hasFabricatedVitals) {
-        finalDoctorReply = activeDoctorReply || turnResult.doctorReply;
+        finalDoctorReply = turnResult.doctorReply || "I have reviewed your symptoms with our clinical board.";
       } else {
         finalDoctorReply = boardOutput.doctor_reply;
       }
     } else {
-      finalDoctorReply = activeDoctorReply || turnResult.doctorReply;
+      finalDoctorReply = turnResult.doctorReply;
     }
 
     // Voice-length guard: board output may be clinician-length text. Truncate for TTS.
@@ -952,6 +1096,14 @@ export async function POST(request: Request) {
       }
     }
 
+    const decidedInterviewState = {
+      ...turnResult.state,
+      phase: "decided" as const,
+      informationState: "sufficient_for_decision" as const,
+    };
+
+    await persistTurnStateAsync(decidedInterviewState);
+
     return buildJsonResponse({
       doctorReply: finalDoctorReply,
       doctor: {
@@ -963,11 +1115,7 @@ export async function POST(request: Request) {
         voiceId: doctor.voiceId,
       },
       phase: "board_decision",
-      interviewState: {
-        ...turnResult.state,
-        phase: "decided",
-        informationState: "sufficient_for_decision",
-      },
+      interviewState: decidedInterviewState,
       nearbyHospitals: nearbyHospitals.length > 0 ? nearbyHospitals : undefined,
       careOptions: careOptions.length > 0 ? careOptions : undefined,
       llmMeta: {

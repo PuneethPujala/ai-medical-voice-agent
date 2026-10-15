@@ -1832,6 +1832,12 @@ export default function ConsultPage() {
     setMicPermissionError(null);
     setSessionMode("ACTIVE_CONSULTATION");
 
+    if (!stableEncounterIdRef.current) {
+      const genId = `ENC-${Date.now().toString().slice(-6)}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
+      stableEncounterIdRef.current = genId;
+      setCurrentEncounterId(genId);
+    }
+
     // Pre-warm the persistent HTML5 AudioElement during the user gesture to prime autoplay privileges
     if (typeof window !== "undefined" && !persistentAudioRef.current) {
       try {
@@ -1953,6 +1959,11 @@ export default function ConsultPage() {
         : activeTriage?.recommendedAction || "Consultation complete.",
       durationSeconds: durationSecs,
       status: statusOverride,
+      interviewState: interviewState,
+      deliveredTurnRecords: interviewState?.deliveredTurnRecords || [],
+      attributedFacts: interviewState?.attributedFacts || [],
+      unmappedObservations: interviewState?.unmappedObservations || [],
+      caseVersion: interviewState?.caseVersion || 1,
     };
 
     // Client-side transient recovery cache update (tab-isolated with 15-minute TTL)
@@ -2098,6 +2109,7 @@ export default function ConsultPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          encounterId: stableEncounterIdRef.current,
           doctorId: selectedDoctor.id,
           message: cleanUserText,
           conversationHistory: [...messages, userMessage],
