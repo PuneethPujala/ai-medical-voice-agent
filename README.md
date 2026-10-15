@@ -105,10 +105,17 @@ This specification documents the verified codebase implementation across clinica
 
 ### 4. Latency Profiles, STT Dependency & Pipeline Reality
 * **Arbiter Latency**: Mean deterministic safety-arbiter latency was **0.39 ms** in local Node.js benchmarks, with **P50 at 0.14 ms**.
+* **Deterministic Lexical RAG**: In-memory multi-field guideline retrieval across 2,112 passages evaluates in **4.2 ms mean** (P95: 8.1 ms).
+* **Local Whisper STT Component**: CPU inference using OpenAI Whisper `base.en` (74M parameters) requires **1.0–2.5 s** warm transcription for short clinical utterances (cold start: 1.5–3.0 s, model load: ~2–4 s).
 * **Kokoro-82M TTS Baseline**: Engine-level Kokoro-82M q4 CPU synthesis latency is approximately 0.93–0.96 s P50 for short 5-word inputs.
 * **Adaptive First-Chunk Optimization**: To eliminate compound response lag, the audio engine adaptively partitions speech into an immediate introductory clause (4–8 words) synthesized ahead of subsequent paragraphs (TTFA: **1.1–1.6 s** with zero measured playback buffer starvation).
-* **Full End-to-End Voice Latency Reality**: In a live voice consultation (Microphone $\rightarrow$ STT $\rightarrow$ Remote LLM $\rightarrow$ TTS $\rightarrow$ Playback), full conversational turn turnaround is **2.5–5.0+ seconds**. Sub-second turnaround applies **only** to local deterministic safety pre-arbiter evaluations and pre-cached emergency alerts.
-* **Speech-to-Text (STT) Infrastructure Status**: The Next.js `/api/voice/stt` bridge proxies audio to an external local FastAPI Whisper service (`FASTAPI_URL`), which is an external Python dependency not bundled in the Node.js runtime. Without the separate Python service running, clients fall back to native Web Speech API or simulated transcript input. Local Python STT is an external deployment dependency.
+* **Full End-to-End Voice Latency Reality**: In a live voice consultation (Microphone $\rightarrow$ STT $\rightarrow$ Remote LLM $\rightarrow$ TTS $\rightarrow$ Playback), full conversational turn turnaround is **2.5–5.0+ seconds**. Sub-second turnaround applies **strictly** to local deterministic safety pre-arbiter evaluations and pre-cached emergency alerts. The full voice pipeline does **not** meet sub-second targets.
+* **Speech-to-Text (STT) Infrastructure Status**:
+  - The Next.js `/api/voice/stt` bridge proxies audio multipart payloads to an external FastAPI service (`FASTAPI_URL`, default: `http://127.0.0.1:8000/api/v1/stt`).
+  - **ASR Engine & Dependencies**: Uses **`openai-whisper`** (`whisper.load_model("base.en")`), **not** `faster-whisper`. Requires Python 3.10+, `torch`, `openai-whisper`, `fastapi`, `uvicorn`, `python-multipart`, and system `ffmpeg`.
+  - **Cloud Fallback Path**: If local Whisper encounters a CPU error or out-of-memory failure, an optional cloud fallback via the OpenAI Audio API (`whisper-1`) executes if `OPENAI_API_KEY` is provided. If both fail or no key is configured, an explicit error is raised (zero hallucinated clinical transcripts).
+  - **Service Requirement**: The FastAPI service must be actively running (`uvicorn backend.main:app --port 8000`). If offline, `/api/voice/stt` returns `503 Service Unavailable`. In local development without the Python backend running, browser clients rely on native Web Speech API or simulated transcript injection.
+  - **Active Blocker**: Live browser streaming, audio chunk coordination, and empty transcript edge-cases remain an active engineering blocker and work in progress.
 
 ### 5. Runtime Paralinguistic Acoustic DSP Analyzer
 * **Microphone DSP Pipeline**: The browser runtime extracts short-term acoustic features from live microphone PCM input via Web Audio API using **25 ms analysis windows** and **10 ms hop intervals**.

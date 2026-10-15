@@ -118,17 +118,23 @@ flowchart TD
 - **Offline Reliability**: Does not depend on external vector database endpoints or live third-party network APIs during triage evaluation.
 
 ### 3.5. Local Neural Audio Pipeline, STT Status & End-to-End Latency Profile (`lib/audio/`)
-- **Speech-to-Text (STT) Infrastructure Status**:
-  - `/api/voice/stt` functions as an HTTP proxy bridge forwarding audio multipart payloads to an external FastAPI Whisper service (`http://127.0.0.1:8000/api/v1/stt`).
-  - **Python STT Runtime Dependency**: The Python Whisper backend (`backend/services/audio_service.py`) requires external Python dependencies (PyTorch, faster-whisper, ffmpeg) and is **not bundled or self-contained within the Node.js runtime**.
-  - When the external Python service is offline, browser clients fall back to the native Web Speech API or simulated transcript input. Production deployment requires dedicated provisioning of the Python Whisper ASR container.
+- **Speech-to-Text (STT) Infrastructure Status & Implementation**:
+  - `/api/voice/stt` functions as an HTTP proxy bridge forwarding multipart audio payloads to the local FastAPI Whisper service (`FASTAPI_URL`, default: `http://127.0.0.1:8000/api/v1/stt`).
+  - **ASR Engine & Dependencies**: The Python ASR service (`backend/services/audio_service.py`) utilizes **`openai-whisper`** (`whisper.load_model("base.en")`), **not** `faster-whisper`.
+    - Required Python libraries: `openai-whisper`, `torch`, `fastapi`, `uvicorn`, `python-multipart`.
+    - Required System dependencies: `ffmpeg` binary installed in system `PATH` for multi-format container decoding (`.webm`, `.wav`, `.ogg`, `.mp3`, `.m4a`).
+  - **Cloud API Fallback Path**: If the local CPU Whisper model encounters an error or out-of-memory condition, an optional cloud fallback via the OpenAI Audio API (`whisper-1`) is triggered **if and only if** `OPENAI_API_KEY` is explicitly configured. If both local Whisper and cloud fallback fail (or no key is configured), an explicit `RuntimeError` is raised. The service **never** fabricates clinical symptoms or returns canned synthetic transcripts on failure.
+  - **Service Requirement & Offline Behavior**: The FastAPI backend must be actively running (`uvicorn backend.main:app --port 8000`). If offline, `/api/voice/stt` returns `503 Service Unavailable` (`Local Whisper ASR service unavailable. Please ensure the backend is running.`), prompting the browser client to fall back to native Web Speech API or simulated transcript input.
+  - **Current Production Blocker**: Live end-to-end STT latency, browser media recorder chunking, and handling of empty transcript edge cases remain an active engineering blocker and work in progress.
 - **Adaptive First-Chunking & TTS Pipeline**:
   - Splits conversational turns into an immediate introductory clause (4–8 words) and subsequent paragraphs.
   - Synthesizes the initial clause through local Kokoro-82M q4 CPU ONNX neural TTS while remaining speech sentences are scheduled.
 - **Disentangled Latency Profile (Component vs. Full Pipeline Reality)**:
   - *Safety Arbiter Latency*: **0.39 ms mean** (P50: **0.14 ms**) — purely in-memory deterministic rule evaluation.
+  - *Deterministic Lexical RAG*: **4.2 ms mean** (P95: **8.1 ms**) — in-memory lexical scoring across 2,112 passages.
+  - *Local Whisper ASR (CPU base.en)*: **1.0–2.5 s** warm transcription for short clinical utterances (cold start: 1.5–3.0 s, initial model load: ~2–4 s).
   - *Kokoro-82M CPU TTS First-Chunk*: **1.1–1.6 seconds** TTFA for introductory clauses.
-  - *Full End-to-End Conversational Turnaround*: In a live voice session involving user microphone capture, external ASR transcription, cloud LLM synthesis (Groq/NVIDIA), and audio delivery, end-to-end turnaround is **2.5–5.0+ seconds**. Sub-second turnaround applies **only** to local deterministic safety pre-arbiter checks and pre-cached emergency alerts.
+  - *Full End-to-End Conversational Turnaround*: In a live voice session involving user microphone capture, external ASR transcription, cloud LLM synthesis (Groq/NVIDIA), and audio delivery, end-to-end turnaround is **2.5–5.0+ seconds**. Sub-second turnaround applies **strictly** to local deterministic safety pre-arbiter checks and pre-cached emergency alerts. The full voice pipeline does **not** meet sub-second targets.
 - **Monotonic Barge-In Cancellation**: Tracks audio playback via incrementing monotonic session tokens. When user speech interruption or VAD activity is detected, the current token is invalidated immediately, halting playback and clearing queued audio buffers.
 
 ---

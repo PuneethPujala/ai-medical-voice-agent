@@ -229,12 +229,14 @@ Real PostgreSQL verification is segregated from offline coverage:
     ⚠️  SKIPPED: DATABASE_URL not set. Real PostgreSQL datastore required for live CAS tests.
        Passing in offline/mock CI environment.
     ```
-  - The runner summary explicitly flags:
+  - The canonical test runner (`scripts/run-test-battery.ts`) explicitly marks these as `SKIPPED_DB` without spawning database queries, and excludes them from the passed suite count:
     ```text
+    Suites:  41 passed, 2 skipped, 43 total
     Database Status: MOCK ONLY (DATABASE_URL unset; real PostgreSQL not verified)
     ```
+  - A green offline test run is never counted or reported as verified database coverage.
 - **Live Database Verification (`npm run test:db`)**:
-  - Checks for `DATABASE_URL`. If unset, it outputs an explicit notice and exits without claiming real datastore verification.
+  - Checks for `DATABASE_URL`. If unset, it outputs an explicit notice and exits immediately with code 0 without claiming real datastore verification.
   - When configured, it connects to Neon PostgreSQL, runs live atomic CAS operations, verifies PostgreSQL table unique constraints on `idempotency_key`, tests concurrent race resolutions, and executes durable SHA-256 audit chain persistence across connection resets.
 
 ---
@@ -248,7 +250,7 @@ flowchart LR
     G1["Gate 1\nType Check\n(tsc)"] --> G2["Gate 2\nLint\n(eslint)"]
     G2 --> G3["Gate 3\nZero-Trust\nSecurity"]
     G3 --> G4["Gate 4\nClinical Safety\n& FHIR"]
-    G4 --> G5["Gate 5\nCanonical\n40-Suite Battery"]
+    G4 --> G5["Gate 5\nCanonical\n41-Suite Battery"]
     G5 --> G6["Gate 6\nCoverage\nGeneration (c8)"]
     G6 --> G7["Gate 7\nUpload Reports\n(Artifacts)"]
     G7 --> G8["Gate 8\nProduction Build\n(Turbopack)"]
@@ -270,3 +272,5 @@ Gate 7 uploads the following artifacts for review and compliance auditing:
    - The offline suite tests synthetic demo segregation and missing DB errors, but simulated transient network partitions during active Neon transactions are tested in dedicated scripts (`scripts/verify-real-neon-concurrency.ts`).
 3. **Live Model Provider Parity**:
    - Offline tests execute with mock LLM adapters and deterministic clinical fallbacks. Live provider checks (`tests/triage/live-model-dialogue-eval.ts`, `scripts/test-groq-target-diagnostic.ts`) require external `GROQ_API_KEY` or `NVIDIA_API_KEY` secrets and are executed as periodic diagnostics rather than gating CI PRs.
+4. **Speech-to-Text (STT) Service & Real Audio Streaming Integration**:
+   - The `/api/voice/stt` bridge proxies audio to an external Python FastAPI service running `openai-whisper` (`base.en`). Offline CI does not provision the Python runtime or live microphone hardware, testing HTTP proxy routing and rate limits with mock payloads. Standalone scripts (`scripts/test_whisper_service.py`, `scripts/benchmark_whisper.py`) validate local Whisper execution and safety invariants (zero fabricated transcripts). Live browser streaming latency, empty transcript edge cases, and end-to-end voice turnaround remain active engineering blockers.

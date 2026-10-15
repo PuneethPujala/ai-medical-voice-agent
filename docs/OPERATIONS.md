@@ -74,17 +74,23 @@ MedVoice achieves conversational fluency by separating deterministic safety eval
 | :--- | :---: | :---: | :--- |
 | **Safety Arbiter Latency** | Component (Isolated) | **0.39 ms mean** (P50: **0.14 ms**) | In-memory compiled regular expressions and decision trees; zero network I/O. |
 | **Deterministic Lexical RAG** | Component (Isolated) | **4.2 ms mean** (P95: **8.1 ms**) | In-memory token index over 2,112 curated MedlinePlus passages; zero vector DB overhead. |
+| **Local Whisper ASR (CPU base.en)** | Component (Isolated) | **1.0–2.5 s warm** (cold: 1.5–3.0 s) | CPU inference on 74M parameter model; requires external FastAPI backend and ffmpeg. |
 | **Time-to-First-Audio (TTFA)** | Speech Synthesis Only | **1.1–1.6 s** (compound turns) | **Adaptive First-Chunking**: Immediately synthesizes introductory 4–8 words via Kokoro-82M q4 CPU while subsequent sentences queue. |
 | **Audio Starvation Between Chunks** | Playback Buffer | **0.0 ms measured** | Audio playback buffer queues subsequent PCM chunks before the first finishes playing. |
 | **Barge-In Interruption Latency** | Client Interruption | **< 40 ms** | Client-side monotonic session token invalidation: immediately clears queued buffers upon VAD activity. |
-| **Full End-to-End Voice Turnaround** | Full Pipeline (Mic $\rightarrow$ Speaker) | **2.5–5.0+ s** | Involves client audio recording, Whisper ASR transit, remote cloud LLM generation (Groq/NVIDIA), neural TTS synthesis, and audio buffering. **Sub-second turnaround applies ONLY to local pre-arbiter checks and pre-cached alerts, not full generative turns.** |
+| **Full End-to-End Voice Turnaround** | Full Pipeline (Mic $\rightarrow$ Speaker) | **2.5–5.0+ s** | Involves client audio recording, Whisper ASR transit, remote cloud LLM generation (Groq/NVIDIA), neural TTS synthesis, and audio buffering. **Sub-second turnaround applies STRICTLY to local pre-arbiter checks and pre-cached alerts, not full generative turns.** |
 
 ### 3.2. Speech-to-Text (STT) Infrastructure Status & Blockers
-- **Local Whisper Bridge (`/api/voice/stt`)**: Proxies audio multipart payloads to an external FastAPI Whisper service (`FASTAPI_URL`, default: `http://127.0.0.1:8000/api/v1/stt`).
-- **External Dependency**: The Python Whisper service (`backend/services/audio_service.py`) relies on Python 3.10+, PyTorch, faster-whisper, and ffmpeg. It is **not bundled or self-contained within the Node.js / Next.js runtime**.
-- **Development & Production Reality**:
+- **Local Whisper Bridge (`/api/voice/stt`)**: Proxies audio multipart payloads to the external FastAPI Whisper service (`FASTAPI_URL`, default: `http://127.0.0.1:8000/api/v1/stt`).
+- **ASR Engine & Dependencies**: The Python ASR service (`backend/services/audio_service.py`) relies on **`openai-whisper`** (`whisper.load_model("base.en")`), **not** `faster-whisper`.
+  - Python runtime: Python 3.10+, `torch`, `openai-whisper`, `fastapi`, `uvicorn`, `python-multipart`. It is **not bundled or self-contained within the Node.js / Next.js runtime**.
+  - System runtime: `ffmpeg` binary installed in system `PATH` for decoding audio streams.
+- **Cloud Fallback Path**: If local Whisper encounters an error or out-of-memory failure on CPU, an optional cloud fallback to the OpenAI Audio API (`whisper-1`) executes if and only if `OPENAI_API_KEY` is provided. If both fail or no key is present, an explicit error is returned. The service **never** returns fabricated clinical symptoms or synthetic transcripts.
+- **Service Requirement & Development Reality**:
+  - The FastAPI backend must be running (`uvicorn backend.main:app --port 8000`). If offline, `/api/voice/stt` returns `503 Service Unavailable`.
   - In local development without the Python process running, browser clients rely on native Web Speech API or simulated transcript injection.
   - Production release requires containerizing and deploying the Python Whisper ASR service as an independent microservice with GPU or multi-core CPU compute.
+  - **Active Blocker**: Live browser recording, stream chunking, and handling of empty transcript edge cases remain an active engineering blocker and work in progress. Full voice pipeline turnaround does not achieve sub-second latency.
 
 ---
 
