@@ -10,6 +10,7 @@
 ## 📑 Table of Contents
 
 - [System Architecture Overview](#-system-architecture-overview)
+- [Engineering Documentation Directory](#-engineering-documentation-directory)
 - [Audited Technical Specifications & Code Reality](#-audited-technical-specifications--code-reality)
   - [1. Bounded Multi-Specialist Decision Architecture](#1-bounded-multi-specialist-decision-architecture)
   - [2. Deterministic Dual-Arbiter Safety Shield](#2-deterministic-dual-arbiter-safety-shield)
@@ -24,9 +25,24 @@
   - [11. Code Reality & Audit Concordance Matrix (20-Point Specification)](#11-code-reality--audit-concordance-matrix-20-point-specification)
 - [Technology Stack](#-technology-stack)
 - [Repository Structure](#-repository-structure)
-- [Verification & Test Suites](#-verification--test-suites)
-- [Getting Started](#-getting-started)
+- [Verification, Test Suites & Coverage](#-verification-test-suites--coverage)
+- [Getting Started & Safe Demo Guidance](#-getting-started--safe-demo-guidance)
 - [Clinical & Regulatory Boundary Disclaimers](#-clinical--regulatory-boundary-disclaimers)
+
+---
+
+## 📚 Engineering Documentation Directory
+
+For complete architecture, clinical safety specifications, persistence models, and testing protocols, consult the dedicated documentation suite:
+
+| Document | Description |
+| :--- | :--- |
+| [**`docs/ARCHITECTURE.md`**](docs/ARCHITECTURE.md) | Component architecture, trust boundaries, speech-to-text, specialist board, blackboard model, and TTS pipeline. |
+| [**`docs/CLINICAL-SAFETY.md`**](docs/CLINICAL-SAFETY.md) | Deterministic emergency floors, non-downgrade invariant, universal red-flag catalog, and clinical boundaries. |
+| [**`docs/DATA-AND-PERSISTENCE.md`**](docs/DATA-AND-PERSISTENCE.md) | Consultation lifecycle, SHA-256 chained audit ledger, optimistic concurrency (`caseVersion`), and Drizzle ORM migrations. |
+| [**`docs/OPERATIONS.md`**](docs/OPERATIONS.md) | Deployment topology, environment configuration, empirical latency benchmarks, resilience, and release gates. |
+| [**`docs/TESTING.md`**](docs/TESTING.md) | 41-suite regression inventory, deterministic coverage generation (`c8`), LCOV/Cobertura artifacts, and CI gates. |
+| [**`docs/PAPER.md`**](docs/PAPER.md) | Scientific manuscript, clinical triage concordance analysis, and 20-point audit specification. |
 
 ---
 
@@ -217,44 +233,45 @@ ai-medical-voice-agent/
 
 ---
 
-## 🧪 Verification & Test Suites
+## 🧪 Verification, Test Suites & Coverage
 
-The codebase includes an extensive suite of automated test harnesses validating clinical safety, security, and audio latency:
+MedVoice includes an automated test battery with **41 canonical verification suites** spanning clinical safety arbiters, security RBAC, durable audit ledgers, paralinguistic DSP, and audio pipelines. For detailed breakdowns, tier definitions, and CI gates, see [**`docs/TESTING.md`**](docs/TESTING.md).
 
 ```bash
-# Security, RBAC, IDOR ownership & CSP headers
-npm run test:security
+# 1. Run the Full 41-Suite Canonical Regression Battery (Isolated Offline Mode)
+npm run test:battery
 
-# Durable SHA-256 PostgreSQL audit ledger persistence & concurrency
-npm run test:durable-audit
+# 2. Run Deterministic Coverage Reporting (c8 via tsx)
+# Produces coverage/lcov.info, coverage/cobertura-coverage.xml, and terminal summary
+npm run test:coverage
 
-# 11-turn golden clinical dialogue state & negation invariant suite
-npm run test:goldendialogue
+# 3. Dedicated Real PostgreSQL Integration Test Harness
+# Connects to live database when DATABASE_URL is set; reports explicit SKIPPED if unset
+npm run test:db
 
-# Voice-state lifecycle, audio buffer discard & error recovery
-npm run test:voicestate
-
-# Care Network 5-state location acquisition & 0-query mount invariants
-npx tsx scripts/test-care-location-state.ts
-
-# Paralinguistic acoustic DSP analyzer & safety isolation
-npx tsx scripts/test-acoustic-dsp.ts
-
-# HL7 FHIR R4 bundle generation & provenance validation
-npm run test:fhir
-
-# Full comprehensive test suite (all 24 verification suites)
-npm run test:all
+# 4. Individual Test Suites (Examples)
+npm run test:security        # RBAC, IDOR guards, and CSP headers
+npm run test:durable-audit   # Cryptographic SHA-256 audit ledger & CAS concurrency
+npm run test:goldendialogue  # 11-turn clinical dialogue & negation invariants
+npm run test:voicestate      # Voice lifecycle & buffer discard
+npm run test:fhir            # HL7 FHIR R4 Bundle serialization & provenance
 ```
+
+### Empirical Coverage Baseline & CI Thresholds
+Test coverage is instrumented via `c8` targeting maintained application code (`lib/`, `config/`, `app/api/`) and excluding test harnesses and node_modules:
+- **Statements**: $\ge 60.0\%$ (Empirical Baseline: **65.37%**)
+- **Branches**: $\ge 65.0\%$ (Empirical Baseline: **71.92%**)
+- **Functions**: $\ge 75.0\%$ (Empirical Baseline: **81.97%**)
+- **Lines**: $\ge 60.0\%$ (Empirical Baseline: **65.37%**)
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Getting Started & Safe Demo Guidance
 
 ### Prerequisites
-- **Node.js** >= 18.18.0
+- **Node.js** >= 18.18.0 (Node.js 20 or 22 LTS recommended)
 - **npm** >= 9.0.0
-- *(Optional)* Access to Neon PostgreSQL connection string (`DATABASE_URL`) for durable audit ledger persistence.
+- *(Optional)* Access to Neon PostgreSQL connection string (`DATABASE_URL`) for durable audit persistence.
 
 ### Quick Start
 1. **Clone the repository**:
@@ -266,24 +283,34 @@ npm run test:all
    ```bash
    npm install
    ```
-3. **Configure environment variables** (create `.env.local`):
+3. **Configure environment variables** (create `.env.local` from template):
+   ```bash
+   cp .env.example .env.local
+   ```
+   Add your Clerk credentials and optional LLM keys:
    ```env
    # Authentication
-   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=your_clerk_pub_key
-   CLERK_SECRET_KEY=your_clerk_secret_key
+   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_sample
+   CLERK_SECRET_KEY=sk_test_sample
 
-   # Database (Optional; falls back to in-memory audit store if omitted)
+   # Optional Database (falls back gracefully to in-memory store if omitted)
    DATABASE_URL=postgresql://user:pass@ep-cool-db.neon.tech/neondb?sslmode=require
 
-   # Speech & Inference
-   ASSEMBLYAI_API_KEY=your_server_only_key
-   NVIDIA_API_KEY=your_inference_key
+   # Speech & Inference (falls back to local deterministic engine if omitted)
+   NVIDIA_API_KEY=your_key
+   GROQ_API_KEY=your_key
    ```
 4. **Run the local development server**:
    ```bash
    npm run dev
    ```
 5. **Open in browser**: Navigate to [http://localhost:3000](http://localhost:3000).
+
+### 🛡️ Safe Demonstration Guidance
+When conducting product demonstrations or evaluating capabilities:
+- **Use Mock Mode / Test Harness**: Set `INTERNAL_TEST_HARNESS_SECRET` in `.env.local` to execute reproducible automated test scenarios without live patient risk.
+- **Simulated Presentations**: Test emergency preemption safely by saying or typing standardized test inputs (e.g. *"I have severe crushing chest pain radiating to my jaw"*). Verify that the system stops intake, locks urgency at Tier 1 / Tier 2, and displays immediate emergency medical service guidance.
+- **Acoustic DSP**: Test microphone analysis in `/consult`; note that pitch and energy values displayed in the VoicePill UI are observational telemetry and do not alter the clinical triage level.
 
 ---
 
