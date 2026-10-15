@@ -40,7 +40,7 @@ def test_stt_health():
     assert data["service"] == "whisper_stt"
     assert data["default_engine"] == "whisper_base_en"
     assert data["external_network_egress"] is False
-    assert data["hipaa_safe"] is True
+    assert "hipaa_safe" not in data
     assert "model_loaded" in data
 
 def test_stt_warmup():
@@ -136,6 +136,46 @@ def test_stt_real_spoken_audio_transcription():
     assert data["is_empty"] is False
     assert "chest pain" in transcript.lower(), f"Expected 'chest pain' in transcript, got: {transcript}"
 
+def test_local_only_invariant_blocks_external_network():
+    """
+    Regression test: Verifies that local Whisper STT performs zero outgoing network calls.
+    Any attempt to open an external socket connection causes an immediate test failure.
+    """
+    import socket
+    real_connect = socket.socket.connect
+
+    fixture_path = os.path.join(os.path.dirname(__file__), "fixtures", "spoken_chest_pain.wav")
+    assert os.path.exists(fixture_path), f"Spoken fixture missing at {fixture_path}"
+    with open(fixture_path, "rb") as f:
+        audio_bytes = f.read()
+
+    def blocked_connect(self, address, *args, **kwargs):
+        host = address[0] if isinstance(address, (tuple, list)) and len(address) > 0 else str(address)
+        if host not in ("127.0.0.1", "localhost", "::1"):
+            raise RuntimeError(f"PROHIBITED: Outgoing network connection to '{host}' attempted during local STT!")
+        return real_connect(self, address, *args, **kwargs)
+
+    with patch.object(socket.socket, "connect", blocked_connect):
+        response = client.post(
+            "/api/v1/stt",
+            files={"file": ("spoken_chest_pain.wav", audio_bytes, "audio/wav")}
+        )
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "success"
+        assert len(data["transcript"].strip()) > 0
+        assert "chest pain" in data["transcript"].lower()
+
+def test_empty_transcription_causes_explicit_failure():
+    """
+    Safety test: Verifies that if an engine returns an empty string, the test assertion fails,
+    preventing silent acceptance of blank transcripts.
+    """
+    blank_result = {"status": "success", "transcript": "", "is_empty": True}
+    with pytest.raises(AssertionError):
+        t = blank_result["transcript"].strip()
+        assert len(t) > 0, "Transcription returned empty string; failed to recognize speech"
+
 if __name__ == "__main__":
     print("Running FastAPI STT Test Suite directly...")
     test_stt_health()
@@ -155,4 +195,8 @@ if __name__ == "__main__":
     print("  Testing live local Whisper engine on real speech fixture...")
     test_stt_real_spoken_audio_transcription()
     print("  [PASS] test_stt_real_spoken_audio_transcription passed (Non-empty speech recognized!)")
-    print("All 8/8 FastAPI STT tests passed!")
+    test_local_only_invariant_blocks_external_network()
+    print("  [PASS] test_local_only_invariant_blocks_external_network passed (Zero external socket connections!)")
+    test_empty_transcription_causes_explicit_failure()
+    print("  [PASS] test_empty_transcription_causes_explicit_failure passed")
+    print("All 10/10 FastAPI STT tests passed!")

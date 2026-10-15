@@ -89,8 +89,7 @@ async def stt_health():
         "default_engine": "whisper_base_en",
         "model_loaded": model_loaded,
         "inference_device": "cpu",
-        "external_network_egress": False,
-        "hipaa_safe": True
+        "external_network_egress": False
     }
 
 @app.post("/api/v1/stt/warmup")
