@@ -462,8 +462,15 @@ export async function POST(request: Request) {
 
       if (isIdempotencyMatch) {
         // Material payload mismatch check: If the same idempotency key is submitted with conflicting critical intent
-        const doctorMismatch = body.doctorId && existingRecord.doctorId && body.doctorId !== existingRecord.doctorId;
-        if (doctorMismatch) {
+        const doctorMismatch = Boolean(body.doctorId && existingRecord.doctorId && body.doctorId !== existingRecord.doctorId);
+        const complaintMismatch = Boolean(
+          body.chiefComplaint &&
+          existingRecord.chiefComplaint &&
+          body.chiefComplaint.trim().toLowerCase() !== existingRecord.chiefComplaint.trim().toLowerCase()
+        );
+        const specialtyMismatch = Boolean(body.specialty && existingRecord.specialty && body.specialty !== existingRecord.specialty);
+
+        if (doctorMismatch || complaintMismatch || specialtyMismatch) {
           return NextResponse.json(
             {
               success: false,
@@ -716,9 +723,29 @@ export async function POST(request: Request) {
             .where(queryConditions.length > 1 ? or(...queryConditions) : eq(consultationsTable.id, id))
             .limit(1);
           if (reFetched.length > 0) {
+            const existing = reFetched[0];
+            const doctorMismatch = Boolean(body.doctorId && existing.doctorId && body.doctorId !== existing.doctorId);
+            const complaintMismatch = Boolean(
+              body.chiefComplaint &&
+              existing.chiefComplaint &&
+              body.chiefComplaint.trim().toLowerCase() !== existing.chiefComplaint.trim().toLowerCase()
+            );
+            const specialtyMismatch = Boolean(body.specialty && existing.specialty && body.specialty !== existing.specialty);
+
+            if (doctorMismatch || complaintMismatch || specialtyMismatch) {
+              return NextResponse.json(
+                {
+                  success: false,
+                  error: "Idempotency key payload mismatch: Request parameters conflict with previously recorded encounter for this key.",
+                  code: "IDEMPOTENCY_PAYLOAD_MISMATCH",
+                },
+                { status: 422 }
+              );
+            }
+
             return NextResponse.json({
               success: true,
-              consultation: reFetched[0],
+              consultation: existing,
               isExisting: true,
               isIdempotentRetry: true,
             });
@@ -739,6 +766,27 @@ export async function POST(request: Request) {
         (c) => c.id === id || (body.idempotencyKey && c.userId === effectiveUserId && c.idempotencyKey === body.idempotencyKey)
       );
       if (existingMem) {
+        if (body.idempotencyKey && existingMem.idempotencyKey === body.idempotencyKey) {
+          const doctorMismatch = Boolean(body.doctorId && existingMem.doctorId && body.doctorId !== existingMem.doctorId);
+          const complaintMismatch = Boolean(
+            body.chiefComplaint &&
+            existingMem.chiefComplaint &&
+            body.chiefComplaint.trim().toLowerCase() !== existingMem.chiefComplaint.trim().toLowerCase()
+          );
+          const specialtyMismatch = Boolean(body.specialty && existingMem.specialty && body.specialty !== existingMem.specialty);
+
+          if (doctorMismatch || complaintMismatch || specialtyMismatch) {
+            return NextResponse.json(
+              {
+                success: false,
+                error: "Idempotency key payload mismatch: Request parameters conflict with previously recorded encounter for this key.",
+                code: "IDEMPOTENCY_PAYLOAD_MISMATCH",
+              },
+              { status: 422 }
+            );
+          }
+        }
+
         return NextResponse.json({
           success: true,
           consultation: existingMem,
