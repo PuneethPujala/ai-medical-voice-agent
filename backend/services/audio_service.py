@@ -1,8 +1,19 @@
 import io
 import os
+import sys
 import tempfile
 import logging
 from typing import Optional
+
+# Safeguard against local ./coverage directory (from JS test runners) shadowing Python coverage module.
+# A real PyPI coverage package defines __file__ and types; a directory namespace package does not.
+if "coverage" not in sys.modules:
+    try:
+        import coverage
+        if getattr(coverage, "__file__", None) is None or not hasattr(coverage, "types"):
+            sys.modules["coverage"] = None
+    except Exception:
+        sys.modules["coverage"] = None
 
 logger = logging.getLogger("audio_service")
 
@@ -26,6 +37,10 @@ def get_whisper_model(model_name: str = "base.en"):
             raise RuntimeError(f"Local Whisper ASR initialization failed: {e}")
     return _WHISPER_MODEL
 
+def is_whisper_model_loaded() -> bool:
+    """Returns True if the local Whisper model is already loaded in memory."""
+    return _WHISPER_MODEL is not None
+
 def synthesize_speech_text(text: str, lang: str = "en") -> bytes:
     """
     Synthesizes speech audio (MP3) from text using gTTS (Google Text-To-Speech) or fallback bytes.
@@ -45,11 +60,14 @@ def synthesize_speech_text(text: str, lang: str = "en") -> bytes:
 def transcribe_audio_bytes(
     audio_bytes: bytes,
     filename: str = "audio.wav",
-    model_name: str = "base.en",
-    openai_api_key: str = ""
+    model_name: str = "base.en"
 ) -> str:
     """
-    Transcribes patient audio bytes to text using local OpenAI Whisper.
+    Transcribes patient audio bytes to text strictly using local OpenAI Whisper on CPU.
+    
+    ZERO-TRUST PRIVACY INVARIANT:
+    Patient audio bytes NEVER leave the local host. No third-party or cloud transcription
+    API is ever contacted.
     
     CLINICAL SAFETY INVARIANT:
     Under NO circumstances will this function fabricate symptoms or return
@@ -71,7 +89,7 @@ def transcribe_audio_bytes(
             tmp.write(audio_bytes)
             temp_path = tmp.name
 
-        # 1. Primary Path: Local Whisper base.en
+        # Local Whisper execution on CPU (Zero cloud egress)
         try:
             model = get_whisper_model(model_name)
             result = model.transcribe(temp_path, fp16=False, language="en")
@@ -80,27 +98,8 @@ def transcribe_audio_bytes(
             logger.info(f"Local Whisper ASR successfully transcribed {len(audio_bytes)} bytes ({len(transcript_text)} characters) [PHI masked]")
             return transcript_text
         except Exception as local_err:
-            logger.warning(f"Local Whisper transcription failed: {local_err}")
-            
-            # Optional Cloud API Fallback only if OPENAI_API_KEY is explicitly supplied
-            if openai_api_key:
-                try:
-                    from openai import OpenAI
-                    client = OpenAI(api_key=openai_api_key)
-                    with open(temp_path, "rb") as af:
-                        cloud_res = client.audio.transcriptions.create(
-                            model="whisper-1",
-                            file=af,
-                            language="en"
-                        )
-                    cloud_text = cloud_res.text.strip()
-                    logger.info(f"Cloud Whisper API succeeded ({len(cloud_text)} characters) [PHI masked]")
-                    return cloud_text
-                except Exception as cloud_err:
-                    logger.error(f"Cloud Whisper API fallback also failed: {cloud_err}")
-
-            # Raise explicit failure — NEVER fabricate symptoms or hallucinate text
-            raise RuntimeError(f"Speech-to-text recognition failed: {local_err}")
+            logger.error(f"Local Whisper transcription failed: {local_err}")
+            raise RuntimeError(f"Local Whisper ASR recognition failed: {local_err}")
 
     finally:
         if temp_path and os.path.exists(temp_path):

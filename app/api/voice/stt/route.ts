@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 
-const FASTAPI_STT_URL = process.env.FASTAPI_URL
-  ? `${process.env.FASTAPI_URL}/api/v1/stt`
-  : "http://127.0.0.1:8000/api/v1/stt";
+function getFastApiSttUrl(): string {
+  const base = process.env.FASTAPI_URL || "http://127.0.0.1:8000";
+  return base.endsWith("/api/v1/stt") ? base : `${base.replace(/\/+$/, "")}/api/v1/stt`;
+}
 
 /**
  * Canonical Whisper Speech-to-Text Bridge
@@ -68,7 +69,7 @@ export async function POST(request: Request) {
     const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s turn timeout
 
     try {
-      const response = await fetch(FASTAPI_STT_URL, {
+      const response = await fetch(getFastApiSttUrl(), {
         method: "POST",
         body: backendForm,
         signal: controller.signal,
