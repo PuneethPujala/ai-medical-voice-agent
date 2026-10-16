@@ -78,5 +78,5 @@ jobs:
             coverage/lcov-report/
           retention-days: 14
 
-      - name: Gate 8 — Next.js 16.3 Turbopack Production Build
+      - name: Gate 8 — Next.js 16.3 Production Build (Webpack)
         run: npm run build
