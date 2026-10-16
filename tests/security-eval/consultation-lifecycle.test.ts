@@ -318,8 +318,8 @@ async function runConsultationLifecycleTests() {
         },
         body: JSON.stringify({
           id: concurrentEncId,
-          patientName: `Concurrent Test Patient ${i}`,
-          chiefComplaint: `Race test complaint iteration ${i}`,
+          patientName: `Concurrent Test Patient`,
+          chiefComplaint: `Race test complaint across retries`,
           status: "completed_pending_review",
         }),
       });
@@ -327,7 +327,12 @@ async function runConsultationLifecycleTests() {
     });
 
     const results = await Promise.all(concurrentPromises);
-    for (const res of results) {
+    for (let idx = 0; idx < results.length; idx++) {
+      const res = results[idx];
+      if (res.status !== 200) {
+        const errJson = await res.clone().json().catch(() => ({}));
+        console.error(`  [Test 11 Error] Request ${idx} returned status ${res.status}:`, errJson);
+      }
       assert(res.status === 200, "Every concurrent request completes with 200 OK (no 503 or unhandled race collision)");
     }
 
