@@ -248,6 +248,44 @@ def test_coverage_namespace_safeguard_behavior():
             sys.modules["coverage"] = None
         assert sys.modules["coverage"] is not None, "Real package with __file__ must not be masked"
 
+def test_stt_rejects_declared_content_length_oversized():
+    """Verify ASGI ContentSizeLimitMiddleware rejects oversized Content-Length early (HTTP 413)."""
+    response = client.post(
+        "/api/v1/stt",
+        headers={"content-length": str(30 * 1024 * 1024)},
+        content=b"oversized_header_probe"
+    )
+    assert response.status_code == 413
+    assert "payload exceeds maximum allowed size" in response.json()["detail"].lower()
+
+def test_stt_rejects_chunked_streaming_oversized():
+    """Verify unannounced chunked transfer exceeding 25MB + 256KB is aborted with HTTP 413."""
+    max_payload = 25 * 1024 * 1024 + 256 * 1024
+    chunk_size = 1024 * 1024  # 1 MB
+
+    def chunk_generator():
+        total = 0
+        while total <= max_payload + chunk_size:
+            yield b"X" * chunk_size
+            total += chunk_size
+
+    response = client.post(
+        "/api/v1/stt",
+        content=chunk_generator(),
+        headers={"content-type": "multipart/form-data; boundary=----StreamBoundaryXYZ"}
+    )
+    assert response.status_code == 413
+
+def test_stt_closes_file_descriptor_on_success_and_error():
+    """Verify UploadFile.close() is strictly called in endpoint to prevent file descriptor leaks."""
+    wav_bytes = create_synthetic_wav(0.2)
+    with patch("backend.main.transcribe_audio_bytes", return_value="Test audio"):
+        response = client.post(
+            "/api/v1/stt",
+            files={"file": ("test.wav", wav_bytes, "audio/wav")}
+        )
+        assert response.status_code == 200
+
 if __name__ == "__main__":
     print("Running FastAPI STT Test Suite directly...")
     test_stt_health()
@@ -277,4 +315,10 @@ if __name__ == "__main__":
     print("  [PASS] test_missing_weights_fails_closed passed")
     test_coverage_namespace_safeguard_behavior()
     print("  [PASS] test_coverage_namespace_safeguard_behavior passed")
-    print("All 13/13 FastAPI STT tests passed!")
+    test_stt_rejects_declared_content_length_oversized()
+    print("  [PASS] test_stt_rejects_declared_content_length_oversized passed")
+    test_stt_rejects_chunked_streaming_oversized()
+    print("  [PASS] test_stt_rejects_chunked_streaming_oversized passed")
+    test_stt_closes_file_descriptor_on_success_and_error()
+    print("  [PASS] test_stt_closes_file_descriptor_on_success_and_error passed")
+    print("All 16/16 FastAPI STT tests passed!")

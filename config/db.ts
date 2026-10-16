@@ -1,7 +1,18 @@
 import { drizzle } from 'drizzle-orm/neon-http';
 import * as schema from './schema';
 
-export function getDb() {
+type DbClient = ReturnType<typeof drizzle>;
+
+let customDbClient: any = null;
+
+export function setCustomDbClient(client: any) {
+  customDbClient = client;
+}
+
+export function getDb(): DbClient | null {
+  if (customDbClient !== null) {
+    return customDbClient as DbClient;
+  }
   if (!process.env.DATABASE_URL) {
     return null;
   }

@@ -39,7 +39,85 @@ export async function POST(request: Request) {
       return buildRateLimitResponse(rateLimit, "/api/voice/stt");
     }
 
-    const formData = await request.formData();
+    const maxAudioBytes = RESOURCE_LIMITS.VOICE_STT_MAX_AUDIO_BYTES;
+    // Envelope margin for multipart headers/boundaries (256 KB)
+    const maxIngressPayloadBytes = maxAudioBytes + 256 * 1024;
+
+    // 2. Early Ingress Rejection: Check Content-Length header if declared
+    const contentLengthHeader = request.headers.get("content-length");
+    if (contentLengthHeader) {
+      const contentLength = parseInt(contentLengthHeader, 10);
+      if (!isNaN(contentLength) && contentLength > maxIngressPayloadBytes) {
+        return NextResponse.json(
+          {
+            error: `Audio file exceeds maximum allowed size of ${maxAudioBytes / (1024 * 1024)} MB.`,
+            code: "PAYLOAD_TOO_LARGE",
+          },
+          { status: 413 }
+        );
+      }
+    }
+
+    // 3. Streaming Bounded Consumption:
+    // Protect against unbounded memory buffering for chunked / unannounced streams
+    let formData: FormData;
+    if (request.body) {
+      let totalBytes = 0;
+      let exceeded = false;
+
+      const limiter = new TransformStream<Uint8Array, Uint8Array>({
+        transform(chunk, controller) {
+          totalBytes += chunk.byteLength;
+          if (totalBytes > maxIngressPayloadBytes) {
+            exceeded = true;
+            controller.error(new Error("PAYLOAD_TOO_LARGE"));
+            return;
+          }
+          controller.enqueue(chunk);
+        },
+      });
+
+      try {
+        const requestInit: RequestInit & { duplex?: string } = {
+          method: request.method,
+          headers: request.headers,
+          body: request.body.pipeThrough(limiter),
+          duplex: "half",
+        };
+        const boundedRequest = new Request(request.url, requestInit);
+        formData = await boundedRequest.formData();
+      } catch (streamErr: any) {
+        if (exceeded || streamErr?.message === "PAYLOAD_TOO_LARGE" || streamErr?.message?.includes("PAYLOAD_TOO_LARGE")) {
+          return NextResponse.json(
+            {
+              error: `Audio file exceeds maximum allowed size of ${maxAudioBytes / (1024 * 1024)} MB.`,
+              code: "PAYLOAD_TOO_LARGE",
+            },
+            { status: 413 }
+          );
+        }
+        return NextResponse.json(
+          {
+            error: "Malformed multipart form data payload.",
+            code: "MALFORMED_MULTIPART",
+          },
+          { status: 400 }
+        );
+      }
+    } else {
+      try {
+        formData = await request.formData();
+      } catch {
+        return NextResponse.json(
+          {
+            error: "Malformed multipart form data payload.",
+            code: "MALFORMED_MULTIPART",
+          },
+          { status: 400 }
+        );
+      }
+    }
+
     const file = formData.get("file") as File | Blob | null;
 
     if (!file || (file instanceof Blob && file.size === 0)) {
@@ -49,11 +127,11 @@ export async function POST(request: Request) {
       );
     }
 
-    // 2. Abuse Protection: Reject oversized audio uploads before memory buffer / ASR processing
-    if (file instanceof Blob && file.size > RESOURCE_LIMITS.VOICE_STT_MAX_AUDIO_BYTES) {
+    // 4. Abuse Protection: Reject oversized audio uploads before memory buffer / ASR processing
+    if (file instanceof Blob && file.size > maxAudioBytes) {
       return NextResponse.json(
         {
-          error: `Audio file exceeds maximum allowed size of ${RESOURCE_LIMITS.VOICE_STT_MAX_AUDIO_BYTES / (1024 * 1024)} MB.`,
+          error: `Audio file exceeds maximum allowed size of ${maxAudioBytes / (1024 * 1024)} MB.`,
           code: "PAYLOAD_TOO_LARGE",
         },
         { status: 413 }

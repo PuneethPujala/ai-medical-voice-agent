@@ -61,6 +61,7 @@ export async function POST(request: Request) {
       patientRelationship,
       encounterId: rawEncounterId,
       consultationId,
+      caseVersion: clientCaseVersion,
       // body.patientProfile and body.userId are intentionally discarded to enforce tenant isolation
       audioMetrics,
       isInterruption = false,
@@ -277,37 +278,113 @@ export async function POST(request: Request) {
       }
     }
 
-    // 2. Server-Authoritative State Resolution:
-    // If encounterId is provided, query authoritative state from primary datastore / memory store,
-    // falling back to client-provided body.interviewState only if no server state exists yet.
-    let authoritativeInterviewState = body.interviewState;
+    // 2. Server-Authoritative State Resolution & Concurrency Safeguard:
+    // If encounterId is provided, query authoritative state from primary datastore / memory store.
+    // Invariants:
+    // a. Fail closed on datastore error (HTTP 503 DATABASE_READ_FAILURE) — never fall back to untrusted client state.
+    // b. Cross-tenant isolation (HTTP 403 CROSS_TENANT_ACCESS) if encounter belongs to another user.
+    // c. Optimistic concurrency conflict (HTTP 409 CONCURRENT_MODIFICATION_CONFLICT) if client presents a stale caseVersion.
+    // d. Server-authoritative bootstrapping: if encounter is new, bootstrap clean state via conversationManager.createInitialState().
+    let authoritativeInterviewState: any = undefined;
+    let expectedCaseVersion = 1;
+    let encounterExistsOnServer = false;
+
     if (encounterId && effectiveUserId !== "unauthenticated") {
       const dbClient = getDb();
       if (dbClient) {
+        let existingRows: any[];
         try {
-          const existingEncounter = await dbClient
+          existingRows = await dbClient
             .select()
             .from(consultationsTable)
-            .where(
-              auth.role === "admin"
-                ? eq(consultationsTable.id, encounterId)
-                : and(eq(consultationsTable.id, encounterId), eq(consultationsTable.userId, effectiveUserId))
-            )
+            .where(eq(consultationsTable.id, encounterId))
             .limit(1);
-          if (existingEncounter.length > 0 && existingEncounter[0].interviewState) {
-            authoritativeInterviewState = existingEncounter[0].interviewState as any;
-          }
         } catch (fetchErr) {
-          console.warn("[VoiceChat] Server encounter state fetch notice:", fetchErr);
+          console.error("[VoiceChat] Server encounter state fetch failure:", fetchErr);
+          return NextResponse.json(
+            {
+              error: "Failed to retrieve encounter state from datastore.",
+              code: "DATABASE_READ_FAILURE",
+            },
+            { status: 503 }
+          );
+        }
+
+        if (existingRows.length > 0) {
+          const encounter = existingRows[0];
+          if (auth.role !== "admin" && encounter.userId !== effectiveUserId) {
+            return NextResponse.json(
+              {
+                error: "Unauthorized access to encounter.",
+                code: "CROSS_TENANT_ACCESS",
+              },
+              { status: 403 }
+            );
+          }
+
+          encounterExistsOnServer = true;
+          expectedCaseVersion = typeof encounter.caseVersion === "number" ? encounter.caseVersion : 1;
+
+          if (clientCaseVersion !== undefined && clientCaseVersion !== null) {
+            const parsedClientVersion = Number(clientCaseVersion);
+            if (!isNaN(parsedClientVersion) && parsedClientVersion !== expectedCaseVersion) {
+              return NextResponse.json(
+                {
+                  error: `Encounter state version conflict. Expected version ${expectedCaseVersion}, got ${parsedClientVersion}.`,
+                  code: "CONCURRENT_MODIFICATION_CONFLICT",
+                  expectedVersion: expectedCaseVersion,
+                },
+                { status: 409 }
+              );
+            }
+          }
+
+          authoritativeInterviewState = encounter.interviewState || conversationManager.createInitialState();
+        } else {
+          // New encounter on server: bootstrap clean initial state
+          authoritativeInterviewState = conversationManager.createInitialState();
+          expectedCaseVersion = 1;
         }
       } else {
-        const memEncounter = memoryConsultations.find(
-          c => c.id === encounterId && (c.userId === effectiveUserId || auth.role === "admin" || effectiveUserId === "anon-user")
-        );
-        if (memEncounter && memEncounter.interviewState) {
-          authoritativeInterviewState = memEncounter.interviewState;
+        // Memory store fallback
+        const existingMem = memoryConsultations.find(c => c.id === encounterId);
+        if (existingMem) {
+          if (auth.role !== "admin" && existingMem.userId !== effectiveUserId && effectiveUserId !== "anon-user") {
+            return NextResponse.json(
+              {
+                error: "Unauthorized access to encounter.",
+                code: "CROSS_TENANT_ACCESS",
+              },
+              { status: 403 }
+            );
+          }
+
+          encounterExistsOnServer = true;
+          expectedCaseVersion = typeof existingMem.caseVersion === "number" ? existingMem.caseVersion : 1;
+
+          if (clientCaseVersion !== undefined && clientCaseVersion !== null) {
+            const parsedClientVersion = Number(clientCaseVersion);
+            if (!isNaN(parsedClientVersion) && parsedClientVersion !== expectedCaseVersion) {
+              return NextResponse.json(
+                {
+                  error: `Encounter state version conflict. Expected version ${expectedCaseVersion}, got ${parsedClientVersion}.`,
+                  code: "CONCURRENT_MODIFICATION_CONFLICT",
+                  expectedVersion: expectedCaseVersion,
+                },
+                { status: 409 }
+              );
+            }
+          }
+
+          authoritativeInterviewState = existingMem.interviewState || conversationManager.createInitialState();
+        } else {
+          authoritativeInterviewState = conversationManager.createInitialState();
+          expectedCaseVersion = 1;
         }
       }
+    } else {
+      authoritativeInterviewState = body.interviewState || undefined;
+      expectedCaseVersion = 1;
     }
 
     // Stateful Clinical Conversation Manager Turn Execution
@@ -787,33 +864,48 @@ export async function POST(request: Request) {
       turnResult.state.informationState = "emergency_preempted";
     }
 
+    class ConcurrencyConflictError extends Error {
+      constructor(message: string) {
+        super(message);
+        this.name = "ConcurrencyConflictError";
+      }
+    }
+
     const persistTurnStateAsync = async (stateToPersist: any) => {
       if (!encounterId || effectiveUserId === "unauthenticated") return;
       const dbClient = getDb();
-      if (dbClient) {
-        try {
-          const existingRows = await dbClient
-            .select()
-            .from(consultationsTable)
-            .where(
-              auth.role === "admin"
-                ? eq(consultationsTable.id, encounterId)
-                : and(eq(consultationsTable.id, encounterId), eq(consultationsTable.userId, effectiveUserId))
-            )
-            .limit(1);
+      const nextVersion = expectedCaseVersion + 1;
+      stateToPersist.caseVersion = nextVersion;
 
-          if (existingRows.length > 0) {
-            await dbClient
-              .update(consultationsTable)
-              .set({
-                interviewState: stateToPersist,
-                deliveredTurnRecords: stateToPersist.deliveredTurnRecords,
-                attributedFacts: stateToPersist.attributedFacts,
-                unmappedObservations: stateToPersist.unmappedObservations,
-                caseVersion: stateToPersist.caseVersion,
-              })
-              .where(eq(consultationsTable.id, encounterId));
-          } else {
+      if (dbClient) {
+        if (encounterExistsOnServer) {
+          const conditions = [
+            eq(consultationsTable.id, encounterId),
+            eq(consultationsTable.caseVersion, expectedCaseVersion),
+          ];
+          if (auth.role !== "admin") {
+            conditions.push(eq(consultationsTable.userId, effectiveUserId));
+          }
+
+          const updatedRows = await dbClient
+            .update(consultationsTable)
+            .set({
+              interviewState: stateToPersist,
+              deliveredTurnRecords: stateToPersist.deliveredTurnRecords,
+              attributedFacts: stateToPersist.attributedFacts,
+              unmappedObservations: stateToPersist.unmappedObservations,
+              caseVersion: nextVersion,
+            })
+            .where(and(...conditions))
+            .returning({ id: consultationsTable.id });
+
+          if (!updatedRows || updatedRows.length === 0) {
+            throw new ConcurrencyConflictError(
+              `Concurrent modification detected for encounter ${encounterId}. Expected version ${expectedCaseVersion}.`
+            );
+          }
+        } else {
+          try {
             await dbClient.insert(consultationsTable).values({
               id: encounterId,
               userId: effectiveUserId,
@@ -825,24 +917,38 @@ export async function POST(request: Request) {
               deliveredTurnRecords: stateToPersist.deliveredTurnRecords,
               attributedFacts: stateToPersist.attributedFacts,
               unmappedObservations: stateToPersist.unmappedObservations,
-              caseVersion: stateToPersist.caseVersion,
+              caseVersion: nextVersion,
               status: "in_progress",
             } as any);
+          } catch (insertErr: any) {
+            if (insertErr?.code === "23505" || insertErr?.message?.includes("unique") || insertErr?.message?.includes("duplicate")) {
+              throw new ConcurrencyConflictError(
+                `Concurrent insert collision for encounter ${encounterId}.`
+              );
+            }
+            throw insertErr;
           }
-        } catch (persistErr) {
-          console.warn("[VoiceChat] Server turn state persistence notice:", persistErr);
         }
       } else {
-        const mem = memoryConsultations.find(
-          c => c.id === encounterId && (c.userId === effectiveUserId || auth.role === "admin" || effectiveUserId === "anon-user")
-        );
-        if (mem) {
+        if (encounterExistsOnServer) {
+          const mem = memoryConsultations.find(c => c.id === encounterId);
+          if (!mem || mem.caseVersion !== expectedCaseVersion) {
+            throw new ConcurrencyConflictError(
+              `Concurrent modification detected for encounter ${encounterId}. Expected version ${expectedCaseVersion}.`
+            );
+          }
           mem.interviewState = stateToPersist;
           mem.deliveredTurnRecords = stateToPersist.deliveredTurnRecords;
           mem.attributedFacts = stateToPersist.attributedFacts;
           mem.unmappedObservations = stateToPersist.unmappedObservations;
-          mem.caseVersion = stateToPersist.caseVersion;
+          mem.caseVersion = nextVersion;
         } else {
+          const existingMem = memoryConsultations.find(c => c.id === encounterId);
+          if (existingMem) {
+            throw new ConcurrencyConflictError(
+              `Concurrent insert collision for encounter ${encounterId}.`
+            );
+          }
           memoryConsultations.push({
             id: encounterId,
             userId: effectiveUserId,
@@ -854,7 +960,7 @@ export async function POST(request: Request) {
             deliveredTurnRecords: stateToPersist.deliveredTurnRecords,
             attributedFacts: stateToPersist.attributedFacts,
             unmappedObservations: stateToPersist.unmappedObservations,
-            caseVersion: stateToPersist.caseVersion,
+            caseVersion: nextVersion,
             status: "in_progress",
             transcript: [],
           });
@@ -895,7 +1001,27 @@ export async function POST(request: Request) {
         }
       }
 
-      await persistTurnStateAsync(turnResult.state);
+      try {
+        await persistTurnStateAsync(turnResult.state);
+      } catch (persistErr: any) {
+        if (persistErr instanceof ConcurrencyConflictError) {
+          return NextResponse.json(
+            {
+              error: "The consultation state was modified by a concurrent request. Please retry.",
+              code: "CONCURRENT_MODIFICATION_CONFLICT",
+            },
+            { status: 409 }
+          );
+        }
+        console.error("[VoiceChat] Server turn state persistence failure:", persistErr);
+        return NextResponse.json(
+          {
+            error: "Failed to persist dialogue state to database.",
+            code: "PERSISTENCE_FAILURE",
+          },
+          { status: 503 }
+        );
+      }
 
       return buildJsonResponse({
         doctorReply: activeDoctorReply,
@@ -1102,7 +1228,27 @@ export async function POST(request: Request) {
       informationState: "sufficient_for_decision" as const,
     };
 
-    await persistTurnStateAsync(decidedInterviewState);
+    try {
+      await persistTurnStateAsync(decidedInterviewState);
+    } catch (persistErr: any) {
+      if (persistErr instanceof ConcurrencyConflictError) {
+        return NextResponse.json(
+          {
+            error: "The consultation state was modified by a concurrent request. Please retry.",
+            code: "CONCURRENT_MODIFICATION_CONFLICT",
+          },
+          { status: 409 }
+        );
+      }
+      console.error("[VoiceChat] Server turn state persistence failure:", persistErr);
+      return NextResponse.json(
+        {
+          error: "Failed to persist dialogue state to database.",
+          code: "PERSISTENCE_FAILURE",
+        },
+        { status: 503 }
+      );
+    }
 
     return buildJsonResponse({
       doctorReply: finalDoctorReply,
