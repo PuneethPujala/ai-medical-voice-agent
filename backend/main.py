@@ -87,8 +87,13 @@ async def stt_health():
     """
     Returns the operational status of the Speech-to-Text service.
     Distinguishes service connectivity readiness from actual in-memory Whisper model readiness
-    and local weights availability on disk.
-    Explicitly declares that external network calls for patient audio are disabled (100% on-prem).
+    and local pre-provisioned weights availability on disk.
+
+    SCOPE OF external_network_egress:
+    Declares strictly that the Python STT transcription engine operates on local CPU and
+    initiates zero external network calls for patient audio. This technical property applies
+    exclusively to the STT service; it does NOT imply that the host, OS, container, or
+    upstream Next.js services (e.g. conversational LLM gateways) are blocked from network egress.
     """
     model_loaded = is_whisper_model_loaded()
     weights_available = is_whisper_weights_present("base.en")

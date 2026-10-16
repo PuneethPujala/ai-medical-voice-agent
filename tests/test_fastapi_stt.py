@@ -197,12 +197,34 @@ def test_empty_transcription_causes_explicit_failure():
         assert len(t) > 0, "Transcription returned empty string; failed to recognize speech"
 
 def test_missing_weights_fails_closed():
-    """Verify that when model weights are missing on disk, the system fails closed without network download."""
+    """
+    Verify that when model weights are missing on disk, the system fails closed (HTTP 503)
+    and strictly initiates zero outbound network connection attempts.
+    """
+    import socket
     from backend.services.audio_service import resolve_whisper_weights_path
+
+    # Direct function check
     with patch.dict(os.environ, {"WHISPER_MODEL_PATH": "C:/nonexistent/weights.pt"}):
         with pytest.raises(FileNotFoundError) as exc_info:
             resolve_whisper_weights_path("base.en")
         assert "Automatic runtime downloads are disabled" in str(exc_info.value)
+
+    # API endpoint check with outbound network strictly blocked
+    real_connect = socket.socket.connect
+    def blocked_connect(self, address, *args, **kwargs):
+        host = address[0] if isinstance(address, (tuple, list)) and len(address) > 0 else str(address)
+        if host not in ("127.0.0.1", "localhost", "::1"):
+            raise RuntimeError(f"PROHIBITED: Outbound network connection to '{host}' attempted when weights missing!")
+        return real_connect(self, address, *args, **kwargs)
+
+    with patch.dict(os.environ, {"WHISPER_MODEL_PATH": "C:/nonexistent/weights.pt"}):
+        with patch.object(socket.socket, "connect", blocked_connect):
+            with patch("backend.services.audio_service._WHISPER_MODEL", None):
+                response = client.post("/api/v1/stt/warmup")
+                assert response.status_code == 503
+                detail = response.json()["detail"]
+                assert "weights not provisioned" in detail.lower()
 
 def test_coverage_namespace_safeguard_behavior():
     """Verify that coverage safeguard neutralizes PEP 420 directory namespaces without masking real packages."""
