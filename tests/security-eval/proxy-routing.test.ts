@@ -144,21 +144,22 @@ async function runProxyRoutingTests() {
       },
     });
 
+    const envRecord = process.env as Record<string, string | undefined>;
     const originalEnv = { ...process.env };
 
     try {
       // 1. Production environment MUST fail closed
-      process.env.NODE_ENV = "production";
+      envRecord.NODE_ENV = "production";
       delete process.env.VERCEL_ENV;
       delete process.env.AWS_EXECUTION_ENV;
       assert(!isTestBypassPermitted(createReq(validSecret)), "Production NODE_ENV strictly rejects test bypass");
 
       // 2. Development environment MUST fail closed
-      process.env.NODE_ENV = "development";
+      envRecord.NODE_ENV = "development";
       assert(!isTestBypassPermitted(createReq(validSecret)), "Development NODE_ENV strictly rejects test bypass");
 
       // 3. Staging/Cloud deployment MUST fail closed even if NODE_ENV=test
-      process.env.NODE_ENV = "test";
+      envRecord.NODE_ENV = "test";
       process.env.VERCEL_ENV = "preview";
       assert(!isTestBypassPermitted(createReq(validSecret)), "Vercel Preview environment strictly rejects test bypass");
 
@@ -180,7 +181,7 @@ async function runProxyRoutingTests() {
       delete process.env.RENDER;
 
       // 4. Missing or invalid secret MUST fail closed in test environment
-      process.env.NODE_ENV = "test";
+      envRecord.NODE_ENV = "test";
       assert(!isTestBypassPermitted(createReq(null)), "Missing test secret header strictly fails closed");
       assert(!isTestBypassPermitted(createReq("")), "Empty test secret header strictly fails closed");
       assert(!isTestBypassPermitted(createReq("invalid-token-xyz")), "Mismatched test secret strictly fails closed");
