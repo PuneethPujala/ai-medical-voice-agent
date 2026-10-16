@@ -32,12 +32,32 @@ export const PROTECTED_PHI_ROUTE_PATTERNS = [
   '/api/emergency',
 ];
 
+export function normalizePath(pathname: string): string {
+  try {
+    pathname = decodeURI(pathname);
+  } catch {
+    // Malformed encoding in path fails safe to unroutable marker
+    return '/__malformed_url_path__';
+  }
+  // Collapse consecutive slashes (e.g. //consult -> /consult)
+  pathname = pathname.replace(/\/+/g, '/');
+  // Lowercase for case-insensitive route classification
+  pathname = pathname.toLowerCase();
+  // Strip trailing slash unless root path
+  if (pathname.length > 1 && pathname.endsWith('/')) {
+    pathname = pathname.slice(0, -1);
+  }
+  return pathname;
+}
+
 export function isPathMatching(pathname: string, patterns: string[]): boolean {
+  const normalized = normalizePath(pathname);
   return patterns.some((pattern) => {
-    if (pattern === '/') {
-      return pathname === '/';
+    const normalizedPattern = normalizePath(pattern);
+    if (normalizedPattern === '/') {
+      return normalized === '/';
     }
-    return pathname === pattern || pathname.startsWith(`${pattern}/`);
+    return normalized === normalizedPattern || normalized.startsWith(`${normalizedPattern}/`);
   });
 }
 
@@ -51,10 +71,16 @@ export default clerkMiddleware(async (auth, req) => {
   requestHeaders.set('x-request-id', requestId);
 
   // 0. Test Runner / Automated Integration Bypass
+  // Invariants:
+  // - NODE_ENV must strictly equal "test" (never active in production or development)
+  // - Cloud deployment platforms (Vercel, AWS, GCP) must NEVER activate test bypass
+  // - Request must provide an explicit, non-empty secret matching expectedTestSecret
   const isTestEnv = process.env.NODE_ENV === 'test';
+  const isCloudDeployment = Boolean(process.env.VERCEL_ENV || process.env.AWS_EXECUTION_ENV || process.env.K_SERVICE);
   const providedTestSecret = req.headers.get(INTERNAL_TEST_SECRET_HEADER);
   const expectedTestSecret = process.env.INTERNAL_TEST_SECRET || DEFAULT_INTERNAL_TEST_SECRET;
-  if (isTestEnv && providedTestSecret === expectedTestSecret) {
+
+  if (isTestEnv && !isCloudDeployment && providedTestSecret && providedTestSecret === expectedTestSecret) {
     const res = NextResponse.next({ request: { headers: requestHeaders } });
     res.headers.set('x-request-id', requestId);
     return res;

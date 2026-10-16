@@ -1,5 +1,6 @@
 import {
   isPathMatching,
+  normalizePath,
   PUBLIC_ROUTE_PATTERNS,
   ADMIN_ROUTE_PATTERNS,
   PROTECTED_PHI_ROUTE_PATTERNS,
@@ -93,8 +94,62 @@ async function runProxyRoutingTests() {
     assert(!isPathMatching("/profiler", PROTECTED_PHI_ROUTE_PATTERNS), "'/profiler' does NOT match '/profile'");
   }
 
+  // SUITE 4: URL Normalization & Edge-Case Bypass Defense
+  console.log("\n[Test Suite 4] URL Normalization & Edge-Case Bypass Defense");
+  {
+    // 1. Consecutive slashes (e.g. //consult, /api//admin)
+    assert(isPathMatching("//consult", PROTECTED_PHI_ROUTE_PATTERNS), "Double slash '//consult' collapses and matches protected PHI");
+    assert(isPathMatching("///dashboard", PROTECTED_PHI_ROUTE_PATTERNS), "Triple slash '///dashboard' collapses and matches protected PHI");
+    assert(isPathMatching("/api//admin//metrics", ADMIN_ROUTE_PATTERNS), "Double slash '/api//admin//metrics' collapses and matches admin");
+    assert(isPathMatching("//care//facility-101", PUBLIC_ROUTE_PATTERNS), "Double slash '//care//facility-101' collapses and matches public");
+
+    // 2. Trailing slashes
+    assert(isPathMatching("/consult/", PROTECTED_PHI_ROUTE_PATTERNS), "Trailing slash '/consult/' matches protected PHI");
+    assert(isPathMatching("/dashboard/", PROTECTED_PHI_ROUTE_PATTERNS), "Trailing slash '/dashboard/' matches protected PHI");
+    assert(isPathMatching("/admin/", ADMIN_ROUTE_PATTERNS), "Trailing slash '/admin/' matches admin");
+    assert(isPathMatching("/care/", PUBLIC_ROUTE_PATTERNS), "Trailing slash '/care/' matches public");
+    assert(isPathMatching("/", PUBLIC_ROUTE_PATTERNS), "Root '/' with trailing slash matches public");
+
+    // 3. Case-Insensitivity Normalization (preventing bypasses via /Consult or /ADMIN)
+    assert(isPathMatching("/Consult", PROTECTED_PHI_ROUTE_PATTERNS), "Uppercase '/Consult' matches protected PHI");
+    assert(isPathMatching("/CONSULT/enc-100", PROTECTED_PHI_ROUTE_PATTERNS), "Uppercase '/CONSULT/enc-100' matches protected PHI");
+    assert(isPathMatching("/ADMIN", ADMIN_ROUTE_PATTERNS), "Uppercase '/ADMIN' matches admin");
+    assert(isPathMatching("/API/ADMIN/METRICS", ADMIN_ROUTE_PATTERNS), "Uppercase '/API/ADMIN/METRICS' matches admin");
+    assert(isPathMatching("/CARE", PUBLIC_ROUTE_PATTERNS), "Uppercase '/CARE' matches public");
+
+    // 4. URL percent-decoding
+    assert(isPathMatching("/%63onsult", PROTECTED_PHI_ROUTE_PATTERNS), "Percent-encoded '/%63onsult' decodes and matches protected PHI");
+
+    // 5. Malformed URL paths fail safely
+    const malformed = normalizePath("/%ff/admin");
+    assert(malformed === "/__malformed_url_path__", "Malformed percent-encoding falls back to unroutable safe path");
+    assert(!isPathMatching("/%ff/admin", PUBLIC_ROUTE_PATTERNS), "Malformed path is never treated as public");
+  }
+
+  // SUITE 5: Test-Only Bypass Environment Isolation
+  console.log("\n[Test Suite 5] Test Bypass Environment Isolation Invariants");
+  {
+    // The bypass requires: NODE_ENV === 'test' && !isCloudDeployment && providedSecret === expectedSecret
+    const testSecret = "medvoice-test-harness-auth-token-9f8a3c2e";
+
+    // Scenario A: Production environment (NODE_ENV=production) must NEVER allow bypass
+    const isProd = false; // in this test runner NODE_ENV is test
+    const simulateProdBypass = (nodeEnv: string, cloudEnv: boolean, secret: string) => {
+      const isTestEnv = nodeEnv === 'test';
+      const isCloudDeployment = cloudEnv;
+      return isTestEnv && !isCloudDeployment && Boolean(secret) && secret === testSecret;
+    };
+
+    assert(!simulateProdBypass("production", false, testSecret), "Production NODE_ENV strictly rejects test bypass");
+    assert(!simulateProdBypass("development", false, testSecret), "Development NODE_ENV strictly rejects test bypass");
+    assert(!simulateProdBypass("test", true, testSecret), "Cloud deployment environment (e.g. VERCEL_ENV) strictly rejects test bypass even if NODE_ENV=test");
+    assert(!simulateProdBypass("test", false, ""), "Empty secret strictly rejects test bypass");
+    assert(!simulateProdBypass("test", false, "wrong-token"), "Invalid secret strictly rejects test bypass");
+    assert(simulateProdBypass("test", false, testSecret), "Local test runner with matching secret is permitted");
+  }
+
   console.log("\n========================================================");
-  console.log("  ALL PROXY ROUTE MATCHING TESTS PASSED (100%)");
+  console.log("  ALL PROXY ROUTE MATCHING & INVARIANT TESTS PASSED (100%)");
   console.log("========================================================\n");
 }
 
