@@ -286,6 +286,42 @@ def test_stt_closes_file_descriptor_on_success_and_error():
         )
         assert response.status_code == 200
 
+@pytest.mark.asyncio
+async def test_content_size_limit_middleware_prevents_duplicate_response_start():
+    """Verify ContentSizeLimitMiddleware avoids duplicate http.response.start when downstream errors after starting response."""
+    from backend.main import ContentSizeLimitMiddleware
+
+    sent_messages = []
+    response_start_count = 0
+
+    async def mock_receive():
+        return {"type": "http.request", "body": b"x" * 200, "more_body": False}
+
+    async def mock_send(message):
+        nonlocal response_start_count
+        sent_messages.append(message)
+        if message["type"] == "http.response.start":
+            response_start_count += 1
+
+    async def dummy_app(scope, receive, send):
+        try:
+            await receive()
+        except ValueError:
+            # Downstream app starts error response
+            await send({"type": "http.response.start", "status": 400, "headers": []})
+            # Downstream throws unhandled exception after response started
+            raise RuntimeError("Downstream exploded after response start")
+
+    middleware = ContentSizeLimitMiddleware(dummy_app, max_bytes=100)
+    scope = {"type": "http", "headers": []}
+
+    try:
+        await middleware(scope, mock_receive, mock_send)
+    except Exception:
+        pass
+
+    assert response_start_count == 1, f"Expected exactly 1 http.response.start, got {response_start_count}"
+
 if __name__ == "__main__":
     print("Running FastAPI STT Test Suite directly...")
     test_stt_health()

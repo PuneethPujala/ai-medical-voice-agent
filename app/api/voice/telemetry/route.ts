@@ -82,10 +82,12 @@ export async function POST(request: Request) {
         if (rows.length > 0) record = rows[0];
       } catch (err) {
         console.error("Failed to query consultations in telemetry route:", err);
+        return NextResponse.json(
+          { success: false, error: "Failed to retrieve encounter state from datastore.", code: "DATABASE_READ_FAILURE" },
+          { status: 503 }
+        );
       }
-    }
-
-    if (!record) {
+    } else {
       record = memoryConsultations.find(c => c.id === encounterId);
     }
 
@@ -143,13 +145,30 @@ export async function POST(request: Request) {
     }
 
     if (dbClient) {
+      const updateConditions = [eq(consultationsTable.id, encounterId)];
+      if (!isAdmin && !isClinician) {
+        updateConditions.push(eq(consultationsTable.userId, effectiveUserId));
+      }
+
       try {
-        await dbClient
+        const updated = await dbClient
           .update(consultationsTable)
           .set({ deliveredTurnRecords: deliveredRecords })
-          .where(eq(consultationsTable.id, encounterId));
+          .where(and(...updateConditions))
+          .returning({ id: consultationsTable.id });
+
+        if (!updated || updated.length === 0) {
+          return NextResponse.json(
+            { success: false, error: "Encounter not found or unauthorized for update", code: "NOT_FOUND" },
+            { status: 404 }
+          );
+        }
       } catch (err) {
-        console.warn("Could not persist deliveredTurnRecords to DB:", err);
+        console.error("Could not persist deliveredTurnRecords to DB:", err);
+        return NextResponse.json(
+          { success: false, error: "Failed to persist playback telemetry to datastore.", code: "PERSISTENCE_FAILURE" },
+          { status: 503 }
+        );
       }
     } else {
       record.deliveredTurnRecords = deliveredRecords;

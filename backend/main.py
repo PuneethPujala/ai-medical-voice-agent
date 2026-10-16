@@ -63,6 +63,7 @@ class ContentSizeLimitMiddleware:
 
         total_bytes = 0
         stream_exceeded = False
+        response_started = False
 
         async def limited_receive():
             nonlocal total_bytes, stream_exceeded
@@ -76,8 +77,10 @@ class ContentSizeLimitMiddleware:
             return message
 
         async def limited_send(message):
-            if stream_exceeded:
-                if message["type"] == "http.response.start":
+            nonlocal response_started
+            if message["type"] == "http.response.start":
+                response_started = True
+                if stream_exceeded:
                     message = {
                         "type": "http.response.start",
                         "status": 413,
@@ -85,7 +88,8 @@ class ContentSizeLimitMiddleware:
                             (b"content-type", b"application/json"),
                         ]
                     }
-                elif message["type"] == "http.response.body":
+            elif message["type"] == "http.response.body":
+                if stream_exceeded:
                     detail_json = f'{{"detail": "Audio file exceeds maximum allowed size of {self.max_bytes // (1024 * 1024)} MB."}}'.encode("utf-8")
                     message = {
                         "type": "http.response.body",
@@ -98,11 +102,12 @@ class ContentSizeLimitMiddleware:
             await self.app(scope, limited_receive, limited_send)
         except Exception:
             if stream_exceeded:
-                res = JSONResponse(
-                    {"detail": f"Audio file exceeds maximum allowed size of {self.max_bytes // (1024 * 1024)} MB."},
-                    status_code=413
-                )
-                await res(scope, receive, send)
+                if not response_started:
+                    res = JSONResponse(
+                        {"detail": f"Audio file exceeds maximum allowed size of {self.max_bytes // (1024 * 1024)} MB."},
+                        status_code=413
+                    )
+                    await res(scope, receive, send)
             else:
                 raise
 

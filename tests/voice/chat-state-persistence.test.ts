@@ -1,5 +1,6 @@
 import assert from "assert";
 import { POST as postVoiceChat } from "../../app/api/voice/chat/route";
+import { POST as postVoiceTelemetry } from "../../app/api/voice/telemetry/route";
 import { DEFAULT_INTERNAL_TEST_SECRET, INTERNAL_TEST_SECRET_HEADER, Role } from "../../lib/auth/rbac";
 import { memoryConsultations } from "../../app/api/consultations/route";
 import { setCustomDbClient } from "../../config/db";
@@ -257,8 +258,287 @@ async function runChatStatePersistenceTests() {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // TEST 6: Arbitrary / Nonexistent Encounter ID Protection (HTTP 404 ENCOUNTER_NOT_FOUND)
+  // ---------------------------------------------------------------------------
+  console.log(">>> TEST 6: Arbitrary / Nonexistent Encounter ID Rejected (HTTP 404 ENCOUNTER_NOT_FOUND)");
+  {
+    const arbitraryId = `ENC-SPOOFED-${Date.now()}`;
+    const req = new Request("http://localhost:3000/api/voice/chat", {
+      method: "POST",
+      headers: createTestHeaders("patient", "user_eve", 16),
+      body: JSON.stringify({
+        message: "Hello doctor, can I speak to someone?",
+        encounterId: arbitraryId,
+      }),
+    });
+
+    const res = await postVoiceChat(req);
+    assert.strictEqual(res.status, 404, "Nonexistent encounter ID must return HTTP 404, never auto-create");
+    const json = await res.json();
+    assert.strictEqual(json.code, "ENCOUNTER_NOT_FOUND", "Error code must be ENCOUNTER_NOT_FOUND");
+    const foundInMem = memoryConsultations.find(c => c.id === arbitraryId);
+    assert.strictEqual(foundInMem, undefined, "Arbitrary encounter ID must NEVER be inserted into datastore");
+    console.log("  [PASS] Nonexistent encounter ID strictly returned HTTP 404 and was not auto-created\n");
+  }
+
+  // ---------------------------------------------------------------------------
+  // TEST 7: Greeting Short-Circuit Enforces Full Authorization (HTTP 403, 404, 409)
+  // ---------------------------------------------------------------------------
+  console.log(">>> TEST 7: Greeting Short-Circuit Cannot Bypass Tenant or Concurrency Guards");
+  {
+    const frankEncounterId = `ENC-FRANK-${Date.now()}`;
+    memoryConsultations.push({
+      id: frankEncounterId,
+      userId: "user_frank",
+      doctorId: "dr-sarah-chen",
+      doctorName: "Dr. Sarah Chen, MD",
+      specialty: "Internal Medicine",
+      chiefComplaint: "Seasonal allergies",
+      caseVersion: 2,
+      interviewState: {
+        phase: "greeting",
+        caseVersion: 2,
+        slots: { known_facts: [] },
+      },
+      transcript: [],
+    });
+
+    // 1. Cross-tenant greeting
+    const crossTenantReq = new Request("http://localhost:3000/api/voice/chat", {
+      method: "POST",
+      headers: createTestHeaders("patient", "user_mallory", 17),
+      body: JSON.stringify({
+        message: "Hello doctor",
+        encounterId: frankEncounterId,
+      }),
+    });
+    const crossRes = await postVoiceChat(crossTenantReq);
+    assert.strictEqual(crossRes.status, 403, "Cross-tenant greeting must return HTTP 403");
+    const crossJson = await crossRes.json();
+    assert.strictEqual(crossJson.code, "CROSS_TENANT_ACCESS", "Error code must be CROSS_TENANT_ACCESS");
+
+    // 2. Stale version greeting
+    const staleReq = new Request("http://localhost:3000/api/voice/chat", {
+      method: "POST",
+      headers: createTestHeaders("patient", "user_frank", 18),
+      body: JSON.stringify({
+        message: "Hi dr chen",
+        encounterId: frankEncounterId,
+        caseVersion: 1, // Server is at version 2
+      }),
+    });
+    const staleRes = await postVoiceChat(staleReq);
+    assert.strictEqual(staleRes.status, 409, "Greeting with stale version must return HTTP 409");
+    const staleJson = await staleRes.json();
+    assert.strictEqual(staleJson.code, "CONCURRENT_MODIFICATION_CONFLICT");
+
+    // 3. Authorized greeting persists and advances version
+    const validReq = new Request("http://localhost:3000/api/voice/chat", {
+      method: "POST",
+      headers: createTestHeaders("patient", "user_frank", 19),
+      body: JSON.stringify({
+        message: "Good morning doctor",
+        encounterId: frankEncounterId,
+        caseVersion: 2,
+      }),
+    });
+    const validRes = await postVoiceChat(validReq);
+    assert.strictEqual(validRes.status, 200, "Authorized greeting must return HTTP 200");
+    const validJson = await validRes.json();
+    assert.strictEqual(validJson.phase, "greeting");
+    assert.strictEqual(validJson.caseVersion, 3, "Greeting must advance encounter version");
+    const memAfterGreeting = memoryConsultations.find(c => c.id === frankEncounterId);
+    assert.strictEqual(memAfterGreeting.caseVersion, 3, "Server datastore caseVersion must advance to 3");
+    console.log("  [PASS] Greeting short-circuit strictly enforces cross-tenant 403, version 409, and advances version 200\n");
+  }
+
+  // ---------------------------------------------------------------------------
+  // TEST 8: Closing Short-Circuit Enforces Full Authorization & Atomic Persistence
+  // ---------------------------------------------------------------------------
+  console.log(">>> TEST 8: Closing Short-Circuit Enforces Authorization & Atomic Persistence");
+  {
+    const graceEncounterId = `ENC-GRACE-${Date.now()}`;
+    memoryConsultations.push({
+      id: graceEncounterId,
+      userId: "user_grace",
+      doctorId: "dr-sarah-chen",
+      doctorName: "Dr. Sarah Chen, MD",
+      specialty: "Internal Medicine",
+      chiefComplaint: "Resolved rash",
+      caseVersion: 1,
+      interviewState: {
+        phase: "decided",
+        caseVersion: 1,
+        slots: { known_facts: ["Rash resolved with antihistamine"] },
+      },
+      transcript: [],
+    });
+
+    // Cross-tenant closing attempt
+    const crossReq = new Request("http://localhost:3000/api/voice/chat", {
+      method: "POST",
+      headers: createTestHeaders("patient", "user_mallory", 20),
+      body: JSON.stringify({
+        message: "Thank you doctor, goodbye!",
+        encounterId: graceEncounterId,
+      }),
+    });
+    const crossRes = await postVoiceChat(crossReq);
+    assert.strictEqual(crossRes.status, 403, "Cross-tenant closing must return HTTP 403");
+
+    // Legitimate closing turn with spoofed client interviewState in body
+    const validReq = new Request("http://localhost:3000/api/voice/chat", {
+      method: "POST",
+      headers: createTestHeaders("patient", "user_grace", 21),
+      body: JSON.stringify({
+        message: "Thank you so much doctor!",
+        encounterId: graceEncounterId,
+        caseVersion: 1,
+        interviewState: {
+          phase: "spoofed_closing",
+          slots: { malicious_fact: "unverified" },
+        },
+      }),
+    });
+    const validRes = await postVoiceChat(validReq);
+    assert.strictEqual(validRes.status, 200, "Authorized closing must return HTTP 200");
+    const validJson = await validRes.json();
+    assert.strictEqual(validJson.phase, "closing");
+    assert.strictEqual(validJson.caseVersion, 2, "Closing must advance encounter version");
+    assert.strictEqual(validJson.interviewState.phase, "closing");
+    assert.strictEqual(validJson.interviewState?.slots?.malicious_fact, undefined, "Unverified client slots must NOT be echoed");
+    const memAfterClosing = memoryConsultations.find(c => c.id === graceEncounterId);
+    assert.strictEqual(memAfterClosing.caseVersion, 2, "Datastore caseVersion must advance to 2");
+    assert.strictEqual(memAfterClosing.interviewState.phase, "closing");
+    console.log("  [PASS] Closing turn strictly enforced authorization, rejected spoofed client state, and persisted atomically\n");
+  }
+
+  // ---------------------------------------------------------------------------
+  // TEST 9: Genuine Simultaneous Concurrency Race (Promise.all)
+  // ---------------------------------------------------------------------------
+  console.log(">>> TEST 9: Simultaneous Race Condition (Promise.all) Concurrency Resolution");
+  {
+    const raceEncounterId = `ENC-RACE-${Date.now()}`;
+    memoryConsultations.push({
+      id: raceEncounterId,
+      userId: "user_racer",
+      doctorId: "dr-sarah-chen",
+      doctorName: "Dr. Sarah Chen, MD",
+      specialty: "Internal Medicine",
+      chiefComplaint: "Persistent headache",
+      caseVersion: 1,
+      interviewState: {
+        phase: "active_inquiring",
+        caseVersion: 1,
+        slots: { known_facts: ["Headache for 2 days"] },
+      },
+      transcript: [],
+    });
+
+    // Launch two simultaneous turns targeting exact same encounter with exact same caseVersion: 1
+    const reqA = new Request("http://localhost:3000/api/voice/chat", {
+      method: "POST",
+      headers: createTestHeaders("patient", "user_racer", 22),
+      body: JSON.stringify({
+        message: "The pain is throbbing on the left side.",
+        encounterId: raceEncounterId,
+        caseVersion: 1,
+      }),
+    });
+
+    const reqB = new Request("http://localhost:3000/api/voice/chat", {
+      method: "POST",
+      headers: createTestHeaders("patient", "user_racer", 23),
+      body: JSON.stringify({
+        message: "I also feel sensitive to bright light.",
+        encounterId: raceEncounterId,
+        caseVersion: 1,
+      }),
+    });
+
+    const [resA, resB] = await Promise.all([postVoiceChat(reqA), postVoiceChat(reqB)]);
+
+    const statuses = [resA.status, resB.status].sort();
+    assert.deepStrictEqual(statuses, [200, 409], "Simultaneous race must result in exactly one HTTP 200 and one HTTP 409");
+
+    const memAfterRace = memoryConsultations.find(c => c.id === raceEncounterId);
+    assert.strictEqual(memAfterRace.caseVersion, 2, "Case version must advance exactly once to 2");
+    console.log("  [PASS] Simultaneous Promise.all race resolved atomically: exactly 1 succeeded (200), 1 conflicted (409)\n");
+  }
+
+  // ---------------------------------------------------------------------------
+  // TEST 10: Playback Telemetry Route Tenant Isolation & Persistence
+  // ---------------------------------------------------------------------------
+  console.log(">>> TEST 10: Playback Telemetry Route Tenant Isolation & Persistence");
+  {
+    const heidiEncounterId = `ENC-HEIDI-${Date.now()}`;
+    memoryConsultations.push({
+      id: heidiEncounterId,
+      userId: "user_heidi",
+      doctorId: "dr-sarah-chen",
+      doctorName: "Dr. Sarah Chen, MD",
+      specialty: "Internal Medicine",
+      chiefComplaint: "Ear ache",
+      caseVersion: 1,
+      interviewState: { phase: "active_inquiring", caseVersion: 1, slots: { known_facts: [] } },
+      deliveredTurnRecords: [],
+      transcript: [],
+    });
+
+    // 1. Cross-tenant telemetry update
+    const crossReq = new Request("http://localhost:3000/api/voice/telemetry", {
+      method: "POST",
+      headers: createTestHeaders("patient", "user_mallory", 24),
+      body: JSON.stringify({
+        encounterId: heidiEncounterId,
+        turnId: 1,
+        status: "delivered",
+        playedDurationMs: 3500,
+      }),
+    });
+    const crossRes = await postVoiceTelemetry(crossReq);
+    assert.strictEqual(crossRes.status, 403, "Cross-tenant telemetry update must return HTTP 403");
+
+    // 2. Nonexistent encounter telemetry
+    const nonExistentReq = new Request("http://localhost:3000/api/voice/telemetry", {
+      method: "POST",
+      headers: createTestHeaders("patient", "user_heidi", 25),
+      body: JSON.stringify({
+        encounterId: `ENC-NONEXISTENT-${Date.now()}`,
+        turnId: 1,
+        status: "delivered",
+      }),
+    });
+    const nonExistentRes = await postVoiceTelemetry(nonExistentReq);
+    assert.strictEqual(nonExistentRes.status, 404, "Nonexistent encounter telemetry must return HTTP 404");
+
+    // 3. Authorized telemetry update
+    const validReq = new Request("http://localhost:3000/api/voice/telemetry", {
+      method: "POST",
+      headers: createTestHeaders("patient", "user_heidi", 26),
+      body: JSON.stringify({
+        encounterId: heidiEncounterId,
+        turnId: 1,
+        status: "delivered",
+        playedDurationMs: 3800,
+      }),
+    });
+    const validRes = await postVoiceTelemetry(validReq);
+    assert.strictEqual(validRes.status, 200, "Authorized telemetry update must return HTTP 200");
+    const validJson = await validRes.json();
+    assert.strictEqual(validJson.success, true);
+    assert.strictEqual(validJson.deliveryStatus, "delivered");
+
+    const memAfter = memoryConsultations.find(c => c.id === heidiEncounterId);
+    assert.strictEqual(memAfter.deliveredTurnRecords.length, 1);
+    assert.strictEqual(memAfter.deliveredTurnRecords[0].audioDeliveryStatus, "delivered");
+    assert.strictEqual(memAfter.deliveredTurnRecords[0].audioDeliveryResult.playedDurationMs, 3800);
+    console.log("  [PASS] Telemetry route strictly enforced cross-tenant 403, 404, and recorded playback correctly on 200\n");
+  }
+
   console.log("================================================================================");
-  console.log("      ALL 5/5 DIALOGUE STATE PERSISTENCE & CONCURRENCY TESTS PASSED            ");
+  console.log("      ALL 10/10 DIALOGUE STATE PERSISTENCE & CONCURRENCY TESTS PASSED          ");
   console.log("================================================================================");
 }
 

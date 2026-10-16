@@ -122,14 +122,207 @@ export async function POST(request: Request) {
 
     const doctor = getDoctorById(doctorId);
 
+    class ConcurrencyConflictError extends Error {
+      constructor(message: string) {
+        super(message);
+        this.name = "ConcurrencyConflictError";
+      }
+    }
+
+    // 2. Server-Authoritative State Resolution & Concurrency Safeguard:
+    // Invariants:
+    // a. Fail closed on datastore error (HTTP 503 DATABASE_READ_FAILURE) — never fall back to untrusted client state.
+    // b. Cross-tenant isolation (HTTP 403 CROSS_TENANT_ACCESS) if encounter belongs to another user.
+    // c. Confirmed nonexistent encounter (HTTP 404 ENCOUNTER_NOT_FOUND) — never insert an arbitrary client-selected ID.
+    // d. Optimistic concurrency conflict (HTTP 409 CONCURRENT_MODIFICATION_CONFLICT) if client presents a stale caseVersion.
+    // e. Short-circuit turns (greeting, thank-you) execute AFTER authorization and persist atomically.
+    let authoritativeInterviewState: any = undefined;
+    let expectedCaseVersion = 1;
+    let encounterExistsOnServer = false;
+
+    if (encounterId) {
+      if (effectiveUserId === "unauthenticated" && !auth.isDemoMode) {
+        return NextResponse.json(
+          { error: "Authentication required to access consultation encounter.", code: "UNAUTHORIZED" },
+          { status: 401 }
+        );
+      }
+
+      const dbClient = getDb();
+      if (dbClient) {
+        let existingRows: any[];
+        try {
+          existingRows = await dbClient
+            .select()
+            .from(consultationsTable)
+            .where(eq(consultationsTable.id, encounterId))
+            .limit(1);
+        } catch (fetchErr) {
+          console.error("[VoiceChat] Server encounter state fetch failure:", fetchErr);
+          return NextResponse.json(
+            {
+              error: "Failed to retrieve encounter state from datastore.",
+              code: "DATABASE_READ_FAILURE",
+            },
+            { status: 503 }
+          );
+        }
+
+        if (existingRows.length === 0) {
+          return NextResponse.json(
+            {
+              error: `Encounter '${encounterId}' not found. Consultations must be created via authorized consultation initiation.`,
+              code: "ENCOUNTER_NOT_FOUND",
+            },
+            { status: 404 }
+          );
+        }
+
+        const encounter = existingRows[0];
+        const isOwner = encounter.userId === effectiveUserId || (auth.isDemoMode && encounter.userId === "anon-user");
+        const isAdmin = auth.role === "admin";
+        const isClinician = auth.role === "clinician";
+
+        if (!isOwner && !isAdmin && !isClinician) {
+          return NextResponse.json(
+            {
+              error: "Unauthorized access to encounter.",
+              code: "CROSS_TENANT_ACCESS",
+            },
+            { status: 403 }
+          );
+        }
+
+        encounterExistsOnServer = true;
+        expectedCaseVersion = typeof encounter.caseVersion === "number" ? encounter.caseVersion : 1;
+
+        if (clientCaseVersion !== undefined && clientCaseVersion !== null) {
+          const parsedClientVersion = Number(clientCaseVersion);
+          if (!isNaN(parsedClientVersion) && parsedClientVersion !== expectedCaseVersion) {
+            return NextResponse.json(
+              {
+                error: `Encounter state version conflict. Expected version ${expectedCaseVersion}, got ${parsedClientVersion}.`,
+                code: "CONCURRENT_MODIFICATION_CONFLICT",
+                expectedVersion: expectedCaseVersion,
+              },
+              { status: 409 }
+            );
+          }
+        }
+
+        authoritativeInterviewState = encounter.interviewState || conversationManager.createInitialState();
+      } else {
+        // Memory store fallback
+        const existingMem = memoryConsultations.find(c => c.id === encounterId);
+        if (!existingMem) {
+          return NextResponse.json(
+            {
+              error: `Encounter '${encounterId}' not found. Consultations must be created via authorized consultation initiation.`,
+              code: "ENCOUNTER_NOT_FOUND",
+            },
+            { status: 404 }
+          );
+        }
+
+        const isOwner = existingMem.userId === effectiveUserId || (auth.isDemoMode && existingMem.userId === "anon-user");
+        const isAdmin = auth.role === "admin";
+        const isClinician = auth.role === "clinician";
+
+        if (!isOwner && !isAdmin && !isClinician) {
+          return NextResponse.json(
+            {
+              error: "Unauthorized access to encounter.",
+              code: "CROSS_TENANT_ACCESS",
+            },
+            { status: 403 }
+          );
+        }
+
+        encounterExistsOnServer = true;
+        expectedCaseVersion = typeof existingMem.caseVersion === "number" ? existingMem.caseVersion : 1;
+
+        if (clientCaseVersion !== undefined && clientCaseVersion !== null) {
+          const parsedClientVersion = Number(clientCaseVersion);
+          if (!isNaN(parsedClientVersion) && parsedClientVersion !== expectedCaseVersion) {
+            return NextResponse.json(
+              {
+                error: `Encounter state version conflict. Expected version ${expectedCaseVersion}, got ${parsedClientVersion}.`,
+                code: "CONCURRENT_MODIFICATION_CONFLICT",
+                expectedVersion: expectedCaseVersion,
+              },
+              { status: 409 }
+            );
+          }
+        }
+
+        authoritativeInterviewState = existingMem.interviewState || conversationManager.createInitialState();
+      }
+    } else {
+      authoritativeInterviewState = body.interviewState || conversationManager.createInitialState();
+      expectedCaseVersion = 1;
+    }
+
+    const persistTurnStateAsync = async (stateToPersist: any) => {
+      if (!encounterId || effectiveUserId === "unauthenticated") return;
+      const dbClient = getDb();
+      const nextVersion = expectedCaseVersion + 1;
+      stateToPersist.caseVersion = nextVersion;
+
+      if (dbClient) {
+        if (encounterExistsOnServer) {
+          const conditions = [
+            eq(consultationsTable.id, encounterId),
+            eq(consultationsTable.caseVersion, expectedCaseVersion),
+          ];
+          if (auth.role !== "admin" && auth.role !== "clinician") {
+            conditions.push(eq(consultationsTable.userId, effectiveUserId));
+          }
+
+          const updatedRows = await dbClient
+            .update(consultationsTable)
+            .set({
+              interviewState: stateToPersist,
+              deliveredTurnRecords: stateToPersist.deliveredTurnRecords,
+              attributedFacts: stateToPersist.attributedFacts,
+              unmappedObservations: stateToPersist.unmappedObservations,
+              caseVersion: nextVersion,
+            })
+            .where(and(...conditions))
+            .returning({ id: consultationsTable.id });
+
+          if (!updatedRows || updatedRows.length === 0) {
+            throw new ConcurrencyConflictError(
+              `Concurrent modification detected for encounter ${encounterId}. Expected version ${expectedCaseVersion}.`
+            );
+          }
+          expectedCaseVersion = nextVersion;
+        }
+      } else {
+        if (encounterExistsOnServer) {
+          const mem = memoryConsultations.find(c => c.id === encounterId);
+          if (!mem || mem.caseVersion !== expectedCaseVersion) {
+            throw new ConcurrencyConflictError(
+              `Concurrent modification detected for encounter ${encounterId}. Expected version ${expectedCaseVersion}.`
+            );
+          }
+          mem.interviewState = stateToPersist;
+          mem.deliveredTurnRecords = stateToPersist.deliveredTurnRecords;
+          mem.attributedFacts = stateToPersist.attributedFacts;
+          mem.unmappedObservations = stateToPersist.unmappedObservations;
+          mem.caseVersion = nextVersion;
+          expectedCaseVersion = nextVersion;
+        }
+      }
+    };
+
     // P0 SAFETY CHECK: Red-flag scan on incoming utterance MUST execute BEFORE greeting or acknowledgment shortcuts!
     // Ensures utterances like "ok but my chest hurts now" or "hi having chest pain" immediately enter emergency escalation.
     const preCheck = evaluatePreArbiter({
       transcript: cleanMsg,
       speech_features: body.speechFeatures,
       demographics: {
-        age: body.interviewState?.patientDemographics?.age,
-        age_group: (body.interviewState?.patientDemographics?.age_group || "unknown") as any,
+        age: authoritativeInterviewState?.patientDemographics?.age,
+        age_group: (authoritativeInterviewState?.patientDemographics?.age_group || "unknown") as any,
       },
     });
 
@@ -138,10 +331,10 @@ export async function POST(request: Request) {
     // Only allow greeting, thank-you, or acknowledgment short-circuit when NO red flags exist on current utterance
     if (!hasRedFlagOnCurrentUtterance) {
       const isGreeting =
-        /^(hello|hi|hey|good\s+(morning|afternoon|evening)|can\s+you\s+hear\s+me|testing|greetings)[.!?\s]*$/i.test(cleanMsgLower);
+        /^(?:hello|hi|hey|good\s+(?:morning|afternoon|evening)|can\s+you\s+hear\s+me|testing|greetings)(?:\s+(?:doctor|dr\b|there|chen|vance|rostova|pendelton|bennett))?[.!?\s]*$/i.test(cleanMsgLower);
 
       const isPureThankYou =
-        /^(?:thank\s+you|thanks)(?:\s+(?:doctor|dr\b|chen|vance|rostova|pendelton|bennett|so\s+much|a\s+lot))?[.!?\s]*$/i.test(cleanMsgLower) ||
+        /^(?:thank\s+you|thanks)(?:\s+(?:so\s+much|very\s+much|a\s+lot))?(?:\s+(?:doctor|dr\b|chen|vance|rostova|pendelton|bennett))?[.!?\s]*$/i.test(cleanMsgLower) ||
         /^(?:bye|goodbye|take\s+care)[.!?\s]*$/i.test(cleanMsgLower);
 
       const isPureAcknowledgment =
@@ -157,6 +350,35 @@ export async function POST(request: Request) {
         };
         const doctorGreeting = greetingReplies[doctor.id] || `Hello! I'm ${doctor.name}. I'm here and ready to help. What symptoms are you experiencing?`;
 
+        const greetingState = {
+          ...authoritativeInterviewState,
+          phase: authoritativeInterviewState?.phase === "initial" || !authoritativeInterviewState?.phase ? "greeting" : authoritativeInterviewState?.phase,
+        };
+
+        if (encounterId) {
+          try {
+            await persistTurnStateAsync(greetingState);
+          } catch (persistErr: any) {
+            if (persistErr instanceof ConcurrencyConflictError) {
+              return NextResponse.json(
+                {
+                  error: "The consultation state was modified by a concurrent request. Please retry.",
+                  code: "CONCURRENT_MODIFICATION_CONFLICT",
+                },
+                { status: 409 }
+              );
+            }
+            console.error("[VoiceChat] Greeting turn state persistence failure:", persistErr);
+            return NextResponse.json(
+              {
+                error: "Failed to persist dialogue state to database.",
+                code: "PERSISTENCE_FAILURE",
+              },
+              { status: 503 }
+            );
+          }
+        }
+
         return buildJsonResponse({
           doctorReply: doctorGreeting,
           doctor: {
@@ -168,19 +390,50 @@ export async function POST(request: Request) {
             voiceId: doctor.voiceId,
           },
           phase: "greeting",
+          interviewState: greetingState,
+          caseVersion: encounterId ? expectedCaseVersion : 1,
           board: null,
           speech_features: null,
           triage: null
         });
       }
 
-      if (isPureThankYou || (isPureAcknowledgment && (body.interviewState?.phase === "decided" || body.interviewState?.phase === "closing"))) {
-        const isEmergencyDecided = body.interviewState?.informationState === "emergency_preempted" ||
-          body.interviewState?.slots?.known_facts?.some((f: string) => /EMERGENCY|ESI LEVEL [12]|CRITICAL/i.test(f));
+      if (isPureThankYou || (isPureAcknowledgment && (authoritativeInterviewState?.phase === "decided" || authoritativeInterviewState?.phase === "closing"))) {
+        const isEmergencyDecided = authoritativeInterviewState?.informationState === "emergency_preempted" ||
+          authoritativeInterviewState?.slots?.known_facts?.some((f: string) => /EMERGENCY|ESI LEVEL [12]|CRITICAL/i.test(f));
 
         const closingDoctorReply = isEmergencyDecided
           ? "Please remember this requires urgent emergency medical evaluation. If you haven't already, please call 112 or 108 immediately or have someone take you to the nearest emergency department right now. Do not wait."
           : "You're very welcome! Please don't hesitate to reach back out if your symptoms change or worsen. Take care and stay safe.";
+
+        const closingState = {
+          ...(authoritativeInterviewState || conversationManager.createInitialState()),
+          phase: "closing",
+        };
+
+        if (encounterId) {
+          try {
+            await persistTurnStateAsync(closingState);
+          } catch (persistErr: any) {
+            if (persistErr instanceof ConcurrencyConflictError) {
+              return NextResponse.json(
+                {
+                  error: "The consultation state was modified by a concurrent request. Please retry.",
+                  code: "CONCURRENT_MODIFICATION_CONFLICT",
+                },
+                { status: 409 }
+              );
+            }
+            console.error("[VoiceChat] Closing turn state persistence failure:", persistErr);
+            return NextResponse.json(
+              {
+                error: "Failed to persist dialogue state to database.",
+                code: "PERSISTENCE_FAILURE",
+              },
+              { status: 503 }
+            );
+          }
+        }
 
         return buildJsonResponse({
           doctorReply: closingDoctorReply,
@@ -193,7 +446,8 @@ export async function POST(request: Request) {
             voiceId: doctor.voiceId,
           },
           phase: "closing",
-          interviewState: body.interviewState,
+          interviewState: closingState,
+          caseVersion: encounterId ? expectedCaseVersion : 1,
           board: null,
           speech_features: null,
           triage: null
@@ -276,115 +530,6 @@ export async function POST(request: Request) {
           ageGroup = "unknown";
         }
       }
-    }
-
-    // 2. Server-Authoritative State Resolution & Concurrency Safeguard:
-    // If encounterId is provided, query authoritative state from primary datastore / memory store.
-    // Invariants:
-    // a. Fail closed on datastore error (HTTP 503 DATABASE_READ_FAILURE) — never fall back to untrusted client state.
-    // b. Cross-tenant isolation (HTTP 403 CROSS_TENANT_ACCESS) if encounter belongs to another user.
-    // c. Optimistic concurrency conflict (HTTP 409 CONCURRENT_MODIFICATION_CONFLICT) if client presents a stale caseVersion.
-    // d. Server-authoritative bootstrapping: if encounter is new, bootstrap clean state via conversationManager.createInitialState().
-    let authoritativeInterviewState: any = undefined;
-    let expectedCaseVersion = 1;
-    let encounterExistsOnServer = false;
-
-    if (encounterId && effectiveUserId !== "unauthenticated") {
-      const dbClient = getDb();
-      if (dbClient) {
-        let existingRows: any[];
-        try {
-          existingRows = await dbClient
-            .select()
-            .from(consultationsTable)
-            .where(eq(consultationsTable.id, encounterId))
-            .limit(1);
-        } catch (fetchErr) {
-          console.error("[VoiceChat] Server encounter state fetch failure:", fetchErr);
-          return NextResponse.json(
-            {
-              error: "Failed to retrieve encounter state from datastore.",
-              code: "DATABASE_READ_FAILURE",
-            },
-            { status: 503 }
-          );
-        }
-
-        if (existingRows.length > 0) {
-          const encounter = existingRows[0];
-          if (auth.role !== "admin" && encounter.userId !== effectiveUserId) {
-            return NextResponse.json(
-              {
-                error: "Unauthorized access to encounter.",
-                code: "CROSS_TENANT_ACCESS",
-              },
-              { status: 403 }
-            );
-          }
-
-          encounterExistsOnServer = true;
-          expectedCaseVersion = typeof encounter.caseVersion === "number" ? encounter.caseVersion : 1;
-
-          if (clientCaseVersion !== undefined && clientCaseVersion !== null) {
-            const parsedClientVersion = Number(clientCaseVersion);
-            if (!isNaN(parsedClientVersion) && parsedClientVersion !== expectedCaseVersion) {
-              return NextResponse.json(
-                {
-                  error: `Encounter state version conflict. Expected version ${expectedCaseVersion}, got ${parsedClientVersion}.`,
-                  code: "CONCURRENT_MODIFICATION_CONFLICT",
-                  expectedVersion: expectedCaseVersion,
-                },
-                { status: 409 }
-              );
-            }
-          }
-
-          authoritativeInterviewState = encounter.interviewState || conversationManager.createInitialState();
-        } else {
-          // New encounter on server: bootstrap clean initial state
-          authoritativeInterviewState = conversationManager.createInitialState();
-          expectedCaseVersion = 1;
-        }
-      } else {
-        // Memory store fallback
-        const existingMem = memoryConsultations.find(c => c.id === encounterId);
-        if (existingMem) {
-          if (auth.role !== "admin" && existingMem.userId !== effectiveUserId && effectiveUserId !== "anon-user") {
-            return NextResponse.json(
-              {
-                error: "Unauthorized access to encounter.",
-                code: "CROSS_TENANT_ACCESS",
-              },
-              { status: 403 }
-            );
-          }
-
-          encounterExistsOnServer = true;
-          expectedCaseVersion = typeof existingMem.caseVersion === "number" ? existingMem.caseVersion : 1;
-
-          if (clientCaseVersion !== undefined && clientCaseVersion !== null) {
-            const parsedClientVersion = Number(clientCaseVersion);
-            if (!isNaN(parsedClientVersion) && parsedClientVersion !== expectedCaseVersion) {
-              return NextResponse.json(
-                {
-                  error: `Encounter state version conflict. Expected version ${expectedCaseVersion}, got ${parsedClientVersion}.`,
-                  code: "CONCURRENT_MODIFICATION_CONFLICT",
-                  expectedVersion: expectedCaseVersion,
-                },
-                { status: 409 }
-              );
-            }
-          }
-
-          authoritativeInterviewState = existingMem.interviewState || conversationManager.createInitialState();
-        } else {
-          authoritativeInterviewState = conversationManager.createInitialState();
-          expectedCaseVersion = 1;
-        }
-      }
-    } else {
-      authoritativeInterviewState = body.interviewState || undefined;
-      expectedCaseVersion = 1;
     }
 
     // Stateful Clinical Conversation Manager Turn Execution
@@ -848,8 +993,8 @@ export async function POST(request: Request) {
     // POST-DECISION RE-EVALUATION: If the patient was already in 'decided' phase from a previous
     // board session but new pre-arbiter red flags have appeared on this turn (e.g. "my voice is muffled"
     // adding PTA risk after the board already ran), force re-convening rather than returning ASK_PATIENT.
-    const previousPhase = body.interviewState?.phase;
-    const previousFlags = new Set<string>(body.interviewState?.slots?.known_facts
+    const previousPhase = authoritativeInterviewState?.phase;
+    const previousFlags = new Set<string>(authoritativeInterviewState?.slots?.known_facts
       ?.filter((f: string) => f.startsWith("PRE_FLAG_"))
       || []);
     const currentFlags = turnResult.preArbiterResult.pre_safety_flags || [];
@@ -863,110 +1008,6 @@ export async function POST(request: Request) {
       turnResult.state.phase = "decided";
       turnResult.state.informationState = "emergency_preempted";
     }
-
-    class ConcurrencyConflictError extends Error {
-      constructor(message: string) {
-        super(message);
-        this.name = "ConcurrencyConflictError";
-      }
-    }
-
-    const persistTurnStateAsync = async (stateToPersist: any) => {
-      if (!encounterId || effectiveUserId === "unauthenticated") return;
-      const dbClient = getDb();
-      const nextVersion = expectedCaseVersion + 1;
-      stateToPersist.caseVersion = nextVersion;
-
-      if (dbClient) {
-        if (encounterExistsOnServer) {
-          const conditions = [
-            eq(consultationsTable.id, encounterId),
-            eq(consultationsTable.caseVersion, expectedCaseVersion),
-          ];
-          if (auth.role !== "admin") {
-            conditions.push(eq(consultationsTable.userId, effectiveUserId));
-          }
-
-          const updatedRows = await dbClient
-            .update(consultationsTable)
-            .set({
-              interviewState: stateToPersist,
-              deliveredTurnRecords: stateToPersist.deliveredTurnRecords,
-              attributedFacts: stateToPersist.attributedFacts,
-              unmappedObservations: stateToPersist.unmappedObservations,
-              caseVersion: nextVersion,
-            })
-            .where(and(...conditions))
-            .returning({ id: consultationsTable.id });
-
-          if (!updatedRows || updatedRows.length === 0) {
-            throw new ConcurrencyConflictError(
-              `Concurrent modification detected for encounter ${encounterId}. Expected version ${expectedCaseVersion}.`
-            );
-          }
-        } else {
-          try {
-            await dbClient.insert(consultationsTable).values({
-              id: encounterId,
-              userId: effectiveUserId,
-              doctorId: doctor.id,
-              doctorName: doctor.name,
-              specialty: doctor.specialty,
-              chiefComplaint: cleanMsg.slice(0, 200),
-              interviewState: stateToPersist,
-              deliveredTurnRecords: stateToPersist.deliveredTurnRecords,
-              attributedFacts: stateToPersist.attributedFacts,
-              unmappedObservations: stateToPersist.unmappedObservations,
-              caseVersion: nextVersion,
-              status: "in_progress",
-            } as any);
-          } catch (insertErr: any) {
-            if (insertErr?.code === "23505" || insertErr?.message?.includes("unique") || insertErr?.message?.includes("duplicate")) {
-              throw new ConcurrencyConflictError(
-                `Concurrent insert collision for encounter ${encounterId}.`
-              );
-            }
-            throw insertErr;
-          }
-        }
-      } else {
-        if (encounterExistsOnServer) {
-          const mem = memoryConsultations.find(c => c.id === encounterId);
-          if (!mem || mem.caseVersion !== expectedCaseVersion) {
-            throw new ConcurrencyConflictError(
-              `Concurrent modification detected for encounter ${encounterId}. Expected version ${expectedCaseVersion}.`
-            );
-          }
-          mem.interviewState = stateToPersist;
-          mem.deliveredTurnRecords = stateToPersist.deliveredTurnRecords;
-          mem.attributedFacts = stateToPersist.attributedFacts;
-          mem.unmappedObservations = stateToPersist.unmappedObservations;
-          mem.caseVersion = nextVersion;
-        } else {
-          const existingMem = memoryConsultations.find(c => c.id === encounterId);
-          if (existingMem) {
-            throw new ConcurrencyConflictError(
-              `Concurrent insert collision for encounter ${encounterId}.`
-            );
-          }
-          memoryConsultations.push({
-            id: encounterId,
-            userId: effectiveUserId,
-            doctorId: doctor.id,
-            doctorName: doctor.name,
-            specialty: doctor.specialty,
-            chiefComplaint: cleanMsg.slice(0, 200),
-            interviewState: stateToPersist,
-            deliveredTurnRecords: stateToPersist.deliveredTurnRecords,
-            attributedFacts: stateToPersist.attributedFacts,
-            unmappedObservations: stateToPersist.unmappedObservations,
-            caseVersion: nextVersion,
-            status: "in_progress",
-            transcript: [],
-          });
-        }
-      }
-    };
 
     // If conversation manager determined patient follow-up or clarification is needed
     if (turnResult.action === "ASK_PATIENT" || turnResult.action === "CLARIFY") {
