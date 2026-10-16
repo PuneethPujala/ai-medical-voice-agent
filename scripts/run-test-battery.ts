@@ -37,6 +37,7 @@ export const CANONICAL_TEST_BATTERY: TestSuiteDefinition[] = [
   { id: "test:false-dispatch", file: "tests/triage/false-dispatch-prevention.test.ts", description: "False Dispatch Prevention & Non-Emergency Controls" },
 
   // 4. Conversational Dialogue & State Reasoning
+  { id: "test:route-dialogue", file: "tests/triage/route-voice-chat-dialogue.test.ts", description: "Route-Level /api/voice/chat Multi-Turn State Contract" },
   { id: "test:dialogue-reasoning", file: "tests/triage/dialogue-reasoning-eval.ts", description: "LLM-First Dialogue Reasoning & State Contract" },
   { id: "test:clarify-dialogue", file: "tests/triage/clarify-natural-dialogue.test.ts", description: "Conversational Clarification & Natural Dialogue" },
   { id: "test:question-state", file: "tests/triage/question-state-repetition.test.ts", description: "Question State Tracking & Anti-Repetition" },

@@ -99,6 +99,7 @@ The repository contains **54 test scripts** defined in `package.json`, organized
 ### D. Conversational Dialogue & Clinical State Reasoning
 | Script Command | Target Source File | Test Mechanism |
 |---|---|---|
+| `npm run test:route-dialogue` | `tests/triage/route-voice-chat-dialogue.test.ts` | Validates route-level `/api/voice/chat` compound questions, unanswered dimension survival, anti-repetition, and server-authoritative state persistence. |
 | `npm run test:dialogue-reasoning`| `tests/triage/dialogue-reasoning-eval.ts` | Evaluates 8 dialogue contracts: orthostatic capture, compound inquiries, timeline corrections. |
 | `npm run test:clarify-dialogue` | `tests/triage/clarify-natural-dialogue.test.ts` | Validates natural clarification generation on ambiguous utterances without rigid checklists. |
 | `npm run test:question-state` | `tests/triage/question-state-repetition.test.ts` | Tests anti-repetition shield, question pending state, compound sub-target tracking. |
@@ -231,7 +232,7 @@ Real PostgreSQL verification is segregated from offline coverage:
     ```
   - The canonical test runner (`scripts/run-test-battery.ts`) explicitly marks these as `SKIPPED_DB` without spawning database queries, and excludes them from the passed suite count:
     ```text
-    Suites:  41 passed, 2 skipped, 43 total
+    Suites:  42 passed, 2 skipped, 44 total
     Database Status: MOCK ONLY (DATABASE_URL unset; real PostgreSQL not verified)
     ```
   - A green offline test run is never counted or reported as verified database coverage.
@@ -250,7 +251,7 @@ flowchart LR
     G1["Gate 1\nType Check\n(tsc)"] --> G2["Gate 2\nLint\n(eslint)"]
     G2 --> G3["Gate 3\nZero-Trust\nSecurity"]
     G3 --> G4["Gate 4\nClinical Safety\n& FHIR"]
-    G4 --> G5["Gate 5\nCanonical\n41-Suite Battery"]
+    G4 --> G5["Gate 5\nCanonical\n42-Suite Battery"]
     G5 --> G6["Gate 6\nCoverage\nGeneration (c8)"]
     G6 --> G7["Gate 7\nUpload Reports\n(Artifacts)"]
     G7 --> G8["Gate 8\nProduction Build\n(Turbopack)"]
