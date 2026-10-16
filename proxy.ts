@@ -33,6 +33,11 @@ export const PROTECTED_PHI_ROUTE_PATTERNS = [
 ];
 
 export function normalizePath(pathname: string): string {
+  if (!pathname || typeof pathname !== 'string') {
+    return '/';
+  }
+  // Strip query string and hash fragment if present in raw path string
+  pathname = pathname.split('?')[0].split('#')[0];
   try {
     pathname = decodeURI(pathname);
   } catch {
@@ -52,6 +57,9 @@ export function normalizePath(pathname: string): string {
 
 export function isPathMatching(pathname: string, patterns: string[]): boolean {
   const normalized = normalizePath(pathname);
+  if (normalized === '/__malformed_url_path__') {
+    return false; // Malformed paths never match valid patterns
+  }
   return patterns.some((pattern) => {
     const normalizedPattern = normalizePath(pattern);
     if (normalizedPattern === '/') {
@@ -65,22 +73,48 @@ export const isPublicRoute = (req: NextRequest) => isPathMatching(req.nextUrl.pa
 export const isAdminRoute = (req: NextRequest) => isPathMatching(req.nextUrl.pathname, ADMIN_ROUTE_PATTERNS);
 export const isProtectedPhiRoute = (req: NextRequest) => isPathMatching(req.nextUrl.pathname, PROTECTED_PHI_ROUTE_PATTERNS);
 
+export function isTestBypassPermitted(req: { headers: { get: (name: string) => string | null } }): boolean {
+  // Fail-closed invariant 1: NODE_ENV must strictly equal "test"
+  if (process.env.NODE_ENV !== 'test') {
+    return false;
+  }
+  // Fail-closed invariant 2: Real cloud deployments must NEVER allow test bypass
+  if (
+    process.env.VERCEL ||
+    process.env.VERCEL_ENV ||
+    process.env.AWS_EXECUTION_ENV ||
+    process.env.AWS_REGION ||
+    process.env.K_SERVICE ||
+    process.env.RENDER ||
+    process.env.FLY_APP_NAME ||
+    process.env.NETLIFY
+  ) {
+    return false;
+  }
+  // Fail-closed invariant 3: Explicit non-empty test secret required
+  const providedTestSecret = req.headers.get(INTERNAL_TEST_SECRET_HEADER);
+  if (!providedTestSecret) {
+    return false;
+  }
+  const expectedTestSecret = process.env.INTERNAL_TEST_SECRET || DEFAULT_INTERNAL_TEST_SECRET;
+  return providedTestSecret === expectedTestSecret;
+}
+
 export default clerkMiddleware(async (auth, req) => {
   const requestId = req.headers.get('x-request-id') ?? crypto.randomUUID();
   const requestHeaders = new Headers(req.headers);
   requestHeaders.set('x-request-id', requestId);
 
-  // 0. Test Runner / Automated Integration Bypass
-  // Invariants:
-  // - NODE_ENV must strictly equal "test" (never active in production or development)
-  // - Cloud deployment platforms (Vercel, AWS, GCP) must NEVER activate test bypass
-  // - Request must provide an explicit, non-empty secret matching expectedTestSecret
-  const isTestEnv = process.env.NODE_ENV === 'test';
-  const isCloudDeployment = Boolean(process.env.VERCEL_ENV || process.env.AWS_EXECUTION_ENV || process.env.K_SERVICE);
-  const providedTestSecret = req.headers.get(INTERNAL_TEST_SECRET_HEADER);
-  const expectedTestSecret = process.env.INTERNAL_TEST_SECRET || DEFAULT_INTERNAL_TEST_SECRET;
+  // Early Malformed URL Ingress Check: Fail closed immediately
+  if (normalizePath(req.nextUrl.pathname) === '/__malformed_url_path__') {
+    return NextResponse.json(
+      { error: 'Bad Request: Malformed URI encoding in request path', requestId },
+      { status: 400, headers: { 'x-request-id': requestId } }
+    );
+  }
 
-  if (isTestEnv && !isCloudDeployment && providedTestSecret && providedTestSecret === expectedTestSecret) {
+  // 0. Test Runner / Automated Integration Bypass (Disabled by default in production & cloud deployments)
+  if (isTestBypassPermitted(req)) {
     const res = NextResponse.next({ request: { headers: requestHeaders } });
     res.headers.set('x-request-id', requestId);
     return res;
