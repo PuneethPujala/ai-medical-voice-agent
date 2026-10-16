@@ -172,14 +172,14 @@ The coverage configuration (`.c8rc.json`) restricts metrics strictly to maintain
 
 ### Empirical Coverage Baseline
 
-The table below reflects the **genuine, measured coverage** produced by executing the canonical 41-suite battery:
+The table below reflects the **genuine, measured coverage** produced by executing the canonical 42-suite battery:
 
 | Metric | Measured Baseline | Enforcement Threshold | Status |
 |---|:---:|:---:|:---:|
-| **Statements** | **65.37%** (21,993 / 33,643) | 60.00% | ✅ PASS (+5.37%) |
-| **Branches** | **71.92%** (4,365 / 6,069) | 65.00% | ✅ PASS (+6.92%) |
-| **Functions** | **81.97%** (764 / 932) | 75.00% | ✅ PASS (+6.97%) |
-| **Lines** | **65.37%** (21,993 / 33,643) | 60.00% | ✅ PASS (+5.37%) |
+| **Statements** | **66.98%** (22,536 / 33,643) | 60.00% | ✅ PASS (+6.98%) |
+| **Branches** | **72.63%** (4,567 / 6,288) | 65.00% | ✅ PASS (+7.63%) |
+| **Functions** | **82.51%** (769 / 932) | 75.00% | ✅ PASS (+7.51%) |
+| **Lines** | **66.98%** (22,536 / 33,643) | 60.00% | ✅ PASS (+6.98%) |
 
 #### Subsystem Coverage Highlights
 - **Clinical Knowledge & Registries** (`lib/clinical-knowledge/`): **90.83% lines**, **85.23% branches**
