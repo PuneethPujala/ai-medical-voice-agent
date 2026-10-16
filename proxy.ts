@@ -2,7 +2,6 @@ import { clerkMiddleware } from '@clerk/nextjs/server';
 import { NextResponse, type NextRequest } from 'next/server';
 
 const INTERNAL_TEST_SECRET_HEADER = 'x-test-harness-secret';
-const DEFAULT_INTERNAL_TEST_SECRET = 'medvoice-test-harness-auth-token-9f8a3c2e';
 
 export const PUBLIC_ROUTE_PATTERNS = [
   '/',
@@ -36,23 +35,45 @@ export function normalizePath(pathname: string): string {
   if (!pathname || typeof pathname !== 'string') {
     return '/';
   }
-  // Strip query string and hash fragment if present in raw path string
+  // 1. Strip raw query string and hash fragment if present in raw path string
   pathname = pathname.split('?')[0].split('#')[0];
+
+  // 2. Normalize backslashes to forward slashes before decoding/splitting
+  pathname = pathname.replace(/\\+/g, '/');
+
+  // 3. Decode unreserved characters, encoded dots (%2e / %2E), and convert %5c to /
   try {
+    pathname = pathname.replace(/%5c/gi, '/');
     pathname = decodeURI(pathname);
   } catch {
     // Malformed encoding in path fails safe to unroutable marker
     return '/__malformed_url_path__';
   }
-  // Collapse consecutive slashes (e.g. //consult -> /consult)
-  pathname = pathname.replace(/\/+/g, '/');
-  // Lowercase for case-insensitive route classification
-  pathname = pathname.toLowerCase();
-  // Strip trailing slash unless root path
-  if (pathname.length > 1 && pathname.endsWith('/')) {
-    pathname = pathname.slice(0, -1);
+
+  // 4. Resolve dot segments (RFC 3986 section 5.2.4 "remove_dot_segments")
+  const rawSegments = pathname.split('/');
+  const resolvedSegments: string[] = [];
+
+  for (const seg of rawSegments) {
+    if (seg === '' || seg === '.') {
+      continue;
+    }
+    if (seg === '..') {
+      // Pop previous segment; cannot escape root '/'
+      if (resolvedSegments.length > 0) {
+        resolvedSegments.pop();
+      }
+      continue;
+    }
+    resolvedSegments.push(seg);
   }
-  return pathname;
+
+  let normalized = '/' + resolvedSegments.join('/');
+
+  // 5. Lowercase for consistent route matching
+  normalized = normalized.toLowerCase();
+
+  return normalized;
 }
 
 export function isPathMatching(pathname: string, patterns: string[]): boolean {
@@ -78,7 +99,7 @@ export function isTestBypassPermitted(req: { headers: { get: (name: string) => s
   if (process.env.NODE_ENV !== 'test') {
     return false;
   }
-  // Fail-closed invariant 2: Real cloud deployments must NEVER allow test bypass
+  // Fail-closed invariant 2: Real cloud or hosted deployments must NEVER allow test bypass
   if (
     process.env.VERCEL ||
     process.env.VERCEL_ENV ||
@@ -87,17 +108,27 @@ export function isTestBypassPermitted(req: { headers: { get: (name: string) => s
     process.env.K_SERVICE ||
     process.env.RENDER ||
     process.env.FLY_APP_NAME ||
-    process.env.NETLIFY
+    process.env.NETLIFY ||
+    process.env.HEROKU_APP_NAME ||
+    process.env.RAILWAY_ENVIRONMENT ||
+    process.env.CONTAINER ||
+    process.env.KUBERNETES_SERVICE_HOST ||
+    process.env.MEDVOICE_DEPLOYMENT_ENV
   ) {
     return false;
   }
-  // Fail-closed invariant 3: Explicit non-empty test secret required
+  // Fail-closed invariant 3: Explicit configured INTERNAL_TEST_SECRET must be present and strong (>= 32 chars)
+  // Missing or weak secret strictly fails closed - NO default fallback permitted.
+  const configuredSecret = process.env.INTERNAL_TEST_SECRET;
+  if (!configuredSecret || typeof configuredSecret !== 'string' || configuredSecret.trim().length < 32) {
+    return false;
+  }
+  // Fail-closed invariant 4: Header secret must match configured secret
   const providedTestSecret = req.headers.get(INTERNAL_TEST_SECRET_HEADER);
   if (!providedTestSecret) {
     return false;
   }
-  const expectedTestSecret = process.env.INTERNAL_TEST_SECRET || DEFAULT_INTERNAL_TEST_SECRET;
-  return providedTestSecret === expectedTestSecret;
+  return providedTestSecret === configuredSecret;
 }
 
 export default clerkMiddleware(async (auth, req) => {
@@ -124,6 +155,14 @@ export default clerkMiddleware(async (auth, req) => {
     const res = NextResponse.next({ request: { headers: requestHeaders } });
     res.headers.set('x-request-id', requestId);
     return res;
+  }
+
+  // Block internal dev routes in production
+  if (process.env.NODE_ENV === 'production' && normalizePath(req.nextUrl.pathname).startsWith('/dev')) {
+    return NextResponse.json(
+      { error: 'Not Found', requestId },
+      { status: 404, headers: { 'x-request-id': requestId } }
+    );
   }
 
   const session = await auth();

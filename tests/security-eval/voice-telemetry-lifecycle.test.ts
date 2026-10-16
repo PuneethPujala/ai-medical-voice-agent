@@ -5,6 +5,7 @@ import { GET as getConsultationById } from "../../app/api/consultations/[id]/rou
 import { DEFAULT_INTERNAL_TEST_SECRET, INTERNAL_TEST_SECRET_HEADER, Role } from "../../lib/auth/rbac";
 
 (process.env as Record<string, string | undefined>).NODE_ENV = "test";
+(process.env as Record<string, string | undefined>).INTERNAL_TEST_SECRET = DEFAULT_INTERNAL_TEST_SECRET;
 
 function createTestHeaders(role: Role, userId: string) {
   return {

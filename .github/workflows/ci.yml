@@ -45,15 +45,29 @@ jobs:
       - name: Gate 2 — Static Code Analysis & Linting
         run: npm run lint
 
-      - name: Gate 3 — Zero-Trust Security, Auth RBAC & Consultation Invariants
+      - name: Gate 3a — Zero-Trust Proxy Routing & RBAC Invariants
         run: |
           npx tsx tests/security-eval/cors-rbac-audit.test.ts
           npx tsx tests/security-eval/proxy-routing.test.ts
-          npx tsx tests/security-eval/consultation-lifecycle.test.ts
           npx tsx tests/security-eval/chat-identity-isolation.test.ts
-          npx tsx tests/security-eval/optimistic-concurrency-durable-state.test.ts
-          npx tsx tests/security-eval/atomic-concurrency-idempotency.test.ts
           npx tsx tests/security-eval/voice-telemetry-lifecycle.test.ts
+
+      - name: Gate 3b — Consultation Lifecycle & State Invariants
+        run: |
+          npx tsx tests/security-eval/consultation-lifecycle.test.ts
+          npx tsx tests/security-eval/optimistic-concurrency-durable-state.test.ts
+
+      - name: Gate 3c — Live PostgreSQL Concurrency & Audit Durability
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          if [ -n "$DATABASE_URL" ]; then
+            echo "DATABASE_URL detected. Enforcing live PostgreSQL concurrency and audit durability tests..."
+            REQUIRE_LIVE_DB=true npx tsx tests/security-eval/atomic-concurrency-idempotency.test.ts
+            REQUIRE_LIVE_DB=true npx tsx tests/security-eval/durable-audit.test.ts
+          else
+            echo "::warning title=Live Database Verification Skipped::DATABASE_URL secret is not configured in this repository. Live PostgreSQL CAS and hash-chain durability tests were not executed. To enforce live database verification, configure DATABASE_URL in repository secrets."
+          fi
 
       - name: Gate 4 — Clinical Safety, Red-Flag Pre-Arbiter & HL7 FHIR R4 Conformance
         run: |

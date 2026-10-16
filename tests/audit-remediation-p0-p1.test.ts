@@ -36,6 +36,7 @@ import { DEFAULT_INTERNAL_TEST_SECRET, INTERNAL_TEST_SECRET_HEADER } from "../li
 import { PatientCase, AgentOpinion, ClinicalConsensus } from "../lib/agents/schemas";
 
 (process.env as any).NODE_ENV = "test";
+(process.env as any).INTERNAL_TEST_SECRET = DEFAULT_INTERNAL_TEST_SECRET;
 
 function createMockRequest(url: string, method: string = "POST", body?: any, headers: Record<string, string> = {}) {
   const finalHeaders: Record<string, string> = {
