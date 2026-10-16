@@ -165,8 +165,64 @@ async function runVoiceSttTestSuite() {
     }
   }
 
+  // TEST 6: Bounded stream rejection on unannounced chunked transfer > 25MB (HTTP 413)
+  {
+    console.log(">>> TEST 6: Bounded Stream Interception on Chunked Transfer (HTTP 413)");
+    const maxPayload = RESOURCE_LIMITS.VOICE_STT_MAX_AUDIO_BYTES + 256 * 1024;
+    const chunkSize = 1024 * 1024; // 1 MB chunks
+    let bytesSent = 0;
+
+    const stream = new ReadableStream({
+      pull(controller) {
+        if (bytesSent > maxPayload + chunkSize) {
+          controller.close();
+          return;
+        }
+        controller.enqueue(new Uint8Array(chunkSize));
+        bytesSent += chunkSize;
+      },
+    });
+
+    const req = new Request("http://localhost:3000/api/voice/stt", {
+      method: "POST",
+      body: stream,
+      headers: {
+        "content-type": "multipart/form-data; boundary=----StreamBoundaryXYZ",
+        "x-forwarded-for": "10.0.1.6",
+      },
+      duplex: "half",
+    } as RequestInit & { duplex?: string });
+
+    const res = await postVoiceStt(req);
+    assert.strictEqual(res.status, 413, "Chunked streaming exceeding limit rejected with HTTP 413");
+    const json = await res.json();
+    assert.strictEqual(json.code, "PAYLOAD_TOO_LARGE", "Error code is PAYLOAD_TOO_LARGE");
+    console.log("  [PASS] Chunked stream exceeding 25MB intercepted and aborted with HTTP 413\n");
+  }
+
+  // TEST 7: Malformed multipart form data handling (HTTP 400)
+  {
+    console.log(">>> TEST 7: Malformed Multipart Body Handling (HTTP 400)");
+    const corruptBody = new TextEncoder().encode("Not a valid multipart payload -- missing boundaries");
+    const req = new Request("http://localhost:3000/api/voice/stt", {
+      method: "POST",
+      body: corruptBody,
+      headers: {
+        "content-type": "multipart/form-data; boundary=----MissingBoundary",
+        "x-forwarded-for": "10.0.1.7",
+      },
+      duplex: "half",
+    } as RequestInit & { duplex?: string });
+
+    const res = await postVoiceStt(req);
+    assert.strictEqual(res.status, 400, "Corrupt multipart payload rejected with HTTP 400");
+    const json = await res.json();
+    assert.strictEqual(json.code, "MALFORMED_MULTIPART", "Error code is MALFORMED_MULTIPART");
+    console.log("  [PASS] Malformed multipart rejected cleanly with HTTP 400\n");
+  }
+
   console.log("================================================================================");
-  console.log("      ALL 5/5 NEXT.JS VOICE STT INTEGRATION TESTS PASSED                       ");
+  console.log("      ALL 7/7 NEXT.JS VOICE STT INTEGRATION TESTS PASSED                       ");
   console.log("================================================================================");
 }
 

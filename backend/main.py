@@ -3,6 +3,7 @@ import sys
 import logging
 import uvicorn
 from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
 # Specific safeguard for local ./coverage directory (PEP 420 directory namespace without __file__)
@@ -27,6 +28,89 @@ from backend.services.audio_service import (
 
 logger = logging.getLogger("backend.main")
 
+MAX_AUDIO_BYTES = 25 * 1024 * 1024  # 25 MB max audio upload
+MAX_INGRESS_PAYLOAD_BYTES = MAX_AUDIO_BYTES + (256 * 1024)  # 25 MB + 256 KB envelope margin
+ALLOWED_AUDIO_EXTENSIONS = {".wav", ".webm", ".ogg", ".mp3", ".m4a", ".mp4", ".flac"}
+
+class ContentSizeLimitMiddleware:
+    """
+    ASGI middleware enforcing strict bounded ingress payloads before buffer allocation.
+    - Drops requests immediately if declared Content-Length > MAX_INGRESS_PAYLOAD_BYTES.
+    - Intercepts incoming ASGI request chunks to enforce a hard ceiling on chunked / unannounced streams.
+    """
+    def __init__(self, app, max_bytes: int = MAX_INGRESS_PAYLOAD_BYTES):
+        self.app = app
+        self.max_bytes = max_bytes
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        headers = dict(scope.get("headers", []))
+        content_length_raw = headers.get(b"content-length")
+        if content_length_raw:
+            try:
+                if int(content_length_raw) > self.max_bytes:
+                    res = JSONResponse(
+                        {"detail": f"Payload exceeds maximum allowed size of {self.max_bytes // (1024 * 1024)} MB."},
+                        status_code=413
+                    )
+                    await res(scope, receive, send)
+                    return
+            except ValueError:
+                pass
+
+        total_bytes = 0
+        stream_exceeded = False
+        response_started = False
+
+        async def limited_receive():
+            nonlocal total_bytes, stream_exceeded
+            message = await receive()
+            if message["type"] == "http.request":
+                body = message.get("body", b"")
+                total_bytes += len(body)
+                if total_bytes > self.max_bytes:
+                    stream_exceeded = True
+                    raise ValueError("STREAM_EXCEEDED")
+            return message
+
+        async def limited_send(message):
+            nonlocal response_started
+            if message["type"] == "http.response.start":
+                response_started = True
+                if stream_exceeded:
+                    message = {
+                        "type": "http.response.start",
+                        "status": 413,
+                        "headers": [
+                            (b"content-type", b"application/json"),
+                        ]
+                    }
+            elif message["type"] == "http.response.body":
+                if stream_exceeded:
+                    detail_json = f'{{"detail": "Audio file exceeds maximum allowed size of {self.max_bytes // (1024 * 1024)} MB."}}'.encode("utf-8")
+                    message = {
+                        "type": "http.response.body",
+                        "body": detail_json,
+                        "more_body": False
+                    }
+            await send(message)
+
+        try:
+            await self.app(scope, limited_receive, limited_send)
+        except Exception:
+            if stream_exceeded:
+                if not response_started:
+                    res = JSONResponse(
+                        {"detail": f"Audio file exceeds maximum allowed size of {self.max_bytes // (1024 * 1024)} MB."},
+                        status_code=413
+                    )
+                    await res(scope, receive, send)
+            else:
+                raise
+
 app = FastAPI(
     title=settings.PROJECT_NAME,
     version=settings.VERSION,
@@ -34,6 +118,9 @@ app = FastAPI(
     docs_url="/docs",
     redoc_url="/redoc",
 )
+
+# Content Size Limiter Middleware (bound ingress payloads before memory allocation)
+app.add_middleware(ContentSizeLimitMiddleware, max_bytes=MAX_INGRESS_PAYLOAD_BYTES)
 
 # CORS Middleware Setup
 app.add_middleware(
@@ -79,8 +166,6 @@ async def health_check():
 # -----------------------------------------------------------------------------
 # Canonical Whisper Speech-to-Text (STT) Endpoint
 # -----------------------------------------------------------------------------
-MAX_AUDIO_BYTES = 25 * 1024 * 1024  # 25 MB max audio upload
-ALLOWED_AUDIO_EXTENSIONS = {".wav", ".webm", ".ogg", ".mp3", ".m4a", ".mp4", ".flac"}
 
 @app.get("/api/v1/stt/health")
 async def stt_health():
@@ -156,22 +241,33 @@ async def speech_to_text(file: UploadFile = File(...)):
             detail=f"Unsupported audio format: '{ext}'. Allowed extensions: {', '.join(sorted(ALLOWED_AUDIO_EXTENSIONS))}"
         )
 
+    chunks = []
+    total_read = 0
     try:
-        audio_bytes = await file.read()
+        while True:
+            chunk = await file.read(64 * 1024)
+            if not chunk:
+                break
+            total_read += len(chunk)
+            if total_read > MAX_AUDIO_BYTES:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"Audio file exceeds maximum allowed size of {MAX_AUDIO_BYTES // (1024 * 1024)} MB."
+                )
+            chunks.append(chunk)
+        audio_bytes = b"".join(chunks)
+    except HTTPException:
+        raise
     except Exception as read_err:
         logger.error(f"Failed to read uploaded audio stream: {read_err}")
         raise HTTPException(status_code=400, detail=f"Failed to read audio stream: {str(read_err)}")
+    finally:
+        await file.close()
 
     if not audio_bytes or len(audio_bytes) == 0:
         raise HTTPException(
             status_code=400,
             detail="Uploaded audio file is empty. Please speak clearly into the microphone."
-        )
-
-    if len(audio_bytes) > MAX_AUDIO_BYTES:
-        raise HTTPException(
-            status_code=413,
-            detail=f"Audio file exceeds maximum allowed size of {MAX_AUDIO_BYTES // (1024 * 1024)} MB."
         )
 
     try:

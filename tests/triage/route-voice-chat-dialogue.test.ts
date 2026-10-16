@@ -2,6 +2,7 @@ import assert from "assert";
 import { POST as postVoiceChat } from "../../app/api/voice/chat/route";
 import { DEFAULT_INTERNAL_TEST_SECRET, INTERNAL_TEST_SECRET_HEADER, Role } from "../../lib/auth/rbac";
 import { ClinicalInterviewState } from "../../lib/triage/conversation-manager";
+import { memoryConsultations } from "../../app/api/consultations/route";
 import * as dotenv from "dotenv";
 
 dotenv.config({ path: ".env.local" });
@@ -305,6 +306,19 @@ async function runRouteVoiceChatDialogueTests() {
   {
     const encounterId = `ENC-SERVER-AUTH-${Date.now()}`;
     const testEncounterUser = `user-server-auth-${Date.now()}`;
+
+    // Seed authoritative encounter (encounters cannot be arbitrarily auto-created by client ID)
+    memoryConsultations.push({
+      id: encounterId,
+      userId: testEncounterUser,
+      doctorId: "dr-sarah-chen",
+      doctorName: "Dr. Sarah Chen, MD",
+      specialty: "Internal Medicine",
+      chiefComplaint: "Temple pain",
+      caseVersion: 1,
+      interviewState: null,
+      transcript: [],
+    });
 
     // Turn 1: Submit turn WITH encounterId
     const reqTurn1 = new Request("https://medvoice.org/api/voice/chat", {
