@@ -1,36 +1,49 @@
-import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
-import { NextResponse } from 'next/server';
+import { clerkMiddleware } from '@clerk/nextjs/server';
+import { NextResponse, type NextRequest } from 'next/server';
 
 const INTERNAL_TEST_SECRET_HEADER = 'x-test-harness-secret';
 const DEFAULT_INTERNAL_TEST_SECRET = 'medvoice-test-harness-auth-token-9f8a3c2e';
 
-const isPublicRoute = createRouteMatcher([
+export const PUBLIC_ROUTE_PATTERNS = [
   '/',
-  '/care(.*)',
-  '/demo(.*)',
-  '/privacy(.*)',
-  '/sign-in(.*)',
-  '/sign-up(.*)',
-  '/api/hospitals(.*)',
-  '/api/route(.*)',
-]);
+  '/care',
+  '/demo',
+  '/privacy',
+  '/sign-in',
+  '/sign-up',
+  '/api/hospitals',
+  '/api/route',
+];
 
-const isAdminRoute = createRouteMatcher([
-  '/admin(.*)',
-  '/api/admin(.*)',
-  '/api/audit(.*)',
-]);
+export const ADMIN_ROUTE_PATTERNS = [
+  '/admin',
+  '/api/admin',
+  '/api/audit',
+];
 
-const isProtectedPhiRoute = createRouteMatcher([
-  '/consult(.*)',
-  '/dashboard(.*)',
-  '/profile(.*)',
-  '/api/consultations(.*)',
-  '/api/patient(.*)',
-  '/api/triage(.*)',
-  '/api/voice(.*)',
-  '/api/emergency(.*)',
-]);
+export const PROTECTED_PHI_ROUTE_PATTERNS = [
+  '/consult',
+  '/dashboard',
+  '/profile',
+  '/api/consultations',
+  '/api/patient',
+  '/api/triage',
+  '/api/voice',
+  '/api/emergency',
+];
+
+export function isPathMatching(pathname: string, patterns: string[]): boolean {
+  return patterns.some((pattern) => {
+    if (pattern === '/') {
+      return pathname === '/';
+    }
+    return pathname === pattern || pathname.startsWith(`${pattern}/`);
+  });
+}
+
+export const isPublicRoute = (req: NextRequest) => isPathMatching(req.nextUrl.pathname, PUBLIC_ROUTE_PATTERNS);
+export const isAdminRoute = (req: NextRequest) => isPathMatching(req.nextUrl.pathname, ADMIN_ROUTE_PATTERNS);
+export const isProtectedPhiRoute = (req: NextRequest) => isPathMatching(req.nextUrl.pathname, PROTECTED_PHI_ROUTE_PATTERNS);
 
 export default clerkMiddleware(async (auth, req) => {
   const requestId = req.headers.get('x-request-id') ?? crypto.randomUUID();

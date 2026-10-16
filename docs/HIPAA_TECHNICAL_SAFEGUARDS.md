@@ -23,15 +23,15 @@ Software architecture alone can only satisfy **Technical Safeguards (45 CFR § 1
 
 | HIPAA Regulation | Required / Addressable | MedVoice Technical Implementation | Verification Mechanism | Status |
 | :--- | :---: | :--- | :--- | :---: |
-| **§ 164.312(a)(1) Access Control** | **Required** | Root Edge Gateway (`middleware.ts`) + strict RBAC (`patient` vs `admin`). IDOR ownership controls ensure patients can only access their own records. | Automated test suite (`cors-rbac-audit.test.ts`), Edge Middleware | 🟢 Implemented |
+| **§ 164.312(a)(1) Access Control** | **Required** | Root Edge Gateway (`proxy.ts`) + strict RBAC (`patient` vs `admin`). IDOR ownership controls ensure patients can only access their own records. | Automated test suite (`cors-rbac-audit.test.ts`), Edge Proxy | 🟢 Implemented |
 | **§ 164.312(a)(2)(i) Unique User ID** | **Required** | Clerk server-side authentication assigns immutable, unique user IDs (`userId`). Client headers cannot elevate privileges. | Anti-spoofing tests in `cors-rbac-audit.test.ts` | 🟢 Implemented |
 | **§ 164.312(a)(2)(ii) Emergency Access** | **Required** | Algorithmic ESI v4 safety arbiter executes deterministically without authentication delay to preserve patient safety. | Deterministic arbiter tests | 🟢 Implemented |
 | **§ 164.312(a)(2)(iii) Automatic Logoff** | Addressable | Client session tokens expire via Clerk auth policies; local voice intake re-arms only during active consultation turns. | Session management | 🟢 Implemented |
 | **§ 164.312(b) Audit Controls** | **Required** | SHA-256 hash-chained immutable audit ledger backed by PostgreSQL persistence with correlation IDs (`x-request-id`). | Hash chain verification (`verifyAuditChain`) & tamper detection | 🟢 Implemented |
 | **§ 164.312(c)(1) Integrity Controls** | **Required** | Cryptographic payload hashing (`eventHash`), Zod validation, and deterministic HL7 FHIR R4 structural validator (`validateFhirR4Bundle`). | `tests/fhir-eval/fhir.test.ts` & mutation tests | 🟢 Implemented |
 | **§ 164.312(c)(2) Data De-Identification** | Addressable | Zero-Trust PHI Scrubber (`PhiScrubber`) redacts PII/PHI (phones, emails, IDs, names) into an ephemeral vault before cloud LLM dispatch. | Unit tests & `x-phi-redactions` response telemetry | 🟢 Implemented |
-| **§ 164.312(d) Authentication** | **Required** | Authoritative Clerk server-side session token verification via Edge Gateway. Rejects client-supplied `x-mock-role` in production. | Server-side `authorizeRequest()` & `middleware.ts` | 🟢 Implemented |
-| **§ 164.312(e)(1) Transmission Security** | **Required** | HTTPS deployment, HSTS preload (`max-age=63072000`), secure CORS origin restriction, `no-store` cache controls on all `/api/*` endpoints. | Next.js Edge Middleware headers & tests | 🟢 Implemented |
+| **§ 164.312(d) Authentication** | **Required** | Authoritative Clerk server-side session token verification via Edge Gateway. Rejects client-supplied `x-mock-role` in production. | Server-side `authorizeRequest()` & `proxy.ts` | 🟢 Implemented |
+| **§ 164.312(e)(1) Transmission Security** | **Required** | HTTPS deployment, HSTS preload (`max-age=63072000`), secure CORS origin restriction, `no-store` cache controls on all `/api/*` endpoints. | Next.js Edge Proxy headers & tests | 🟢 Implemented |
 
 ---
 
@@ -39,7 +39,7 @@ Software architecture alone can only satisfy **Technical Safeguards (45 CFR § 1
 
 ### A. Root Security Gateway & Access Control (45 CFR § 164.312(a)(1))
 
-1. **Edge-Level Security Gateway (`middleware.ts`)**:
+1. **Edge-Level Security Gateway (`proxy.ts`)**:
    * Evaluates incoming requests at the Next.js runtime edge before any backend route executes.
    * Gates `/admin/*`, `/api/admin/*`, and `/api/audit/*` behind strict Clerk `admin` role assertions.
    * Mandates valid session authentication for protected PHI endpoints (`/api/patient/*`, `/api/consultations/*`, `/api/triage/*`, `/api/voice/*`).

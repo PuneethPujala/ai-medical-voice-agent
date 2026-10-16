@@ -2,7 +2,7 @@ name: MedVoice CI & Governance Verification
 
 on:
   push:
-    branches: [ main, 'test/**', 'fix/**', 'feat/**' ]
+    branches: [ main, 'test/**', 'fix/**', 'feat/**', 'refactor/**' ]
   pull_request:
     branches: [ main ]
 
@@ -48,6 +48,7 @@ jobs:
       - name: Gate 3 — Zero-Trust Security, Auth RBAC & Consultation Invariants
         run: |
           npx tsx tests/security-eval/cors-rbac-audit.test.ts
+          npx tsx tests/security-eval/proxy-routing.test.ts
           npx tsx tests/security-eval/consultation-lifecycle.test.ts
           npx tsx tests/security-eval/chat-identity-isolation.test.ts
           npx tsx tests/security-eval/optimistic-concurrency-durable-state.test.ts
