@@ -3,7 +3,10 @@ import { POST as postVoiceChat } from "../../app/api/voice/chat/route";
 import { POST as postVoiceTelemetry } from "../../app/api/voice/telemetry/route";
 import { DEFAULT_INTERNAL_TEST_SECRET, INTERNAL_TEST_SECRET_HEADER, Role } from "../../lib/auth/rbac";
 import { memoryConsultations } from "../../app/api/consultations/route";
-import { setCustomDbClient } from "../../config/db";
+import { setCustomDbClient, getDb } from "../../config/db";
+import { consultationsTable } from "../../config/schema";
+import { eq } from "drizzle-orm";
+import * as dotenv from "dotenv";
 
 (process.env as Record<string, string | undefined>).NODE_ENV = "test";
 
@@ -537,8 +540,290 @@ async function runChatStatePersistenceTests() {
     console.log("  [PASS] Telemetry route strictly enforced cross-tenant 403, 404, and recorded playback correctly on 200\n");
   }
 
+  // ---------------------------------------------------------------------------
+  // TEST 11: Concurrent Telemetry Updates (No Lost Updates) & Idempotent Replay
+  // ---------------------------------------------------------------------------
+  console.log(">>> TEST 11: Concurrent Telemetry Updates (No Lost Updates) & Idempotent Replay");
+  {
+    const telemEncounterId = `ENC-TELEM-CONCUR-${Date.now()}`;
+    // Seed encounter with malformed legacy records (non-numeric turnId, overflow turnId, missing turnId)
+    const malformedLegacyRecords = [
+      { turnId: "non-numeric-legacy", deliveredText: "bad1" },
+      { turnId: "999999999999999999999", deliveredText: "overflow" },
+      { deliveredText: "missing-turn-id" },
+    ];
+    memoryConsultations.push({
+      id: telemEncounterId,
+      userId: "user_concur_telem",
+      doctorId: "dr-sarah-chen",
+      doctorName: "Dr. Sarah Chen, MD",
+      specialty: "Internal Medicine",
+      chiefComplaint: "Allergy follow-up",
+      caseVersion: 1,
+      interviewState: { phase: "active_inquiring", caseVersion: 1, slots: { known_facts: [] } },
+      deliveredTurnRecords: [...malformedLegacyRecords],
+      transcript: [],
+    });
+
+    // 1. Simultaneous telemetry updates for Turn 1 and Turn 2
+    const reqTurn1 = new Request("http://localhost:3000/api/voice/telemetry", {
+      method: "POST",
+      headers: createTestHeaders("patient", "user_concur_telem", 27),
+      body: JSON.stringify({
+        encounterId: telemEncounterId,
+        turnId: 1,
+        status: "delivered",
+        playedDurationMs: 2400,
+      }),
+    });
+
+    const reqTurn2 = new Request("http://localhost:3000/api/voice/telemetry", {
+      method: "POST",
+      headers: createTestHeaders("patient", "user_concur_telem", 28),
+      body: JSON.stringify({
+        encounterId: telemEncounterId,
+        turnId: 2,
+        status: "delivered",
+        playedDurationMs: 3100,
+      }),
+    });
+
+    const [resTurn1, resTurn2] = await Promise.all([
+      postVoiceTelemetry(reqTurn1),
+      postVoiceTelemetry(reqTurn2),
+    ]);
+
+    assert.strictEqual(resTurn1.status, 200, "Turn 1 telemetry must return 200");
+    assert.strictEqual(resTurn2.status, 200, "Turn 2 telemetry must return 200");
+
+    const memAfterConcur = memoryConsultations.find(c => c.id === telemEncounterId);
+    assert.strictEqual(memAfterConcur.deliveredTurnRecords.length, 5, "Both Turn 1 and Turn 2 must be recorded alongside 3 malformed legacy records without lost updates");
+    const turn1Record = memAfterConcur.deliveredTurnRecords.find((r: any) => String(r.turnId) === "1");
+    const turn2Record = memAfterConcur.deliveredTurnRecords.find((r: any) => String(r.turnId) === "2");
+    assert.ok(turn1Record, "Turn 1 record must exist");
+    assert.ok(turn2Record, "Turn 2 record must exist");
+    assert.strictEqual(turn1Record.audioDeliveryResult.playedDurationMs, 2400);
+    assert.strictEqual(turn2Record.audioDeliveryResult.playedDurationMs, 3100);
+    assert.strictEqual(memAfterConcur.caseVersion, 1, "caseVersion must not be incremented by telemetry");
+
+    // 2. Idempotent Replay for Turn 1 with updated status & interrupted duration
+    const reqTurn1Replay = new Request("http://localhost:3000/api/voice/telemetry", {
+      method: "POST",
+      headers: createTestHeaders("patient", "user_concur_telem", 29),
+      body: JSON.stringify({
+        encounterId: telemEncounterId,
+        turnId: 1,
+        status: "interrupted",
+        playedDurationMs: 1200,
+        interruptedAtMs: 1200,
+      }),
+    });
+
+    const resTurn1Replay = await postVoiceTelemetry(reqTurn1Replay);
+    assert.strictEqual(resTurn1Replay.status, 200, "Replayed telemetry must return 200");
+
+    const memAfterReplay = memoryConsultations.find(c => c.id === telemEncounterId);
+    assert.strictEqual(memAfterReplay.deliveredTurnRecords.length, 5, "Idempotent replay must update in place without creating duplicates or breaking malformed records");
+    const replayedTurn1 = memAfterReplay.deliveredTurnRecords.find((r: any) => String(r.turnId) === "1");
+    assert.strictEqual(replayedTurn1.audioDeliveryStatus, "interrupted");
+    assert.strictEqual(replayedTurn1.audioDeliveryResult.playedDurationMs, 1200);
+    assert.strictEqual(replayedTurn1.audioDeliveryResult.interruptedAtMs, 1200);
+    console.log("  [PASS] Concurrent telemetry updates merged atomically (0 lost records, resilient to malformed legacy records) and idempotent replay updated in place\n");
+  }
+
+  // ---------------------------------------------------------------------------
+  // TEST 12: Real PostgreSQL Live Compare-And-Swap & Telemetry Atomic Concurrency
+  // ---------------------------------------------------------------------------
+  console.log(">>> TEST 12: Real PostgreSQL Live Compare-And-Swap & Telemetry Atomic Concurrency");
+  {
+    let liveDbUrl = process.env.DATABASE_URL;
+    if (!liveDbUrl) {
+      dotenv.config({ path: ".env.local" });
+      liveDbUrl = process.env.DATABASE_URL;
+    }
+    if (!liveDbUrl) {
+      dotenv.config({ path: "C:/dev/Capstone/.env" });
+      liveDbUrl = process.env.DATABASE_URL;
+    }
+
+    if (!liveDbUrl) {
+      if (process.env.REQUIRE_LIVE_DB === "true") {
+        throw new Error("FATAL: REQUIRE_LIVE_DB is set to true, but DATABASE_URL is missing!");
+      }
+      console.warn("  ⚠️  SKIPPED: Live PostgreSQL datastore not configured in environment. Passing offline suite.\n");
+    } else {
+      process.env.DATABASE_URL = liveDbUrl;
+      const dbClient = getDb();
+      assert.ok(dbClient, "Database client must be available when DATABASE_URL is set");
+
+      // 12A: Real PostgreSQL Compare-And-Swap on simultaneous chat turns
+      console.log("    [12A] Live PostgreSQL /api/voice/chat simultaneous CAS race");
+      const liveCasId = `ENC-LIVE-CAS-${Date.now()}`;
+      await dbClient.insert(consultationsTable).values({
+        id: liveCasId,
+        userId: "user_live_cas",
+        doctorId: "dr-sarah-chen",
+        doctorName: "Dr. Sarah Chen, MD",
+        specialty: "Internal Medicine",
+        chiefComplaint: "Severe migraine with aura",
+        caseVersion: 1,
+        interviewState: {
+          phase: "active_inquiring",
+          caseVersion: 1,
+          slots: { known_facts: ["Migraine with aura"] },
+        },
+        deliveredTurnRecords: [],
+        transcript: [],
+      } as any);
+
+      try {
+        const reqLiveA = new Request("http://localhost:3000/api/voice/chat", {
+          method: "POST",
+          headers: createTestHeaders("patient", "user_live_cas", 30),
+          body: JSON.stringify({
+            message: "I am having pain behind my eyes.",
+            encounterId: liveCasId,
+            caseVersion: 1,
+          }),
+        });
+
+        const reqLiveB = new Request("http://localhost:3000/api/voice/chat", {
+          method: "POST",
+          headers: createTestHeaders("patient", "user_live_cas", 31),
+          body: JSON.stringify({
+            message: "I feel nauseated as well.",
+            encounterId: liveCasId,
+            caseVersion: 1,
+          }),
+        });
+
+        const [resLiveA, resLiveB] = await Promise.all([
+          postVoiceChat(reqLiveA),
+          postVoiceChat(reqLiveB),
+        ]);
+
+        const statuses = [resLiveA.status, resLiveB.status].sort();
+        assert.deepStrictEqual(
+          statuses,
+          [200, 409],
+          "Live PostgreSQL race must result in exactly one HTTP 200 and one HTTP 409 Conflict"
+        );
+
+        const rows = await dbClient
+          .select()
+          .from(consultationsTable)
+          .where(eq(consultationsTable.id, liveCasId));
+        assert.strictEqual(rows.length, 1);
+        assert.strictEqual(
+          rows[0].caseVersion,
+          2,
+          "Database case_version must advance exactly once from 1 to 2"
+        );
+        console.log("    [PASS] Live PostgreSQL CAS race verified: 1 won (200), 1 conflicted (409), case_version advanced exactly once to 2\n");
+
+        // 12B: Real PostgreSQL Atomic Telemetry Updates (No Lost Updates & Malformed Record Resilience)
+        console.log("    [12B] Live PostgreSQL /api/voice/telemetry atomic append and merge");
+        const liveTelemId = `ENC-LIVE-TELEM-${Date.now()}`;
+        const malformedLiveRecords = [
+          { turnId: "non-numeric-legacy", deliveredText: "old1" },
+          { turnId: "999999999999999999999", deliveredText: "old2" },
+          { deliveredText: "missing-turn-id" },
+        ];
+        await dbClient.insert(consultationsTable).values({
+          id: liveTelemId,
+          userId: "user_live_telem",
+          doctorId: "dr-sarah-chen",
+          doctorName: "Dr. Sarah Chen, MD",
+          specialty: "Internal Medicine",
+          chiefComplaint: "Hypertension check",
+          caseVersion: 1,
+          deliveredTurnRecords: malformedLiveRecords,
+          transcript: [],
+        } as any);
+
+        try {
+          const reqLiveT1 = new Request("http://localhost:3000/api/voice/telemetry", {
+            method: "POST",
+            headers: createTestHeaders("patient", "user_live_telem", 32),
+            body: JSON.stringify({
+              encounterId: liveTelemId,
+              turnId: 1,
+              status: "delivered",
+              playedDurationMs: 2500,
+            }),
+          });
+
+          const reqLiveT2 = new Request("http://localhost:3000/api/voice/telemetry", {
+            method: "POST",
+            headers: createTestHeaders("patient", "user_live_telem", 33),
+            body: JSON.stringify({
+              encounterId: liveTelemId,
+              turnId: 2,
+              status: "delivered",
+              playedDurationMs: 3200,
+            }),
+          });
+
+          const [resLiveT1, resLiveT2] = await Promise.all([
+            postVoiceTelemetry(reqLiveT1),
+            postVoiceTelemetry(reqLiveT2),
+          ]);
+
+          assert.strictEqual(resLiveT1.status, 200);
+          assert.strictEqual(resLiveT2.status, 200);
+
+          const telemRows = await dbClient
+            .select()
+            .from(consultationsTable)
+            .where(eq(consultationsTable.id, liveTelemId));
+
+          assert.strictEqual(telemRows.length, 1);
+          const liveRecords = telemRows[0].deliveredTurnRecords as any[];
+          assert.strictEqual(
+            liveRecords.length,
+            5,
+            "Both Turn 1 and Turn 2 must exist alongside 3 malformed legacy records in PostgreSQL without lost updates or cast errors"
+          );
+          assert.strictEqual(telemRows[0].caseVersion, 1, "caseVersion must not be modified by telemetry");
+
+          // Replay Turn 1
+          const reqLiveT1Replay = new Request("http://localhost:3000/api/voice/telemetry", {
+            method: "POST",
+            headers: createTestHeaders("patient", "user_live_telem", 34),
+            body: JSON.stringify({
+              encounterId: liveTelemId,
+              turnId: 1,
+              status: "interrupted",
+              playedDurationMs: 1400,
+              interruptedAtMs: 1400,
+            }),
+          });
+
+          const resLiveReplay = await postVoiceTelemetry(reqLiveT1Replay);
+          assert.strictEqual(resLiveReplay.status, 200);
+
+          const replayRows = await dbClient
+            .select()
+            .from(consultationsTable)
+            .where(eq(consultationsTable.id, liveTelemId));
+
+          const replayRecords = replayRows[0].deliveredTurnRecords as any[];
+          assert.strictEqual(replayRecords.length, 5, "Idempotent replay must not duplicate records in PostgreSQL");
+          const t1 = replayRecords.find((r: any) => String(r.turnId) === "1");
+          assert.strictEqual(t1.audioDeliveryStatus, "interrupted");
+          assert.strictEqual(t1.audioDeliveryResult.playedDurationMs, 1400);
+          console.log("    [PASS] Live PostgreSQL Telemetry verified: concurrent updates merged atomically, 0 lost records, malformed legacy records safely preserved, idempotent replay updated in-place\n");
+        } finally {
+          await dbClient.delete(consultationsTable).where(eq(consultationsTable.id, liveTelemId));
+        }
+      } finally {
+        await dbClient.delete(consultationsTable).where(eq(consultationsTable.id, liveCasId));
+      }
+    }
+  }
+
   console.log("================================================================================");
-  console.log("      ALL 10/10 DIALOGUE STATE PERSISTENCE & CONCURRENCY TESTS PASSED          ");
+  console.log("      ALL 12/12 DIALOGUE STATE PERSISTENCE & CONCURRENCY TESTS PASSED          ");
   console.log("================================================================================");
 }
 

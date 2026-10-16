@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getAuthContext } from "@/lib/auth/rbac";
 import { getDb } from "@/config/db";
 import { consultationsTable } from "@/config/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { memoryConsultations } from "@/app/api/consultations/route";
 import { logAuditEventAsync } from "@/lib/audit/audit-logger";
 
@@ -110,39 +110,25 @@ export async function POST(request: Request) {
       );
     }
 
-    // 3. Update DeliveredTurnRecord lifecycle state
-    const deliveredRecords = Array.isArray(record.deliveredTurnRecords)
-      ? [...record.deliveredTurnRecords]
-      : [];
-
-    const existingTurn = deliveredRecords.find(t => t.turnId === Number(turnId));
-    if (existingTurn) {
-      existingTurn.audioDeliveryStatus = status;
-      existingTurn.audioDeliveryResult = {
-        playedDurationMs: playedDurationMs ?? existingTurn.audioDeliveryResult?.playedDurationMs,
-        confirmedAt: new Date().toISOString(),
-      };
-      if (interruptedAtMs != null) {
-        existingTurn.audioDeliveryResult.interruptedAtMs = interruptedAtMs;
-      }
-    } else {
-      deliveredRecords.push({
-        turnId: Number(turnId),
-        deliveredText: "",
-        conversationalAction: "INQUIRE",
-        intendedTargets: [],
-        targetResolutionStatuses: {},
-        relevantEvidenceRefs: [],
-        caseVersion: record.caseVersion || 1,
-        timestamp: clientTimestamp,
-        audioDeliveryStatus: status,
-        audioDeliveryResult: {
-          playedDurationMs,
-          confirmedAt: new Date().toISOString(),
-          interruptedAtMs,
-        },
-      });
-    }
+    // 3. Update DeliveredTurnRecord lifecycle state atomically without incrementing clinical caseVersion
+    const confirmedAt = new Date().toISOString();
+    const newRecord = {
+      turnId: Number(turnId),
+      deliveredText: "",
+      conversationalAction: "INQUIRE",
+      intendedTargets: [],
+      targetResolutionStatuses: {},
+      relevantEvidenceRefs: [],
+      caseVersion: record.caseVersion || 1,
+      timestamp: clientTimestamp,
+      audioDeliveryStatus: status,
+      audioDeliveryResult: {
+        playedDurationMs: playedDurationMs ?? null,
+        confirmedAt,
+        interruptedAtMs: interruptedAtMs ?? null,
+      },
+    };
+    const newRecordJson = JSON.stringify(newRecord);
 
     if (dbClient) {
       const updateConditions = [eq(consultationsTable.id, encounterId)];
@@ -153,7 +139,36 @@ export async function POST(request: Request) {
       try {
         const updated = await dbClient
           .update(consultationsTable)
-          .set({ deliveredTurnRecords: deliveredRecords })
+          .set({
+            deliveredTurnRecords: sql`CASE
+              WHEN ${consultationsTable.deliveredTurnRecords} IS NULL OR jsonb_array_length(${consultationsTable.deliveredTurnRecords}) = 0 THEN
+                jsonb_build_array(${newRecordJson}::jsonb)
+              WHEN EXISTS (
+                SELECT 1 FROM jsonb_array_elements(${consultationsTable.deliveredTurnRecords}) elem
+                WHERE (elem->>'turnId') = ${String(Number(turnId))}
+              ) THEN (
+                SELECT jsonb_agg(
+                  CASE
+                    WHEN (elem->>'turnId') = ${String(Number(turnId))} THEN
+                      elem || jsonb_build_object(
+                        'audioDeliveryStatus', ${status}::text,
+                        'audioDeliveryResult', jsonb_strip_nulls(
+                          COALESCE(elem->'audioDeliveryResult', '{}'::jsonb) || jsonb_build_object(
+                            'confirmedAt', ${confirmedAt}::text,
+                            'playedDurationMs', ${playedDurationMs != null ? playedDurationMs : null}::int,
+                            'interruptedAtMs', ${interruptedAtMs != null ? interruptedAtMs : null}::int
+                          )
+                        )
+                      )
+                    ELSE elem
+                  END
+                )
+                FROM jsonb_array_elements(${consultationsTable.deliveredTurnRecords}) elem
+              )
+              ELSE
+                ${consultationsTable.deliveredTurnRecords} || jsonb_build_array(${newRecordJson}::jsonb)
+            END`,
+          })
           .where(and(...updateConditions))
           .returning({ id: consultationsTable.id });
 
@@ -171,7 +186,20 @@ export async function POST(request: Request) {
         );
       }
     } else {
-      record.deliveredTurnRecords = deliveredRecords;
+      if (!Array.isArray(record.deliveredTurnRecords)) {
+        record.deliveredTurnRecords = [];
+      }
+      const existingTurn = record.deliveredTurnRecords.find((t: any) => String(t?.turnId) === String(Number(turnId)));
+      if (existingTurn) {
+        existingTurn.audioDeliveryStatus = status;
+        existingTurn.audioDeliveryResult = {
+          playedDurationMs: playedDurationMs ?? existingTurn.audioDeliveryResult?.playedDurationMs,
+          confirmedAt,
+          interruptedAtMs: interruptedAtMs ?? existingTurn.audioDeliveryResult?.interruptedAtMs,
+        };
+      } else {
+        record.deliveredTurnRecords.push(newRecord);
+      }
     }
 
     // 4. Audit Log
