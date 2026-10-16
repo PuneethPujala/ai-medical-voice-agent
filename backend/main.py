@@ -5,18 +5,25 @@ import uvicorn
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-# Safeguard against local ./coverage directory (from JS test runners) shadowing Python coverage module.
-# A real PyPI coverage package defines __file__ and types; a directory namespace package does not.
+# Specific safeguard for local ./coverage directory (PEP 420 directory namespace without __file__)
+# created by JavaScript coverage tools in the monorepo root.
+# Only neutralizes un-initialized namespace packages without __file__ and missing modules.
+# Genuine PyPI packages with valid __file__ are preserved, and non-ModuleNotFoundError failures are NOT masked.
 if "coverage" not in sys.modules:
     try:
         import coverage
-        if getattr(coverage, "__file__", None) is None or not hasattr(coverage, "types"):
+        if getattr(coverage, "__file__", None) is None:
             sys.modules["coverage"] = None
-    except Exception:
+    except ModuleNotFoundError:
         sys.modules["coverage"] = None
 
 from backend.config import settings
-from backend.services.audio_service import transcribe_audio_bytes, is_whisper_model_loaded, get_whisper_model
+from backend.services.audio_service import (
+    transcribe_audio_bytes,
+    is_whisper_model_loaded,
+    is_whisper_weights_present,
+    get_whisper_model
+)
 
 logger = logging.getLogger("backend.main")
 
@@ -79,15 +86,18 @@ ALLOWED_AUDIO_EXTENSIONS = {".wav", ".webm", ".ogg", ".mp3", ".m4a", ".mp4", ".f
 async def stt_health():
     """
     Returns the operational status of the Speech-to-Text service.
-    Distinguishes service connectivity readiness from actual in-memory Whisper model readiness.
+    Distinguishes service connectivity readiness from actual in-memory Whisper model readiness
+    and local weights availability on disk.
     Explicitly declares that external network calls for patient audio are disabled (100% on-prem).
     """
     model_loaded = is_whisper_model_loaded()
+    weights_available = is_whisper_weights_present("base.en")
     return {
         "status": "online",
         "service": "whisper_stt",
         "default_engine": "whisper_base_en",
         "model_loaded": model_loaded,
+        "weights_available": weights_available,
         "inference_device": "cpu",
         "external_network_egress": False
     }
@@ -95,8 +105,9 @@ async def stt_health():
 @app.post("/api/v1/stt/warmup")
 async def stt_warmup():
     """
-    Explicitly pre-loads the local Whisper base.en model into memory.
+    Explicitly pre-loads the local Whisper base.en model into memory from pre-provisioned disk weights.
     Eliminates first-call disk I/O latency penalty during active patient consultation.
+    FAILS CLOSED: If weights are missing, raises 503 without attempting any runtime internet download.
     """
     try:
         model = get_whisper_model("base.en")
@@ -105,7 +116,14 @@ async def stt_warmup():
             "message": "Whisper base.en loaded into memory successfully.",
             "model_ready": model is not None
         }
+    except FileNotFoundError as fnf_err:
+        logger.error(f"STT warmup failed closed (weights missing): {fnf_err}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Speech recognition service unavailable (weights not provisioned): {str(fnf_err)}"
+        )
     except Exception as e:
+        logger.error(f"STT warmup failed: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to pre-load Whisper model: {str(e)}")
 
 @app.post("/api/v1/stt")
@@ -164,6 +182,12 @@ async def speech_to_text(file: UploadFile = File(...)):
             "is_empty": len(transcript) == 0,
             "byte_size": len(audio_bytes)
         }
+    except FileNotFoundError as fnf_err:
+        logger.error(f"STT recognition failed closed (weights missing): {fnf_err}")
+        raise HTTPException(
+            status_code=503,
+            detail=f"Speech recognition service unavailable (weights not provisioned): {str(fnf_err)}"
+        )
     except ValueError as ve:
         logger.warning(f"STT input validation notice: {ve}")
         raise HTTPException(status_code=422, detail=str(ve))

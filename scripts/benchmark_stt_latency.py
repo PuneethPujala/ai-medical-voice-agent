@@ -1,22 +1,25 @@
 """
-STT Latency Benchmark Script
-Measures cold load time and warm inference latencies across clip lengths:
+SYNTHETIC-AUDIO PROCESSING BENCHMARK (Alternating-Amplitude PCM, Non-Phonetic)
+Measures cold load time and warm inference throughput across signal durations:
 1s, 3s, 5s, 10s.
 
-METHODOLOGICAL SPECIFICATION:
-1. Warmup / Model Load Exclusion:
+METHODOLOGICAL SPECIFICATION & NARROW VALIDITY:
+1. Scope & Synthetic Signal:
+   The audio input is synthetic alternating-amplitude PCM generated without phonetic speech.
+   This script evaluates compute throughput and raw DSP/matrix processing time as a function
+   of buffer duration. It DOES NOT measure word error rate (WER), phonetic decoding accuracy,
+   or representative clinical conversational dialogue.
+2. Clinical Speech Validation Distinction:
+   For validation of actual spoken English words and clinical phrases, refer to the offline
+   spoken-audio fixture test in tests/fixtures/spoken_chest_pain.wav.
+3. Preliminary Percentile Sizing:
+   Sample counts (N=15 for 1-5s, N=10 for 10s) provide preliminary directional bounds.
+   P95 with 10-15 iterations is sensitive to system load and must not be treated as a
+   statistically certified SLA for clinical production.
+4. Warmup / Model Load Isolation:
    The Whisper model is loaded in Phase 1 and cached as a singleton. Warm inference
    measurements in Phase 2 strictly exclude model initialization and disk loading.
-2. Measurement Scope:
-   Each sample measures transcribe_audio_bytes (audio writing -> Whisper CPU forward pass -> cleanup).
-   This measures local processing latency; it excludes HTTP transport, FastAPI multipart parsing,
-   and Next.js proxying (which are separately verified in live-e2e-stt.test.ts).
-3. Audio Duration Generation:
-   create_pcm_wav generates synthetic 16kHz 16-bit mono PCM buffers with alternating acoustic
-   amplitude values representing voiced audio of precise duration.
-4. Percentile Estimation:
-   Calculated using numpy.percentile with standard linear interpolation across N samples.
-5. System Scope Disclaimer:
+5. System Pipeline Scope:
    STT latency is only one component of the full conversational voice pipeline (which also
    comprises VAD, LLM response generation, TTS synthesis, and client audio playback).
    STT speed alone does NOT establish that end-to-end conversational voice targets are met.
@@ -103,8 +106,11 @@ def run_benchmarks():
         rtf = (data['p50_ms'] / 1000.0) / dur
         print(f"{str(dur) + ' sec':<12} | N={data['num_runs']:<6} | {str(data['p50_ms']) + ' ms':<13} | {str(data['p95_ms']) + ' ms':<13} | {rtf:.2f}x audio duration")
     print("-" * 75)
-    print("\nNOTE: STT is only one segment of the full pipeline. End-to-end turnaround also includes")
-    print("audio capture, VAD framing, LLM completion, and speech synthesis.")
+    print("\nNOTE: Measurements evaluate synthetic alternating PCM compute timing by duration.")
+    print("      Does NOT measure speech recognition accuracy or representative clinical dialogue.")
+    print("      For spoken word recognition, see tests/fixtures/spoken_chest_pain.wav.")
+    print("      STT is only one segment of the full pipeline; total turnaround also includes")
+    print("      audio capture, VAD framing, LLM completion, and speech synthesis.")
 
 if __name__ == "__main__":
     run_benchmarks()

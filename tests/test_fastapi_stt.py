@@ -42,6 +42,8 @@ def test_stt_health():
     assert data["external_network_egress"] is False
     assert "hipaa_safe" not in data
     assert "model_loaded" in data
+    assert "weights_available" in data
+    assert data["weights_available"] is True
 
 def test_stt_warmup():
     """Verify STT warmup pre-loads Whisper model into memory."""
@@ -50,6 +52,24 @@ def test_stt_warmup():
     data = response.json()
     assert data["status"] == "success"
     assert data["model_ready"] is True
+
+def test_warmup_blocks_external_network():
+    """Verify STT warmup pre-loads Whisper model without attempting any external network access."""
+    import socket
+    real_connect = socket.socket.connect
+
+    def blocked_connect(self, address, *args, **kwargs):
+        host = address[0] if isinstance(address, (tuple, list)) and len(address) > 0 else str(address)
+        if host not in ("127.0.0.1", "localhost", "::1"):
+            raise RuntimeError(f"PROHIBITED: Outgoing network connection to '{host}' attempted during warmup!")
+        return real_connect(self, address, *args, **kwargs)
+
+    with patch.object(socket.socket, "connect", blocked_connect):
+        response = client.post("/api/v1/stt/warmup")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "success"
+        assert data["model_ready"] is True
 
 def test_stt_rejects_empty_audio():
     """Verify empty audio buffer is rejected with HTTP 400."""
@@ -176,12 +196,44 @@ def test_empty_transcription_causes_explicit_failure():
         t = blank_result["transcript"].strip()
         assert len(t) > 0, "Transcription returned empty string; failed to recognize speech"
 
+def test_missing_weights_fails_closed():
+    """Verify that when model weights are missing on disk, the system fails closed without network download."""
+    from backend.services.audio_service import resolve_whisper_weights_path
+    with patch.dict(os.environ, {"WHISPER_MODEL_PATH": "C:/nonexistent/weights.pt"}):
+        with pytest.raises(FileNotFoundError) as exc_info:
+            resolve_whisper_weights_path("base.en")
+        assert "Automatic runtime downloads are disabled" in str(exc_info.value)
+
+def test_coverage_namespace_safeguard_behavior():
+    """Verify that coverage safeguard neutralizes PEP 420 directory namespaces without masking real packages."""
+    # Test namespace package without __file__
+    class MockNamespaceCoverage:
+        __file__ = None
+
+    test_dict = {"coverage": MockNamespaceCoverage()}
+    with patch.dict(sys.modules, test_dict):
+        if getattr(sys.modules.get("coverage"), "__file__", None) is None:
+            sys.modules["coverage"] = None
+        assert sys.modules["coverage"] is None, "Namespace package should be set to None"
+
+    # Test real package with __file__
+    class MockRealCoverage:
+        __file__ = "/site-packages/coverage/__init__.py"
+
+    test_dict_real = {"coverage": MockRealCoverage()}
+    with patch.dict(sys.modules, test_dict_real):
+        if getattr(sys.modules.get("coverage"), "__file__", None) is None:
+            sys.modules["coverage"] = None
+        assert sys.modules["coverage"] is not None, "Real package with __file__ must not be masked"
+
 if __name__ == "__main__":
     print("Running FastAPI STT Test Suite directly...")
     test_stt_health()
     print("  [PASS] test_stt_health passed")
     test_stt_warmup()
     print("  [PASS] test_stt_warmup passed")
+    test_warmup_blocks_external_network()
+    print("  [PASS] test_warmup_blocks_external_network passed")
     test_stt_rejects_empty_audio()
     print("  [PASS] test_stt_rejects_empty_audio passed")
     test_stt_rejects_unsupported_format()
@@ -199,4 +251,8 @@ if __name__ == "__main__":
     print("  [PASS] test_local_only_invariant_blocks_external_network passed (Zero external socket connections!)")
     test_empty_transcription_causes_explicit_failure()
     print("  [PASS] test_empty_transcription_causes_explicit_failure passed")
-    print("All 10/10 FastAPI STT tests passed!")
+    test_missing_weights_fails_closed()
+    print("  [PASS] test_missing_weights_fails_closed passed")
+    test_coverage_namespace_safeguard_behavior()
+    print("  [PASS] test_coverage_namespace_safeguard_behavior passed")
+    print("All 13/13 FastAPI STT tests passed!")

@@ -5,14 +5,16 @@ import tempfile
 import logging
 from typing import Optional
 
-# Safeguard against local ./coverage directory (from JS test runners) shadowing Python coverage module.
-# A real PyPI coverage package defines __file__ and types; a directory namespace package does not.
+# Specific safeguard for local ./coverage directory (PEP 420 directory namespace without __file__)
+# created by JavaScript coverage tools in the monorepo root.
+# Only neutralizes un-initialized namespace packages without __file__ and missing modules.
+# Genuine PyPI packages with valid __file__ are preserved, and non-ModuleNotFoundError failures are NOT masked.
 if "coverage" not in sys.modules:
     try:
         import coverage
-        if getattr(coverage, "__file__", None) is None or not hasattr(coverage, "types"):
+        if getattr(coverage, "__file__", None) is None:
             sys.modules["coverage"] = None
-    except Exception:
+    except ModuleNotFoundError:
         sys.modules["coverage"] = None
 
 logger = logging.getLogger("audio_service")
@@ -20,21 +22,81 @@ logger = logging.getLogger("audio_service")
 # Global singleton cache for local Whisper ASR model
 _WHISPER_MODEL = None
 
+def resolve_whisper_weights_path(model_name: str = "base.en") -> str:
+    """
+    Resolves the local filepath for Whisper model weights on disk.
+
+    FAIL-CLOSED LOCAL-ONLY INVARIANT:
+    If the requested model weights are not pre-provisioned on local disk, this function
+    raises FileNotFoundError immediately. It NEVER triggers an automatic runtime download
+    over the internet or contacts any external CDN.
+    """
+    # 1. Direct file path check
+    if os.path.isfile(model_name):
+        return os.path.abspath(model_name)
+
+    # 2. Explicit environment variable override (for air-gapped / container deployments)
+    explicit_path = os.getenv("WHISPER_MODEL_PATH")
+    if explicit_path:
+        if not os.path.isfile(explicit_path):
+            raise FileNotFoundError(
+                f"Configured WHISPER_MODEL_PATH '{explicit_path}' does not exist on local disk. "
+                "Automatic runtime downloads are disabled in local-only mode."
+            )
+        return os.path.abspath(explicit_path)
+
+    # 3. Standard Whisper cache root resolution
+    import whisper
+    if model_name not in whisper._MODELS:
+        raise ValueError(
+            f"Unknown Whisper model '{model_name}'. Available names: {', '.join(sorted(whisper._MODELS.keys()))}"
+        )
+
+    download_root = os.getenv(
+        "WHISPER_WEIGHTS_DIR",
+        os.path.join(os.getenv("XDG_CACHE_HOME", os.path.expanduser("~/.cache")), "whisper")
+    )
+    model_url = whisper._MODELS[model_name]
+    expected_filename = os.path.basename(model_url)
+    weights_path = os.path.join(download_root, expected_filename)
+
+    if not os.path.isfile(weights_path):
+        raise FileNotFoundError(
+            f"Pre-provisioned Whisper weights for '{model_name}' not found at '{weights_path}'. "
+            "FAIL-CLOSED INVARIANT: Automatic runtime model downloads from external CDNs "
+            "are strictly disabled to prevent unexpected network egress. "
+            "Please pre-provision model weights in deployment image or specify WHISPER_MODEL_PATH."
+        )
+
+    return os.path.abspath(weights_path)
+
+def is_whisper_weights_present(model_name: str = "base.en") -> bool:
+    """Returns True if the model weights file is physically present on local disk."""
+    try:
+        resolve_whisper_weights_path(model_name)
+        return True
+    except (FileNotFoundError, ValueError):
+        return False
+
 def get_whisper_model(model_name: str = "base.en"):
     """
-    Loads and caches the local OpenAI Whisper model in memory.
+    Loads and caches the local OpenAI Whisper model in memory from pre-provisioned disk weights.
     Defaults to 'base.en' (74M parameters, optimized for English clinical dialogue).
+    Fails closed with FileNotFoundError if weights are missing on disk.
     """
     global _WHISPER_MODEL
     if _WHISPER_MODEL is None:
         try:
             import whisper
-            logger.info(f"Initializing local Whisper ASR model '{model_name}' on CPU...")
-            _WHISPER_MODEL = whisper.load_model(model_name)
-            logger.info(f"Local Whisper model '{model_name}' loaded successfully.")
+            weights_path = resolve_whisper_weights_path(model_name)
+            logger.info(f"Loading local Whisper ASR weights from '{weights_path}' on CPU...")
+            # Passing the exact resolved file path ensures whisper.load_model loads via torch.load
+            # without ever attempting urllib downloads or network access.
+            _WHISPER_MODEL = whisper.load_model(weights_path, device="cpu")
+            logger.info(f"Local Whisper model '{model_name}' loaded successfully from local disk.")
         except Exception as e:
             logger.error(f"Failed to load local Whisper model '{model_name}': {e}")
-            raise RuntimeError(f"Local Whisper ASR initialization failed: {e}")
+            raise
     return _WHISPER_MODEL
 
 def is_whisper_model_loaded() -> bool:

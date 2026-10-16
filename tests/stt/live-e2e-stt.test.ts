@@ -60,6 +60,7 @@ async function runLiveE2eSttTest() {
     const healthData = await healthRes.json();
     assert.strictEqual(healthData.status, "online", "Health status is online");
     assert.strictEqual(healthData.external_network_egress, false, "External network egress is strictly disabled");
+    assert.strictEqual(healthData.weights_available, true, "Local model weights are verified on disk");
     assert.strictEqual(healthData.hipaa_safe, undefined, "HIPAA compliance claim removed in favor of verifiable technical facts");
 
     // Pre-warm the model
