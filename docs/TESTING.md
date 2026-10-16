@@ -99,6 +99,7 @@ The repository contains **54 test scripts** defined in `package.json`, organized
 ### D. Conversational Dialogue & Clinical State Reasoning
 | Script Command | Target Source File | Test Mechanism |
 |---|---|---|
+| `npm run test:route-dialogue` | `tests/triage/route-voice-chat-dialogue.test.ts` | Validates route-level `/api/voice/chat` compound questions, unanswered dimension survival, anti-repetition, and server-authoritative state persistence. |
 | `npm run test:dialogue-reasoning`| `tests/triage/dialogue-reasoning-eval.ts` | Evaluates 8 dialogue contracts: orthostatic capture, compound inquiries, timeline corrections. |
 | `npm run test:clarify-dialogue` | `tests/triage/clarify-natural-dialogue.test.ts` | Validates natural clarification generation on ambiguous utterances without rigid checklists. |
 | `npm run test:question-state` | `tests/triage/question-state-repetition.test.ts` | Tests anti-repetition shield, question pending state, compound sub-target tracking. |
@@ -171,14 +172,14 @@ The coverage configuration (`.c8rc.json`) restricts metrics strictly to maintain
 
 ### Empirical Coverage Baseline
 
-The table below reflects the **genuine, measured coverage** produced by executing the canonical 41-suite battery:
+The table below reflects the **genuine, measured coverage** produced by executing the canonical 42-suite battery:
 
 | Metric | Measured Baseline | Enforcement Threshold | Status |
 |---|:---:|:---:|:---:|
-| **Statements** | **65.37%** (21,993 / 33,643) | 60.00% | ✅ PASS (+5.37%) |
-| **Branches** | **71.92%** (4,365 / 6,069) | 65.00% | ✅ PASS (+6.92%) |
-| **Functions** | **81.97%** (764 / 932) | 75.00% | ✅ PASS (+6.97%) |
-| **Lines** | **65.37%** (21,993 / 33,643) | 60.00% | ✅ PASS (+5.37%) |
+| **Statements** | **66.98%** (22,536 / 33,643) | 60.00% | ✅ PASS (+6.98%) |
+| **Branches** | **72.63%** (4,567 / 6,288) | 65.00% | ✅ PASS (+7.63%) |
+| **Functions** | **82.51%** (769 / 932) | 75.00% | ✅ PASS (+7.51%) |
+| **Lines** | **66.98%** (22,536 / 33,643) | 60.00% | ✅ PASS (+6.98%) |
 
 #### Subsystem Coverage Highlights
 - **Clinical Knowledge & Registries** (`lib/clinical-knowledge/`): **90.83% lines**, **85.23% branches**
@@ -229,12 +230,14 @@ Real PostgreSQL verification is segregated from offline coverage:
     ⚠️  SKIPPED: DATABASE_URL not set. Real PostgreSQL datastore required for live CAS tests.
        Passing in offline/mock CI environment.
     ```
-  - The runner summary explicitly flags:
+  - The canonical test runner (`scripts/run-test-battery.ts`) explicitly marks these as `SKIPPED_DB` without spawning database queries, and excludes them from the passed suite count:
     ```text
+    Suites:  42 passed, 2 skipped, 44 total
     Database Status: MOCK ONLY (DATABASE_URL unset; real PostgreSQL not verified)
     ```
+  - A green offline test run is never counted or reported as verified database coverage.
 - **Live Database Verification (`npm run test:db`)**:
-  - Checks for `DATABASE_URL`. If unset, it outputs an explicit notice and exits without claiming real datastore verification.
+  - Checks for `DATABASE_URL`. If unset, it outputs an explicit notice and exits immediately with code 0 without claiming real datastore verification.
   - When configured, it connects to Neon PostgreSQL, runs live atomic CAS operations, verifies PostgreSQL table unique constraints on `idempotency_key`, tests concurrent race resolutions, and executes durable SHA-256 audit chain persistence across connection resets.
 
 ---
@@ -248,7 +251,7 @@ flowchart LR
     G1["Gate 1\nType Check\n(tsc)"] --> G2["Gate 2\nLint\n(eslint)"]
     G2 --> G3["Gate 3\nZero-Trust\nSecurity"]
     G3 --> G4["Gate 4\nClinical Safety\n& FHIR"]
-    G4 --> G5["Gate 5\nCanonical\n40-Suite Battery"]
+    G4 --> G5["Gate 5\nCanonical\n42-Suite Battery"]
     G5 --> G6["Gate 6\nCoverage\nGeneration (c8)"]
     G6 --> G7["Gate 7\nUpload Reports\n(Artifacts)"]
     G7 --> G8["Gate 8\nProduction Build\n(Turbopack)"]
@@ -270,3 +273,5 @@ Gate 7 uploads the following artifacts for review and compliance auditing:
    - The offline suite tests synthetic demo segregation and missing DB errors, but simulated transient network partitions during active Neon transactions are tested in dedicated scripts (`scripts/verify-real-neon-concurrency.ts`).
 3. **Live Model Provider Parity**:
    - Offline tests execute with mock LLM adapters and deterministic clinical fallbacks. Live provider checks (`tests/triage/live-model-dialogue-eval.ts`, `scripts/test-groq-target-diagnostic.ts`) require external `GROQ_API_KEY` or `NVIDIA_API_KEY` secrets and are executed as periodic diagnostics rather than gating CI PRs.
+4. **Speech-to-Text (STT) Service & Real Audio Streaming Integration**:
+   - The `/api/voice/stt` bridge proxies audio to an external Python FastAPI service running `openai-whisper` (`base.en`). Offline CI does not provision the Python runtime or live microphone hardware, testing HTTP proxy routing and rate limits with mock payloads. Standalone scripts (`scripts/test_whisper_service.py`, `scripts/benchmark_whisper.py`) validate local Whisper execution and safety invariants (zero fabricated transcripts). Live browser streaming latency, empty transcript edge cases, and end-to-end voice turnaround remain active engineering blockers.

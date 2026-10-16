@@ -37,6 +37,7 @@ export const CANONICAL_TEST_BATTERY: TestSuiteDefinition[] = [
   { id: "test:false-dispatch", file: "tests/triage/false-dispatch-prevention.test.ts", description: "False Dispatch Prevention & Non-Emergency Controls" },
 
   // 4. Conversational Dialogue & State Reasoning
+  { id: "test:route-dialogue", file: "tests/triage/route-voice-chat-dialogue.test.ts", description: "Route-Level /api/voice/chat Multi-Turn State Contract" },
   { id: "test:dialogue-reasoning", file: "tests/triage/dialogue-reasoning-eval.ts", description: "LLM-First Dialogue Reasoning & State Contract" },
   { id: "test:clarify-dialogue", file: "tests/triage/clarify-natural-dialogue.test.ts", description: "Conversational Clarification & Natural Dialogue" },
   { id: "test:question-state", file: "tests/triage/question-state-repetition.test.ts", description: "Question State Tracking & Anti-Repetition" },
@@ -114,6 +115,12 @@ export async function runTestBattery() {
     console.log(`\n${indexLabel} RUNNING ${suite.id} -> ${suite.file}`);
     console.log(`     Description: ${suite.description}`);
 
+    if (suite.requiresDatabase && !enableLiveDb) {
+      console.log(`  ℹ️  ${suite.id}: SKIPPED (Real PostgreSQL datastore required; skipped in offline mode).`);
+      results.push({ suite, status: "SKIPPED_DB", durationMs: 0 });
+      continue;
+    }
+
     const suiteStartTime = Date.now();
     const env: NodeJS.ProcessEnv = {
       ...process.env,
@@ -145,15 +152,8 @@ export async function runTestBattery() {
       process.exit(child.status || 1);
     }
 
-    let status: "PASS" | "SKIPPED_DB" = "PASS";
-    if (suite.requiresDatabase && !enableLiveDb) {
-      status = "SKIPPED_DB";
-      console.log(`  ℹ️  ${suite.id}: PASSED offline mock; Live PostgreSQL verification SKIPPED.`);
-    } else {
-      console.log(`  ✓  ${suite.id}: PASSED (${durationMs}ms)`);
-    }
-
-    results.push({ suite, status, durationMs });
+    console.log(`  ✓  ${suite.id}: PASSED (${durationMs}ms)`);
+    results.push({ suite, status: "PASS", durationMs });
   }
 
   const totalDuration = ((Date.now() - overallStartTime) / 1000).toFixed(2);

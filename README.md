@@ -10,6 +10,7 @@
 ## 📑 Table of Contents
 
 - [System Architecture Overview](#-system-architecture-overview)
+- [Engineering Documentation Directory](#-engineering-documentation-directory)
 - [Audited Technical Specifications & Code Reality](#-audited-technical-specifications--code-reality)
   - [1. Bounded Multi-Specialist Decision Architecture](#1-bounded-multi-specialist-decision-architecture)
   - [2. Deterministic Dual-Arbiter Safety Shield](#2-deterministic-dual-arbiter-safety-shield)
@@ -24,9 +25,24 @@
   - [11. Code Reality & Audit Concordance Matrix (20-Point Specification)](#11-code-reality--audit-concordance-matrix-20-point-specification)
 - [Technology Stack](#-technology-stack)
 - [Repository Structure](#-repository-structure)
-- [Verification & Test Suites](#-verification--test-suites)
-- [Getting Started](#-getting-started)
+- [Verification, Test Suites & Coverage](#-verification-test-suites--coverage)
+- [Getting Started & Safe Demo Guidance](#-getting-started--safe-demo-guidance)
 - [Clinical & Regulatory Boundary Disclaimers](#-clinical--regulatory-boundary-disclaimers)
+
+---
+
+## 📚 Engineering Documentation Directory
+
+For complete architecture, clinical safety specifications, persistence models, and testing protocols, consult the dedicated documentation suite:
+
+| Document | Description |
+| :--- | :--- |
+| [**`docs/ARCHITECTURE.md`**](docs/ARCHITECTURE.md) | Component architecture, trust boundaries, speech-to-text, specialist board, blackboard model, and TTS pipeline. |
+| [**`docs/CLINICAL-SAFETY.md`**](docs/CLINICAL-SAFETY.md) | Deterministic emergency floors, non-downgrade invariant, universal red-flag catalog, and clinical boundaries. |
+| [**`docs/DATA-AND-PERSISTENCE.md`**](docs/DATA-AND-PERSISTENCE.md) | Consultation lifecycle, SHA-256 chained audit ledger, optimistic concurrency (`caseVersion`), and Drizzle ORM migrations. |
+| [**`docs/OPERATIONS.md`**](docs/OPERATIONS.md) | Deployment topology, environment configuration, empirical latency benchmarks, resilience, and release gates. |
+| [**`docs/TESTING.md`**](docs/TESTING.md) | 41-suite regression inventory, deterministic coverage generation (`c8`), LCOV/Cobertura artifacts, and CI gates. |
+| [**`docs/PAPER.md`**](docs/PAPER.md) | Scientific manuscript, clinical triage concordance analysis, and 20-point audit specification. |
 
 ---
 
@@ -72,10 +88,9 @@ flowchart TD
 This specification documents the verified codebase implementation across clinical reasoning, safety, audio latency, and infrastructure:
 
 ### 1. Bounded Multi-Specialist Decision Architecture
-* **Implementation Reality**: Specialist modules, an orchestrator, a clinical board, and bounded specialist execution routines exist as software decision modules. They operate within bounded execution budgets rather than functioning as unconstrained or autonomous human-like physicians.
-* **Architecture**: A bounded multi-specialist clinical decision architecture comprising generalist and specialty reasoning modules (Lead Internist, Cardiology, Neurology, Pediatrics) orchestrated within a constrained clinical board.
-* **Blackboard Model**: A bounded asynchronous in-memory clinical blackboard coordinates specialist observations, hypotheses, and clinical synthesis across iterative turns.
-* **Diagnostic Scoring**: Clinical scoring tools (e.g., TIMI, BE-FAST, NIHSS, PEWS criteria) evaluate patient-reported signs, structured clinical facts, and available telemetry parameters; ECG-related scoring evaluates reported telemetry indicators and does not imply direct 12-lead hardware acquisition.
+* **Implementation Reality (Heuristic Decision Modules)**: Specialist modules (Lead Internist, Cardiology, Neurology, Pediatrics, ENT) operate as an in-memory heuristic coordination pattern. They execute deterministic rule filters, slot extractors, and bounded prompt templates with simulated deliberation rounds. They do **not** function as autonomous, unconstrained LLM physician agents or concurrent independent cognitive entities.
+* **Diagnostic & Clinical Scoring Tools**: Clinical scoring tools (e.g., TIMI, BE-FAST, NIHSS, PEWS criteria) are **software heuristic calculation rules** evaluating patient-reported symptoms, textual survey inputs, and self-reported vital ranges. The system has **zero biological sensor connections, zero direct 12-lead ECG hardware acquisition, and zero certified medical device interfaces**. Any ECG-related parameters evaluate patient-reported verbal descriptors only and are unvalidated for acute clinical diagnosis.
+* **Blackboard Model**: A bounded asynchronous in-memory clinical blackboard coordinates specialist observations, hypotheses, and clinical synthesis across bounded execution rounds (maximum 2 deliberation passes).
 
 ### 2. Deterministic Dual-Arbiter Safety Shield
 * **Pre-Arbiter & Post-Arbiter**: Deterministic safety arbiters execute before and after LLM synthesis:
@@ -88,14 +103,19 @@ This specification documents the verified codebase implementation across clinica
 * **Benchmark Scope**: The evaluation harness contains 35 standardized clinical benchmark scenarios: 22 high-acuity emergency cases and 13 non-emergency control cases across cardiac, neurological, pediatric, and general medicine domains.
 * **Concordance Rate**: Achieved **100% emergency sensitivity (22/22)** on the evaluated 35-case benchmark. The system correctly separated all 22 life-threatening presentations from controls without false-negative downgrades. (Note: Evaluated on this finite test population; not a claim of universal population-level clinical accuracy).
 
-### 4. Latency Profiles & Adaptive First-Chunk TTS
+### 4. Latency Profiles, STT Dependency & Pipeline Reality
 * **Arbiter Latency**: Mean deterministic safety-arbiter latency was **0.39 ms** in local Node.js benchmarks, with **P50 at 0.14 ms**.
+* **Deterministic Lexical RAG**: In-memory multi-field guideline retrieval across 2,112 passages evaluates in **4.2 ms mean** (P95: 8.1 ms).
+* **Local Whisper STT Component**: CPU inference using OpenAI Whisper `base.en` (74M parameters) requires **1.0–2.5 s** warm transcription for short clinical utterances (cold start: 1.5–3.0 s, model load: ~2–4 s).
 * **Kokoro-82M TTS Baseline**: Engine-level Kokoro-82M q4 CPU synthesis latency is approximately 0.93–0.96 s P50 for short 5-word inputs.
-* **Adaptive First-Chunk Optimization**: To eliminate compound response lag, the audio engine adaptively partitions speech into an immediate introductory clause (4–8 words) synthesized ahead of subsequent paragraphs.
-* **Time-to-First-Audio (TTFA)**:
-  - Reduced compound-turn end-to-end TTFA by **61.4% on average** (from ~4.2 s down to **1.1–1.6 s** in tested scenarios).
-  - Zero measured playback starvation between consecutive audio buffers.
-  - Interactive turn turnaround: sub-second for short acknowledgments, and ~1.1–1.6 s TTFA for complex compound clinical responses.
+* **Adaptive First-Chunk Optimization**: To eliminate compound response lag, the audio engine adaptively partitions speech into an immediate introductory clause (4–8 words) synthesized ahead of subsequent paragraphs (TTFA: **1.1–1.6 s** with zero measured playback buffer starvation).
+* **Full End-to-End Voice Latency Reality**: In a live voice consultation (Microphone $\rightarrow$ STT $\rightarrow$ Remote LLM $\rightarrow$ TTS $\rightarrow$ Playback), full conversational turn turnaround is **2.5–5.0+ seconds**. Sub-second turnaround applies **strictly** to local deterministic safety pre-arbiter evaluations and pre-cached emergency alerts. The full voice pipeline does **not** meet sub-second targets.
+* **Speech-to-Text (STT) Infrastructure Status**:
+  - The Next.js `/api/voice/stt` bridge proxies audio multipart payloads to an external FastAPI service (`FASTAPI_URL`, default: `http://127.0.0.1:8000/api/v1/stt`).
+  - **ASR Engine & Dependencies**: Uses **`openai-whisper`** (`whisper.load_model("base.en")`), **not** `faster-whisper`. Requires Python 3.10+, `torch`, `openai-whisper`, `fastapi`, `uvicorn`, `python-multipart`, and system `ffmpeg`.
+  - **Cloud Fallback Path**: If local Whisper encounters a CPU error or out-of-memory failure, an optional cloud fallback via the OpenAI Audio API (`whisper-1`) executes if `OPENAI_API_KEY` is provided. If both fail or no key is configured, an explicit error is raised (zero hallucinated clinical transcripts).
+  - **Service Requirement**: The FastAPI service must be actively running (`uvicorn backend.main:app --port 8000`). If offline, `/api/voice/stt` returns `503 Service Unavailable`. In local development without the Python backend running, browser clients rely on native Web Speech API or simulated transcript injection.
+  - **Active Blocker**: Live browser streaming, audio chunk coordination, and empty transcript edge-cases remain an active engineering blocker and work in progress.
 
 ### 5. Runtime Paralinguistic Acoustic DSP Analyzer
 * **Microphone DSP Pipeline**: The browser runtime extracts short-term acoustic features from live microphone PCM input via Web Audio API using **25 ms analysis windows** and **10 ms hop intervals**.
@@ -146,14 +166,14 @@ The following matrix documents the verified technical alignment across all 20 ev
 
 | # | Topic | Status | Code Reality & Verification | Adopted Specification & Paper Language |
 |:---:|:---|:---:|:---|:---|
-| **1** | Multi-Agent Board | 🟢 | Software decision modules with bounded execution rounds; not autonomous physicians. | Bounded multi-specialist clinical decision architecture comprising generalist and specialty modules orchestrated within a constrained clinical board. |
+| **1** | Multi-Agent Board | 🟢 | Software decision heuristics and prompt templates with bounded execution rounds; not autonomous physicians. | Bounded multi-specialist heuristic decision architecture comprising generalist and specialty modules with simulated deliberation. |
 | **2** | Shared Blackboard | 🟢 | In-memory blackboard coordinating specialist observations with bounded execution rounds. | Bounded asynchronous in-memory clinical blackboard coordinating specialist observations and synthesis. |
-| **3** | Diagnostic Tools | 🟢 | Rule tools evaluate patient-reported symptoms and telemetry; no direct ECG acquisition. | Clinical scoring tools evaluate patient-reported signs and available telemetry; ECG scoring does not imply direct 12-lead hardware acquisition. |
+| **3** | Diagnostic Tools | 🟢 | Deterministic heuristic rules evaluate patient-reported symptoms; zero 12-lead ECG sensor or hardware acquisition. | Clinical scoring tools evaluate patient-reported signs and survey inputs; ECG scoring does not imply direct 12-lead hardware acquisition. |
 | **4** | Dual-Arbiter Shield | 🟢 | Deterministic pre/post arbiters enforce emergency floor, missing-vs-denied semantics, and non-downgrade. | Retained as primary safety guarantee enforcing $\text{ESI}_{\text{final}} = \min(\text{ESI}_{\text{pre}}, \text{ESI}_{\text{llm}})$. |
 | **5** | Triage Concordance | 🟡 | 35-case benchmark harness (22 emergency, 13 controls). | Achieved 100% emergency sensitivity (22/22) on the evaluated 35-case benchmark; no claim of universal population accuracy. |
 | **6** | Arbiter Latency | 🟢 | Node.js v22 CPU benchmark measurements. | Mean safety-arbiter latency was 0.39 ms in the local Node.js benchmark; P50 was 0.14 ms. |
 | **7** | Kokoro-82M TTFA | 🔴 | Engine-level 5-word is ~0.93–0.96 s P50. Adaptive first-chunk synthesis gives 1.1–1.6 s TTFA (61.4% drop) with 0 ms starvation. | Kokoro-82M q4 CPU engine-level synthesis latency was approximately 0.93–0.96 s P50 for short 5-word inputs. Adaptive first-chunk synthesis reduced compound-turn TTFA by 61.4% (1.1–1.6 s) with 0 ms starvation. |
-| **8** | Turn-Taking | 🟡 | Short responses are sub-second; compound responses are 1.1–1.6 s TTFA. | Low-latency local interactive voice consultation, with sub-second turnaround for short responses and ~1.1–1.6 s TTFA for compound turns. |
+| **8** | Turn-Taking & Latency | 🟡 | Pre-arbiter is sub-millisecond (0.39 ms); full end-to-end voice turnaround is 2.5–5.0+ s in live network conditions. | Local interactive voice consultation with sub-second arbiter safety checks; compound end-to-end dialogue turnaround is 2.5–5.0+ s. |
 | **9** | Paralinguistic DSP | 🟢 | Live MediaStream PCM, 25 ms/10 ms framing, RMS/dBFS VAD, pause statistics, and autocorrelation $f_0$. | Browser runtime extracts short-term acoustic features as observational telemetry only; not used as autonomous diagnostic biomarkers. |
 | **10** | MedlinePlus RAG | 🟢 | 2,112 processed passages + curated guidelines loaded locally. | Offline MedlinePlus XML-derived passages indexed locally alongside curated clinical practice guidelines. |
 | **11** | RAG Math | 🔴 | Replaced Eq. 8 (no BM25 or DPR). Deterministic lexical, domain, section, and authority formula. | Evaluated with implemented formula: $S(d, q) = (L_{\text{multi-field}}(d, q) + \Delta_{\text{domain}}) \times \gamma_{\text{section}} + \alpha_{\text{auth}}$. |
@@ -217,44 +237,45 @@ ai-medical-voice-agent/
 
 ---
 
-## 🧪 Verification & Test Suites
+## 🧪 Verification, Test Suites & Coverage
 
-The codebase includes an extensive suite of automated test harnesses validating clinical safety, security, and audio latency:
+MedVoice includes an automated test battery with **41 canonical verification suites** spanning clinical safety arbiters, security RBAC, durable audit ledgers, paralinguistic DSP, and audio pipelines. For detailed breakdowns, tier definitions, and CI gates, see [**`docs/TESTING.md`**](docs/TESTING.md).
 
 ```bash
-# Security, RBAC, IDOR ownership & CSP headers
-npm run test:security
+# 1. Run the Full 41-Suite Canonical Regression Battery (Isolated Offline Mode)
+npm run test:battery
 
-# Durable SHA-256 PostgreSQL audit ledger persistence & concurrency
-npm run test:durable-audit
+# 2. Run Deterministic Coverage Reporting (c8 via tsx)
+# Produces coverage/lcov.info, coverage/cobertura-coverage.xml, and terminal summary
+npm run test:coverage
 
-# 11-turn golden clinical dialogue state & negation invariant suite
-npm run test:goldendialogue
+# 3. Dedicated Real PostgreSQL Integration Test Harness
+# Connects to live database when DATABASE_URL is set; reports explicit SKIPPED if unset
+npm run test:db
 
-# Voice-state lifecycle, audio buffer discard & error recovery
-npm run test:voicestate
-
-# Care Network 5-state location acquisition & 0-query mount invariants
-npx tsx scripts/test-care-location-state.ts
-
-# Paralinguistic acoustic DSP analyzer & safety isolation
-npx tsx scripts/test-acoustic-dsp.ts
-
-# HL7 FHIR R4 bundle generation & provenance validation
-npm run test:fhir
-
-# Full comprehensive test suite (all 24 verification suites)
-npm run test:all
+# 4. Individual Test Suites (Examples)
+npm run test:security        # RBAC, IDOR guards, and CSP headers
+npm run test:durable-audit   # Cryptographic SHA-256 audit ledger & CAS concurrency
+npm run test:goldendialogue  # 11-turn clinical dialogue & negation invariants
+npm run test:voicestate      # Voice lifecycle & buffer discard
+npm run test:fhir            # HL7 FHIR R4 Bundle serialization & provenance
 ```
+
+### Empirical Coverage Baseline & CI Thresholds
+Test coverage is instrumented via `c8` targeting maintained application code (`lib/`, `config/`, `app/api/`) and excluding test harnesses and node_modules:
+- **Statements**: $\ge 60.0\%$ (Empirical Baseline: **65.37%**)
+- **Branches**: $\ge 65.0\%$ (Empirical Baseline: **71.92%**)
+- **Functions**: $\ge 75.0\%$ (Empirical Baseline: **81.97%**)
+- **Lines**: $\ge 60.0\%$ (Empirical Baseline: **65.37%**)
 
 ---
 
-## 🚀 Getting Started
+## 🚀 Getting Started & Safe Demo Guidance
 
 ### Prerequisites
-- **Node.js** >= 18.18.0
+- **Node.js** >= 18.18.0 (Node.js 20 or 22 LTS recommended)
 - **npm** >= 9.0.0
-- *(Optional)* Access to Neon PostgreSQL connection string (`DATABASE_URL`) for durable audit ledger persistence.
+- *(Optional)* Access to Neon PostgreSQL connection string (`DATABASE_URL`) for durable audit persistence.
 
 ### Quick Start
 1. **Clone the repository**:
@@ -266,24 +287,34 @@ npm run test:all
    ```bash
    npm install
    ```
-3. **Configure environment variables** (create `.env.local`):
+3. **Configure environment variables** (create `.env.local` from template):
+   ```bash
+   cp .env.example .env.local
+   ```
+   Add your Clerk credentials and optional LLM keys:
    ```env
    # Authentication
-   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=your_clerk_pub_key
-   CLERK_SECRET_KEY=your_clerk_secret_key
+   NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=pk_test_sample
+   CLERK_SECRET_KEY=sk_test_sample
 
-   # Database (Optional; falls back to in-memory audit store if omitted)
+   # Optional Database (falls back gracefully to in-memory store if omitted)
    DATABASE_URL=postgresql://user:pass@ep-cool-db.neon.tech/neondb?sslmode=require
 
-   # Speech & Inference
-   ASSEMBLYAI_API_KEY=your_server_only_key
-   NVIDIA_API_KEY=your_inference_key
+   # Speech & Inference (falls back to local deterministic engine if omitted)
+   NVIDIA_API_KEY=your_key
+   GROQ_API_KEY=your_key
    ```
 4. **Run the local development server**:
    ```bash
    npm run dev
    ```
 5. **Open in browser**: Navigate to [http://localhost:3000](http://localhost:3000).
+
+### 🛡️ Safe Demonstration Guidance
+When conducting product demonstrations or evaluating capabilities:
+- **Use Mock Mode / Test Harness**: Set `INTERNAL_TEST_HARNESS_SECRET` in `.env.local` to execute reproducible automated test scenarios without live patient risk.
+- **Simulated Presentations**: Test emergency preemption safely by saying or typing standardized test inputs (e.g. *"I have severe crushing chest pain radiating to my jaw"*). Verify that the system stops intake, locks urgency at Tier 1 / Tier 2, and displays immediate emergency medical service guidance.
+- **Acoustic DSP**: Test microphone analysis in `/consult`; note that pitch and energy values displayed in the VoicePill UI are observational telemetry and do not alter the clinical triage level.
 
 ---
 

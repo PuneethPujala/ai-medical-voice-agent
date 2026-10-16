@@ -15,9 +15,10 @@ To eliminate clinical ambiguity and prevent dangerous misuse, MedVoice operates 
 
 1. **No Autonomous Diagnosis**: MedVoice does not formulate definitive medical diagnoses. All diagnostic outputs represent preliminary triage risk stratifications and differentials for clinician review.
 2. **No Autonomous Medication Prescription**: The system is prohibited from prescribing medications, altering prescription dosages, or advising patients to discontinue prescribed treatments.
-3. **No Direct Hardware Biometric Acquisition**: Clinical scoring tools (e.g., TIMI, BE-FAST, PEWS) evaluate user-reported symptoms and patient-reported telemetry. MedVoice does not acquire direct 12-lead ECGs, automated blood pressures, or continuous pulse oximetry.
-4. **No Automated CAD / PSAP Dispatch**: MedVoice does not connect directly to 911/112/108 computer-aided dispatch (CAD) emergency switches. Emergency handling consists of immediate verbal instructions directing the caller to dial local emergency services, accompanied by verified hospital routing.
-5. **Not a Cleared Medical Device**: MedVoice is an investigational software system and has not been cleared or approved by the U.S. FDA, European EMA, or Indian CDSCO as a Software as a Medical Device (SaMD).
+3. **No Direct Hardware Biometric Acquisition & Zero ECG Integration**: Clinical scoring tools (e.g., TIMI, BE-FAST, PEWS) are **deterministic heuristic algorithms** evaluating user-reported symptoms and patient-reported telemetry. MedVoice does **not** acquire direct 12-lead ECGs, automated blood pressures, or continuous pulse oximetry. Any ECG-related parameters are heuristic descriptors of patient-reported symptoms, unvalidated for acute clinical decisions.
+4. **Simulated Multi-Specialist Deliberation**: Specialist modules (Cardiology, Neurology, Pediatrics) are software rule-and-prompt heuristics with bounded execution budgets, **not** real-time panels of independent physician LLMs or certified clinical authorities.
+5. **No Automated CAD / PSAP Dispatch**: MedVoice does not connect directly to 911/112/108 computer-aided dispatch (CAD) emergency switches. Emergency handling consists of immediate verbal instructions directing the caller to dial local emergency services, accompanied by verified hospital routing.
+6. **Not a Cleared Medical Device**: MedVoice is an investigational software system and has not been cleared or approved by the U.S. FDA, European EMA, or Indian CDSCO as a Software as a Medical Device (SaMD).
 
 ---
 
