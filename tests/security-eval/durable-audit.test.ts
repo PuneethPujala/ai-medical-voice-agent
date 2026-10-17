@@ -32,6 +32,9 @@ async function runDurableAuditTest() {
 
   const db = getDb();
   if (!db) {
+    if (process.env.GITHUB_ACTIONS === "true") {
+      console.log("::notice title=Database Tests Skipped::DATABASE_URL not set in CI environment. Live Neon DB audit ledger verification was skipped.");
+    }
     console.log("⚠️ Database URL not configured, skipping live Neon DB verification.");
     return;
   }

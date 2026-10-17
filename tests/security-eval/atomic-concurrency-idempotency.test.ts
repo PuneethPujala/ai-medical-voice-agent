@@ -15,6 +15,7 @@ if (process.env.MEDVOICE_OFFLINE_TESTS === "1") {
 }
 
 (process.env as Record<string, string | undefined>).NODE_ENV = "test";
+(process.env as Record<string, string | undefined>).INTERNAL_TEST_SECRET = DEFAULT_INTERNAL_TEST_SECRET;
 
 function createTestHeaders(role: Role, userId: string) {
   return {
@@ -33,6 +34,9 @@ async function runAtomicConcurrencyTests() {
   if (!dbUrl) {
     if (process.env.REQUIRE_LIVE_DB === "true") {
       throw new Error("FATAL: REQUIRE_LIVE_DB is set to true, but DATABASE_URL is missing from environment!");
+    }
+    if (process.env.GITHUB_ACTIONS === "true") {
+      console.log("::notice title=Database Tests Skipped::DATABASE_URL not set in CI environment. Live Neon PostgreSQL atomic CAS tests were skipped.");
     }
     console.warn("⚠️  SKIPPED: DATABASE_URL not set. Real PostgreSQL datastore required for live CAS tests.");
     console.warn("   Passing in offline/mock CI environment. Set REQUIRE_LIVE_DB=true to enforce live DB check.");

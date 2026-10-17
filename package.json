@@ -22,6 +22,7 @@
     "test:planner": "tsx scripts/test-response-planner-scenarios.ts",
     "test:dispatch": "tsx tests/emergency-eval/dispatch.test.ts",
     "test:security": "tsx tests/security-eval/cors-rbac-audit.test.ts",
+    "test:proxy": "tsx tests/security-eval/proxy-routing.test.ts",
     "test:durable-audit": "tsx tests/security-eval/durable-audit.test.ts",
     "test:engine": "tsx scripts/test-clinical-conversation-engine.ts",
     "test:adversarial": "tsx scripts/test-clinical-adversarial-scenarios.ts",

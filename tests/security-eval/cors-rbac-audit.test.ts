@@ -30,6 +30,7 @@ import nextConfig from "../../next.config";
 
 // Ensure test environment is explicitly set for test runner
 (process.env as Record<string, string | undefined>).NODE_ENV = "test";
+(process.env as Record<string, string | undefined>).INTERNAL_TEST_SECRET = DEFAULT_INTERNAL_TEST_SECRET;
 
 function createTestHeaders(role: string, userId?: string, extra?: Record<string, string>): Record<string, string> {
   return {
@@ -127,6 +128,25 @@ async function runSecurityAndAuditTestSuite() {
     });
     const badSecretContext = await getAuthContext(badSecretReq);
     assert(badSecretContext.role === "patient", "x-mock-role is rejected in test harness when x-test-harness-secret is invalid");
+
+    // 2b. Missing or Weak Configured Secret Invariant: Missing or weak env secret MUST fail closed
+    const prevSecret = process.env.INTERNAL_TEST_SECRET;
+    try {
+      delete process.env.INTERNAL_TEST_SECRET;
+      const missingConfigReq = new Request("https://app.medvoice.org/api/admin/metrics", {
+        headers: createTestHeaders("admin", "test-admin-99"),
+      });
+      const missingConfigContext = await getAuthContext(missingConfigReq);
+      assert(missingConfigContext.role === "patient" && missingConfigContext.userId === "unauthenticated",
+        "getAuthContext strictly fails closed when process.env.INTERNAL_TEST_SECRET is missing (no default fallback)");
+
+      (process.env as Record<string, string | undefined>).INTERNAL_TEST_SECRET = "too-short-secret";
+      const weakConfigContext = await getAuthContext(missingConfigReq);
+      assert(weakConfigContext.role === "patient" && weakConfigContext.userId === "unauthenticated",
+        "getAuthContext strictly fails closed when process.env.INTERNAL_TEST_SECRET is weak (<32 chars)");
+    } finally {
+      (process.env as Record<string, string | undefined>).INTERNAL_TEST_SECRET = prevSecret;
+    }
 
     // 3. Test Harness Role Emulation: Valid Secret SUCCEEDS (only in NODE_ENV === 'test')
     const validTestAdminReq = new Request("https://app.medvoice.org/api/admin/metrics", {

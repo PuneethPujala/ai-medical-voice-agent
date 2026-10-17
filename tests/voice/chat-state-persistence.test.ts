@@ -9,6 +9,7 @@ import { eq } from "drizzle-orm";
 import * as dotenv from "dotenv";
 
 (process.env as Record<string, string | undefined>).NODE_ENV = "test";
+(process.env as Record<string, string | undefined>).INTERNAL_TEST_SECRET = DEFAULT_INTERNAL_TEST_SECRET;
 
 function createTestHeaders(role: Role, userId: string, ipSuffix = 1) {
   return {
