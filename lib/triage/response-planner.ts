@@ -14,6 +14,7 @@ export type PlanGoal =
   | "VALIDATE_EMOTION_BEFORE_INQUIRY"
   | "ADDRESS_ACCESS_BARRIER"
   | "CLARIFY_MEMORY_OR_IDENTITY"
+  | "CLARIFY_CONTRADICTION"
   | "EMERGENCY_INTERVENTION"
   | "ACKNOWLEDGE_AND_EXPLORE"
   | "ADVANCE_CLINICAL_INTAKE";
@@ -67,6 +68,24 @@ export class ResponsePlanner {
     localeConfig: LocaleConfig = DEFAULT_LOCALE_CONFIG
   ): ResponsePlan {
     const textLower = patientUtterance.toLowerCase();
+    if (state.slots) {
+      if (!Array.isArray(state.slots.neurological_signs)) {
+        state.slots.neurological_signs = typeof state.slots.neurological_signs === "string"
+          ? [state.slots.neurological_signs]
+          : [];
+      }
+      if (!Array.isArray(state.slots.associated_symptoms)) {
+        state.slots.associated_symptoms = typeof state.slots.associated_symptoms === "string"
+          ? [state.slots.associated_symptoms]
+          : [];
+      }
+      if (!Array.isArray(state.slots.known_facts)) {
+        state.slots.known_facts = typeof state.slots.known_facts === "string"
+          ? [state.slots.known_facts]
+          : [];
+      }
+    }
+
     const memory: ConversationMemory = state.conversationMemory || {
       confirmedFacts: state.slots.known_facts || [],
       deniedSymptoms: [],
@@ -147,6 +166,19 @@ export class ResponsePlanner {
         mustAvoidAsking: [...memory.questionsAlreadyAsked, slot, "onset", "when did it start"],
         bedsideTone: "attentive_and_methodical",
         suggestedSpokenReply: `Got it, thank you for clarifying — noted ${detail}. Has the discomfort been getting worse, improving, or staying about the same?`,
+      };
+    }
+
+    // 2.55 UNRECONCILED CONTRADICTION CLARIFICATION
+    const unclarifiedContradiction = state.contextState?.currentView.contradictions?.find(c => c.requiresClarification);
+    if (unclarifiedContradiction) {
+      const conceptDisplay = unclarifiedContradiction.concept.replace(/_/g, " ");
+      return {
+        primaryGoal: "CLARIFY_CONTRADICTION",
+        conversationalFocus: `Politely clarify contradictory patient information for ${conceptDisplay} without being accusatory.`,
+        mustAvoidAsking: ["medical interrogation"],
+        bedsideTone: "empathic_and_calm",
+        suggestedSpokenReply: `I want to make sure I understand your symptoms accurately. Earlier we recorded one detail, but just now you mentioned something different regarding ${conceptDisplay}. Could you clarify how you are feeling right now?`,
       };
     }
 
@@ -265,7 +297,12 @@ export class ResponsePlanner {
     const hasChest = Boolean(state.slots.location === "chest" || /\b(chest|heart|sternum|angina|substernal)\b/i.test(state.cumulativeTranscript));
     const hasAbdomen = isAbdominalPresentation(state.cumulativeTranscript) ||
       Boolean(state.slots.location && /abdom|stomach|belly|quadrant|periumbilical|epigastr/i.test(String(state.slots.location)));
-    const hasNeuro = Boolean(state.slots.neurological_signs.length > 0 || /\b(headache|dizz|droop|weak|speech)\b/i.test(state.cumulativeTranscript));
+    const neuroSigns = Array.isArray(state.slots?.neurological_signs)
+      ? state.slots.neurological_signs
+      : typeof state.slots?.neurological_signs === "string"
+      ? [state.slots.neurological_signs]
+      : [];
+    const hasNeuro = Boolean(neuroSigns.length > 0 || /\b(headache|dizz|droop|weak|speech)\b/i.test(state.cumulativeTranscript));
     const hasThroat = Boolean(state.slots.location === "throat" || /\b(throat|swallow|pharyngitis|voice)\b/i.test(state.cumulativeTranscript));
     const hasFatigue = /\b(tired|fatigue|exhaust|malaise|weakness|low energy)\b/i.test(state.cumulativeTranscript) ||
       state.slots.known_facts.some(f => /tired|fatigue/i.test(f));
@@ -544,8 +581,8 @@ export class ResponsePlanner {
         }
       }
     } else if (hasNeuro) {
-      const weaknessReported = state.slots.neurological_signs.some(s => /weak|drift|paralysis|cannot lift/i.test(s));
-      const numbnessReported = state.slots.neurological_signs.some(s => /numb|pins|tingl/i.test(s));
+      const weaknessReported = neuroSigns.some(s => /weak|drift|paralysis|cannot lift/i.test(s));
+      const numbnessReported = neuroSigns.some(s => /numb|pins|tingl/i.test(s));
       const lateralityAddressed = isTopicAddressed("weakness_distribution") ||
         isTopicAddressed("numbness_distribution") ||
         isTopicAddressed("laterality") ||
@@ -564,7 +601,7 @@ export class ResponsePlanner {
           clinicalRationale: "Clarify whether numbness is unilateral/focal or non-focal/generalized.",
           suggestedPhrasing: "Is that numbness on one side of your body or both sides, or where do you feel it?",
         };
-      } else if (state.slots.neurological_signs.length === 0 && !isTopicAddressed("neurological_signs") && !deniedSymptoms.has("facial drooping")) {
+      } else if (neuroSigns.length === 0 && !isTopicAddressed("neurological_signs") && !deniedSymptoms.has("facial drooping")) {
         nextInquiry = {
           topic: "neurological_signs",
           clinicalRationale: "Screen for BE-FAST stroke signs (facial droop, unilateral arm/leg weakness, speech difficulty).",

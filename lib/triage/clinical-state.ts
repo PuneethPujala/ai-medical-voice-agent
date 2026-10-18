@@ -748,8 +748,8 @@ export function parseOnsetDimensions(text: string): ParsedOnset {
   }
 
   // 2. Clause decomposition for context-aware onset vs trigger vs acute worsening
-  // Split on sentence boundaries and contrasting conjunctions
-  const rawClauses = textLower.split(/(?:[.!?;]|\b(?:but|however|yet|although|though|whereas|instead)\b)/i)
+  // Split on sentence boundaries, contrasting conjunctions, commas, and temporal transitions
+  const rawClauses = textLower.split(/(?:[,.!?;]|\b(?:but|however|yet|although|though|whereas|instead|then|after\s+that)\b)/i)
     .map(c => c.trim())
     .filter(Boolean);
 
@@ -783,10 +783,10 @@ export function parseOnsetDimensions(text: string): ParsedOnset {
       /\b(?:became|got|turned|grew)\s+(?:severe|worse|bad|intense|unbearable|too\s+bad)\s+(?:suddenly|abruptly|all\s+of\s+a\s+sudden)\b/i.test(clause);
 
     // Check if this clause explicitly describes GRADUAL onset of symptom
-    // e.g. "built up gradually", "started gradually", "came on slowly", "gradual onset", "slowly over time"
+    // e.g. "built up gradually", "started gradually", "came on slowly", "gradual onset", "slowly over time", "gradually got worse"
     const isGradualOnset =
       /\b(?:built?\s+up\s+gradual(?:ly)?|gradual(?:ly)?\s+built?\s+up|came\s+on\s+gradual(?:ly)?|started\s+gradual(?:ly)?|began\s+gradual(?:ly)?|crept\s+up\s+slowly)\b/i.test(clause) ||
-      (/\b(?:gradual(?:ly)?|slowly|over\s+time|dheere\s+dheere|mellaga)\b/i.test(clause) && /\b(?:built?\s+up|start\w*|beg\w*|came\s+on|increas\w*|worsen\w*|develop\w*)\b/i.test(clause));
+      (/\b(?:gradual(?:ly)?|slowly|over\s+time|dheere\s+dheere|mellaga)\b/i.test(clause) && /\b(?:built?\s+up|start\w*|beg\w*|came\s+on|increas\w*|worsen\w*|develop\w*|got\s+worse|became\s+worse)\b/i.test(clause));
 
     if (isGradualOnset) {
       hasExplicitGradualOnset = true;
@@ -1502,7 +1502,6 @@ export function validateDoctorReplyTarget(
       (distinctTargets.includes("course") && distinctTargets.includes("orthostatic_timing")) ||
       (distinctTargets.includes("course") && distinctTargets.includes("triggers")) ||
       (distinctTargets.includes("course") && distinctTargets.includes("timing_pattern")) ||
-      (distinctTargets.includes("onset_pattern") && distinctTargets.includes("onset_time")) ||
       (distinctTargets.includes("weakness_distribution") && distinctTargets.includes("laterality")) ||
       (distinctTargets.includes("numbness_distribution") && distinctTargets.includes("laterality")) ||
       (distinctTargets.includes("weakness_distribution") && distinctTargets.includes("neurological_signs")) ||

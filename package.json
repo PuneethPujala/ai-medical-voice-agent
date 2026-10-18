@@ -13,6 +13,7 @@
     "test:discussion": "tsx scripts/test-cardioneuro-discussion.ts",
     "test:interview": "tsx scripts/test-clinical-interview.ts",
     "test:acceptance": "tsx scripts/test-bargein-acceptance.ts",
+    "test:headache": "tsx scripts/test-headache-compound-regression.ts",
     "test:fhir": "tsx tests/fhir-eval/fhir.test.ts",
     "test:manager": "tsx scripts/test-conversational-manager.ts",
     "test:interpreter": "tsx scripts/test-conversation-interpreter.ts",

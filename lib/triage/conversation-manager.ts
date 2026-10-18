@@ -14,6 +14,12 @@ import { PresentationContext } from "../clinical-knowledge/presentation-types";
 import { presentationClassifier } from "../clinical-knowledge/presentation-classifier";
 import { generateDoctorTurnResponse } from "../ai/clinical-llm";
 import { DOCTOR_PROFILES } from "../../config/doctors";
+import {
+  ConversationContextState,
+  createInitialConversationContextState,
+  FactProposal,
+} from "./fact-types";
+import { FactCommitEngine } from "./fact-commit-engine";
 
 export interface ConversationMemory {
   confirmedFacts: string[];
@@ -121,6 +127,7 @@ export interface ClinicalInterviewState {
   attributedFacts?: AttributedClinicalFactV3[];
   unmappedObservations?: UnmappedObservation[];
   deliveredTurnRecords?: DeliveredTurnRecord[];
+  contextState?: ConversationContextState;
 }
 
 export interface ConversationTurnResult {
@@ -244,6 +251,7 @@ export class ConversationManager {
         active: [],
         supporting: [],
       },
+      contextState: createInitialConversationContextState(),
     };
   }
 
@@ -937,6 +945,21 @@ export class ConversationManager {
     ) || /\b(unconscious|unresponsive|not\s+breathing|cardiac\s+arrest|collapsed)\b/i.test(state.cumulativeTranscript);
 
     if (hasEmergencyPreemptionFlag || state.informationState === "emergency_preempted") {
+      // Single Authoritative Fact Commit Path via FactCommitEngine on emergency preemption
+      if (!state.contextState) {
+        state.contextState = createInitialConversationContextState();
+      }
+      if (semantic.proposals && semantic.proposals.length > 0) {
+        const commitRes = FactCommitEngine.commit(
+          state.contextState,
+          semantic.proposals,
+          state.structuredHistory?.turnCount || 1,
+          "patient_reported"
+        );
+        state.contextState = commitRes.nextState;
+        this.syncLegacyStateFromContext(state);
+      }
+
       // Opportunistic extraction before emergency preemption
       this.extractOpportunisticFacts(state);
 
@@ -1017,6 +1040,21 @@ export class ConversationManager {
       state.caseVersion++;
     }
 
+    // Single Authoritative Fact Commit Path via FactCommitEngine
+    if (!state.contextState) {
+      state.contextState = createInitialConversationContextState();
+    }
+    if (semantic.proposals && semantic.proposals.length > 0) {
+      const commitRes = FactCommitEngine.commit(
+        state.contextState,
+        semantic.proposals,
+        state.structuredHistory?.turnCount || 1,
+        "patient_reported"
+      );
+      state.contextState = commitRes.nextState;
+      this.syncLegacyStateFromContext(state);
+    }
+
     // Opportunistic extraction from transcript before response planning
     this.extractOpportunisticFacts(state);
 
@@ -1063,12 +1101,16 @@ export class ConversationManager {
               state.slots.known_facts.push(fact);
             }
           }
-        } else if (slot === "associated_symptoms" && Array.isArray(val)) {
-          state.slots.associated_symptoms = Array.from(new Set([...state.slots.associated_symptoms, ...val]));
-          state.slots.known_facts.push(`Associated: ${val.join(", ")}`);
-        } else if (slot === "neurological_signs" && Array.isArray(val)) {
-          state.slots.neurological_signs = Array.from(new Set([...state.slots.neurological_signs, ...val]));
-          state.slots.known_facts.push(`Neurological: ${val.join(", ")}`);
+        } else if (slot === "associated_symptoms") {
+          const symptoms = Array.isArray(val) ? val : [String(val)];
+          const existing = Array.isArray(state.slots.associated_symptoms) ? state.slots.associated_symptoms : [];
+          state.slots.associated_symptoms = Array.from(new Set([...existing, ...symptoms]));
+          state.slots.known_facts.push(`Associated: ${symptoms.join(", ")}`);
+        } else if (slot === "neurological_signs") {
+          const signs = Array.isArray(val) ? val : [String(val)];
+          const existing = Array.isArray(state.slots.neurological_signs) ? state.slots.neurological_signs : [];
+          state.slots.neurological_signs = Array.from(new Set([...existing, ...signs]));
+          state.slots.known_facts.push(`Neurological: ${signs.join(", ")}`);
         } else if (slot === "onset_pattern") {
           const pattern = val === "sudden" ? "sudden" : "gradual";
           state.slots.acute_worsening = pattern === "sudden";
@@ -2276,6 +2318,50 @@ export class ConversationManager {
     };
   }
 
+  private syncLegacyStateFromContext(state: ClinicalInterviewState): void {
+    if (!state.contextState) return;
+    const view = state.contextState.currentView;
+
+    for (const [concept, facts] of Object.entries(view.factsByConcept)) {
+      for (const fact of facts) {
+        if (fact.assertionStatus === "present") {
+          const factStr = `${concept.toUpperCase()}: ${fact.value}`;
+          if (!state.slots.known_facts.includes(factStr)) {
+            state.slots.known_facts.push(factStr);
+          }
+          if (concept === "onset" || concept.endsWith("_onset") || concept === "onset_pattern") {
+            state.slots.onset = String(fact.value);
+            if (fact.value === "sudden") {
+              state.slots.acute_worsening = true;
+              state.slots.onset_pattern = "sudden";
+            }
+          }
+          if (concept === "duration" || concept.endsWith("_duration")) {
+            state.slots.duration = String(fact.value);
+          }
+          if (concept === "severity" || concept.endsWith("_severity")) {
+            state.slots.severity = String(fact.value);
+          }
+          if (concept === "character" || concept.endsWith("_character")) {
+            state.slots.character = String(fact.value);
+          }
+          if (concept === "location" || concept.endsWith("_location")) {
+            state.slots.location = String(fact.value);
+          }
+          if (concept === "radiation" || concept.endsWith("_radiation")) {
+            state.slots.radiation = String(fact.value);
+          }
+          if (concept === "neurological_signs" && !state.slots.neurological_signs.includes(String(fact.value))) {
+            state.slots.neurological_signs.push(String(fact.value));
+          }
+          if (concept === "associated_symptoms" && !state.slots.associated_symptoms.includes(String(fact.value))) {
+            state.slots.associated_symptoms.push(String(fact.value));
+          }
+        }
+      }
+    }
+  }
+
   public extractOpportunisticFacts(state: ClinicalInterviewState): void {
     if (!state.slots.duration) {
       const isEpisodePrompt = /how\s+long\s+does\s+each\s+(?:one\s+)?last|each\s+episode/i.test(state.pendingQuestion?.question || "");
@@ -2372,7 +2458,7 @@ export class ConversationManager {
 
     // Opportunistic ENT, Voice Change & Course extraction
     if (/\b(throat\s+pain|sore\s+throat|throat\s+is\s+paining|throat\s+hurts?)\b/i.test(state.cumulativeTranscript)) {
-      if (!state.slots.known_facts.some(f => /throat/i.test(f))) {
+      if (!state.slots.known_facts.some(f => /^THROAT_PAIN:/i.test(f))) {
         state.slots.known_facts.push("THROAT_PAIN: present");
         if (state.structuredHistory) state.structuredHistory.chiefComplaint = "Throat pain";
       }
@@ -2405,7 +2491,7 @@ export class ConversationManager {
     // Headache-associated light and sound sensitivity is evidence, not merely a
     // keyword. Require a symptom relationship so a "sudden flash" is not
     // incorrectly recorded as photophobia.
-    const hasPhotophobia = /\b(?:photophob|sensitive\s+to\s+(?:bright\s+)?lights?|(?:bright\s+)?lights?\s+(?:bother|make|made|worsen)|lights?\s+(?:bother|makes?|made|worsen)|light\s+sensitivity)\b/i.test(state.cumulativeTranscript);
+    const hasPhotophobia = /\b(?:photophob|sensitive\s+to\s+(?:bright\s+)?lights?|(?:bright\s+)?lights?\s+(?:really\s+)?(?:bother|make|made|worsen|hurt|pain)|lights?\s+(?:really\s+)?(?:bother|makes?|made|worsen|hurt|pain)|light\s+sensitivity)\b/i.test(state.cumulativeTranscript);
     const hasPhonophobia = /\b(?:phonophob|sensitive\s+to\s+(?:loud\s+)?(?:sound|sounds|noise)|(?:loud\s+)?(?:sounds?|noise)\s+(?:bother|make|made|worsen)|sound\s+sensitivity)\b/i.test(state.cumulativeTranscript) || /\bsensitive\s+to\s+(?:bright\s+)?lights?\s+(?:or|and)\s+(?:loud\s+)?(?:sounds?|noise)\b/i.test(state.cumulativeTranscript);
     if (hasPhotophobia) {
       if (!state.slots.associated_symptoms.includes("photophobia")) state.slots.associated_symptoms.push("photophobia");
