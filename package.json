@@ -62,7 +62,7 @@
     "test:atomic-concurrency": "tsx tests/security-eval/atomic-concurrency-idempotency.test.ts",
     "test:voice-telemetry": "tsx tests/security-eval/voice-telemetry-lifecycle.test.ts",
     "test:route-dialogue": "tsx tests/triage/route-voice-chat-dialogue.test.ts",
-    "test:all": "npm run test:security && npm run test:durable-audit && npm run test:consultation-lifecycle && npm run test:concurrency-durable && npm run test:atomic-concurrency && npm run test:voice-telemetry && npm run test:route-dialogue && npm run test:profile-persistence && npm run test:context-chat && npm run test:chat-isolation && npm run test:unknown-age && npm run test:question-state && npm run test:dialogue-reasoning && npm run test:false-dispatch && npm run test:clarify-dialogue && npm run test:fact-reconciliation && npm run test:loss-aware-context && npm run test:goldendialogue && npm run test:safetyarbiter && npm run test:safetyintegration && npm run test:remediations && npm run test:severity && npm run test:voicestate && npm run test:subfield && npm run test:interpreter && npm run test:planner && npm run test:engine && npm run test:adversarial && npm run test:multiclause && npm run test:provenance && npm run test:rag && npm run test:explanatory && npm run test:manager && npm run test:board && npm run test:clinical && npm run test:interview && npm run test:bargein && npm run test:discussion && npm run test:acceptance && npm run test:fhir && npm run test:dispatch",
+    "test:all": "tsx scripts/run-test-battery.ts",
     "test:battery": "tsx scripts/run-test-battery.ts",
     "test:coverage": "c8 tsx scripts/run-test-battery.ts",
     "test:db": "tsx scripts/run-database-tests.ts"
