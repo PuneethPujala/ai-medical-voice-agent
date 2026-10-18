@@ -76,13 +76,10 @@ jobs:
           npx tsx scripts/test-safety-arbiter-decision.ts
           npx tsx scripts/test-clinical-safety-integration.ts
 
-      - name: Gate 5 — Full Canonical 40-Suite Regression Battery
-        run: npm run test:all
-
-      - name: Gate 6 — Deterministic Test Coverage Generation (LCOV & Cobertura XML)
+      - name: Gate 5 — Canonical 44-Suite Regression Battery & Coverage Generation (LCOV & Cobertura)
         run: npm run test:coverage
 
-      - name: Gate 7 — Upload Test Coverage Artifacts (LCOV & Cobertura)
+      - name: Gate 6 — Upload Test Coverage Artifacts (LCOV & Cobertura)
         uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -93,5 +90,5 @@ jobs:
             coverage/lcov-report/
           retention-days: 14
 
-      - name: Gate 8 — Next.js 16.3 Production Build (Webpack)
+      - name: Gate 7 — Next.js 16.3 Production Build (Webpack)
         run: npm run build
