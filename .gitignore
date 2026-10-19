@@ -61,3 +61,12 @@ data/medlineplus/raw/*.xml
 # test audio & benchmark artifacts
 data/test-audio/
 *.wav
+
+# temp chrome profiles from automated verification
+.tmp_chrome*
+
+# root test screenshots, benchmark reports, and superpowers directories
+/*.png
+/*.json
+.superpowers/
+docs/superpowers/

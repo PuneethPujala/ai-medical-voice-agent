@@ -3,6 +3,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { Plus_Jakarta_Sans, JetBrains_Mono } from "next/font/google";
 import { StrandsBackground } from "@/components/StrandsBackground";
 import { Navbar } from "./_components/Navbar";
+import { ConditionalNavigationShell } from "@/components/navigation/ConditionalNavigationShell";
 import { PageTransition } from "@/components/navigation/PageTransition";
 import "./globals.css";
 
@@ -37,10 +38,11 @@ export default function RootLayout({
       >
         <body className="min-h-full flex flex-col font-sans bg-[#F7F9FC] text-slate-900 relative">
           <StrandsBackground />
-          <Navbar />
-          <PageTransition>
-            {children}
-          </PageTransition>
+          <ConditionalNavigationShell>
+            <PageTransition>
+              {children}
+            </PageTransition>
+          </ConditionalNavigationShell>
         </body>
       </html>
     </ClerkProvider>
