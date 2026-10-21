@@ -632,8 +632,29 @@ export class ConversationInterpreter {
     if (opportunisticSev) {
       extracted.push({ slot: "severity", value: opportunisticSev });
     }
-    if (/chest|tightness|pressure|crushing|squeezing/i.test(lower)) {
-      extracted.push({ slot: "character", value: "tightness/pressure" });
+        const charRegex = /\b(tightness|pressure|squeezing|crushing|burning|sharp|heavy|elephant|cramp(?:ing)?|colic(?:ky)?|spasm|gnawing)\b/gi;
+    let matchedChar: string | null = null;
+    let charExec: RegExpExecArray | null;
+    while ((charExec = charRegex.exec(lower)) !== null) {
+      const word = charExec[1];
+      const startIndex = charExec.index;
+      const preceding = lower.slice(Math.max(0, startIndex - 45), startIndex);
+      const lastBoundary = Math.max(
+        preceding.lastIndexOf("."),
+        preceding.lastIndexOf(";"),
+        preceding.lastIndexOf("!"),
+        preceding.lastIndexOf("?"),
+        preceding.search(/\b(?:but|however|yet)\b/i)
+      );
+      const clausePrefix = lastBoundary >= 0 ? preceding.slice(lastBoundary) : preceding;
+      const isNegated = /\b(?:no|not|without|neither|never|denies|deny|free\s+of)\b/i.test(clausePrefix);
+      if (!isNegated) {
+        matchedChar = word;
+        break;
+      }
+    }
+    if (matchedChar) {
+      extracted.push({ slot: "character", value: matchedChar });
     }
     if (/throat\s+pain|sore\s+throat|throat\s+is\s+paining|throat\s+hurts?/i.test(lower)) {
       extracted.push({ slot: "chief_complaint", value: "throat pain" });
@@ -661,7 +682,28 @@ export class ConversationInterpreter {
     if (/slur|trouble\s+speaking|difficulty\s+speaking|slurred/i.test(lower)) {
       extracted.push({ slot: "neurological_signs", value: "speech difficulty" });
     }
-    if (/dizzy|dizziness|lightheaded/i.test(lower)) {
+    const dizzyRegex = /\b(dizzy|dizziness|lightheaded)\b/gi;
+    let matchedDizzy: string | null = null;
+    let dizzyExec: RegExpExecArray | null;
+    while ((dizzyExec = dizzyRegex.exec(lower)) !== null) {
+      const word = dizzyExec[1];
+      const startIndex = dizzyExec.index;
+      const preceding = lower.slice(Math.max(0, startIndex - 45), startIndex);
+      const lastBoundary = Math.max(
+        preceding.lastIndexOf("."),
+        preceding.lastIndexOf(";"),
+        preceding.lastIndexOf("!"),
+        preceding.lastIndexOf("?"),
+        preceding.search(/\b(?:but|however|yet)\b/i)
+      );
+      const clausePrefix = lastBoundary >= 0 ? preceding.slice(lastBoundary) : preceding;
+      const isNegated = /\b(?:no|not|without|neither|never|denies|deny|free\s+of)\b/i.test(clausePrefix);
+      if (!isNegated) {
+        matchedDizzy = word;
+        break;
+      }
+    }
+    if (matchedDizzy) {
       const isPostural = /\b(when\s+i\s+stand|after\s+i\s+sat|standing\s+up|getting\s+up|sitting\s+for\s+long)\b/i.test(lower);
       extracted.push({
         slot: "character",

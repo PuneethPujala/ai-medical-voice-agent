@@ -3,6 +3,7 @@ import { POST as postVoiceChat } from "../../app/api/voice/chat/route";
 import { DEFAULT_INTERNAL_TEST_SECRET, INTERNAL_TEST_SECRET_HEADER, Role } from "../../lib/auth/rbac";
 import { ClinicalInterviewState } from "../../lib/triage/conversation-manager";
 import { memoryConsultations } from "../../app/api/consultations/route";
+import { setCustomDbClient } from "../../config/db";
 import * as dotenv from "dotenv";
 
 dotenv.config({ path: ".env.local" });
@@ -308,6 +309,9 @@ async function runRouteVoiceChatDialogueTests() {
     const encounterId = `ENC-SERVER-AUTH-${Date.now()}`;
     const testEncounterUser = `user-server-auth-${Date.now()}`;
 
+    // Ensure test isolation: force in-memory fallback for memoryConsultations unit test
+    setCustomDbClient(undefined);
+
     // Seed authoritative encounter (encounters cannot be arbitrarily auto-created by client ID)
     memoryConsultations.push({
       id: encounterId,
@@ -368,6 +372,7 @@ async function runRouteVoiceChatDialogueTests() {
       `Expected Turn 2 to retain Turn 1 facts from server-persisted state, transcript: "${turn2Transcript}"`
     );
     console.log("  ✓ Server-authoritative encounter state successfully persisted and retrieved turn-by-turn without client reliance.");
+    setCustomDbClient(null);
     passedTests++;
   }
 
