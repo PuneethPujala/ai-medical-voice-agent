@@ -48,6 +48,39 @@ export interface SemanticInterpretation {
   confidence: number;
 }
 
+/**
+ * Scans a lowercase utterance for a regex match that is NOT negated within its local clause.
+ * Evaluates preceding clause tokens (after clause boundaries like '.', ';', '!', '?', 'but', 'however', 'yet')
+ * for negation tokens ('no', 'not', 'without', 'neither', 'never', 'denies', 'deny', 'free of'),
+ * as well as post-positioned resolution phrases ('yesterday but not now', 'resolved', 'gone').
+ */
+export function findNonNegatedMatch(lowerText: string, regex: RegExp, windowChars = 55): RegExpExecArray | null {
+  regex.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(lowerText)) !== null) {
+    const startIndex = match.index;
+    const preceding = lowerText.slice(Math.max(0, startIndex - windowChars), startIndex);
+    const lastBoundary = Math.max(
+      preceding.lastIndexOf("."),
+      preceding.lastIndexOf(";"),
+      preceding.lastIndexOf("!"),
+      preceding.lastIndexOf("?"),
+      preceding.search(/\b(?:but|however|yet)\b/i)
+    );
+    const clausePrefix = lastBoundary >= 0 ? preceding.slice(lastBoundary) : preceding;
+    const preNegated = /\b(?:no|not|without|neither|never|denies|deny|free\s+of)\b/i.test(clausePrefix);
+
+    const following = lowerText.slice(startIndex, Math.min(lowerText.length, startIndex + 50));
+    const postNegated = /\b(?:yesterday|past|earlier|before)\b.*?\b(?:not\s+now|resolved|gone|settled)\b/i.test(following) ||
+                        /^[a-z\s,]{0,30}\b(?:not\s+now|is\s+gone|has\s+resolved|resolved|gone|settled)\b/i.test(following);
+
+    if (!preNegated && !postNegated) {
+      return match;
+    }
+  }
+  return null;
+}
+
 export class ConversationInterpreter {
   public interpret(
     utterance: string,
@@ -633,42 +666,23 @@ export class ConversationInterpreter {
       extracted.push({ slot: "severity", value: opportunisticSev });
     }
         const charRegex = /\b(tightness|pressure|squeezing|crushing|burning|sharp|heavy|elephant|cramp(?:ing)?|colic(?:ky)?|spasm|gnawing)\b/gi;
-    let matchedChar: string | null = null;
-    let charExec: RegExpExecArray | null;
-    while ((charExec = charRegex.exec(lower)) !== null) {
-      const word = charExec[1];
-      const startIndex = charExec.index;
-      const preceding = lower.slice(Math.max(0, startIndex - 45), startIndex);
-      const lastBoundary = Math.max(
-        preceding.lastIndexOf("."),
-        preceding.lastIndexOf(";"),
-        preceding.lastIndexOf("!"),
-        preceding.lastIndexOf("?"),
-        preceding.search(/\b(?:but|however|yet)\b/i)
-      );
-      const clausePrefix = lastBoundary >= 0 ? preceding.slice(lastBoundary) : preceding;
-      const isNegated = /\b(?:no|not|without|neither|never|denies|deny|free\s+of)\b/i.test(clausePrefix);
-      if (!isNegated) {
-        matchedChar = word;
-        break;
-      }
-    }
+    const matchedChar = findNonNegatedMatch(lower, charRegex);
     if (matchedChar) {
-      extracted.push({ slot: "character", value: matchedChar });
+      extracted.push({ slot: "character", value: matchedChar[1] });
     }
-    if (/throat\s+pain|sore\s+throat|throat\s+is\s+paining|throat\s+hurts?/i.test(lower)) {
+    if (findNonNegatedMatch(lower, /throat\s+pain|sore\s+throat|throat\s+is\s+paining|throat\s+hurts?/gi)) {
       extracted.push({ slot: "chief_complaint", value: "throat pain" });
     }
-    if (/stomach\s+ache|stomach\s+pain|abdominal\s+pain|belly\s+ache/i.test(lower)) {
+    if (findNonNegatedMatch(lower, /stomach\s+ache|stomach\s+pain|abdominal\s+pain|belly\s+ache/gi)) {
       extracted.push({ slot: "chief_complaint", value: "abdominal pain" });
     }
-    if (/headache|migraine|head\s+pain/i.test(lower)) {
+    if (findNonNegatedMatch(lower, /headache|migraine|head\s+pain/gi)) {
       extracted.push({ slot: "chief_complaint", value: "headache" });
     }
-    if (/voice\s+has\s+been\s+ruined|voice\s+changed|voice\s+is\s+different|lost\s+my\s+voice|hoarse|hoarseness/i.test(lower)) {
+    if (findNonNegatedMatch(lower, /voice\s+has\s+been\s+ruined|voice\s+changed|voice\s+is\s+different|lost\s+my\s+voice|hoarse|hoarseness/gi)) {
       extracted.push({ slot: "associated_symptoms", value: "voice change" });
     }
-    if (/sweat|clammy|diaphoresis/i.test(lower)) {
+    if (findNonNegatedMatch(lower, /sweat|clammy|diaphoresis/gi)) {
       extracted.push({ slot: "associated_symptoms", value: "cold sweats/diaphoresis" });
     }
     for (const gi of extractGiAssociatedSymptoms(lower)) {
@@ -676,33 +690,14 @@ export class ConversationInterpreter {
         extracted.push({ slot: "associated_symptoms", value: gi.name === "diarrhea" ? "diarrhea" : gi.name.replace(/_/g, " ") });
       }
     }
-    if (/droop|facial\s+droop/i.test(lower)) {
+    if (findNonNegatedMatch(lower, /droop|facial\s+droop/gi)) {
       extracted.push({ slot: "neurological_signs", value: "facial droop" });
     }
-    if (/slur|trouble\s+speaking|difficulty\s+speaking|slurred/i.test(lower)) {
+    if (findNonNegatedMatch(lower, /slur|trouble\s+speaking|difficulty\s+speaking|slurred/gi)) {
       extracted.push({ slot: "neurological_signs", value: "speech difficulty" });
     }
     const dizzyRegex = /\b(dizzy|dizziness|lightheaded)\b/gi;
-    let matchedDizzy: string | null = null;
-    let dizzyExec: RegExpExecArray | null;
-    while ((dizzyExec = dizzyRegex.exec(lower)) !== null) {
-      const word = dizzyExec[1];
-      const startIndex = dizzyExec.index;
-      const preceding = lower.slice(Math.max(0, startIndex - 45), startIndex);
-      const lastBoundary = Math.max(
-        preceding.lastIndexOf("."),
-        preceding.lastIndexOf(";"),
-        preceding.lastIndexOf("!"),
-        preceding.lastIndexOf("?"),
-        preceding.search(/\b(?:but|however|yet)\b/i)
-      );
-      const clausePrefix = lastBoundary >= 0 ? preceding.slice(lastBoundary) : preceding;
-      const isNegated = /\b(?:no|not|without|neither|never|denies|deny|free\s+of)\b/i.test(clausePrefix);
-      if (!isNegated) {
-        matchedDizzy = word;
-        break;
-      }
-    }
+    const matchedDizzy = findNonNegatedMatch(lower, dizzyRegex);
     if (matchedDizzy) {
       const isPostural = /\b(when\s+i\s+stand|after\s+i\s+sat|standing\s+up|getting\s+up|sitting\s+for\s+long)\b/i.test(lower);
       extracted.push({
@@ -715,21 +710,18 @@ export class ConversationInterpreter {
       }
     }
     // Independent extraction for weakness vs numbness — NEVER conflate!
-    const hasWeak = /\b(weak|weakness|cannot\s+lift|arm\s+weak|leg\s+weak|drift|paralysis)\b/i.test(lower) && !/\b(no\s+weak|neither)\b/i.test(lower);
-    const hasNumb = /\b(numb|numbness|pins\s+and\s+needles|tingl(?:ing|e)?)\b/i.test(lower) && !/\b(no\s+numb|neither)\b/i.test(lower);
-    if (hasWeak) {
+    if (findNonNegatedMatch(lower, /\b(weak|weakness|cannot\s+lift|arm\s+weak|leg\s+weak|drift|paralysis)\b/gi)) {
       extracted.push({ slot: "neurological_signs", value: "weakness" });
     }
-    if (hasNumb) {
+    if (findNonNegatedMatch(lower, /\b(numb|numbness|pins\s+and\s+needles|tingl(?:ing|e)?)\b/gi)) {
       extracted.push({ slot: "neurological_signs", value: "numbness" });
     }
-    if (/\b(neck\s+stiff|stiff\s+neck|nuchal\s+rigidity)\b/i.test(lower)) {
+    if (findNonNegatedMatch(lower, /\b(neck\s+stiff|stiff\s+neck|nuchal\s+rigidity)\b/gi)) {
       extracted.push({ slot: "neurological_signs", value: "neck stiffness" });
     }
-    if (/\b(photophob|light\s+sensitiv|bright\s+lights?\s+(?:really\s+)?(?:hurt|bother)|lights?\s+(?:hurt|bother))\b/i.test(lower)) {
+    if (findNonNegatedMatch(lower, /\b(photophob|light\s+sensitiv|bright\s+lights?\s+(?:really\s+)?(?:hurt|bother)|lights?\s+(?:hurt|bother))\b/gi)) {
       extracted.push({ slot: "associated_symptoms", value: "photophobia" });
     }
-
     // Positional exacerbation / orthostatic headache pattern
     if (/\b(?:severe\s+when\s+i\s+stand|worse\s+when\s+standing|standing\s+up\s+and\s+walk)\b/i.test(lower)) {
       extracted.push({ slot: "severity_pattern", value: "constant baseline, severe upon standing/walking" });
