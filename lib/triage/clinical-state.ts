@@ -982,7 +982,7 @@ export function extractNumericSeverity(text: string, isSeverityPrompt: boolean =
   // 3. Conversational / qualified ratings:
   // e.g. "I'd say an eight", "probably an 8", "maybe an 8", "it's about an 8", "around an 8", "maybe 8", "probably 8"
   const qualifiedMatch = lower.match(
-    /\b(?:i'd\s+say|i\s+would\s+say|probably|maybe|around|about|it's\s+about|like)\s+(?:an?\s+)?([0-9]|10|zero|one|two|three|four|five|six|seven|eight|nine|ten)\b/i
+    /\b(?:i'd\s+say|i\s+would\s+say|probably|maybe|around|about|it's\s+about|like)\s+(?:an?\s+)?([0-9]|10|zero|one|two|three|four|five|six|seven|eight|nine|ten)\b(?!\s*(?:(?:to|or|-)\s*(?:[0-9]|10|zero|one|two|three|four|five|six|seven|eight|nine|ten)\s*)?(?:days?|hours?|weeks?|months?|minutes?|seconds?|years?|mins?|hrs?|am|pm|o'?clock|times?|episodes?|rounds?|bottles?|tablets?|pills?)\b)/i
   );
   if (qualifiedMatch) {
     const rawVal = qualifiedMatch[1].toLowerCase();
