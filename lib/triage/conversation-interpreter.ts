@@ -537,38 +537,92 @@ export class ConversationInterpreter {
 
       // Check Swallowing Difficulty slot
       if (targetSlot === "swallowing_difficulty") {
-        const isDenied = /\b(no|nope|not|neither|no\s+trouble|can\s+swallow|fine)\b/i.test(lower);
-        const val = isDenied ? "denied" : "difficulty swallowing";
-        return {
-          rawUtterance: text,
-          intent: "answer_pending_question",
-          resolvedQuestionId: pendingQuestion.id,
-          resolvedSlot: "swallowing_difficulty",
-          resolvedValue: val,
-          isConfirmationOrRepetition: false,
-          isEmergencyInquiry: false,
-          newEvidence: [{ slot: "swallowing_difficulty", value: val }],
-          ambiguities: [],
-          confidence: 0.95,
-        };
+        const hasSpecificDenial =
+          /\b(?:no|not|neither|without|no\s+trouble|no\s+problem|no\s+issue|can\s+swallow\s+(?:fine|ok|normally))\s+(?:trouble\s+swallowing|difficulty\s+swallowing|problems?\s+swallowing|dysphagia)\b/i.test(lower) ||
+          /^(?:no|nope|not\s+really|neither|none|nothing|nothing\s+with\s+that|nothing\s+like\s+that|no\s+(?:trouble|problem|issue)\s+with\s+that|none\s+of\s+that)[.!?\s]*$/i.test(lower) ||
+          /\b(?:nothing\s+with\s+that|nothing\s+like\s+that|no\s+trouble\s+with\s+that|no\s+issues?\s+with\s+that|none\s+of\s+that|swallow(?:ing)?\s+is\s+(?:fine|ok|normal)|can\s+swallow\s+(?:fine|liquids|normally))\b/i.test(lower);
+        const hasSpecificComplaint = /\b(trouble\s+swallowing|difficulty\s+swallowing|hard\s+to\s+swallow|cannot\s+swallow|can't\s+swallow|choking|dysphagia)\b/i.test(lower);
+        const hasOdynophagiaOnly = /\b(?:hurts?|painful|pain|burning|sharp)\s+(?:when\s+(?:i\s+)?swallow|to\s+swallow|swallowing)\b/i.test(lower) ||
+          /\b(?:when\s+(?:i\s+)?swallow|swallowing)\s+(?:it\s+)?(?:hurts?|is\s+painful)\b/i.test(lower);
+        const hasAffirmative = /^(?:yes|yeah|yep|definitely|i do|i am|it does|it is|somewhat|a lot|very much)[.!?\s]*$/i.test(lower) ||
+          (/\b(?:yes|yeah|yep)\b/i.test(lower) && /\b(?:swallow|liquid|saliva|stuck)\b/i.test(lower));
+
+        if (hasSpecificDenial) {
+          return {
+            rawUtterance: text,
+            intent: "answer_pending_question",
+            resolvedQuestionId: pendingQuestion.id,
+            resolvedSlot: "swallowing_difficulty",
+            resolvedValue: "denied",
+            isConfirmationOrRepetition: false,
+            isEmergencyInquiry: false,
+            newEvidence: [{ slot: "swallowing_difficulty", value: "denied" }],
+            ambiguities: [],
+            confidence: 0.95,
+          };
+        } else if (hasSpecificComplaint || hasAffirmative) {
+          return {
+            rawUtterance: text,
+            intent: "answer_pending_question",
+            resolvedQuestionId: pendingQuestion.id,
+            resolvedSlot: "swallowing_difficulty",
+            resolvedValue: "difficulty swallowing",
+            isConfirmationOrRepetition: false,
+            isEmergencyInquiry: false,
+            newEvidence: [{ slot: "swallowing_difficulty", value: "difficulty swallowing" }],
+            ambiguities: [],
+            confidence: 0.95,
+          };
+        } else if (hasOdynophagiaOnly) {
+          return {
+            rawUtterance: text,
+            intent: "answer_pending_question",
+            resolvedQuestionId: pendingQuestion.id,
+            resolvedSlot: "odynophagia",
+            resolvedValue: "painful swallowing",
+            isConfirmationOrRepetition: false,
+            isEmergencyInquiry: false,
+            newEvidence: [{ slot: "odynophagia", value: "painful swallowing" }],
+            ambiguities: [],
+            confidence: 0.95,
+          };
+        }
       }
 
       // Check Fever slot
       if (targetSlot === "fever") {
-        const isDenied = /\b(no|nope|not|neither|haven'?t|no\s+fever)\b/i.test(lower);
-        const val = isDenied ? "denied" : "fever reported";
-        return {
-          rawUtterance: text,
-          intent: "answer_pending_question",
-          resolvedQuestionId: pendingQuestion.id,
-          resolvedSlot: "fever",
-          resolvedValue: val,
-          isConfirmationOrRepetition: false,
-          isEmergencyInquiry: false,
-          newEvidence: [{ slot: "fever", value: val }],
-          ambiguities: [],
-          confidence: 0.95,
-        };
+        const hasDenial = /\b(no\s+fever|haven'?t\s+had\s+(?:a\s+|any\s+)?fever|don'?t\s+have\s+(?:a\s+|any\s+)?fever|without\s+(?:a\s+|any\s+)?fever|no\s+temperature|denies\s+fever)\b/i.test(lower) ||
+          /^(?:no|nope|neither|none|not\s+really)[.!?\s]*$/i.test(lower);
+        const hasFever = /\b(fever|chills|temperature|feverish|sweats|sweating|burning\s+up)\b/i.test(lower) && !hasDenial;
+        const hasAffirmative = /^(?:yes|yeah|yep|definitely|i do|i have)[.!?\s]*$/i.test(lower);
+
+        if (hasDenial) {
+          return {
+            rawUtterance: text,
+            intent: "answer_pending_question",
+            resolvedQuestionId: pendingQuestion.id,
+            resolvedSlot: "fever",
+            resolvedValue: "denied",
+            isConfirmationOrRepetition: false,
+            isEmergencyInquiry: false,
+            newEvidence: [{ slot: "fever", value: "denied" }],
+            ambiguities: [],
+            confidence: 0.95,
+          };
+        } else if (hasFever || hasAffirmative) {
+          return {
+            rawUtterance: text,
+            intent: "answer_pending_question",
+            resolvedQuestionId: pendingQuestion.id,
+            resolvedSlot: "fever",
+            resolvedValue: "fever reported",
+            isConfirmationOrRepetition: false,
+            isEmergencyInquiry: false,
+            newEvidence: [{ slot: "fever", value: "fever reported" }],
+            ambiguities: [],
+            confidence: 0.95,
+          };
+        }
       }
 
       // Check Severity slot
@@ -722,7 +776,7 @@ export class ConversationInterpreter {
         value: val,
         assertionStatus: hedged ? "uncertain" : "present",
       });
-    } else if (/\b(?:no\s+fever|not\s+feverish|without\s+(?:any\s+)?fever|denies?\s+fever|never\s+had\s+fever)\b/i.test(lower)) {
+    } else if (/\b(?:no\s+fever|not\s+feverish|without\s+(?:any\s+)?fever|haven'?t\s+had\s+(?:a\s+|any\s+)?fever|don'?t\s+have\s+(?:a\s+|any\s+)?fever|denies?\s+fever|never\s+had\s+(?:a\s+|any\s+)?fever)\b/i.test(lower)) {
       extracted.push({
         slot: "fever",
         value: "denied",

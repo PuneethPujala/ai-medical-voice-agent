@@ -11,7 +11,7 @@ export function setCustomDbClient(client: any) {
 
 export function getDb(): DbClient | null {
   if (customDbClient !== null) {
-    return customDbClient as DbClient;
+    return customDbClient ? (customDbClient as DbClient) : null;
   }
   if (!process.env.DATABASE_URL) {
     return null;

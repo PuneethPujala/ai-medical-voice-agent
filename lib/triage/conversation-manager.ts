@@ -620,7 +620,7 @@ export class ConversationManager {
 
       // H. FEVER
       if (slot === "fever") {
-        const hasSpecificDenial = /\b(no\s+fever|haven'?t\s+had\s+(?:a\s+)?fever|without\s+fever|no\s+temperature|denies\s+fever)\b/i.test(textLower) ||
+        const hasSpecificDenial = /\b(no\s+fever|haven'?t\s+had\s+(?:a\s+|any\s+)?fever|don'?t\s+have\s+(?:a\s+|any\s+)?fever|without\s+(?:a\s+|any\s+)?fever|no\s+temperature|denies\s+fever)\b/i.test(textLower) ||
           /^(?:no|nope|neither|none)[.!?\s]*$/i.test(textLower);
         const hasSpecificFever = /\b(fever|chills|temperature|feverish)\b/i.test(textLower) && !hasSpecificDenial;
         return { intent: "answer_question", resolvedSlot: "fever", resolvedValue: hasSpecificDenial ? "denied" : (hasSpecificFever ? "fever reported" : "denied") };
@@ -710,7 +710,7 @@ export class ConversationManager {
       return { intent: "answer_question", resolvedSlot: "severity", resolvedValue: sevMatch };
     }
 
-    if (/\b(no\s+fever|haven'?t\s+had\s+(?:a\s+)?fever|without\s+fever|denies\s+fever)\b/i.test(textLower)) {
+    if (/\b(no\s+fever|haven'?t\s+had\s+(?:a\s+|any\s+)?fever|don'?t\s+have\s+(?:a\s+|any\s+)?fever|without\s+(?:a\s+|any\s+)?fever|denies\s+fever)\b/i.test(textLower)) {
       return { intent: "answer_question", resolvedSlot: "fever", resolvedValue: "denied" };
     }
 
@@ -1067,23 +1067,37 @@ export class ConversationManager {
 
         if (val === "denied" || val === "negative") {
           const questionText = state.pendingQuestion?.question?.toLowerCase() || "";
+          const msgLower = cleanMsg.toLowerCase();
+          const isBlanketDenial = /^(?:no|nope|neither|none|nothing|none\s+of\s+(?:those|that|them|it))[.!?\s]*$/i.test(msgLower);
           const deniedList: string[] = [];
-          if (/droop/i.test(questionText)) deniedList.push("facial drooping");
-          if (/speech|words|speak|slur/i.test(questionText)) deniedList.push("speech difficulty");
-          if (/vision|see|blurry/i.test(questionText)) deniedList.push("vision changes");
-          if (/weakness|arms?\s+or\s+legs?/i.test(questionText)) deniedList.push("unilateral weakness");
-          if (/numbness/i.test(questionText)) deniedList.push("numbness");
-          if (/sweat|clammy/i.test(questionText)) deniedList.push("cold sweating");
-          if (/shortness\s+of\s+breath|breathing/i.test(questionText)) deniedList.push("shortness of breath");
-          if (/nausea|vomit/i.test(questionText)) deniedList.push("nausea");
-          if (/swallow/i.test(questionText) || slot === "swallowing_difficulty") deniedList.push("swallowing_difficulty");
-          if (/fever|chills/i.test(questionText) || slot === "fever") deniedList.push("fever");
-          if (/ear/i.test(questionText) || slot === "ear_pain") deniedList.push("ear_pain");
-          if (/rash|bleeding|spots|bruising/i.test(questionText) || slot === "rash_bleeding") deniedList.push("rash_bleeding");
-          if (/trismus|jaw/i.test(questionText) || slot === "trismus") deniedList.push("trismus");
 
-          if (deniedList.length === 0 && !NON_DENIABLE_SLOTS.has(slot)) {
-            deniedList.push(slot);
+          if (isBlanketDenial) {
+            if (/droop/i.test(questionText)) deniedList.push("facial drooping");
+            if (/speech|words|speak|slur/i.test(questionText)) deniedList.push("speech difficulty");
+            if (/vision|see|blurry/i.test(questionText)) deniedList.push("vision changes");
+            if (/weakness|arms?\s+or\s+legs?/i.test(questionText)) deniedList.push("unilateral weakness");
+            if (/numbness/i.test(questionText)) deniedList.push("numbness");
+            if (/sweat|clammy/i.test(questionText)) deniedList.push("cold sweating");
+            if (/shortness\s+of\s+breath|breathing/i.test(questionText)) deniedList.push("shortness of breath");
+            if (/nausea|vomit/i.test(questionText)) deniedList.push("nausea");
+            if (/swallow/i.test(questionText)) deniedList.push("swallowing_difficulty");
+            if (/fever|chills/i.test(questionText)) deniedList.push("fever");
+            if (/ear/i.test(questionText)) deniedList.push("ear_pain");
+            if (/rash|bleeding|spots|bruising/i.test(questionText)) deniedList.push("rash_bleeding");
+            if (/trismus|jaw/i.test(questionText)) deniedList.push("trismus");
+          } else {
+            if (slot && !NON_DENIABLE_SLOTS.has(slot)) {
+              deniedList.push(slot);
+            }
+            if (/\b(?:no|haven'?t\s+had|without|don'?t\s+have|denies?)\s+(?:a\s+|any\s+)?fever\b/i.test(msgLower)) {
+              if (!deniedList.includes("fever")) deniedList.push("fever");
+            }
+            if (/\b(?:no|without|denies?)\s+(?:any\s+)?nausea\b/i.test(msgLower)) {
+              if (!deniedList.includes("nausea")) deniedList.push("nausea");
+            }
+            if (/\b(?:no|without|denies?)\s+(?:any\s+)?(?:trouble\s+swallowing|difficulty\s+swallowing)\b/i.test(msgLower)) {
+              if (!deniedList.includes("swallowing_difficulty")) deniedList.push("swallowing_difficulty");
+            }
           }
 
           if (deniedList.length > 0) {
@@ -1710,23 +1724,37 @@ export class ConversationManager {
 
       if (val === "denied" || val === "negative") {
         const questionText = state.pendingQuestion?.question?.toLowerCase() || "";
+        const msgLower = cleanMsg.toLowerCase();
+        const isBlanketDenial = /^(?:no|nope|neither|none|nothing|none\s+of\s+(?:those|that|them|it))[.!?\s]*$/i.test(msgLower);
         const deniedList: string[] = [];
-        if (/droop/i.test(questionText)) deniedList.push("facial drooping");
-        if (/speech|words|speak|slur/i.test(questionText)) deniedList.push("speech difficulty");
-        if (/vision|see|blurry/i.test(questionText)) deniedList.push("vision changes");
-        if (/weakness|arms?\s+or\s+legs?/i.test(questionText)) deniedList.push("unilateral weakness");
-        if (/numbness/i.test(questionText)) deniedList.push("numbness");
-        if (/sweat|clammy/i.test(questionText)) deniedList.push("cold sweating");
-        if (/shortness\s+of\s+breath|breathing/i.test(questionText)) deniedList.push("shortness of breath");
-        if (/nausea|vomit/i.test(questionText)) deniedList.push("nausea");
-        if (/swallow/i.test(questionText) || slot === "swallowing_difficulty") deniedList.push("swallowing_difficulty");
-        if (/fever|chills/i.test(questionText) || slot === "fever") deniedList.push("fever");
-        if (/ear/i.test(questionText) || slot === "ear_pain") deniedList.push("ear_pain");
-        if (/rash|bleeding|spots|bruising/i.test(questionText) || slot === "rash_bleeding") deniedList.push("rash_bleeding");
-        if (/trismus|jaw/i.test(questionText) || slot === "trismus") deniedList.push("trismus");
 
-        if (deniedList.length === 0 && !NON_DENIABLE_SLOTS.has(slot)) {
-          deniedList.push(slot);
+        if (isBlanketDenial) {
+          if (/droop/i.test(questionText)) deniedList.push("facial drooping");
+          if (/speech|words|speak|slur/i.test(questionText)) deniedList.push("speech difficulty");
+          if (/vision|see|blurry/i.test(questionText)) deniedList.push("vision changes");
+          if (/weakness|arms?\s+or\s+legs?/i.test(questionText)) deniedList.push("unilateral weakness");
+          if (/numbness/i.test(questionText)) deniedList.push("numbness");
+          if (/sweat|clammy/i.test(questionText)) deniedList.push("cold sweating");
+          if (/shortness\s+of\s+breath|breathing/i.test(questionText)) deniedList.push("shortness of breath");
+          if (/nausea|vomit/i.test(questionText)) deniedList.push("nausea");
+          if (/swallow/i.test(questionText)) deniedList.push("swallowing_difficulty");
+          if (/fever|chills/i.test(questionText)) deniedList.push("fever");
+          if (/ear/i.test(questionText)) deniedList.push("ear_pain");
+          if (/rash|bleeding|spots|bruising/i.test(questionText)) deniedList.push("rash_bleeding");
+          if (/trismus|jaw/i.test(questionText)) deniedList.push("trismus");
+        } else {
+          if (slot && !NON_DENIABLE_SLOTS.has(slot)) {
+            deniedList.push(slot);
+          }
+          if (/\b(?:no|haven'?t\s+had|without|don'?t\s+have|denies?)\s+(?:a\s+|any\s+)?fever\b/i.test(msgLower)) {
+            if (!deniedList.includes("fever")) deniedList.push("fever");
+          }
+          if (/\b(?:no|without|denies?)\s+(?:any\s+)?nausea\b/i.test(msgLower)) {
+            if (!deniedList.includes("nausea")) deniedList.push("nausea");
+          }
+          if (/\b(?:no|without|denies?)\s+(?:any\s+)?(?:trouble\s+swallowing|difficulty\s+swallowing)\b/i.test(msgLower)) {
+            if (!deniedList.includes("swallowing_difficulty")) deniedList.push("swallowing_difficulty");
+          }
         }
 
         if (deniedList.length > 0) {
@@ -2687,6 +2715,23 @@ export class ConversationManager {
       if (!state.slots.known_facts.some(f => /photophobia/i.test(f))) {
         state.slots.known_facts.push("PHOTOPHOBIA: light sensitivity present");
       }
+    }
+
+    // Prune answered/denied dimensions from unansweredDimensions
+    if (state.structuredHistory?.unansweredDimensions && state.structuredHistory.unansweredDimensions.length > 0) {
+      const denied = new Set(state.conversationMemory?.deniedSymptoms || []);
+      state.structuredHistory.unansweredDimensions = state.structuredHistory.unansweredDimensions.filter(dim => {
+        const dimLower = dim.toLowerCase().trim();
+        if (denied.has(dim) || denied.has(dimLower)) return false;
+        if (Array.from(denied).some(d => isTargetSlotMatch(dim, d))) return false;
+        if (dimLower === "fever" && (hasFeverDenial || hasFeverPresent)) return false;
+        if ((dimLower === "swallowing_difficulty" || dimLower === "dysphagia") && (hasDysphagiaComplaint || hasDysphagiaDenial || hasOdynophagia)) return false;
+        if (dimLower === "ear_pain" && (hasEarDenial || hasEarPresent)) return false;
+        if (dimLower === "photophobia" && (hasPhotoDenial || hasPhotoPresent)) return false;
+        if (dimLower === "neck_stiffness" && /\b(no\s+neck\s+stiffness|no\s+stiff\s+neck|neck\s+is\s+fine|neck\s+moves\s+fine|without\s+(?:any\s+)?neck\s+stiffness)\b/i.test(state.cumulativeTranscript)) return false;
+        if (dimLower === "nausea" && /\b(no\s+nausea|not\s+nauseous|haven'?t\s+felt\s+sick|no\s+vomiting|without\s+nausea)\b/i.test(state.cumulativeTranscript)) return false;
+        return true;
+      });
     }
   }
 

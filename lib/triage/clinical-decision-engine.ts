@@ -971,13 +971,21 @@ function extractVerbatimSymptomPhrase(text: string, defaultPhrase = "chest pain"
 
     // CASE 6: Patient reports a Temporal Shift ("A few days later...", "After three days")
     if (classification.intent === "TEMPORAL_UPDATE") {
-      const phrase = classification.extractedEntities.temporalPhrase || "later on";
-      const reply = `Let's clarify the timeline. When you say "${phrase}", are you saying the facial drooping and weakness continued over those days, or is this something that happened in the past?`;
+      if (isNeuro) {
+        const phrase = classification.extractedEntities.temporalPhrase || "later on";
+        const reply = `Let's clarify the timeline. When you say "${phrase}", are you saying the facial drooping and weakness continued over those days, or is this something that happened in the past?`;
+        return {
+          action: "CLARIFY_TIMELINE",
+          spokenDoctorReply: this.guardAgainstRepetition(reply, recentReplies, "timeline shift neuro"),
+          doctorName: "Dr. Sarah Chen, MD",
+          specialty: "Internal Medicine & Critical Care Lead"
+        };
+      }
       return {
-        action: "CLARIFY_TIMELINE",
-        spokenDoctorReply: this.guardAgainstRepetition(reply, recentReplies, "timeline shift"),
+        action: "ADVANCE_INTERVIEW",
+        spokenDoctorReply: "",
         doctorName: "Dr. Sarah Chen, MD",
-        specialty: "Internal Medicine & Critical Care Lead"
+        specialty: "Internal Medicine & Primary Triage"
       };
     }
 

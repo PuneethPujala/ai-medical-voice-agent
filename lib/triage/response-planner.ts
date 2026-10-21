@@ -367,6 +367,10 @@ export class ResponsePlanner {
       if (topLower === "location" || topLower === "abdominal_location") {
         return Boolean(state.slots.location) || state.slots.known_facts.some(f => /^Abdominal location:/i.test(f));
       }
+      if (topLower === "voice_character") {
+        return state.slots.known_facts.some(f => /hoarse|raspy|husky|whisper|aphonia|loss\s+of\s+voice|producing\s+voice/i.test(f)) ||
+          /\b(hoarse|raspy|husky|whisper|aphonia|cannot\s+produce\s+voice|difficulty\s+producing\s+voice)\b/i.test(state.cumulativeTranscript);
+      }
       if (topLower === "associated_symptoms" || topLower === "associated_general") {
         return state.slots.associated_symptoms.length > 0;
       }
