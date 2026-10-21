@@ -1,5 +1,6 @@
 import { PendingQuestion } from "../agents/schemas";
 import { extractNumericSeverity, extractEpisodicSeverity, extractGiAssociatedSymptoms, NON_DENIABLE_SLOTS, detectQuestionTargetSlot, parseOnsetDimensions } from "./clinical-state";
+import { FactProposal } from "./fact-types";
 
 export type PatientIntent =
   | "answer_pending_question"
@@ -42,12 +43,24 @@ export interface SemanticInterpretation {
   extractedFrequency?: string;
   extractedRiskFactors?: string;
   newEvidence: Array<{ slot: string; value: string }>;
+  proposals?: FactProposal[];
   ambiguities: string[];
   confidence: number;
 }
 
 export class ConversationInterpreter {
   public interpret(
+    utterance: string,
+    pendingQuestion: PendingQuestion | null = null,
+    currentSlots: Record<string, any> = {},
+    isEmergencyActive = false
+  ): SemanticInterpretation {
+    const result = this.internalInterpret(utterance, pendingQuestion, currentSlots, isEmergencyActive);
+    result.proposals = this.generateFactProposals(result, utterance, pendingQuestion, currentSlots);
+    return result;
+  }
+
+  private internalInterpret(
     utterance: string,
     pendingQuestion: PendingQuestion | null = null,
     currentSlots: Record<string, any> = {},
@@ -319,10 +332,10 @@ export class ConversationInterpreter {
       };
     }
 
-    // 3.14 Detect Uncertainty / Unknown ("I don't know", "Not really sure", "Hard to tell")
+    // 3.14 Detect Uncertainty / Unknown ("I don't know", "Not really sure", "Hard to tell", "can't tell")
     const isUncertainty =
-      /^(?:i\s+don'?t\s+know|not\s+sure|hard\s+to\s+tell|no\s+idea|can'?t\s+remember|not\s+really\s+sure)[.!?\s]*$/i.test(lower) ||
-      /\b(i\s+don'?t\s+know|not\s+really\s+sure|hard\s+to\s+say|cannot\s+tell)\b/i.test(lower);
+      /^(?:i\s+don'?t\s+know|not\s+sure|hard\s+to\s+tell|no\s+idea|can'?t\s+remember|not\s+really\s+sure|really\s+not\s+sure)[.!?\s]*$/i.test(lower) ||
+      /\b(i\s+don'?t\s+know|not\s+(?:really\s+)?sure|(?:really\s+)?not\s+sure|hard\s+to\s+(?:say|tell)|can(?:not|'?t)\s+tell|cannot\s+say|no\s+idea|can'?t\s+remember)\b/i.test(lower);
     if (isUncertainty) {
       return {
         rawUtterance: text,
@@ -563,6 +576,8 @@ export class ConversationInterpreter {
         if (/\b(slur|speech|talk|words)\b/i.test(lower)) signs.push("speech difficulty");
         if (/\b(vision|blurry|double\s+vision|diplopia)\b/i.test(lower)) signs.push("vision changes");
         if (/\b(dizz|dizzy|lightheaded|vertigo)\b/i.test(lower)) signs.push("dizziness");
+        if (/\b(neck\s+stiff|stiff\s+neck|nuchal\s+rigidity)\b/i.test(lower)) signs.push("neck stiffness");
+        if (/\b(photophob|light\s+sensitiv|bright\s+lights?\s+(?:really\s+)?(?:hurt|bother)|lights?\s+(?:hurt|bother))\b/i.test(lower)) signs.push("photophobia");
 
         const isExplicitDenial = /^(?:no|none|neither|nope|normal|denies)[.!?\s]*$/i.test(lower);
         const val = isExplicitDenial ? "denied" : signs.length > 0 ? signs.join(", ") : text;
@@ -617,8 +632,29 @@ export class ConversationInterpreter {
     if (opportunisticSev) {
       extracted.push({ slot: "severity", value: opportunisticSev });
     }
-    if (/chest|tightness|pressure|crushing|squeezing/i.test(lower)) {
-      extracted.push({ slot: "character", value: "tightness/pressure" });
+        const charRegex = /\b(tightness|pressure|squeezing|crushing|burning|sharp|heavy|elephant|cramp(?:ing)?|colic(?:ky)?|spasm|gnawing)\b/gi;
+    let matchedChar: string | null = null;
+    let charExec: RegExpExecArray | null;
+    while ((charExec = charRegex.exec(lower)) !== null) {
+      const word = charExec[1];
+      const startIndex = charExec.index;
+      const preceding = lower.slice(Math.max(0, startIndex - 45), startIndex);
+      const lastBoundary = Math.max(
+        preceding.lastIndexOf("."),
+        preceding.lastIndexOf(";"),
+        preceding.lastIndexOf("!"),
+        preceding.lastIndexOf("?"),
+        preceding.search(/\b(?:but|however|yet)\b/i)
+      );
+      const clausePrefix = lastBoundary >= 0 ? preceding.slice(lastBoundary) : preceding;
+      const isNegated = /\b(?:no|not|without|neither|never|denies|deny|free\s+of)\b/i.test(clausePrefix);
+      if (!isNegated) {
+        matchedChar = word;
+        break;
+      }
+    }
+    if (matchedChar) {
+      extracted.push({ slot: "character", value: matchedChar });
     }
     if (/throat\s+pain|sore\s+throat|throat\s+is\s+paining|throat\s+hurts?/i.test(lower)) {
       extracted.push({ slot: "chief_complaint", value: "throat pain" });
@@ -646,7 +682,28 @@ export class ConversationInterpreter {
     if (/slur|trouble\s+speaking|difficulty\s+speaking|slurred/i.test(lower)) {
       extracted.push({ slot: "neurological_signs", value: "speech difficulty" });
     }
-    if (/dizzy|dizziness|lightheaded/i.test(lower)) {
+    const dizzyRegex = /\b(dizzy|dizziness|lightheaded)\b/gi;
+    let matchedDizzy: string | null = null;
+    let dizzyExec: RegExpExecArray | null;
+    while ((dizzyExec = dizzyRegex.exec(lower)) !== null) {
+      const word = dizzyExec[1];
+      const startIndex = dizzyExec.index;
+      const preceding = lower.slice(Math.max(0, startIndex - 45), startIndex);
+      const lastBoundary = Math.max(
+        preceding.lastIndexOf("."),
+        preceding.lastIndexOf(";"),
+        preceding.lastIndexOf("!"),
+        preceding.lastIndexOf("?"),
+        preceding.search(/\b(?:but|however|yet)\b/i)
+      );
+      const clausePrefix = lastBoundary >= 0 ? preceding.slice(lastBoundary) : preceding;
+      const isNegated = /\b(?:no|not|without|neither|never|denies|deny|free\s+of)\b/i.test(clausePrefix);
+      if (!isNegated) {
+        matchedDizzy = word;
+        break;
+      }
+    }
+    if (matchedDizzy) {
       const isPostural = /\b(when\s+i\s+stand|after\s+i\s+sat|standing\s+up|getting\s+up|sitting\s+for\s+long)\b/i.test(lower);
       extracted.push({
         slot: "character",
@@ -665,6 +722,12 @@ export class ConversationInterpreter {
     }
     if (hasNumb) {
       extracted.push({ slot: "neurological_signs", value: "numbness" });
+    }
+    if (/\b(neck\s+stiff|stiff\s+neck|nuchal\s+rigidity)\b/i.test(lower)) {
+      extracted.push({ slot: "neurological_signs", value: "neck stiffness" });
+    }
+    if (/\b(photophob|light\s+sensitiv|bright\s+lights?\s+(?:really\s+)?(?:hurt|bother)|lights?\s+(?:hurt|bother))\b/i.test(lower)) {
+      extracted.push({ slot: "associated_symptoms", value: "photophobia" });
     }
 
     // Positional exacerbation / orthostatic headache pattern
@@ -690,6 +753,131 @@ export class ConversationInterpreter {
       ambiguities: [],
       confidence: 0.85,
     };
+  }
+
+  private generateFactProposals(
+    interp: SemanticInterpretation,
+    rawText: string,
+    pendingQuestion: PendingQuestion | null,
+    currentSlots: Record<string, any>
+  ): FactProposal[] {
+    const proposals: FactProposal[] = [];
+    const text = rawText.trim();
+    const lower = text.toLowerCase();
+
+    // 1. Multi-clause temporal progression detector (e.g. "mild for two days, but an hour ago it suddenly became unbearable")
+    const contrastMatch = text.match(/^(.*?)\b(?:but|however|yet|until|and\s+then)\b(.*?)$/i);
+    if (contrastMatch) {
+      const clause1 = contrastMatch[1].trim();
+      const clause2 = contrastMatch[2].trim();
+      const lower1 = clause1.toLowerCase();
+      const lower2 = clause2.toLowerCase();
+
+      const isClause1Baseline = /\b(mild|dull|days?|weeks?|slowly|gradual(?:ly)?)\b/i.test(lower1);
+      const isClause2Acute = /\b(unbearable|sudden(?:ly)?|explosion|worse|severe|hours?|minutes?|10\/10)\b/i.test(lower2);
+
+      if (isClause1Baseline && isClause2Acute) {
+        // Extract baseline facts from clause 1
+        const dur1 = lower1.match(/\b(?:for\s+)?(\d+\s*(?:days?|weeks?|months?)|a\s+day\s+or\s+two)\b/i);
+        const sev1 = lower1.match(/\b(mild|dull|moderate|slight)\b/i);
+        if (sev1) {
+          proposals.push({
+            concept: "headache_severity",
+            value: `${sev1[0]} (baseline)`,
+            assertionStatus: "present",
+            temporalScope: "baseline",
+            rawSnippet: clause1,
+            clinicalRationale: "Subacute baseline intensity",
+          });
+        }
+        if (dur1) {
+          proposals.push({
+            concept: "headache_duration",
+            value: dur1[0],
+            assertionStatus: "present",
+            temporalScope: "baseline",
+            rawSnippet: clause1,
+          });
+        }
+
+        // Extract acute worsening facts from clause 2
+        const sev2 = lower2.match(/\b(unbearable|severe|excruciating|terrible|intense|10\/10)\b/i);
+        const onset2 = lower2.match(/\b(sudden(?:ly)?|all\s+at\s+once|like\s+a\s+clap)\b/i);
+        const time2 = lower2.match(/\b(?:about\s+)?(?:an?|\d+)\s*(?:hours?|minutes?)\s*ago\b/i);
+
+        if (sev2) {
+          proposals.push({
+            concept: "headache_severity",
+            value: `${sev2[0]} (acute worsening)`,
+            assertionStatus: "present",
+            temporalScope: "acute_worsening",
+            rawSnippet: clause2,
+            clinicalRationale: "Severe acute crescendo escalation",
+          });
+        }
+        if (onset2) {
+          proposals.push({
+            concept: "headache_onset_pattern",
+            value: "sudden",
+            assertionStatus: "present",
+            temporalScope: "acute_worsening",
+            rawSnippet: clause2,
+          });
+        }
+        if (time2) {
+          proposals.push({
+            concept: "headache_acute_onset_time",
+            value: time2[0],
+            assertionStatus: "present",
+            temporalScope: "acute_worsening",
+            rawSnippet: clause2,
+          });
+        }
+      }
+    }
+
+    // 2. Patient Correction / Retraction
+    if (interp.isCorrection && interp.correctedSlot && interp.correctedValue) {
+      proposals.push({
+        concept: interp.correctedSlot,
+        value: interp.correctedValue,
+        assertionStatus: "present",
+        temporalScope: "current",
+        isCorrection: true,
+        rawSnippet: rawText,
+        clinicalRationale: interp.correctedDetail,
+      });
+    }
+
+    // 3. Epistemic Uncertainty
+    if (interp.isUncertainty || interp.intent === "uncertainty_or_unknown") {
+      const target = pendingQuestion?.targetSlot || "clinical_symptom";
+      proposals.push({
+        concept: target,
+        value: "uncertain",
+        assertionStatus: "uncertain",
+        temporalScope: "current",
+        rawSnippet: rawText,
+        uncertaintyReason: "Patient expressed uncertainty or unconfirmed timeline",
+      });
+    }
+
+    // 4. Evidence extracted from standard clinical interpretation
+    for (const ev of interp.newEvidence) {
+      const isDenied = ev.value === "denied" || ev.value === "none reported";
+      // Avoid duplicate if already covered by multi-clause or correction
+      if (!proposals.some(p => p.concept === ev.slot)) {
+        proposals.push({
+          concept: ev.slot,
+          value: ev.value,
+          assertionStatus: isDenied ? "absent" : "present",
+          temporalScope: "current",
+          rawSnippet: rawText,
+        });
+      }
+    }
+
+    return proposals;
   }
 }
 

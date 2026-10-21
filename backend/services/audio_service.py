@@ -122,7 +122,8 @@ def synthesize_speech_text(text: str, lang: str = "en") -> bytes:
 def transcribe_audio_bytes(
     audio_bytes: bytes,
     filename: str = "audio.wav",
-    model_name: str = "base.en"
+    model_name: str = "base.en",
+    initial_prompt: str = None
 ) -> str:
     """
     Transcribes patient audio bytes to text strictly using local OpenAI Whisper on CPU.
@@ -154,7 +155,10 @@ def transcribe_audio_bytes(
         # Local Whisper execution on CPU (Zero cloud egress)
         try:
             model = get_whisper_model(model_name)
-            result = model.transcribe(temp_path, fp16=False, language="en")
+            clinical_prompt = "Medical consultation. Symptoms, onset sudden or gradual, duration, headache, pain, severity."
+            if initial_prompt:
+                clinical_prompt = f"{clinical_prompt} Context: {initial_prompt}"
+            result = model.transcribe(temp_path, fp16=False, language="en", initial_prompt=clinical_prompt)
             transcript_text = result.get("text", "").strip()
             
             logger.info(f"Local Whisper ASR successfully transcribed {len(audio_bytes)} bytes ({len(transcript_text)} characters) [PHI masked]")

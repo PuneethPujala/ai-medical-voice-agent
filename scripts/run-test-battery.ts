@@ -35,6 +35,8 @@ export const CANONICAL_TEST_BATTERY: TestSuiteDefinition[] = [
   { id: "test:severity", file: "scripts/test-severity-and-nondeniable.ts", description: "Severity & Non-Deniable Symptom Guards" },
   { id: "test:independence", file: "scripts/test-classifier-independence.ts", description: "Universal Red-Flag & Classifier Independence" },
   { id: "test:false-dispatch", file: "tests/triage/false-dispatch-prevention.test.ts", description: "False Dispatch Prevention & Non-Emergency Controls" },
+  { id: "test:headache", file: "scripts/test-headache-compound-regression.ts", description: "Headache Compound Extraction & Question Validation" },
+  { id: "test:adversarial-red-flags", file: "tests/adversarial-red-flags.ts", description: "102-Case Adversarial Red-Flag Recall Invariants" },
 
   // 4. Conversational Dialogue & State Reasoning
   { id: "test:route-dialogue", file: "tests/triage/route-voice-chat-dialogue.test.ts", description: "Route-Level /api/voice/chat Multi-Turn State Contract" },
@@ -72,6 +74,10 @@ export const CANONICAL_TEST_BATTERY: TestSuiteDefinition[] = [
   { id: "test:voicestate", file: "scripts/test-voice-state-lifecycle.ts", description: "Voice State Machine Lifecycle & Discard" },
   { id: "test:bargein", file: "scripts/test-bargein.ts", description: "Barge-in Interruption & Playback Invalidation" },
   { id: "test:acceptance", file: "scripts/test-bargein-acceptance.ts", description: "Browser Barge-In End-to-End Acceptance" },
+  { id: "test:voice-intelligence", file: "tests/voice/conversation-intelligence.test.ts", description: "Multi-Clause Temporal Progression & Non-Destructive Ledger" },
+  { id: "test:voice-intake", file: "tests/voice/voice-intake-review.test.ts", description: "Voice Intake State Machine & Transcript Review Safety" },
+  { id: "test:multi-turn-concurrency", file: "tests/voice/multi-turn-concurrency.test.ts", description: "Multi-Turn Concurrency & Optimistic Version Synchronization" },
+  { id: "test:whole-conversation-stress", file: "tests/voice/whole-conversation-stress.test.ts", description: "Whole-Conversation 4-Layer Context Behavioral Stress" },
 
   // 9. Healthcare Standards & Emergency Dispatch
   { id: "test:fhir", file: "tests/fhir-eval/fhir.test.ts", description: "HL7 FHIR R4 Bundle Validation & Conformance" },

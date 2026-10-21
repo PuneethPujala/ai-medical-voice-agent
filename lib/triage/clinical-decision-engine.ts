@@ -350,6 +350,20 @@ export class ClinicalDecisionEngine {
       hist.chiefComplaint = utterance;
     }
 
+    if (!state.slots) {
+      (state as any).slots = { known_facts: [], neurological_signs: [], associated_symptoms: [] };
+    }
+    if (!Array.isArray(state.slots.neurological_signs)) {
+      state.slots.neurological_signs = typeof state.slots.neurological_signs === "string"
+        ? [state.slots.neurological_signs]
+        : [];
+    }
+    if (!Array.isArray(state.slots.known_facts)) {
+      state.slots.known_facts = typeof state.slots.known_facts === "string"
+        ? [state.slots.known_facts]
+        : [];
+    }
+
     // Opportunistic extraction of focal deficits
     if (/\b(droop|face|facial)\b/i.test(textLower) && !state.slots.neurological_signs.some(s => s.includes("face"))) {
       state.slots.neurological_signs.push("facial droop");

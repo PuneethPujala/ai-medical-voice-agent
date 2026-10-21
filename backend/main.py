@@ -2,7 +2,7 @@ import os
 import sys
 import logging
 import uvicorn
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -217,7 +217,10 @@ async def stt_warmup():
         raise HTTPException(status_code=500, detail=f"Failed to pre-load Whisper model: {str(e)}")
 
 @app.post("/api/v1/stt")
-async def speech_to_text(file: UploadFile = File(...)):
+async def speech_to_text(
+    file: UploadFile = File(...),
+    prompt: str = Form(None)
+):
     """
     Receives raw audio files (e.g. .wav, .webm, .ogg) from client / Next.js bridge,
     runs local OpenAI Whisper ASR (base.en) on CPU, and returns transcribed text.
@@ -274,7 +277,8 @@ async def speech_to_text(file: UploadFile = File(...)):
         transcript = transcribe_audio_bytes(
             audio_bytes=audio_bytes,
             filename=filename,
-            model_name="base.en"
+            model_name="base.en",
+            initial_prompt=prompt
         )
         return {
             "status": "success",

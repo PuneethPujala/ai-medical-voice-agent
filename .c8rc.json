@@ -16,6 +16,7 @@
     "**/*.test.tsx",
     "tests/**",
     "scripts/**",
+    "lib/testing/**",
     "node_modules/**",
     ".next/**",
     "coverage/**"

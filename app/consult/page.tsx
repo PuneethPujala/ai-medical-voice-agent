@@ -65,12 +65,14 @@ import { PeekRating } from "@/components/feedback/PeekRating";
 import { splitIntoSpeechChunks } from "@/lib/audio/sentence-splitter";
 import { AcousticDSPAnalyzer, LiveAudioMetrics } from "@/lib/acoustic/acoustic-dsp-analyzer";
 import { normalizeCompletenessPercent } from "@/lib/triage/clinical-state";
+import { reconcileClinicalTranscript } from "@/lib/audio/transcript-reconciler";
 
 
 type AudioState =
   | "IDLE"
   | "PATIENT_LISTENING"
   | "PROCESSING_TRANSCRIPTION"
+  | "TRANSCRIPT_REVIEW"
   | "PROCESSING_CLINICAL"
   | "DOCTOR_SPEAKING"
   | "BARGE_IN_DETECTED"
@@ -420,8 +422,10 @@ export default function ConsultPage() {
     }
   }, [user?.id]);
 
+  const draftRestoredRef = useRef<boolean>(false);
   // Recover transient session draft on page mount if user navigated away or reloaded
   useEffect(() => {
+    if (draftRestoredRef.current) return;
     if (typeof window === "undefined" || !window.sessionStorage) return;
     try {
       for (let i = 0; i < window.sessionStorage.length; i++) {
@@ -432,20 +436,26 @@ export default function ConsultPage() {
             const parsed = JSON.parse(raw);
             if (parsed.expiresAt && Date.now() < parsed.expiresAt && parsed.payload?.transcript?.length > 0) {
               if (messages.length === 0 && !callActiveRef.current) {
+                draftRestoredRef.current = true;
                 stableEncounterIdRef.current = parsed.payload.id;
                 setCurrentEncounterId(parsed.payload.id);
                 setMessages(parsed.payload.transcript);
                 setCallDuration(parsed.payload.durationSeconds || 0);
                 setPersistenceStatus("saved");
-                setClinicalToasts((prev) => [
-                  ...prev,
-                  {
-                    id: `draft-restored-${Date.now()}`,
-                    type: "info",
-                    title: "Active Encounter Draft Restored",
-                    description: `Recovered ${parsed.payload.transcript.length} turns from previous session (${parsed.payload.id}).`
-                  }
-                ]);
+                const uniqueToastId = `draft-restored-${parsed.payload.id || Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+                setClinicalToasts((prev) => {
+                  if (prev.some((t) => t.id.startsWith("draft-restored-"))) return prev;
+                  return [
+                    ...prev,
+                    {
+                      id: uniqueToastId,
+                      type: "info",
+                      title: "Active Encounter Draft Restored",
+                      description: `Recovered ${parsed.payload.transcript.length} turns from previous session (${parsed.payload.id}).`
+                    }
+                  ];
+                });
+                break;
               }
             }
           }
@@ -498,13 +508,18 @@ export default function ConsultPage() {
   }, [callActive]);
 
   const [audioState, setAudioState] = useState<AudioState>("IDLE");
+  const [pendingTranscript, setPendingTranscript] = useState<string>("");
 
   const [callDuration, setCallDuration] = useState<number>(0);
   const [transcriptText, setTranscriptText] = useState<string>("");
   const [typedInput, setTypedInput] = useState<string>("");
   const [micPermissionError, setMicPermissionError] = useState<string | null>(null);
-  
+
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const messagesRef = useRef<ChatMessage[]>(messages);
+  useEffect(() => {
+    messagesRef.current = messages;
+  }, [messages]);
   const [pendingDoctorMessage, setPendingDoctorMessage] = useState<{
     id: string;
     doctorName: string;
@@ -513,7 +528,7 @@ export default function ConsultPage() {
   const [triageData, setTriageData] = useState<LiveTriageData | null>(null);
   const [boardData, setBoardData] = useState<BoardData | null>(null);
   const [interviewState, setInterviewState] = useState<any>(null);
-  
+
   const [activeRightTab, setActiveRightTab] = useState<"board" | "context" | "safety" | "care">("context");
   const [nearbyHospitals, setNearbyHospitals] = useState<any[]>([]);
   const [userLocation, setUserLocation] = useState<{ latitude?: number; longitude?: number; city?: string } | null>(null);
@@ -549,6 +564,8 @@ export default function ConsultPage() {
     contextSubtitle = "Listening to patient...";
   } else if (audioState === "PROCESSING_TRANSCRIPTION") {
     contextSubtitle = "Transcribing speech...";
+  } else if (audioState === "TRANSCRIPT_REVIEW") {
+    contextSubtitle = "Reviewing speech transcript...";
   } else if (audioState === "PROCESSING_CLINICAL" || audioState === "PROCESSING_INTERRUPTION") {
     contextSubtitle = "Updating context...";
   } else if (audioState === "DOCTOR_SPEAKING") {
@@ -590,15 +607,20 @@ export default function ConsultPage() {
 
   // Encounter Persistence & Review State Machine
   const stableEncounterIdRef = useRef<string>("");
+  const serverEncounterCreatedRef = useRef<boolean>(false);
+  const currentCaseVersionRef = useRef<number>(1);
+  const isPersistingEncounterRef = useRef<boolean>(false);
   const [currentEncounterId, setCurrentEncounterId] = useState<string>("");
   const [persistenceStatus, setPersistenceStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [persistenceError, setPersistenceError] = useState<string | null>(null);
 
-  const voicePillState: VoicePillState = 
+  const voicePillState: VoicePillState =
     audioState === "PATIENT_LISTENING"
       ? "listening"
       : audioState === "PROCESSING_TRANSCRIPTION"
       ? "transcribing"
+      : audioState === "TRANSCRIPT_REVIEW"
+      ? "review"
       : audioState === "PROCESSING_CLINICAL"
       ? "understanding"
       : audioState === "DOCTOR_SPEAKING"
@@ -714,7 +736,12 @@ export default function ConsultPage() {
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const audioStateRef = useRef<AudioState>("IDLE");
+  const pendingAudioMetricsRef = useRef<LiveAudioMetrics | undefined>(undefined);
   const callActiveRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    audioStateRef.current = audioState;
+  }, [audioState]);
   const consultationStartedAtRef = useRef<number | null>(null);
   const consultationCompletedAtRef = useRef<number | null>(null);
   const lastDoctorSpeechRef = useRef<string>("");
@@ -735,6 +762,8 @@ export default function ConsultPage() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const mediaStreamRef = useRef<MediaStream | null>(null);
+  const transcriptionSessionTokenRef = useRef<number>(0);
+  const isSubmittingUtteranceRef = useRef<boolean>(false);
 
   // Helper to safely stop MediaRecorder and retrieve recorded audio Blob
   const stopAndGetAudioBlob = (): Promise<Blob | null> => {
@@ -751,16 +780,48 @@ export default function ConsultPage() {
         return;
       }
 
-      recorder.onstop = () => {
-        const mime = recorder.mimeType || "audio/webm";
-        const blob = new Blob(audioChunksRef.current, { type: mime });
+      let isSettled = false;
+
+      // Safety timeout guard: fail closed if recorder stalls without clean onstop completion
+      const safetyTimeout = setTimeout(() => {
+        if (isSettled) return;
+        isSettled = true;
+        console.warn("[MedVoice Voice] MediaRecorder stop timed out after 1500ms without onstop completion. Failing closed and discarding incomplete audio buffer.");
+        try {
+          recorder.onstop = null;
+          recorder.ondataavailable = null;
+        } catch {}
         audioChunksRef.current = [];
-        resolve(blob);
+        resolve(null);
+      }, 1500);
+
+      recorder.onstop = () => {
+        if (isSettled) return;
+        isSettled = true;
+        clearTimeout(safetyTimeout);
+        const mime = recorder.mimeType || "audio/webm";
+        if (audioChunksRef.current.length > 0) {
+          const blob = new Blob(audioChunksRef.current, { type: mime });
+          audioChunksRef.current = [];
+          resolve(blob);
+        } else {
+          resolve(null);
+        }
       };
 
       try {
+        if (typeof (recorder as any).requestData === "function" && recorder.state === "recording") {
+          try {
+            (recorder as any).requestData();
+          } catch {}
+        }
         recorder.stop();
-      } catch {
+      } catch (stopErr) {
+        if (isSettled) return;
+        isSettled = true;
+        clearTimeout(safetyTimeout);
+        console.warn("[MedVoice Voice] MediaRecorder stop threw exception:", stopErr);
+        audioChunksRef.current = [];
         resolve(null);
       }
     });
@@ -884,6 +945,7 @@ export default function ConsultPage() {
 
   // Cancels recording without transcribing or sending — pure discard-and-return-to-IDLE
   const cancelVoiceRecording = useCallback(() => {
+    transcriptionSessionTokenRef.current += 1;
     if (silenceTimerRef.current) {
       clearTimeout(silenceTimerRef.current);
       silenceTimerRef.current = null;
@@ -892,12 +954,23 @@ export default function ConsultPage() {
     transcriptTextRef.current = "";
     accumulatedTranscriptRef.current = "";
     setTranscriptText("");
+    setPendingTranscript("");
+    pendingAudioMetricsRef.current = undefined;
     stopSpeechRecognitionListening();
+    audioStateRef.current = "IDLE";
     setAudioState("IDLE");
   }, [stopSpeechRecognitionListening]);
 
   // Commits transcribed speech to the clinical pipeline (Whisper ASR canonical, SpeechRecognition interim fallback)
   const commitSpokenText = useCallback(async (forceText?: string) => {
+    // Only commit if we are actively listening (prevents duplicate runs from simultaneous silence timer + user click)
+    if (audioStateRef.current !== "PATIENT_LISTENING") {
+      return;
+    }
+
+    transcriptionSessionTokenRef.current += 1;
+    const currentSessionToken = transcriptionSessionTokenRef.current;
+
     if (silenceTimerRef.current) {
       clearTimeout(silenceTimerRef.current);
       silenceTimerRef.current = null;
@@ -934,6 +1007,7 @@ export default function ConsultPage() {
     }
 
     let finalTranscript = "";
+    audioStateRef.current = "PROCESSING_TRANSCRIPTION";
     setAudioState("PROCESSING_TRANSCRIPTION");
 
     // Primary Canonical Path: Transcribe recorded utterance using Local Whisper ASR
@@ -944,45 +1018,144 @@ export default function ConsultPage() {
                     audioBlob.type?.includes("wav") ? "utterance.wav" : "utterance.webm";
         formData.append("file", audioBlob, ext);
 
+        // Clinical Context Priming: Pass doctor's active inquiry and live preview
+        const priorContext = lastDoctorSpeechRef.current.trim() ||
+          ([...messagesRef.current].reverse().find(m => m.role === "doctor")?.text || "");
+        const previewText = transcriptTextRef.current.trim() || accumulatedTranscriptRef.current.trim();
+        if (priorContext) {
+          formData.append("context", priorContext);
+        }
+        if (previewText) {
+          formData.append("preview", previewText);
+        }
+
         const sttRes = await fetch("/api/voice/stt", {
           method: "POST",
           body: formData,
         });
 
         if (!sttRes.ok) {
-          throw new Error(`Whisper STT failed: ${sttRes.status}`);
-        }
+          console.warn(`[MedVoice STT] Whisper ASR returned HTTP ${sttRes.status}`);
+          const fallbackText = previewText;
+          if (fallbackText) {
+            console.warn("[MedVoice Voice] Recovering with interim browser preview:", fallbackText);
+            setClinicalToasts((prev) => [
+              ...prev,
+              {
+                id: `stt-warn-${Date.now()}`,
+                type: "warning",
+                title: "Speech Recognition Fallback",
+                description: "Whisper ASR encountered a temporary issue. Populated your preview transcript so you can review, edit, or retry before sending.",
+              },
+            ]);
+            finalTranscript = fallbackText;
+          } else {
+            setClinicalToasts((prev) => [
+              ...prev,
+              {
+                id: `stt-err-${Date.now()}`,
+                type: "warning",
+                title: "Speech Recognition Unavailable",
+                description: "Could not transcribe audio. Please ensure the backend is running, or type your symptoms to continue.",
+              },
+            ]);
+            audioStateRef.current = "IDLE";
+            setAudioState("IDLE");
+            return;
+          }
+        } else {
+          const sttData = await sttRes.json();
+          const rawServerTranscript = (sttData.transcript || "").trim();
 
-        const sttData = await sttRes.json();
-        finalTranscript = (sttData.transcript || "").trim();
-        if (finalTranscript.length > 0) {
-          console.log("🎯 Canonical Local Whisper ASR Transcript:", finalTranscript);
+          // Double-check reconciliation on client with active doctor question and live preview
+          const reconciled = reconcileClinicalTranscript({
+            whisperText: rawServerTranscript,
+            previewText: previewText,
+            doctorLastQuestion: priorContext,
+            currentSymptoms: triageData?.detectedSymptoms || [],
+          });
+          finalTranscript = reconciled.transcript.trim();
+
+          if (finalTranscript.length > 0) {
+            console.log("🎯 Canonical Clinical Reconciled Transcript:", finalTranscript);
+          }
         }
       } catch (err) {
-        console.error("Whisper STT failed:", err);
-        if (callActiveRef.current) {
-          setAudioState("PATIENT_LISTENING");
+        console.error("Whisper STT request exception:", err);
+        const fallbackText = transcriptTextRef.current.trim() || accumulatedTranscriptRef.current.trim();
+        if (fallbackText) {
+          finalTranscript = fallbackText;
         } else {
+          audioStateRef.current = "IDLE";
           setAudioState("IDLE");
+          return;
         }
-        return;
       }
+    }
+
+    // Check if the transcription session is still valid (not canceled or restarted while awaiting ASR)
+    if (
+      transcriptionSessionTokenRef.current !== currentSessionToken ||
+      audioStateRef.current !== "PROCESSING_TRANSCRIPTION"
+    ) {
+      console.log("Discarding stale transcription response (session canceled or re-recorded).");
+      return;
     }
 
     if (!finalTranscript) {
       console.log("No intelligible speech detected in utterance.");
-      if (callActiveRef.current) {
-        setAudioState("PATIENT_LISTENING");
-      } else {
-        setAudioState("IDLE");
-      }
+      audioStateRef.current = "IDLE";
+      setAudioState("IDLE");
       return;
     }
 
-    console.log("🎤 Finalized patient utterance:", finalTranscript);
-    setAudioState("PROCESSING_CLINICAL");
-    handleUserUtteranceRef.current?.(finalTranscript, false, liveAudioMetrics);
+    console.log("🎤 Transcribed patient utterance ready for review:", finalTranscript);
+    pendingAudioMetricsRef.current = liveAudioMetrics;
+    setPendingTranscript(finalTranscript);
+    audioStateRef.current = "TRANSCRIPT_REVIEW";
+    setAudioState("TRANSCRIPT_REVIEW");
   }, [stopSpeechRecognitionListening]);
+
+  // Confirms the transcribed/edited text and dispatches to the clinical pipeline
+  const confirmAndSendTranscript = useCallback(() => {
+    // Strictly prevent duplicate dispatch from rapid clicks or Enter presses
+    if (isSubmittingUtteranceRef.current || audioStateRef.current !== "TRANSCRIPT_REVIEW") {
+      return;
+    }
+
+    const textToSend = pendingTranscript.trim();
+    if (!textToSend) return;
+
+    audioStateRef.current = "PROCESSING_CLINICAL";
+    const metrics = pendingAudioMetricsRef.current;
+    pendingAudioMetricsRef.current = undefined;
+    setPendingTranscript("");
+    setAudioState("PROCESSING_CLINICAL");
+    handleUserUtteranceRef.current?.(textToSend, false, metrics);
+  }, [pendingTranscript]);
+
+  // Cleans up current transcript and restarts speech intake
+  const handleReRecord = useCallback(() => {
+    transcriptionSessionTokenRef.current += 1;
+    setPendingTranscript("");
+    pendingAudioMetricsRef.current = undefined;
+    cancelVoiceRecording();
+    if (!callActiveRef.current) {
+      callActiveRef.current = true;
+      setCallActive(true);
+    }
+    startSpeechRecognitionListeningRef.current?.();
+  }, [cancelVoiceRecording]);
+
+  // Discards the current transcript and returns consultation to IDLE
+  const handleDiscardTranscript = useCallback(() => {
+    transcriptionSessionTokenRef.current += 1;
+    setPendingTranscript("");
+    pendingAudioMetricsRef.current = undefined;
+    cancelVoiceRecording();
+    audioStateRef.current = "IDLE";
+    setAudioState("IDLE");
+  }, [cancelVoiceRecording]);
 
   // Immediate Barge-In: cleanly halts doctor TTS and starts listening
   const triggerBargeIn = useCallback((customPhrase?: string) => {
@@ -1322,10 +1495,10 @@ export default function ConsultPage() {
 
     try {
       console.log(`[MedVoice Audio] Requesting speech (${chunks.length} chunk${chunks.length > 1 ? "s" : ""}) via TTS Dispatcher for ${targetDoctor.name}...`);
-      
+
       // Immediately dispatch Chunk 0 for fast Time-To-First-Audio (TTFA)
       const chunk0Promise = fetchTTSChunk(chunks[0]);
-      
+
       // In parallel, queue synthesis of remaining chunks in background
       const remainingPromises = chunks.slice(1).map((c) => fetchTTSChunk(c));
 
@@ -1718,7 +1891,7 @@ export default function ConsultPage() {
         transcriptTextRef.current = fullDisplay;
         setTranscriptText(fullDisplay);
 
-        // Reset silence timer on speech activity. Gives the user 1.8s of silence to pause without cut-off.
+        // Reset silence timer on speech activity. Gives the user 2.6s of silence to pause and think without cut-off.
         if (fullDisplay.length > 0) {
           if (silenceTimerRef.current) {
             clearTimeout(silenceTimerRef.current);
@@ -1726,10 +1899,10 @@ export default function ConsultPage() {
           silenceTimerRef.current = setTimeout(() => {
             const currentTotal = transcriptTextRef.current.trim();
             if ((currentTotal.length > 0 || audioChunksRef.current.length > 0) && audioStateRef.current === "PATIENT_LISTENING") {
-              console.log("⏱️ Natural 1.8s silence pause detected. Committing speech:", currentTotal);
+              console.log("⏱️ Natural 2.6s silence pause detected. Committing speech for review:", currentTotal);
               commitSpokenText(currentTotal);
             }
-          }, 1800);
+          }, 2600);
         }
       };
 
@@ -1809,6 +1982,219 @@ export default function ConsultPage() {
     return () => clearInterval(interval);
   }, [callActive]);
 
+  // Persist consultation record to primary archive (State machine: completed_pending_review)
+  const persistEncounterRecord = async (
+    encId: string,
+    durationSecs: number,
+    statusOverride: "in_progress" | "incomplete_intake" | "completed_pending_review" | "approved" = "completed_pending_review",
+    customMessages?: ChatMessage[],
+    customTriage?: any,
+    initialConcernOverride?: string,
+    customCaseVersion?: number
+  ): Promise<boolean> => {
+    // Serialization Guard: Prevent concurrent persistence race conditions
+    if (isPersistingEncounterRef.current) {
+      await new Promise((r) => setTimeout(r, 60));
+    }
+    isPersistingEncounterRef.current = true;
+    try {
+      setPersistenceStatus("saving");
+      setPersistenceError(null);
+
+      const activeMessages = customMessages || messages;
+      const activeTriage = customTriage !== undefined ? customTriage : triageData;
+
+      const patientUtterances = activeMessages.filter((m) => m.role === "patient");
+      const chiefConcern = initialConcernOverride || (patientUtterances.length > 0
+        ? patientUtterances[0].text.replace(/^"|"$/g, "")
+        : activeTriage?.detectedSymptoms?.length
+        ? activeTriage.detectedSymptoms.join(", ")
+        : "Clinical voice intake consultation");
+
+      const hasCompleteSoap = Boolean(activeTriage?.soap?.subjective && activeTriage?.soap?.assessment);
+      const isEarlyTermination = !hasCompleteSoap && statusOverride === "completed_pending_review";
+
+      const soapSubjective = activeTriage?.soap?.subjective || (
+        isEarlyTermination
+          ? `[INCOMPLETE INTAKE - GATHERING HISTORY]\nChief Concern: ${chiefConcern}\nDialogue turns recorded: ${activeMessages.length}. Patient ended consultation prior to formal multi-agent clinical consensus.`
+          : statusOverride === "in_progress"
+          ? `[IN PROGRESS DRAFT - GATHERING HISTORY]\nChief Concern: ${chiefConcern}\nTurns recorded: ${activeMessages.length}.`
+          : ""
+      );
+      const soapObjective = activeTriage?.soap?.objective || (
+        isEarlyTermination
+          ? "[INCOMPLETE INTAKE] Telemetry and physical examination unassessed. Physical presence not established."
+          : statusOverride === "in_progress"
+          ? "[IN PROGRESS] History gathering in progress. Physical telemetry unassessed."
+          : ""
+      );
+      const soapAssessment = activeTriage?.soap?.assessment || (
+        isEarlyTermination
+          ? "[INCOMPLETE INTAKE] Intake terminated prior to multi-agent deliberation. Formal differential diagnosis deferred pending complete history."
+          : statusOverride === "in_progress"
+          ? "[IN PROGRESS] Clinical evaluation in progress. Differential diagnosis deferred."
+          : ""
+      );
+      const soapPlan = activeTriage?.soap?.plan || (
+        isEarlyTermination
+          ? "[INCOMPLETE INTAKE] Recommend re-initiating full clinical intake or scheduling an in-person evaluation with a physician."
+          : statusOverride === "in_progress"
+          ? "[IN PROGRESS] Continue clinical intake dialogue."
+          : ""
+      );
+
+      const effectiveCaseVersion = customCaseVersion !== undefined
+        ? customCaseVersion
+        : (currentCaseVersionRef.current ? currentCaseVersionRef.current + 1 : undefined);
+
+      const payload = {
+        id: encId,
+        patientName: patientDisplayName || "Anonymous Patient",
+        patientAge: activeProfile?.age != null ? String(activeProfile.age) : undefined,
+        patientGender: activeProfile?.gender || undefined,
+        doctorId: selectedDoctor.id,
+        doctorName: selectedDoctor.name,
+        specialty: selectedDoctor.department || selectedDoctor.specialty,
+        chiefComplaint: chiefConcern,
+        transcript: activeMessages.map((m) => ({
+          role: m.role,
+          text: m.text,
+          timestamp: m.timestamp,
+        })),
+        triageLevel: activeTriage?.triageLevel || (boardData?.phase === "decided" ? "priority" : "routine"),
+        triageTitle: isEarlyTermination
+          ? "INCOMPLETE INTAKE: GATHERING HISTORY"
+          : activeTriage?.triageTitle || "Clinical Voice Consultation Evaluation",
+        esiScore: activeTriage?.esiScore ?? null,
+        icd10Codes: activeTriage?.icdCodes || [],
+        detectedSymptoms: activeTriage?.detectedSymptoms || [],
+        soapSubjective,
+        soapObjective,
+        soapAssessment,
+        soapPlan,
+        recommendedSpecialists: selectedDoctor?.department ? [selectedDoctor.department] : [],
+        recommendedAction: isEarlyTermination
+          ? "Consultation ended early. Please schedule an in-person evaluation or restart clinical intake."
+          : activeTriage?.recommendedAction || "Consultation complete.",
+        durationSeconds: durationSecs,
+        status: statusOverride,
+        interviewState: interviewState,
+        deliveredTurnRecords: interviewState?.deliveredTurnRecords || [],
+        attributedFacts: interviewState?.attributedFacts || [],
+        unmappedObservations: interviewState?.unmappedObservations || [],
+        caseVersion: effectiveCaseVersion,
+      };
+
+      // Client-side transient recovery cache update (tab-isolated with 15-minute TTL)
+      if (typeof window !== "undefined" && window.sessionStorage) {
+        try {
+          const recoveryRecord = {
+            payload,
+            savedAt: Date.now(),
+            expiresAt: Date.now() + 15 * 60 * 1000,
+          };
+          window.sessionStorage.setItem(`medvoice_transient_draft_${encId}`, JSON.stringify(recoveryRecord));
+        } catch {}
+      }
+
+      const res = await fetch("/api/consultations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (res.ok) {
+        const resData = await res.json().catch(() => ({}));
+        serverEncounterCreatedRef.current = true;
+        setPersistenceStatus("saved");
+        setPersistenceError(null);
+        const serverVersion = resData?.consultation?.caseVersion ?? resData?.consultation?.version;
+        if (serverVersion !== undefined && !isNaN(Number(serverVersion))) {
+          currentCaseVersionRef.current = Number(serverVersion);
+        } else if (effectiveCaseVersion !== undefined) {
+          currentCaseVersionRef.current = effectiveCaseVersion;
+        }
+        if (statusOverride === "completed_pending_review" || statusOverride === "approved") {
+          if (typeof window !== "undefined" && window.sessionStorage) {
+            try {
+              window.sessionStorage.removeItem(`medvoice_transient_draft_${encId}`);
+            } catch {}
+          }
+        }
+        return true;
+      } else if (res.status === 409) {
+        const conflictData = await res.json().catch(() => ({}));
+        console.warn("[MedVoice] Concurrency conflict (HTTP 409) during persistence:", conflictData.error);
+
+        // Explicit Recovery Strategy: If server communicated its current version, synchronize and retry once
+        if (conflictData.currentVersion !== undefined) {
+          const datastoreVersion = Number(conflictData.currentVersion);
+          currentCaseVersionRef.current = datastoreVersion;
+          const retryVersion = datastoreVersion + 1;
+          console.log(`[MedVoice] Synchronizing with datastore version (${datastoreVersion}) and retrying with version ${retryVersion}...`);
+
+          const retryPayload = { ...payload, caseVersion: retryVersion };
+          const retryRes = await fetch("/api/consultations", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(retryPayload),
+          });
+
+          if (retryRes.ok) {
+            const retryData = await retryRes.json().catch(() => ({}));
+            serverEncounterCreatedRef.current = true;
+            setPersistenceStatus("saved");
+            setPersistenceError(null);
+            const updatedVersion = retryData?.consultation?.caseVersion ?? retryData?.consultation?.version;
+            if (updatedVersion !== undefined && !isNaN(Number(updatedVersion))) {
+              currentCaseVersionRef.current = Number(updatedVersion);
+            } else {
+              currentCaseVersionRef.current = retryVersion;
+            }
+            return true;
+          }
+        }
+
+        // If recovery could not resolve: report explicit failure, never silently claim "saved"
+        setPersistenceStatus("error");
+        setPersistenceError("Encounter version conflict with server datastore.");
+        return false;
+      } else {
+        const data = await res.json().catch(() => ({}));
+        console.error("[MedVoice] Auto-persist encounter failure (HTTP " + res.status + "):", data.error || res.statusText);
+        setPersistenceStatus("error");
+        setPersistenceError(data.error || "Failed to persist encounter to datastore.");
+        return false;
+      }
+    } catch (err: any) {
+      console.error("[MedVoice] Auto-persist encounter network failure:", err?.message || err);
+      setPersistenceStatus("error");
+      setPersistenceError(err?.message || "Network error persisting consultation.");
+      return false;
+    } finally {
+      isPersistingEncounterRef.current = false;
+    }
+  };
+
+  // Pre-initialize or confirm encounter record exists on the server datastore
+  const ensureServerEncounter = async (encId: string, initialChiefConcern?: string): Promise<boolean> => {
+    if (serverEncounterCreatedRef.current) return true;
+    const ok = await persistEncounterRecord(
+      encId,
+      0,
+      "in_progress",
+      messages.length > 0 ? messages : undefined,
+      undefined,
+      initialChiefConcern,
+      1
+    );
+    if (ok) {
+      serverEncounterCreatedRef.current = true;
+      currentCaseVersionRef.current = 1;
+    }
+    return ok;
+  };
+
   // Start consultation session
   const startConsultation = async (doc?: DoctorProfile) => {
     const doctorToUse = doc || selectedDoctor;
@@ -1836,6 +2222,11 @@ export default function ConsultPage() {
       const genId = `ENC-${Date.now().toString().slice(-6)}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
       stableEncounterIdRef.current = genId;
       setCurrentEncounterId(genId);
+      serverEncounterCreatedRef.current = false;
+      // Pre-initialize encounter on server so subsequent turns and voice chat succeed immediately
+      ensureServerEncounter(genId, "Clinical voice consultation initiation").catch((err) =>
+        console.warn("[MedVoice] Pre-initialize encounter notice:", err)
+      );
     }
 
     // Pre-warm the persistent HTML5 AudioElement during the user gesture to prime autoplay privileges
@@ -1873,137 +2264,6 @@ export default function ConsultPage() {
         setMessages([initialGreeting]);
       },
     });
-  };
-
-  // Persist consultation record to primary archive (State machine: completed_pending_review)
-  const persistEncounterRecord = async (
-    encId: string,
-    durationSecs: number,
-    statusOverride: "in_progress" | "incomplete_intake" | "completed_pending_review" | "approved" = "completed_pending_review",
-    customMessages?: ChatMessage[],
-    customTriage?: any
-  ) => {
-    setPersistenceStatus("saving");
-    setPersistenceError(null);
-
-    const activeMessages = customMessages || messages;
-    const activeTriage = customTriage !== undefined ? customTriage : triageData;
-
-    const patientUtterances = activeMessages.filter((m) => m.role === "patient");
-    const chiefConcern = patientUtterances.length > 0
-      ? patientUtterances[0].text.replace(/^"|"$/g, "")
-      : activeTriage?.detectedSymptoms?.length
-      ? activeTriage.detectedSymptoms.join(", ")
-      : "Clinical voice intake consultation";
-
-    const hasCompleteSoap = Boolean(activeTriage?.soap?.subjective && activeTriage?.soap?.assessment);
-    const isEarlyTermination = !hasCompleteSoap && statusOverride === "completed_pending_review";
-
-    const soapSubjective = activeTriage?.soap?.subjective || (
-      isEarlyTermination
-        ? `[INCOMPLETE INTAKE - GATHERING HISTORY]\nChief Concern: ${chiefConcern}\nDialogue turns recorded: ${activeMessages.length}. Patient ended consultation prior to formal multi-agent clinical consensus.`
-        : statusOverride === "in_progress"
-        ? `[IN PROGRESS DRAFT - GATHERING HISTORY]\nChief Concern: ${chiefConcern}\nTurns recorded: ${activeMessages.length}.`
-        : ""
-    );
-    const soapObjective = activeTriage?.soap?.objective || (
-      isEarlyTermination
-        ? "[INCOMPLETE INTAKE] Telemetry and physical examination unassessed. Physical presence not established."
-        : statusOverride === "in_progress"
-        ? "[IN PROGRESS] History gathering in progress. Physical telemetry unassessed."
-        : ""
-    );
-    const soapAssessment = activeTriage?.soap?.assessment || (
-      isEarlyTermination
-        ? "[INCOMPLETE INTAKE] Intake terminated prior to multi-agent deliberation. Formal differential diagnosis deferred pending complete history."
-        : statusOverride === "in_progress"
-        ? "[IN PROGRESS] Clinical evaluation in progress. Differential diagnosis deferred."
-        : ""
-    );
-    const soapPlan = activeTriage?.soap?.plan || (
-      isEarlyTermination
-        ? "[INCOMPLETE INTAKE] Recommend re-initiating full clinical intake or scheduling an in-person evaluation with a physician."
-        : statusOverride === "in_progress"
-        ? "[IN PROGRESS] Continue clinical intake dialogue."
-        : ""
-    );
-
-    const payload = {
-      id: encId,
-      patientName: patientDisplayName || "Anonymous Patient",
-      patientAge: activeProfile?.age != null ? String(activeProfile.age) : undefined,
-      patientGender: activeProfile?.gender || undefined,
-      doctorId: selectedDoctor.id,
-      doctorName: selectedDoctor.name,
-      specialty: selectedDoctor.department || selectedDoctor.specialty,
-      chiefComplaint: chiefConcern,
-      transcript: activeMessages.map((m) => ({
-        role: m.role,
-        text: m.text,
-        timestamp: m.timestamp,
-      })),
-      triageLevel: activeTriage?.triageLevel || (boardData?.phase === "decided" ? "priority" : "routine"),
-      triageTitle: isEarlyTermination
-        ? "INCOMPLETE INTAKE: GATHERING HISTORY"
-        : activeTriage?.triageTitle || "Clinical Voice Consultation Evaluation",
-      esiScore: activeTriage?.esiScore ?? null,
-      icd10Codes: activeTriage?.icdCodes || [],
-      detectedSymptoms: activeTriage?.detectedSymptoms || [],
-      soapSubjective,
-      soapObjective,
-      soapAssessment,
-      soapPlan,
-      recommendedSpecialists: selectedDoctor?.department ? [selectedDoctor.department] : [],
-      recommendedAction: isEarlyTermination
-        ? "Consultation ended early. Please schedule an in-person evaluation or restart clinical intake."
-        : activeTriage?.recommendedAction || "Consultation complete.",
-      durationSeconds: durationSecs,
-      status: statusOverride,
-      interviewState: interviewState,
-      deliveredTurnRecords: interviewState?.deliveredTurnRecords || [],
-      attributedFacts: interviewState?.attributedFacts || [],
-      unmappedObservations: interviewState?.unmappedObservations || [],
-      caseVersion: interviewState?.caseVersion || 1,
-    };
-
-    // Client-side transient recovery cache update (tab-isolated with 15-minute TTL)
-    if (typeof window !== "undefined" && window.sessionStorage) {
-      try {
-        const recoveryRecord = {
-          payload,
-          savedAt: Date.now(),
-          expiresAt: Date.now() + 15 * 60 * 1000,
-        };
-        window.sessionStorage.setItem(`medvoice_transient_draft_${encId}`, JSON.stringify(recoveryRecord));
-      } catch {}
-    }
-
-    try {
-      const res = await fetch("/api/consultations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (res.ok) {
-        setPersistenceStatus("saved");
-        setPersistenceError(null);
-        if (statusOverride === "completed_pending_review" || statusOverride === "approved") {
-          if (typeof window !== "undefined" && window.sessionStorage) {
-            try {
-              window.sessionStorage.removeItem(`medvoice_transient_draft_${encId}`);
-            } catch {}
-          }
-        }
-      } else {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.error || "Failed to persist consultation to clinical archive.");
-      }
-    } catch (err: any) {
-      console.error("Auto-persist encounter error:", err);
-      setPersistenceStatus("error");
-      setPersistenceError(err?.message || "Encounter sync failed.");
-    }
   };
 
   // End consultation session
@@ -2069,6 +2329,7 @@ export default function ConsultPage() {
     setInterviewState(null);
     setAudioState("IDLE");
     stableEncounterIdRef.current = "";
+    serverEncounterCreatedRef.current = false;
     setCurrentEncounterId("");
     setPersistenceStatus("idle");
     setPersistenceError(null);
@@ -2077,8 +2338,13 @@ export default function ConsultPage() {
 
   // Process User Utterance (Preserves exact spoken text without artificial tag prefixes)
   const handleUserUtterance = async (userText: string, isBargeIn: boolean = false, audioMetrics?: LiveAudioMetrics) => {
+    if (isSubmittingUtteranceRef.current && !isBargeIn) {
+      return;
+    }
     const cleanUserText = userText.trim();
     if (!cleanUserText) return;
+
+    isSubmittingUtteranceRef.current = true;
 
     // Cleanly stop microphone while backend deliberates
     stopSpeechRecognitionListening();
@@ -2104,32 +2370,52 @@ export default function ConsultPage() {
 
     setMessages((prev) => [...prev, userMessage]);
 
+    // Ensure the encounter is registered on the server before sending the dialogue turn
+    if (!serverEncounterCreatedRef.current && stableEncounterIdRef.current) {
+      await ensureServerEncounter(stableEncounterIdRef.current, cleanUserText);
+    }
+
     try {
-      const res = await fetch("/api/voice/chat", {
+      const chatPayload = {
+        encounterId: stableEncounterIdRef.current,
+        doctorId: selectedDoctor.id,
+        message: cleanUserText,
+        conversationHistory: [...messages, userMessage],
+        patientName: patientDisplayName,
+        patientAge: activeProfile?.age != null ? String(activeProfile.age) : undefined,
+        patientId: activeProfile?.id,
+        patientRelationship: activeProfile?.relationshipToUser || "self",
+        patientProfile: activeProfile || undefined,
+        userId: user?.id,
+        isInterruption: isBargeIn,
+        interruptedAgent: selectedDoctor.name,
+        interviewState: interviewState,
+        userLocation: userLocation || undefined,
+        locationPermission: locationPermission,
+        audioMetrics: audioMetrics || undefined,
+      };
+
+      let res = await fetch("/api/voice/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          encounterId: stableEncounterIdRef.current,
-          doctorId: selectedDoctor.id,
-          message: cleanUserText,
-          conversationHistory: [...messages, userMessage],
-          patientName: patientDisplayName,
-          patientAge: activeProfile?.age != null ? String(activeProfile.age) : undefined,
-          patientId: activeProfile?.id,
-          patientRelationship: activeProfile?.relationshipToUser || "self",
-          patientProfile: activeProfile || undefined,
-          userId: user?.id,
-          isInterruption: isBargeIn,
-          interruptedAgent: selectedDoctor.name,
-          interviewState: interviewState,
-          userLocation: userLocation || undefined,
-          locationPermission: locationPermission,
-          audioMetrics: audioMetrics || undefined,
-        }),
+        body: JSON.stringify(chatPayload),
       });
 
+      // Self-healing recovery: if server lost in-memory state or encounter was not registered, register on server and retry once
+      if (res.status === 404 && stableEncounterIdRef.current) {
+        console.warn("[MedVoice] Encounter 404 detected; self-healing by registering encounter on server and retrying...");
+        serverEncounterCreatedRef.current = false;
+        await ensureServerEncounter(stableEncounterIdRef.current, cleanUserText);
+        res = await fetch("/api/voice/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(chatPayload),
+        });
+      }
+
       if (!res.ok) {
-        throw new Error(`Clinical response failed: ${res.status}`);
+        const errorJson = await res.json().catch(() => ({}));
+        throw new Error(errorJson.error || `Clinical response failed: ${res.status}`);
       }
 
       const clinicalReceivedTime = performance.now();
@@ -2228,8 +2514,20 @@ export default function ConsultPage() {
       }
       const currentStartedAt = consultationStartedAtRef.current || Date.now();
       const currentElapsed = Math.max(1, Math.round((Date.now() - currentStartedAt) / 1000));
+      const serverChatVersion = data.caseVersion ?? data.interviewState?.caseVersion;
+      if (serverChatVersion !== undefined && !isNaN(Number(serverChatVersion))) {
+        currentCaseVersionRef.current = Number(serverChatVersion);
+      }
       const turnMessages = [...messages, userMessage, newDoctorMessage];
-      persistEncounterRecord(stableEncounterIdRef.current, currentElapsed, "in_progress", turnMessages, data.triage);
+      persistEncounterRecord(
+        stableEncounterIdRef.current,
+        currentElapsed,
+        "in_progress",
+        turnMessages,
+        data.triage,
+        undefined,
+        currentCaseVersionRef.current + 1
+      );
 
       speakDoctorResponse(doctorReplyText, respondingDoctorId, undefined, {
         clinicalReceivedAt: clinicalReceivedTime,
@@ -2248,14 +2546,22 @@ export default function ConsultPage() {
           });
         },
       });
-    } catch (err) {
+    } catch (err: any) {
       console.error("Consultation chat error:", err);
       setPendingDoctorMessage(null);
-      if (callActiveRef.current) {
-        setAudioState("PATIENT_LISTENING");
-      } else {
-        setAudioState("IDLE");
-      }
+      // Safe fallback: never revert to listening on a clinical failure
+      setAudioState("IDLE");
+      setClinicalToasts((prev) => [
+        ...prev,
+        {
+          id: `chat-err-${Date.now()}`,
+          type: "warning",
+          title: "Clinical Response Interrupted",
+          description: err?.message || "Communication with clinical deliberation service failed. Please retry your utterance or click Speak.",
+        },
+      ]);
+    } finally {
+      isSubmittingUtteranceRef.current = false;
     }
   };
 
@@ -2334,7 +2640,7 @@ export default function ConsultPage() {
       <GlowCursor color="rgba(6, 182, 212, 0.12)" size={350} blur={65} opacity={0.7} />
 
       <main className="relative z-10 flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 pt-6 sm:pt-8 pb-16 flex flex-col gap-8">
-        
+
         <AnimatePresence mode="wait">
           {/* ========================================================================= */}
           {/* STATE A: CONSULT LOBBY (CHOOSE YOUR CLINICIAN EXPERIENCE)                 */}
@@ -2642,7 +2948,13 @@ export default function ConsultPage() {
                           ? "Doctor speaking response..."
                           : audioState === "PATIENT_LISTENING"
                           ? "Listening to patient voice input..."
-                          : "Multi-specialist board listening"}
+                          : audioState === "PROCESSING_TRANSCRIPTION"
+                          ? "Transcribing patient speech..."
+                          : audioState === "TRANSCRIPT_REVIEW"
+                          ? "Awaiting transcript confirmation..."
+                          : audioState === "PROCESSING_CLINICAL" || audioState === "PROCESSING_INTERRUPTION" || pendingDoctorMessage
+                          ? "Multi-specialist board analyzing..."
+                          : "Consultation ready"}
                       </span>
                     </div>
                   </div>
@@ -2727,10 +3039,10 @@ export default function ConsultPage() {
 
           {/* ASYMMETRIC WORKSPACE: 7:5 GRID */}
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-            
+
             {/* LEFT PANEL (7 cols): PRIMARY VOICE CONSOLE */}
             <section className="relative lg:col-span-7 flex flex-col gap-5 p-6 rounded-2xl bg-white border border-slate-200/90 shadow-sm overflow-hidden">
-            
+
             {/* Conversation Console Header */}
             <div className="flex items-center justify-between pb-3.5 border-b border-slate-200/80">
               <div className="flex items-center gap-2.5">
@@ -2739,10 +3051,32 @@ export default function ConsultPage() {
                   Live Consultation Dialogue
                 </span>
               </div>
-              <div className="flex items-center gap-2 text-xs font-mono text-slate-500">
-                <span className={audioState === "DOCTOR_SPEAKING" ? "text-emerald-700 font-bold animate-pulse" : audioState === "PATIENT_LISTENING" ? "text-cyan-700 font-bold" : "text-slate-500"}>
-                  {audioState === "DOCTOR_SPEAKING" ? `● ${activeSpeaker.name.split(",")[0].split(" ").pop() || "Doctor"} Speaking` : audioState === "PATIENT_LISTENING" ? "● Listening..." : "● Ready"}
-                </span>
+              <div className="flex items-center gap-2 text-xs font-mono">
+                {audioState === "DOCTOR_SPEAKING" ? (
+                  <span className="text-emerald-700 font-bold animate-pulse flex items-center gap-1.5">
+                    ● {activeSpeaker.name.split(",")[0].split(" ").pop() || "Doctor"} Speaking
+                  </span>
+                ) : audioState === "PATIENT_LISTENING" ? (
+                  <span className="text-cyan-700 font-bold animate-pulse flex items-center gap-1.5">
+                    ● Listening...
+                  </span>
+                ) : audioState === "PROCESSING_TRANSCRIPTION" ? (
+                  <span className="text-cyan-600 font-bold flex items-center gap-1.5">
+                    ● Transcribing...
+                  </span>
+                ) : audioState === "TRANSCRIPT_REVIEW" ? (
+                  <span className="text-cyan-700 font-bold flex items-center gap-1.5">
+                    ● Review Transcript
+                  </span>
+                ) : audioState === "PROCESSING_CLINICAL" || audioState === "PROCESSING_INTERRUPTION" || pendingDoctorMessage ? (
+                  <span className="text-cyan-700 font-bold animate-pulse flex items-center gap-1.5">
+                    ● Dr. {activeSpeaker.name.split(",")[0].split(" ").pop() || "Sarah"} is Thinking...
+                  </span>
+                ) : (
+                  <span className="text-slate-500 flex items-center gap-1.5">
+                    ● Ready
+                  </span>
+                )}
               </div>
             </div>
 
@@ -2757,6 +3091,8 @@ export default function ConsultPage() {
                 ? "Microphone listening for patient speech."
                 : audioState === "PROCESSING_TRANSCRIPTION"
                 ? "Transcribing patient speech."
+                : audioState === "TRANSCRIPT_REVIEW"
+                ? "Review and edit your spoken transcript before submitting."
                 : audioState === "PROCESSING_CLINICAL" || audioState === "PROCESSING_INTERRUPTION"
                 ? "Reviewing symptoms and updating clinical assessment."
                 : audioState === "DOCTOR_SPEAKING"
@@ -2814,9 +3150,9 @@ export default function ConsultPage() {
                   </p>
                 </div>
               ) : (
-                messages.map((msg) => (
+                messages.map((msg, mIdx) => (
                   <div
-                    key={msg.id}
+                    key={`${msg.id || "msg"}-${mIdx}`}
                     className={`flex flex-col gap-1.5 ${
                       msg.role === "system"
                         ? "items-center w-full my-3"
@@ -2888,15 +3224,15 @@ export default function ConsultPage() {
                       <span className="text-xs font-semibold text-slate-500">· {pendingDoctorMessage.doctorSpecialty}</span>
                     )}
                   </span>
-                  <div className="flex items-center gap-2.5 max-w-[92%] text-slate-600 text-sm font-medium bg-slate-50/90 border border-slate-200/70 rounded-2xl px-4 py-3 shadow-2xs">
+                  <div className="flex items-center gap-2.5 max-w-[92%] text-slate-700 text-sm font-medium bg-slate-50 border border-slate-200/80 rounded-2xl px-4 py-3 shadow-xs">
                     <span className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
-                    <span className="italic">Formulating response...</span>
+                    <span>Dr. {pendingDoctorMessage.doctorName.split(",")[0].split(" ").pop() || "Sarah"} is formulating clinical response...</span>
                   </div>
                 </div>
               )}
 
-              {/* Compact React Bits ThoughtLine Micro-Interaction */}
-              {(callActive || audioState !== "IDLE" || Boolean(triageData?.isEmergency)) && (
+              {/* ThoughtLine Micro-Interaction (active only when doctor is not formulating) */}
+              {(callActive || audioState !== "IDLE" || Boolean(triageData?.isEmergency)) && !pendingDoctorMessage && (
                 <div className="pt-2 pb-1 border-t border-slate-100 flex items-center justify-between">
                   <ThoughtLine
                     label={
@@ -2906,21 +3242,19 @@ export default function ConsultPage() {
                         ? "Listening…"
                         : audioState === "PROCESSING_TRANSCRIPTION"
                         ? "Transcribing…"
-                        : audioState === "PROCESSING_CLINICAL"
-                        ? "Thinking…"
+                        : audioState === "TRANSCRIPT_REVIEW"
+                        ? "Reviewing transcript…"
                         : audioState === "DOCTOR_SPEAKING"
                         ? "Speaking…"
-                        : "Listening…"
+                        : "Ready"
                     }
                     doneLabel="Clinical system ready"
                     working={
                       !triageData?.isEmergency &&
                       (audioState === "PATIENT_LISTENING" ||
                         audioState === "PROCESSING_TRANSCRIPTION" ||
-                        audioState === "PROCESSING_CLINICAL" ||
-                        audioState === "BARGE_IN_DETECTED" ||
-                        audioState === "PROCESSING_INTERRUPTION" ||
-                        Boolean(pendingDoctorMessage))
+                        audioState === "TRANSCRIPT_REVIEW" ||
+                        audioState === "BARGE_IN_DETECTED")
                     }
                     isEmergency={Boolean(triageData?.isEmergency)}
                     emergencyDirective={
@@ -2941,21 +3275,6 @@ export default function ConsultPage() {
 
             </div>
 
-            {/* SPEAKING INDICATOR */}
-            <div className="flex flex-wrap items-center justify-between gap-2 px-3.5 py-1.5 rounded-xl bg-slate-900 border border-slate-800 text-[11px] font-mono shadow-xs">
-              <div className="flex items-center gap-2">
-                <span className={`w-2 h-2 rounded-full ${audioState === "DOCTOR_SPEAKING" ? "bg-emerald-400 animate-pulse shadow-[0_0_8px_rgba(52,211,153,0.8)]" : "bg-slate-500"}`} />
-                <span className="font-bold text-white tracking-wide">{activeSpeaker.name.split(",")[0].toUpperCase()}</span>
-                <span className="text-slate-600">•</span>
-                <span className="text-cyan-300 font-semibold">{activeSpeaker.specialty || "General Clinician"}</span>
-              </div>
-              {audioState === "DOCTOR_SPEAKING" && (
-                <span className="text-[10px] text-emerald-400 font-bold tracking-wider animate-pulse flex items-center gap-1">
-                  <Volume2 className="w-3 h-3" /> Speaking
-                </span>
-              )}
-            </div>
-
             {/* UNIFIED PHYSICAL VOICE PILL CONTROL */}
             <div className="pt-2 border-t border-slate-200/80">
               <VoicePill
@@ -2963,6 +3282,11 @@ export default function ConsultPage() {
                 transcriptSnippet={transcriptText}
                 typedValue={typedInput}
                 onTypedChange={setTypedInput}
+                pendingTranscript={pendingTranscript}
+                onPendingTranscriptChange={setPendingTranscript}
+                onConfirmSend={confirmAndSendTranscript}
+                onReRecord={handleReRecord}
+                onDiscard={handleDiscardTranscript}
                 speakerName={activeSpeaker.name}
                 speakerVoiceId={activeSpeaker.voiceId}
                 onSubmitText={(text) => {
@@ -2974,7 +3298,9 @@ export default function ConsultPage() {
                   }
                 }}
                 onToggleRecord={() => {
-                  if (audioState !== "PATIENT_LISTENING") {
+                  if (audioState === "TRANSCRIPT_REVIEW") {
+                    handleReRecord();
+                  } else if (audioState !== "PATIENT_LISTENING") {
                     if (!callActive) {
                       callActiveRef.current = true;
                       setCallActive(true);
@@ -2998,8 +3324,6 @@ export default function ConsultPage() {
                 <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border ${
                   triageData?.isEmergency
                     ? "text-rose-800 bg-rose-50 border-rose-200"
-                    : (audioState === "PROCESSING_TRANSCRIPTION" || audioState === "PROCESSING_CLINICAL" || audioState === "PROCESSING_INTERRUPTION")
-                    ? "text-cyan-800 bg-cyan-50 border-cyan-200"
                     : "text-emerald-800 bg-emerald-50 border-emerald-200"
                 }`}>
                   <span className={`w-1.5 h-1.5 rounded-full ${
@@ -3007,10 +3331,8 @@ export default function ConsultPage() {
                   } animate-pulse`} />
                   {triageData?.isEmergency
                     ? "Emergency Detected"
-                    : (audioState === "PROCESSING_TRANSCRIPTION" || audioState === "PROCESSING_CLINICAL" || audioState === "PROCESSING_INTERRUPTION")
-                    ? "Analyzing"
                     : callActive
-                    ? "Active"
+                    ? "Active · Protected"
                     : "Standby"}
                 </span>
               </div>
@@ -3019,10 +3341,10 @@ export default function ConsultPage() {
 
           {/* RIGHT PANEL (5 cols): CLINICAL BOARD HERO + UNIFIED STATUS */}
           <div className="lg:col-span-5 flex flex-col gap-4">
-            
+
             {/* HERO MODULE: LIVE CLINICAL BOARD REASONING */}
             <section className="relative flex flex-col gap-4 p-5 sm:p-6 rounded-2xl bg-[#F8FAFC] border border-slate-200/90 shadow-sm overflow-hidden">
-              
+
               {/* Subtle CursorGrid background texture */}
               <CursorGrid
                 cellSize={50}
@@ -3040,7 +3362,7 @@ export default function ConsultPage() {
               />
 
               <div className="relative z-10 flex flex-col gap-5">
-                
+
                 {/* Module Header */}
                 <div className="relative flex flex-col gap-3 pb-3 border-b border-slate-200/80">
 
@@ -3111,7 +3433,7 @@ export default function ConsultPage() {
                 {/* TAB: DELIBERATION STREAM (HUMAN-SCALE AGENT CARDS + REACT BITS ANIMATION) */}
                 {activeRightTab === "board" && (
                   <div className="flex flex-col gap-5 pt-1">
-                    
+
                     {/* Active Inquiry Specialist Banner (if awaiting response) */}
                     {boardData?.phase === "active_inquiring" && boardData.active_requests && boardData.active_requests.length > 0 && (
                       <AnimatedContent contentKey={boardData.active_requests[0].targetSlot}>
@@ -3777,7 +4099,7 @@ export default function ConsultPage() {
               </div>
 
               <div className="grid grid-cols-1 gap-4 pt-1">
-                
+
                 {/* Left Card: Live Triage */}
                 <div className="rounded-2xl border border-slate-200/90 bg-slate-50/70 p-5 flex flex-col justify-between gap-4 shadow-2xs">
                   <div>
@@ -4149,8 +4471,8 @@ export default function ConsultPage() {
 
         {/* TRANSIENT CLINICAL EVENT TOASTS (SWIPE TOAST) */}
         <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none">
-          {clinicalToasts.map((toast) => (
-            <div key={toast.id} className="pointer-events-auto">
+          {clinicalToasts.map((toast, tIdx) => (
+            <div key={`${toast.id || "toast"}-${tIdx}`} className="pointer-events-auto">
               <SwipeToast
                 id={toast.id}
                 type={toast.type}
