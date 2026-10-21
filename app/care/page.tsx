@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
 import dynamic from "next/dynamic";
 import {
   MapPin,
@@ -9,16 +9,10 @@ import {
   Search,
   PhoneCall,
   ExternalLink,
-  ShieldCheck,
   Building2,
-  Clock,
   Car,
-  Filter,
-  CheckCircle2,
   ChevronLeft,
   ChevronRight,
-  ArrowUpDown,
-  Navigation,
   Activity,
   Sparkles,
   Check,
@@ -26,24 +20,22 @@ import {
   ChevronUp,
   Info,
   Shield,
-  Stethoscope,
-  Award,
+  Layers,
+  X,
+  RefreshCw,
+  AlertTriangle,
+  Radio,
+  Clock,
+  ArrowRight
 } from "lucide-react";
-import { AnimatedList } from "@/components/AnimatedList";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { ArchitecturalBrandLedgerFooter } from "../_components/ArchitecturalBrandLedgerFooter";
+import { HospitalItem, RouteTelemetryInfo, calculateCalibratedDriveTime } from "../_components/InteractiveRouteMap";
 import { SpecialtyIcon } from "@/components/care/SpecialtyIcon";
-import { AppFooter } from "../_components/AppFooter";
-import { HospitalItem } from "../_components/InteractiveRouteMap";
-import { CardNav, RegionCardItem } from "@/components/navigation/CardNav";
-import { MovingBorder } from "@/components/motion/MovingBorder";
-import SplitText from "@/components/ui/SplitText";
-import GradientText from "@/components/ui/GradientText";
-import { AmbientPageBackground } from "@/components/ui/AmbientPageBackground";
-import StarBorder from "@/components/ui/StarBorder";
 import {
   ALL_REGION_PRESETS,
   RegionPresetItem,
   MEDICAL_ISSUE_OPTIONS,
-  MedicalIssueOption,
   getHospitalFamousFor,
 } from "@/lib/hospitals-india-data";
 import {
@@ -51,6 +43,7 @@ import {
   isPlaceholderOrGenericHospitalName,
   isValidHospitalPhoneNumber,
 } from "@/lib/care-network/evaluator";
+import { clientCareCache } from "@/lib/care-network/care-cache";
 
 // Leaflet map dynamically imported with SSR disabled
 const InteractiveRouteMap = dynamic(
@@ -58,9 +51,9 @@ const InteractiveRouteMap = dynamic(
   {
     ssr: false,
     loading: () => (
-      <div className="w-full h-[460px] sm:h-[500px] rounded-3xl bg-slate-100/80 border border-slate-200/80 flex flex-col items-center justify-center gap-3 animate-pulse">
-        <div className="w-8 h-8 rounded-full border-2 border-slate-900 border-t-transparent animate-spin" />
-        <span className="text-xs font-semibold text-slate-500 font-mono">Loading road network...</span>
+      <div className="w-full h-[500px] lg:h-[560px] rounded-3xl bg-white border border-[#E5E7EB] flex flex-col items-center justify-center gap-3 animate-pulse">
+        <div className="w-8 h-8 rounded-full border-2 border-[#05070F] border-t-transparent animate-spin" />
+        <span className="text-xs font-semibold text-[#64748B] font-mono">Initializing geographic telemetry...</span>
       </div>
     ),
   }
@@ -86,35 +79,45 @@ export interface CareOrigin {
 const STORAGE_KEY = "medvoice_care_origin";
 const PAGE_SIZE = 10;
 
+// Default initial exploration hub (Hyderabad / Banjara Hills)
+const DEFAULT_EXPLORATION_HUB: CareOrigin = {
+  lat: 17.426,
+  lng: 78.412,
+  label: "Hyderabad (Banjara Hills Hub)",
+  source: "preset",
+  resolvedAt: Date.now(),
+};
+
 export default function CarePage() {
+  const prefersReducedMotion = useReducedMotion();
+
+  // Core Data States
   const [rawHospitals, setRawHospitals] = useState<HospitalItem[]>([]);
   const [userSelectedId, setUserSelectedId] = useState<string | null>(null);
-  const [showAllInRanked, setShowAllInRanked] = useState<boolean>(false);
-  const [loading, setLoading] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(true);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+  const [isStaleData, setIsStaleData] = useState<boolean>(false);
 
   // Authoritative location state machine
   const [locationStatus, setLocationStatus] = useState<LocationStatus>("LOCATION_UNKNOWN");
-  // Patient departure location state (where the user actually is) - strictly NULL on initial mount
   const [userLocation, setUserLocation] = useState<CareOrigin | null>(null);
-  // Target hospital exploration region state - strictly NULL on initial mount
-  const [searchRegion, setSearchRegion] = useState<CareOrigin | null>(null);
+  const [searchRegion, setSearchRegion] = useState<CareOrigin>(DEFAULT_EXPLORATION_HUB);
 
-  // Non-authoritative previously saved location suggestion (requires explicit user action to activate)
+  // Saved location suggestion from previous sessions
   const [savedSuggestion, setSavedSuggestion] = useState<CareOrigin | null>(null);
-  // Toggle for city picker dropdown/panel
   const [isChoosingCity, setIsChoosingCity] = useState<boolean>(false);
 
   const [isDetectingGps, setIsDetectingGps] = useState<boolean>(false);
   const [isManualPicking, setIsManualPicking] = useState<boolean>(false);
 
-  // Live road stats calculated from map routing
-  const [liveRoadStats, setLiveRoadStats] = useState<{ roadDistanceKm: number; etaMinutes: number } | null>(null);
+  // Canonical road routing stats calculated from map routing
+  const [liveRoadStats, setLiveRoadStats] = useState<RouteTelemetryInfo | null>(null);
 
-  // User Mode Choice: "all" (Show All Hospitals) vs "issues" (Based on Health Issues)
+  // Discovery Mode: "all" (All Hospitals & 24/7 ERs) vs "issues" (Condition-Specific)
   const [viewMode, setViewMode] = useState<"all" | "issues">("all");
   const [selectedZone, setSelectedZone] = useState<string>("all");
 
-  // Step 1: Medical issue & specialty states
+  // Specialty & Condition Filters
   const [specialtyFilter, setSpecialtyFilter] = useState<string>("all");
   const [issueSearchText, setIssueSearchText] = useState<string>("");
 
@@ -122,69 +125,33 @@ export default function CarePage() {
   const [sortBy, setSortBy] = useState<"fastest" | "government" | "rating">("fastest");
   const [isRationaleExpanded, setIsRationaleExpanded] = useState<boolean>(false);
 
-  // True Pagination state (10 results per page)
+  // Pagination state (10 results per page)
   const [currentPage, setCurrentPage] = useState<number>(1);
 
-  // Step 2: Search autocomplete state
+  // Search Autocomplete state
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [searchResults, setSearchResults] = useState<Array<{ display_name: string; lat: string; lon: string }>>([]);
   const [isSearching, setIsSearching] = useState<boolean>(false);
   const [showDropdown, setShowDropdown] = useState<boolean>(false);
   const searchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Mode switcher handler
-  const handleSelectViewMode = (mode: "all" | "issues") => {
-    setViewMode(mode);
-    if (mode === "all") {
-      setSpecialtyFilter("all");
-      setIssueSearchText("");
-    } else {
-      if (specialtyFilter === "all") {
-        setSpecialtyFilter("cardiology");
-        setIssueSearchText("Heart & Cardiology");
-      }
-    }
-    setUserSelectedId(null);
-    setCurrentPage(1);
-  };
+  // Request race condition protection
+  const activeQuerySeqRef = useRef<number>(0);
 
-  // Issue selection and search handlers
-  const handleSelectSpecialty = (id: string, label?: string) => {
-    setViewMode("issues");
-    setSpecialtyFilter(id);
-    setIssueSearchText(id === "all" ? "" : (label || id));
-    setUserSelectedId(null);
-    setCurrentPage(1);
-  };
-
-  const handleIssueInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    setIssueSearchText(val);
-    const trimmed = val.trim().toLowerCase();
-    setViewMode("issues");
-    setSpecialtyFilter(trimmed.length > 0 ? trimmed : "all");
-    setUserSelectedId(null);
-    setCurrentPage(1);
-  };
-
-  const handleClearIssue = () => {
-    setIssueSearchText("");
-    setSpecialtyFilter("all");
-    setUserSelectedId(null);
-    setCurrentPage(1);
-  };
-
-  // Unified hospital selection handler: updates selection, resets/syncs road stats, and triggers map route
+  // Unified hospital selection handler: updates selection and triggers map camera sync
   const handleSelectHospital = (hosp: HospitalItem, shouldScrollToMap: boolean = false) => {
     setUserSelectedId(hosp.id);
     setLiveRoadStats({
       roadDistanceKm: hosp.distanceKm,
-      etaMinutes: hosp.etaMinutes || Math.max(3, Math.round(hosp.distanceKm * 1.5)),
+      etaMinutes: hosp.etaMinutes || calculateCalibratedDriveTime(hosp.distanceKm),
+      roadGeometryAvailable: false,
+      isCalculating: true,
+      unavailable: false,
     });
     if (shouldScrollToMap && typeof window !== "undefined") {
-      const mapEl = document.getElementById("care-map-section");
+      const mapEl = document.getElementById("care-command-map");
       if (mapEl) {
-        mapEl.scrollIntoView({ behavior: "smooth", block: "start" });
+        mapEl.scrollIntoView({ behavior: prefersReducedMotion ? "instant" : "smooth", block: "start" });
       }
     }
   };
@@ -194,133 +161,60 @@ export default function CarePage() {
     if (recommendedHospital) {
       setLiveRoadStats({
         roadDistanceKm: recommendedHospital.distanceKm,
-        etaMinutes: recommendedHospital.etaMinutes || Math.max(3, Math.round(recommendedHospital.distanceKm * 1.5)),
+        etaMinutes: recommendedHospital.etaMinutes || calculateCalibratedDriveTime(recommendedHospital.distanceKm),
+        roadGeometryAvailable: false,
+        isCalculating: true,
+        unavailable: false,
       });
     }
   };
 
-  // 1. Session Storage on Mount: Non-authoritative suggestion ONLY.
-  // Never automatically restores active location or triggers hospital discovery.
-  useEffect(() => {
-    if (typeof window === "undefined") return;
+  // Fetch facilities with in-memory caching and request deduplication
+  const loadFacilities = useCallback(
+    async (targetRegion: CareOrigin, departureOrigin: CareOrigin | null) => {
+      const effectiveDeparture = departureOrigin || targetRegion;
+      const querySeq = ++activeQuerySeqRef.current;
 
-    try {
-      const saved = sessionStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        const candidate = parsed?.userLocation || parsed;
-
-        const allowedSources: LocationSource[] = ["gps", "preset", "search", "manual_pin"];
-        const isValidSource = allowedSources.includes(candidate?.source);
-        const hasValidCoords =
-          candidate &&
-          Number.isFinite(candidate.lat) &&
-          Number.isFinite(candidate.lng) &&
-          candidate.lat >= -90 &&
-          candidate.lat <= 90 &&
-          candidate.lng >= -180 &&
-          candidate.lng <= 180;
-        const isValidLabel = typeof candidate?.label === "string" && candidate.label.trim().length > 0;
-
-        // Invalidate legacy default records (which had Amaravati 16.5131, 80.5165 without explicit user action)
-        const isLegacyDefault =
-          !candidate?.resolvedAt &&
-          Math.abs(candidate?.lat - 16.5131) < 0.001 &&
-          Math.abs(candidate?.lng - 80.5165) < 0.001;
-
-        if (isValidSource && hasValidCoords && isValidLabel && !isLegacyDefault) {
-          const restoredOrigin: CareOrigin = {
-            lat: candidate.lat,
-            lng: candidate.lng,
-            label: candidate.label,
-            source: candidate.source,
-            resolvedAt: candidate.resolvedAt || Date.now(),
-          };
-
-          // NON-AUTHORITATIVE: Store strictly as an unconfirmed suggestion.
-          // userLocation remains null, locationStatus remains LOCATION_UNKNOWN,
-          // and ZERO hospital fetch requests are made until user confirms.
-          setSavedSuggestion(restoredOrigin);
-          return;
-        } else {
-          sessionStorage.removeItem(STORAGE_KEY);
-        }
+      if (rawHospitals.length > 0) {
+        setIsRefreshing(true);
+      } else {
+        setLoading(true);
       }
-    } catch (e) {
-      console.warn("Could not read saved search origin suggestion:", e);
-      sessionStorage.removeItem(STORAGE_KEY);
-    }
-  }, []);
 
-  // Explicit user confirmation to apply saved location suggestion
-  const handleApplySuggestion = () => {
-    if (!savedSuggestion) return;
-    setUserLocation(savedSuggestion);
-    setSearchRegion(savedSuggestion);
-    const nextStatus: LocationStatus =
-      savedSuggestion.source === "gps" ? "LOCATION_RESOLVED" : "LOCATION_MANUALLY_SELECTED";
-    setLocationStatus(nextStatus);
-    loadFacilities(savedSuggestion, savedSuggestion);
-  };
-
-  // User dismissal of saved suggestion
-  const handleDismissSuggestion = () => {
-    setSavedSuggestion(null);
-    if (typeof window !== "undefined") {
       try {
-        sessionStorage.removeItem(STORAGE_KEY);
-      } catch { }
-    }
-  };
+        const { hospitals, fromCache } = await clientCareCache.fetchWithDeduplication(
+          targetRegion.lat,
+          targetRegion.lng,
+          effectiveDeparture.lat,
+          effectiveDeparture.lng,
+          async (signal) => {
+            const res = await fetch(
+              `/api/hospitals?lat=${targetRegion.lat}&lng=${targetRegion.lng}&patientLat=${effectiveDeparture.lat}&patientLng=${effectiveDeparture.lng}`,
+              { signal }
+            );
+            if (!res.ok) {
+              throw new Error(`Failed to load hospitals: ${res.status}`);
+            }
+            const data = await res.json();
+            return data.hospitals || [];
+          }
+        );
 
-  // User resets location to return to calm initial screen
-  const handleResetLocation = () => {
-    setUserLocation(null);
-    setSearchRegion(null);
-    setLocationStatus("LOCATION_UNKNOWN");
-    setRawHospitals([]);
-    setUserSelectedId(null);
-    setLiveRoadStats(null);
-    setIsChoosingCity(false);
-  };
+        // Guard against race condition if user clicked rapidly
+        if (querySeq !== activeQuerySeqRef.current) return;
 
-  // 2. Fetch facilities based on target region and user departure location
-  // STRICTLY GATED: Cannot run unless departureOrigin and targetRegion have valid numeric coordinates
-  const loadFacilities = async (
-    targetRegion: CareOrigin,
-    departureOrigin: CareOrigin
-  ) => {
-    if (
-      !targetRegion ||
-      !Number.isFinite(targetRegion.lat) ||
-      !Number.isFinite(targetRegion.lng) ||
-      !departureOrigin ||
-      !Number.isFinite(departureOrigin.lat) ||
-      !Number.isFinite(departureOrigin.lng)
-    ) {
-      console.warn("[CarePage] Aborted loadFacilities: Missing verified departure coordinates.");
-      return;
-    }
-
-    setLoading(true);
-    setCurrentPage(1);
-    try {
-      // Fetch ALL hospitals for this location — NO specialty param.
-      // Specialty evaluation happens locally via useMemo (instant, zero latency).
-      const res = await fetch(
-        `/api/hospitals?lat=${targetRegion.lat}&lng=${targetRegion.lng}&patientLat=${departureOrigin.lat}&patientLng=${departureOrigin.lng}`
-      );
-      if (res.ok) {
-        const data = await res.json();
-        if (data.hospitals && data.hospitals.length > 0) {
-          const list: HospitalItem[] = data.hospitals;
-          setRawHospitals(list);
+        setIsStaleData(false);
+        if (hospitals && hospitals.length > 0) {
+          setRawHospitals(hospitals);
           setUserSelectedId(null);
-          const first = list[0] || null;
+          const first = hospitals[0] || null;
           if (first) {
             setLiveRoadStats({
               roadDistanceKm: first.distanceKm,
-              etaMinutes: first.etaMinutes || Math.max(3, Math.round(first.distanceKm * 1.5)),
+              etaMinutes: first.etaMinutes || calculateCalibratedDriveTime(first.distanceKm),
+              roadGeometryAvailable: false,
+              isCalculating: true,
+              unavailable: false,
             });
           }
         } else {
@@ -328,34 +222,77 @@ export default function CarePage() {
           setUserSelectedId(null);
           setLiveRoadStats(null);
         }
-      }
-      setSearchRegion(targetRegion);
-      setUserLocation(departureOrigin);
 
-      // Persist ONLY verified, explicitly resolved/selected location
-      if (typeof window !== "undefined") {
-        try {
-          sessionStorage.setItem(
-            STORAGE_KEY,
-            JSON.stringify({
-              userLocation: departureOrigin,
-              searchRegion: targetRegion,
-              resolvedAt: Date.now(),
-            })
-          );
-        } catch { }
+        setSearchRegion(targetRegion);
+        if (departureOrigin) {
+          setUserLocation(departureOrigin);
+          if (typeof window !== "undefined") {
+            try {
+              sessionStorage.setItem(
+                STORAGE_KEY,
+                JSON.stringify({
+                  userLocation: departureOrigin,
+                  searchRegion: targetRegion,
+                  resolvedAt: Date.now(),
+                })
+              );
+            } catch {}
+          }
+        }
+      } catch (e) {
+        console.warn("[CarePage] Fetch error:", e);
+        if (querySeq === activeQuerySeqRef.current) {
+          setIsStaleData(true);
+        }
+      } finally {
+        if (querySeq === activeQuerySeqRef.current) {
+          setLoading(false);
+          setIsRefreshing(false);
+        }
       }
-    } catch (e) {
-      console.warn("Failed to load facilities:", e);
-    } finally {
-      setLoading(false);
+    },
+    [rawHospitals.length]
+  );
+
+  // Initialize on mount: check session storage suggestion or load default hub
+  useEffect(() => {
+    let initialOrigin: CareOrigin | null = null;
+
+    if (typeof window !== "undefined") {
+      try {
+        const saved = sessionStorage.getItem(STORAGE_KEY);
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          const candidate = parsed?.userLocation || parsed;
+          if (
+            candidate &&
+            Number.isFinite(candidate.lat) &&
+            Number.isFinite(candidate.lng) &&
+            typeof candidate?.label === "string"
+          ) {
+            initialOrigin = {
+              lat: candidate.lat,
+              lng: candidate.lng,
+              label: candidate.label,
+              source: candidate.source || "preset",
+              resolvedAt: candidate.resolvedAt || Date.now(),
+            };
+            setSavedSuggestion(initialOrigin);
+          }
+        }
+      } catch {}
     }
-  };
 
-  // NOTE: No useEffect([specialtyFilter]) — specialty changes are handled
-  //       entirely by the useMemo below (instant, zero network requests).
+    const startRegion = initialOrigin || DEFAULT_EXPLORATION_HUB;
+    setSearchRegion(startRegion);
+    if (initialOrigin) {
+      setUserLocation(initialOrigin);
+      setLocationStatus("LOCATION_MANUALLY_SELECTED");
+    }
+    loadFacilities(startRegion, initialOrigin);
+  }, []);
 
-  // Handle GPS detection: strictly user-initiated
+  // GPS Detection Handler
   const handleDetectLiveLocation = () => {
     if (typeof window === "undefined") return;
 
@@ -373,7 +310,7 @@ export default function CarePage() {
       try {
         const revRes = await fetch(
           `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}&zoom=16`,
-          { signal: AbortSignal.timeout(2500) }
+          { signal: AbortSignal.timeout(3000) }
         );
         if (revRes.ok) {
           const revData = await revRes.json();
@@ -389,7 +326,7 @@ export default function CarePage() {
             label = `Near ${area}${city ? `, ${city}` : ""}`;
           }
         }
-      } catch { }
+      } catch {}
 
       const newGpsOrigin: CareOrigin = {
         lat: latitude,
@@ -403,16 +340,15 @@ export default function CarePage() {
       setSearchRegion(newGpsOrigin);
       setLocationStatus("LOCATION_RESOLVED");
       setIsDetectingGps(false);
+      setIsChoosingCity(false);
       setSearchQuery("");
       loadFacilities(newGpsOrigin, newGpsOrigin);
     };
 
     const onLocationError = (err: GeolocationPositionError) => {
-      console.warn("[CarePage] Geolocation failed/denied:", err.message);
+      console.warn("[CarePage] Geolocation denied/timeout:", err.message);
       setIsDetectingGps(false);
       setLocationStatus("LOCATION_PERMISSION_DENIED");
-      // NEVER silently substitute Vijayawada or trigger fallback discovery.
-      // ZERO hospital requests are triggered.
     };
 
     navigator.geolocation.getCurrentPosition(onLocationSuccess, onLocationError, {
@@ -422,25 +358,28 @@ export default function CarePage() {
     });
   };
 
-  // Handle preset city selection: explicit user choice
+  // Preset City Selector Handler
   const handleSelectPreset = (preset: RegionPresetItem) => {
     setIsManualPicking(false);
     setSearchQuery("");
     setShowDropdown(false);
+    setIsChoosingCity(false);
+
     const chosenOrigin: CareOrigin = {
       lat: preset.lat,
       lng: preset.lng,
-      label: preset.label,
+      label: preset.name,
       source: "preset",
       resolvedAt: Date.now(),
     };
+
     setUserLocation(chosenOrigin);
     setSearchRegion(chosenOrigin);
     setLocationStatus("LOCATION_MANUALLY_SELECTED");
     loadFacilities(chosenOrigin, chosenOrigin);
   };
 
-  // Handle Search Input Autocomplete
+  // Search Autocomplete Handler
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const query = e.target.value;
     setSearchQuery(query);
@@ -483,8 +422,11 @@ export default function CarePage() {
     setShowDropdown(false);
     setSearchQuery("");
     setIsManualPicking(false);
+    setIsChoosingCity(false);
+
     const labelParts = result.display_name.split(",");
     const shortLabel = labelParts.slice(0, 2).join(",").trim();
+
     const chosenOrigin: CareOrigin = {
       lat,
       lng,
@@ -492,12 +434,14 @@ export default function CarePage() {
       source: "search",
       resolvedAt: Date.now(),
     };
+
     setUserLocation(chosenOrigin);
     setSearchRegion(chosenOrigin);
     setLocationStatus("LOCATION_MANUALLY_SELECTED");
     loadFacilities(chosenOrigin, chosenOrigin);
   };
 
+  // Map Click Pin-Drop Handler
   const handleConfirmManualLocation = async (lat: number, lng: number) => {
     setIsManualPicking(false);
     if (!Number.isFinite(lat) || !Number.isFinite(lng)) return;
@@ -522,7 +466,7 @@ export default function CarePage() {
           label = `Near ${area}${city ? `, ${city}` : ""}`;
         }
       }
-    } catch { }
+    } catch {}
 
     const newOrigin: CareOrigin = {
       lat,
@@ -537,16 +481,7 @@ export default function CarePage() {
     loadFacilities(newOrigin, newOrigin);
   };
 
-  const handleSetRegionAsDeparture = () => {
-    if (searchRegion) {
-      loadFacilities(searchRegion, searchRegion);
-    }
-  };
-
-  // ─── LOCAL SPECIALTY EVALUATION (instant, zero network requests) ───────────
-  // evaluateAndRankForSpecialty runs the same CATEGORY_RULES matching that was
-  // previously done server-side, but now executes in useMemo on rawHospitals.
-  // Changing specialtyFilter → instant re-rank, no "0 MATCHING FACILITIES" flicker.
+  // Medical Specialty Evaluation (Client-Side Instant Re-Rank)
   const evaluationResult = useMemo(() => {
     if (rawHospitals.length === 0) {
       return {
@@ -560,20 +495,18 @@ export default function CarePage() {
     return evaluateAndRankForSpecialty(rawHospitals, specialtyFilter);
   }, [rawHospitals, specialtyFilter]);
 
-  const { categoryFallback, fallbackBanner, categoryLabel, categoryClass } = evaluationResult;
+  const { categoryFallback, fallbackBanner, categoryLabel } = evaluationResult;
 
-  // Filter & Sort: Apply ownership filter and sort on top of evaluated results
+  // Filter & Sort
   const filteredAndSortedHospitals = useMemo(() => {
     let list = evaluationResult.ranked.filter((h) => !isPlaceholderOrGenericHospitalName(h.name));
 
-    // Ownership filter
     if (ownershipFilter === "government") {
       list = list.filter((h) => (h as any).ownership === "government");
     } else if (ownershipFilter === "private") {
       list = list.filter((h) => (h as any).ownership === "private");
     }
 
-    // Sort order: When a medical issue is active, always put specialized facilities first!
     if (sortBy === "fastest") {
       list.sort((a, b) => {
         if (specialtyFilter !== "all") {
@@ -612,839 +545,835 @@ export default function CarePage() {
     }));
   }, [evaluationResult.ranked, ownershipFilter, sortBy, specialtyFilter]);
 
-  // Primary recommended facility (#1)
   const recommendedHospital = useMemo(() => {
     return filteredAndSortedHospitals[0] || null;
   }, [filteredAndSortedHospitals]);
 
-  // Authoritative selected facility: user clicked override OR default recommended #1
   const selectedHospital = useMemo(() => {
     if (!userSelectedId) return recommendedHospital;
     return filteredAndSortedHospitals.find((h) => h.id === userSelectedId) || recommendedHospital;
   }, [userSelectedId, recommendedHospital, filteredAndSortedHospitals]);
 
-  // Breakdown of specialized vs other facilities
-  const specializedCount = useMemo(() => {
-    return filteredAndSortedHospitals.filter((h) => h.isEligible).length;
-  }, [filteredAndSortedHospitals]);
-
-  // True Pagination calculations
+  // True Pagination (10 per page)
   const totalPages = Math.max(1, Math.ceil(filteredAndSortedHospitals.length / PAGE_SIZE));
   const startIndex = (currentPage - 1) * PAGE_SIZE;
   const endIndex = Math.min(startIndex + PAGE_SIZE, filteredAndSortedHospitals.length);
 
-  // Sliced 10 facilities for the active page
   const pageHospitals = useMemo(() => {
     return filteredAndSortedHospitals.slice(startIndex, endIndex);
   }, [filteredAndSortedHospitals, startIndex, endIndex]);
 
-  // Generate pagination numbers (1, 2, 3... totalPages)
   const pageNumbers = useMemo(() => {
     const pages: number[] = [];
     if (totalPages <= 7) {
       for (let i = 1; i <= totalPages; i++) pages.push(i);
     } else {
       pages.push(1);
-      if (currentPage > 3) pages.push(-1); // Ellipsis
+      if (currentPage > 3) pages.push(-1);
       const start = Math.max(2, currentPage - 1);
       const end = Math.min(totalPages - 1, currentPage + 1);
       for (let i = start; i <= end; i++) pages.push(i);
-      if (currentPage < totalPages - 2) pages.push(-1); // Ellipsis
+      if (currentPage < totalPages - 2) pages.push(-1);
       pages.push(totalPages);
     }
     return pages;
   }, [totalPages, currentPage]);
 
-  const currentGoogleMapsUrl = selectedHospital && userLocation
+  const mapsUrl = selectedHospital && userLocation
     ? `https://www.google.com/maps/dir/?api=1&origin=${userLocation.lat},${userLocation.lng}&destination=${selectedHospital.latitude},${selectedHospital.longitude}&travelmode=driving`
     : selectedHospital
     ? `https://www.google.com/maps/search/?api=1&query=${selectedHospital.latitude},${selectedHospital.longitude}`
     : "#";
 
   return (
-    <AmbientPageBackground>
-      <main className="relative z-10 flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 pt-24 sm:pt-28 pb-16 flex flex-col gap-6">
+    <div className="relative min-h-screen bg-[#FAF9F6] text-[#05070F] flex flex-col font-sans selection:bg-[#B7FF72] selection:text-[#05070F]">
+
+      {/* Main Command Center Canvas */}
+      <main className="relative z-10 flex-1 max-w-[1400px] w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-10 pb-16 flex flex-col gap-6">
 
         {/* ========================================================================= */}
-        {/* CASE 1: LOCATION UNKNOWN — CALM, QUIET LUXURY FIRST IMPRESSION            */}
-        {/* The map, routes, and hospital fetches DO NOT appear until user authorizes */}
+        {/* COMMAND CENTER HEADER: COMPACT CLINICAL NARRATIVE                         */}
         {/* ========================================================================= */}
-        {!userLocation && !isManualPicking ? (
-          <section className="py-10 sm:py-20 max-w-2xl mx-auto w-full flex flex-col items-center text-center gap-6">
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-cyan-50/90 text-cyan-700 border border-cyan-200/90 text-xs font-semibold">
-              <span className="w-1.5 h-1.5 rounded-full bg-cyan-600" />
-              <span>Care Network · 36+ Regions</span>
+        <header className="border-b border-[#E5E7EB] pb-6 flex flex-col gap-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2.5">
+              <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-[#F0FDF4] border border-[#DCFCE7] text-[11px] font-mono font-bold uppercase tracking-[0.12em] text-[#16A34A]">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#16A34A] animate-pulse" />
+                <span>MEDVOICE · CARE NETWORK COMMAND CENTER</span>
+              </div>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#F3F4F6] border border-[#E5E7EB] text-[11px] text-[#475569]">
+                <Shield className="w-3 h-3 text-[#16A34A]" />
+                <span>36+ Regions · Verified Healthcare Registry</span>
+              </div>
             </div>
 
-            <div className="space-y-2">
-              <SplitText
-                text="Find verified care near you"
-                tag="h1"
-                className="text-3xl sm:text-5xl font-semibold tracking-tight text-slate-900"
-              />
-              <div className="pt-0.5">
-                <GradientText
-                  colors={["#0284c7", "#06b6d4", "#0f172a"]}
-                  className="text-xs sm:text-sm font-bold uppercase tracking-wider font-mono"
-                >
-                  Regional Trauma & Specialist Reachability Network
-                </GradientText>
-              </div>
-              <p className="text-sm sm:text-base text-slate-600 max-w-lg mx-auto leading-relaxed">
-                Choose where you're starting from to calculate road reachability, emergency travel times, and specialist on-duty coverage.
+            {/* Quick Emergency Dispatch Actions */}
+            <div className="flex items-center gap-2">
+              <a
+                href="tel:108"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition-all shadow-2xs"
+                title="Call 108 Emergency Ambulance Dispatch"
+              >
+                <PhoneCall className="w-3.5 h-3.5 text-rose-600" />
+                <span>Ambulance: 108</span>
+              </a>
+              <a
+                href="tel:112"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#F3F4F6] hover:bg-[#E5E7EB] text-[#05070F] border border-[#E2E8F0] text-xs font-semibold transition-all"
+                title="Call 112 National Emergency Helpline"
+              >
+                <span>Emergency: 112</span>
+              </a>
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
+            <div className="flex flex-col gap-1 max-w-2xl">
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-[#05070F] tracking-tight">
+                Emergency Reachability & Facility Routing
+              </h1>
+              <p className="text-xs sm:text-sm text-[#475569] leading-relaxed">
+                Calibrated road reachability, emergency travel times, and specialist on-duty coverage across accredited regional healthcare networks.
               </p>
             </div>
 
-            {/* NON-AUTHORITATIVE SAVED SUGGESTION (Requires explicit user confirmation) */}
-            {savedSuggestion && (
-              <div className="w-full p-4 rounded-2xl bg-white border border-slate-200/90 shadow-xs flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-left">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-9 h-9 rounded-xl bg-[#FAF9F6] border border-slate-200/90 flex items-center justify-center text-cyan-700 shrink-0">
-                    <MapPin className="w-4 h-4" />
-                  </div>
-                  <div className="min-w-0">
-                    <span className="text-[11px] font-semibold text-cyan-700 uppercase tracking-wide block">
-                      Last used location
-                    </span>
-                    <span className="text-xs sm:text-sm font-semibold text-slate-900 truncate block">
-                      {savedSuggestion.label}
-                    </span>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
-                  <button
-                    onClick={handleApplySuggestion}
-                    className="px-4 py-2 rounded-xl bg-slate-950 hover:bg-slate-900 text-white text-xs font-semibold shadow-xs border border-slate-800 active:scale-[0.98] transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900"
-                  >
-                    Use this location
-                  </button>
-                  <button
-                    onClick={handleDismissSuggestion}
-                    className="px-3.5 py-2 text-xs font-semibold text-slate-700 hover:text-slate-950 bg-white hover:bg-slate-50 border border-slate-200/90 hover:border-slate-300 rounded-xl shadow-2xs transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900"
-                  >
-                    Dismiss
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* PRIMARY ONBOARDING ACTIONS */}
-            <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
-              <StarBorder
-                as="button"
-                onClick={() => handleDetectLiveLocation()}
-                disabled={isDetectingGps}
-                color="#38bdf8"
-                duration={3.5}
-                theme="dark"
-                backgroundColor="#090D16"
-                textColor="#ffffff"
-                borderColor="rgba(255, 255, 255, 0.15)"
-                radius={12}
-                className="w-full sm:w-auto cursor-pointer shadow-xs border border-slate-800 bg-slate-950 text-white hover:bg-slate-900 active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 text-sm font-semibold px-6 py-3.5"
-              >
-                <div className="flex items-center justify-center gap-2">
-                  <LocateFixed className={`w-4 h-4 text-cyan-400 ${isDetectingGps ? "animate-spin" : ""}`} />
-                  <span>{isDetectingGps ? "Locating..." : "Use my live location"}</span>
-                </div>
-              </StarBorder>
-
+            {/* Discovery Mode Switcher */}
+            <div className="flex items-center gap-1 p-1 bg-[#F3F4F6] border border-[#E5E7EB] rounded-2xl shrink-0 self-start sm:self-auto">
               <button
-                onClick={() => setIsChoosingCity(!isChoosingCity)}
-                className={`w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-xl text-sm font-semibold border shadow-2xs hover:shadow-xs active:scale-[0.98] transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 ${
-                  isChoosingCity
-                    ? "bg-slate-950 text-white border-slate-900 shadow-xs"
-                    : "bg-white hover:bg-slate-50 text-slate-800 hover:text-slate-950 border border-slate-200/90 hover:border-slate-300"
+                type="button"
+                onClick={() => {
+                  setViewMode("all");
+                  setSpecialtyFilter("all");
+                  setIssueSearchText("");
+                  setCurrentPage(1);
+                }}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                  viewMode === "all"
+                    ? "bg-[#05070F] text-white shadow-xs"
+                    : "text-[#475569] hover:text-[#05070F] hover:bg-white/60"
                 }`}
               >
-                <Building2 className={`w-4 h-4 ${isChoosingCity ? "text-cyan-400" : "text-cyan-700"}`} />
-                <span>{isChoosingCity ? "Hide city selector" : "Choose a city or region"}</span>
+                All Facilities & 24/7 ERs
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setViewMode("issues");
+                  if (specialtyFilter === "all") {
+                    setSpecialtyFilter("cardiology");
+                    setIssueSearchText("Heart & Cardiology");
+                  }
+                  setCurrentPage(1);
+                }}
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                  viewMode === "issues"
+                    ? "bg-[#05070F] text-white shadow-xs"
+                    : "text-[#475569] hover:text-[#05070F] hover:bg-white/60"
+                }`}
+              >
+                Filter by Condition
               </button>
             </div>
+          </div>
 
-            {locationStatus === "LOCATION_PERMISSION_DENIED" && (
-              <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 text-xs flex items-center gap-2 max-w-md">
-                <span className="w-2 h-2 rounded-full bg-amber-500 shrink-0" />
-                <span>Location permission was denied or timed out. Please choose a city or search below.</span>
+          {/* ======================================================================= */}
+          {/* LOCATION & GEOGRAPHIC CONTROLS BAR                                      */}
+          {/* ======================================================================= */}
+          <div className="pt-2 flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3 p-3 bg-white border border-[#E5E7EB] rounded-2xl shadow-xs">
+            {/* Left: Active Departure Location Indicator */}
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-xl bg-[#F0FDF4] border border-[#DCFCE7] flex items-center justify-center text-[#16A34A] shrink-0">
+                <MapPin className="w-4 h-4" />
               </div>
-            )}
-
-            {/* EXPANDABLE CITY & REGION SELECTOR */}
-            {isChoosingCity && (
-              <div className="w-full p-5 sm:p-6 rounded-3xl bg-white border border-slate-200/90 shadow-xs flex flex-col gap-5 text-left animate-in fade-in duration-200">
-                <div className="flex items-center justify-between border-b border-slate-200/90 pb-3">
-                  <div>
-                    <h3 className="text-sm font-semibold text-slate-900">Select Region or Search Any City</h3>
-                    <p className="text-xs text-slate-600">Coverage across 36+ verified healthcare networks in India</p>
-                  </div>
-                  <button
-                    onClick={() => {
-                      setIsChoosingCity(false);
-                      setIsManualPicking(true);
-                    }}
-                    className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl border border-slate-200/90 bg-white hover:bg-slate-50 text-slate-800 hover:text-slate-950 text-xs font-semibold shadow-2xs active:scale-[0.98] transition-all cursor-pointer"
-                  >
-                    <Compass className="w-3.5 h-3.5 text-cyan-700" />
-                    <span>Pick on map</span>
-                  </button>
-                </div>
-
-                {/* Autocomplete Input */}
-                <div className="relative">
-                  <div className="relative flex items-center">
-                    <Search className="w-4 h-4 text-slate-400 absolute left-3.5 pointer-events-none" />
-                    <input
-                      type="text"
-                      value={searchQuery}
-                      onChange={handleSearchChange}
-                      onFocus={() => searchResults.length > 0 && setShowDropdown(true)}
-                      placeholder="Search any city, town, or pincode (e.g. Pune, Bangalore, Amaravati, Guntur)..."
-                      className="w-full pl-10 pr-10 py-2.5 rounded-xl bg-white border border-slate-200/90 focus:border-cyan-600 focus:ring-2 focus:ring-cyan-50 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 transition-all outline-none"
-                    />
-                    {isSearching && (
-                      <div className="w-4 h-4 rounded-full border-2 border-cyan-600 border-t-transparent animate-spin absolute right-3.5" />
-                    )}
-                  </div>
-
-                  {/* Dropdown */}
-                  {showDropdown && searchResults.length > 0 && (
-                    <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl border border-slate-200/90 shadow-lg z-50 overflow-hidden">
-                      {searchResults.map((item, idx) => (
-                        <button
-                          key={idx}
-                          onClick={() => handleSelectSearchResult(item)}
-                          className="w-full px-4 py-2.5 text-left text-xs text-slate-900 hover:bg-cyan-50/90 hover:text-cyan-700 flex items-center gap-2.5 transition-colors border-b border-slate-200/90 last:border-b-0 cursor-pointer"
-                        >
-                          <MapPin className="w-3.5 h-3.5 text-cyan-700 shrink-0" />
-                          <span className="truncate">{item.display_name}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Zone Filter */}
-                <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
-                  <span className="text-[11px] font-semibold text-slate-400 mr-1 shrink-0">Zone:</span>
-                  {[
-                    { id: "all", label: "All Regions (36+)" },
-                    { id: "ap_tg", label: "AP & Telangana (15)" },
-                    { id: "south", label: "South (KA, TN, KL)" },
-                    { id: "west", label: "West (MH, GJ, GA)" },
-                    { id: "north", label: "North (DL, NCR, UP, RJ)" },
-                    { id: "east_central", label: "East & Central" },
-                  ].map((zone) => (
-                    <button
-                      key={zone.id}
-                      onClick={() => setSelectedZone(zone.id)}
-                      className={`px-3 py-1.5 rounded-xl text-xs transition-all cursor-pointer border active:scale-[0.98] ${
-                        selectedZone === zone.id
-                          ? "bg-slate-950 text-white font-bold border-slate-900 shadow-xs"
-                          : "bg-white text-slate-700 border-slate-200/90 hover:bg-slate-50 hover:text-slate-950 font-semibold shadow-2xs"
-                      }`}
-                    >
-                      {zone.label}
-                    </button>
-                  ))}
-                </div>
-
-                {/* Preset Pills */}
-                <div className="flex items-center gap-1.5 flex-wrap text-xs">
-                  {ALL_REGION_PRESETS.filter(
-                    (p) => selectedZone === "all" || p.zone === selectedZone
-                  ).map((preset) => {
-                    const isSelected = savedSuggestion?.label === preset.name;
-                    return (
-                      <button
-                        key={preset.name}
-                        onClick={() => handleSelectPreset(preset)}
-                        className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer active:scale-[0.97] ${
-                          isSelected
-                            ? "bg-slate-950 text-white font-bold border border-slate-900 shadow-xs"
-                            : "bg-white hover:bg-slate-50 hover:text-slate-950 text-slate-700 border border-slate-200/90 hover:border-slate-300 shadow-2xs"
-                        }`}
-                      >
-                        {preset.name}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </section>
-        ) : (
-          /* ========================================================================= */
-          /* CASE 2: LOCATION RESOLVED / PIN PICKING — DOMINANT WORKSPACE             */
-          /* ========================================================================= */
-          <>
-            {/* COMPACT TOOL HEADER */}
-            <header className="flex flex-col gap-2 pt-1 pb-1">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-50/90 text-cyan-700 border border-cyan-200/90 text-xs font-semibold mb-1.5">
-                    <span className="w-1.5 h-1.5 rounded-full bg-cyan-600" />
-                    <span>Care Network</span>
-                  </div>
-                  <h1 className="text-2xl sm:text-4xl font-semibold tracking-tight text-slate-900">
-                    Care Network
-                  </h1>
-                  <p className="text-xs sm:text-sm text-slate-600 mt-0.5 max-w-xl">
-                    Verified healthcare facilities and reachable road routing from your departure point.
-                  </p>
-                </div>
-
-                {/* Location Status Bar */}
-                <div className="flex items-center gap-2 flex-wrap text-xs">
-                  <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white border border-slate-200/90 shadow-xs">
-                    {isDetectingGps ? (
-                      <div className="flex items-center gap-2 text-cyan-700">
-                        <span className="w-2 h-2 rounded-full border-2 border-cyan-600 border-t-transparent animate-spin" />
-                        <span className="font-semibold">Locating with GPS...</span>
-                      </div>
-                    ) : userLocation ? (
-                      <>
-                        <span className="w-2 h-2 rounded-full bg-cyan-600" />
-                        <span className="text-slate-600 font-medium">Starting point:</span>
-                        <span className="text-slate-900 font-semibold truncate max-w-[180px] sm:max-w-[240px]">
-                          {userLocation.label}
-                        </span>
-                        <button
-                          onClick={handleResetLocation}
-                          className="ml-1 text-[11px] font-semibold text-cyan-700 hover:underline cursor-pointer"
-                        >
-                          Change
-                        </button>
-                      </>
-                    ) : (
-                      <div className="flex items-center gap-2 text-slate-600">
-                        <span className="w-2 h-2 rounded-full bg-amber-500" />
-                        <span className="font-semibold">Placing pin on map...</span>
-                        <button
-                          onClick={handleResetLocation}
-                          className="ml-1 text-[11px] font-semibold text-slate-600 hover:underline cursor-pointer"
-                        >
-                          Cancel
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            </header>
-
-            {/* DISCOVERY MODE TOGGLE */}
-            <div className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-xs flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
-              <div>
-                <h3 className="text-xs sm:text-sm font-semibold text-slate-900">
-                  Hospital discovery mode
-                </h3>
-                <p className="text-[11px] sm:text-xs text-slate-600">
-                  Explore all accredited 24/7 facilities or filter by specific medical conditions.
-                </p>
-              </div>
-
-              <div className="flex items-center gap-1.5 p-1.5 bg-slate-100/90 rounded-2xl border border-slate-200/90 shrink-0">
-                <button
-                  onClick={() => handleSelectViewMode("all")}
-                  className={`px-4 py-2 rounded-xl text-xs transition-all cursor-pointer ${
-                    viewMode === "all"
-                      ? "bg-slate-950 text-white font-bold shadow-xs border border-slate-900"
-                      : "bg-transparent text-slate-700 hover:text-slate-950 font-semibold"
-                  }`}
-                >
-                  All Hospitals & 24/7 ERs
-                </button>
-
-                <button
-                  onClick={() => handleSelectViewMode("issues")}
-                  className={`px-4 py-2 rounded-xl text-xs transition-all cursor-pointer ${
-                    viewMode === "issues"
-                      ? "bg-slate-950 text-white font-bold shadow-xs border border-slate-900"
-                      : "bg-transparent text-slate-700 hover:text-slate-950 font-semibold"
-                  }`}
-                >
-                  Filter by Condition
-                </button>
-              </div>
-            </div>
-
-            {/* CONDITION FILTER SECTION (Active when viewMode === 'issues') */}
-            {viewMode === "issues" && (
-              <div className="p-5 rounded-2xl bg-white border border-slate-200/90 shadow-xs flex flex-col gap-3 animate-in fade-in duration-200">
-                <div className="flex items-center justify-between flex-wrap gap-2">
-                  <div>
-                    <h2 className="text-xs sm:text-sm font-semibold text-slate-900">
-                      Filter by medical condition
-                    </h2>
-                    <p className="text-[11px] text-slate-600">
-                      Prioritizes facilities verified for the selected specialty
-                    </p>
-                  </div>
-                  {specialtyFilter !== "all" && (
-                    <span className="text-[11px] font-semibold text-cyan-700 bg-cyan-50/90 px-2.5 py-0.5 rounded-full border border-cyan-200/90">
-                      Active: {specialtyFilter}
+              <div className="min-w-0 flex flex-col">
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-mono uppercase tracking-wider text-[#94A3B8] font-bold">
+                    Departure Origin
+                  </span>
+                  {userLocation?.source === "gps" && (
+                    <span className="px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 text-[9px] font-bold">
+                      GPS
                     </span>
                   )}
                 </div>
+                <div className="text-xs font-bold text-[#05070F] truncate">
+                  {isDetectingGps ? (
+                    <span className="text-[#16A34A] flex items-center gap-1.5">
+                      <RefreshCw className="w-3 h-3 animate-spin" />
+                      Locating via GPS satellites...
+                    </span>
+                  ) : userLocation ? (
+                    userLocation.label
+                  ) : (
+                    `Exploring: ${searchRegion.label}`
+                  )}
+                </div>
+              </div>
+            </div>
 
-                <div className="relative flex items-center">
-                  <div className="absolute left-3.5 pointer-events-none flex items-center justify-center">
-                    {specialtyFilter !== "all" ? (
-                      <SpecialtyIcon id={specialtyFilter} className="w-4 h-4" />
-                    ) : (
-                      <Activity className="w-4 h-4 text-cyan-700" />
+            {/* Right: Geolocation & City Actions */}
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                type="button"
+                onClick={handleDetectLiveLocation}
+                disabled={isDetectingGps}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#05070F] hover:bg-black text-white text-xs font-semibold shadow-xs transition-all cursor-pointer active:scale-98 disabled:opacity-50"
+              >
+                <LocateFixed className={`w-3.5 h-3.5 text-[#B7FF72] ${isDetectingGps ? "animate-spin" : ""}`} />
+                <span>{isDetectingGps ? "Locating..." : "Use my live location"}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsChoosingCity(!isChoosingCity)}
+                className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                  isChoosingCity
+                    ? "bg-[#05070F] text-white border-[#05070F]"
+                    : "bg-white hover:bg-[#F8FAFC] text-[#334155] border-[#E2E8F0]"
+                }`}
+              >
+                <Building2 className={`w-3.5 h-3.5 ${isChoosingCity ? "text-[#B7FF72]" : "text-[#64748B]"}`} />
+                <span>Choose City (36+)</span>
+                <ChevronDown className={`w-3.5 h-3.5 transition-transform ${isChoosingCity ? "rotate-180" : ""}`} />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setIsManualPicking(!isManualPicking);
+                  setIsChoosingCity(false);
+                }}
+                className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl border text-xs font-semibold transition-all cursor-pointer ${
+                  isManualPicking
+                    ? "bg-amber-600 text-white border-amber-600"
+                    : "bg-white hover:bg-[#F8FAFC] text-[#334155] border-[#E2E8F0]"
+                }`}
+                title="Click on the road map to pick departure pin"
+              >
+                <Compass className="w-3.5 h-3.5 text-amber-500" />
+                <span>{isManualPicking ? "Click Map to Pin" : "Pick on Map"}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* ======================================================================= */}
+          {/* EXPANDABLE CITY PRESET GRID & AUTOCOMPLETE                              */}
+          {/* ======================================================================= */}
+          <AnimatePresence>
+            {isChoosingCity && (
+              <motion.div
+                initial={prefersReducedMotion ? false : { opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.25, ease: "easeOut" }}
+                className="overflow-hidden"
+              >
+                <div className="p-5 rounded-3xl bg-white border border-[#E5E7EB] shadow-xs flex flex-col gap-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-[#F1F5F9] pb-3">
+                    <div>
+                      <h3 className="text-sm font-bold text-[#05070F]">Select Region or Search Any City</h3>
+                      <p className="text-xs text-[#64748B]">Continuous coverage across 36+ verified healthcare hubs in India</p>
+                    </div>
+
+                    {/* Autocomplete Input */}
+                    <div className="relative min-w-[280px]">
+                      <Search className="w-3.5 h-3.5 text-[#94A3B8] absolute left-3 top-2.5 pointer-events-none" />
+                      <input
+                        type="text"
+                        value={searchQuery}
+                        onChange={handleSearchChange}
+                        placeholder="Search city, town, or pincode..."
+                        className="w-full pl-9 pr-8 py-1.5 text-xs rounded-xl border border-[#E2E8F0] focus:outline-none focus:ring-2 focus:ring-[#16A34A]/20 bg-[#F8FAFC]"
+                      />
+                      {isSearching && (
+                        <RefreshCw className="w-3.5 h-3.5 text-[#16A34A] animate-spin absolute right-3 top-2.5" />
+                      )}
+
+                      {showDropdown && searchResults.length > 0 && (
+                        <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl border border-[#E2E8F0] shadow-lg z-50 overflow-hidden">
+                          {searchResults.map((item, idx) => (
+                            <button
+                              key={idx}
+                              type="button"
+                              onClick={() => handleSelectSearchResult(item)}
+                              className="w-full px-3.5 py-2 text-left text-xs text-[#05070F] hover:bg-[#F0FDF4] hover:text-[#16A34A] flex items-center gap-2 transition-colors border-b border-[#F1F5F9] last:border-b-0 cursor-pointer"
+                            >
+                              <MapPin className="w-3 h-3 text-[#16A34A] shrink-0" />
+                              <span className="truncate">{item.display_name}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Zone Filter Tabs */}
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1 text-xs">
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-[#94A3B8] font-bold mr-1 shrink-0">
+                      Zone:
+                    </span>
+                    {[
+                      { id: "all", label: "All Regions (36+)" },
+                      { id: "ap_tg", label: "AP & Telangana (15)" },
+                      { id: "south", label: "South (KA, TN, KL)" },
+                      { id: "west", label: "West (MH, GJ, GA)" },
+                      { id: "north", label: "North (DL, NCR, UP, RJ)" },
+                      { id: "east_central", label: "East & Central" },
+                    ].map((zone) => (
+                      <button
+                        key={zone.id}
+                        type="button"
+                        onClick={() => setSelectedZone(zone.id)}
+                        className={`px-3 py-1 rounded-xl text-xs transition-all cursor-pointer font-semibold ${
+                          selectedZone === zone.id
+                            ? "bg-[#05070F] text-white shadow-2xs"
+                            : "bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#475569] border border-[#E2E8F0]"
+                        }`}
+                      >
+                        {zone.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Preset City Chips */}
+                  <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                    {ALL_REGION_PRESETS.filter(
+                      (p) => selectedZone === "all" || p.zone === selectedZone
+                    ).map((preset) => {
+                      const isSelected = searchRegion.label.includes(preset.name);
+                      return (
+                        <button
+                          key={preset.name}
+                          type="button"
+                          onClick={() => handleSelectPreset(preset)}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer ${
+                            isSelected
+                              ? "bg-[#05070F] text-white shadow-xs"
+                              : "bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#334155] border border-[#E2E8F0]"
+                          }`}
+                        >
+                          {preset.name}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Condition-Specific Discovery Filter Box */}
+          <AnimatePresence>
+            {viewMode === "issues" && (
+              <motion.div
+                initial={prefersReducedMotion ? false : { opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.25, ease: "easeOut" }}
+                className="overflow-hidden"
+              >
+                <div className="p-5 rounded-3xl bg-white border border-[#E5E7EB] shadow-xs flex flex-col gap-3">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
+                    <div>
+                      <h3 className="text-xs font-bold text-[#05070F] uppercase tracking-wide">
+                        Filter by Medical Condition / Specialty
+                      </h3>
+                      <p className="text-[11px] text-[#64748B]">
+                        Prioritizes certified facilities with verified specialist on-duty coverage
+                      </p>
+                    </div>
+                    {specialtyFilter !== "all" && (
+                      <span className="text-[11px] font-bold text-[#16A34A] bg-[#F0FDF4] px-2.5 py-0.5 rounded-full border border-[#DCFCE7]">
+                        Active Filter: {specialtyFilter}
+                      </span>
                     )}
                   </div>
-                  <input
-                    type="text"
-                    value={issueSearchText}
-                    onChange={handleIssueInputChange}
-                    placeholder="Search any condition (e.g. Heart, Stroke, Fracture, Ayurveda, Kidney, Maternity, Eye)..."
-                    className="w-full pl-10 pr-16 py-2.5 rounded-xl bg-white border border-slate-200/90 focus:border-cyan-600 focus:ring-2 focus:ring-cyan-50 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 transition-all outline-none"
-                  />
-                  {issueSearchText && (
+
+                  {/* Specialty chips grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 pt-1">
+                    {MEDICAL_ISSUE_OPTIONS.map((item) => {
+                      const isActive = specialtyFilter === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          onClick={() => {
+                            setSpecialtyFilter(item.id);
+                            setIssueSearchText(item.label);
+                            setCurrentPage(1);
+                          }}
+                          className={`p-2 rounded-xl border text-left transition-all cursor-pointer flex flex-col gap-0.5 ${
+                            isActive
+                              ? "bg-[#05070F] text-white border-[#05070F] shadow-xs font-bold"
+                              : "bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#334155] border-[#E2E8F0]"
+                          }`}
+                        >
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <SpecialtyIcon id={item.id} className="w-3.5 h-3.5 shrink-0" />
+                            <span className="text-xs font-semibold truncate">{item.label}</span>
+                          </div>
+                          <span className={`text-[10px] truncate ${isActive ? "text-[#B7FF72]" : "text-[#94A3B8]"}`}>
+                            {item.famousFor}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </header>
+
+        {/* ========================================================================= */}
+        {/* DOMINANT 60/40 WORKSPACE: MAP (LEFT) + RANKED DIRECTORY (RIGHT)          */}
+        {/* ========================================================================= */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+
+          {/* ----------------------------------------------------------------------- */}
+          {/* LEFT COLUMN: DOMINANT MAP + SELECTED FACILITY ROUTE INTELLIGENCE (~58%)  */}
+          {/* ----------------------------------------------------------------------- */}
+          <div className="lg:col-span-7 xl:col-span-7 flex flex-col gap-4 min-w-0 lg:sticky lg:top-24">
+
+            {/* MAP CONTAINER */}
+            <div
+              id="care-command-map"
+              className="rounded-3xl overflow-hidden border border-[#E5E7EB] shadow-xs bg-white h-[480px] sm:h-[520px] lg:h-[560px] relative"
+            >
+              <InteractiveRouteMap
+                patientCoords={userLocation ? { lat: userLocation.lat, lng: userLocation.lng } : null}
+                patientLocationName={userLocation?.label}
+                mapCenter={{ lat: searchRegion.lat, lng: searchRegion.lng }}
+                selectedHospital={selectedHospital}
+                allHospitals={filteredAndSortedHospitals}
+                isManualPicking={isManualPicking}
+                onSelectHospital={(h) => handleSelectHospital(h, false)}
+                onConfirmManualLocation={handleConfirmManualLocation}
+                onCancelManualPicking={() => setIsManualPicking(false)}
+                onRouteCalculated={(stats) => setLiveRoadStats(stats)}
+                onResetToRecommended={handleResetToRecommended}
+                onRequestLocation={handleDetectLiveLocation}
+              />
+            </div>
+
+            {/* DEDICATED SELECTED HOSPITAL ROUTE CARD */}
+            {selectedHospital ? (
+              <div
+                data-selected-facility-card="true"
+                className="rounded-3xl bg-white border border-[#E5E7EB] shadow-xs p-5 sm:p-6 flex flex-col gap-4"
+              >
+                <div className="flex items-start justify-between gap-3 flex-wrap">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap mb-1.5">
+                      <span
+                        className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-md ${
+                          selectedHospital.id === recommendedHospital?.id
+                            ? "bg-[#05070F] text-white"
+                            : "bg-[#F1F5F9] text-[#334155]"
+                        }`}
+                      >
+                        #{selectedHospital.rank} {selectedHospital.id === recommendedHospital?.id ? "Recommended Match" : "Selected Facility"}
+                      </span>
+
+                      {selectedHospital.sourceType === "official_registry" && (
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-[#F0FDF4] text-[#16A34A] border border-[#DCFCE7]">
+                          ✓ Verified Registry
+                        </span>
+                      )}
+
+                      {selectedHospital.isEmergency24x7 && (
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-rose-50 text-rose-800 border border-rose-200">
+                          24/7 ER
+                        </span>
+                      )}
+
+                      {(selectedHospital as any).ownership === "government" && (
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200">
+                          Government
+                        </span>
+                      )}
+
+                      {selectedHospital.acceptsPublicInsurance && (
+                        <span className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-purple-50 text-purple-800 border border-purple-200">
+                          Ayushman / PM-JAY
+                        </span>
+                      )}
+                    </div>
+
+                    <h2 className="text-base sm:text-lg font-extrabold text-[#05070F] leading-tight">
+                      {selectedHospital.name}
+                    </h2>
+                    <p className="text-xs text-[#64748B] mt-0.5 line-clamp-1">
+                      {selectedHospital.famousFor || getHospitalFamousFor(selectedHospital)}
+                    </p>
+                  </div>
+
+                  {/* Reset to #1 Recommended if another hospital is active */}
+                  {selectedHospital.id !== recommendedHospital?.id && (
                     <button
                       type="button"
-                      onClick={handleClearIssue}
-                      className="absolute right-3 px-2.5 py-1 text-[11px] font-semibold text-slate-700 hover:text-slate-950 bg-white hover:bg-slate-50 border border-slate-200/90 rounded-xl shadow-2xs transition-colors cursor-pointer"
+                      onClick={handleResetToRecommended}
+                      className="px-3 py-1.5 rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] hover:bg-[#F1F5F9] text-xs font-semibold text-[#05070F] transition-colors cursor-pointer shrink-0"
                     >
-                      Clear
+                      Reset to #1 Match
                     </button>
                   )}
                 </div>
 
-                <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-4 gap-2.5 pt-1">
-                  {MEDICAL_ISSUE_OPTIONS.map((item) => {
-                    const isActive = specialtyFilter === item.id;
-                    return (
-                      <button
-                        key={item.id}
-                        onClick={() => handleSelectSpecialty(item.id, item.label)}
-                        className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col gap-0.5 active:scale-[0.98] ${
-                          isActive
-                            ? "bg-slate-950 text-white border-slate-900 shadow-xs font-bold"
-                            : "bg-white hover:bg-slate-50 text-slate-800 border-slate-200/90 hover:border-slate-300 font-medium shadow-2xs"
+                {/* Address Strip */}
+                <div className="flex items-center gap-2 text-xs text-[#475569] bg-[#F8FAFC] px-3.5 py-2.5 rounded-xl border border-[#E2E8F0]">
+                  <MapPin className="w-3.5 h-3.5 text-[#94A3B8] shrink-0" />
+                  <span className="truncate">{selectedHospital.address}</span>
+                </div>
+
+                {/* Driving Route Telemetry Strip */}
+                {liveRoadStats?.unavailable ? (
+                  <div className="flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl bg-amber-50 border border-amber-200 flex-wrap">
+                    <div className="flex items-center gap-2 text-xs font-semibold text-amber-900">
+                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                      <span>Road route telemetry temporarily unavailable</span>
+                      <span className="text-amber-700 font-normal">·</span>
+                      <span className="text-amber-800">Direct phone & navigation ready</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl bg-[#F0FDF4] border border-[#DCFCE7] flex-wrap">
+                    <div className="flex items-center gap-2 text-xs font-bold text-[#18251D]">
+                      {liveRoadStats?.isCalculating ? (
+                        <div className="w-3.5 h-3.5 rounded-full border-2 border-[#16A34A] border-t-transparent animate-spin shrink-0" />
+                      ) : (
+                        <Car className="w-4 h-4 text-[#16A34A] shrink-0" />
+                      )}
+                      <span>
+                        ~{liveRoadStats ? liveRoadStats.etaMinutes : (selectedHospital.etaMinutes || calculateCalibratedDriveTime(selectedHospital.distanceKm))} min drive
+                      </span>
+                      <span className="text-[#94A3B8] font-normal">·</span>
+                      <span className="text-[#475569] font-medium">
+                        ~{liveRoadStats ? liveRoadStats.roadDistanceKm.toFixed(1) : selectedHospital.distanceKm.toFixed(1)} km by road
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-[10px] font-mono text-[#16A34A] font-semibold">
+                      <span className="w-1.5 h-1.5 rounded-full bg-[#16A34A] animate-pulse" />
+                      <span>
+                        {liveRoadStats?.source === "osrm_turn_by_turn" ? "Turn-by-Turn Route" : "Calibrated Road Route"}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                {/* Action Buttons */}
+                <div className="flex items-center gap-2.5 flex-wrap pt-1">
+                  {(() => {
+                    let directPhone = "";
+                    if (selectedHospital.emergencyPhone && selectedHospital.emergencyPhone !== "108" && selectedHospital.emergencyPhone !== "112") {
+                      directPhone = selectedHospital.emergencyPhone.trim();
+                    } else if (selectedHospital.phone && selectedHospital.phone !== "108" && selectedHospital.phone !== "112") {
+                      directPhone = selectedHospital.phone.trim();
+                    }
+                    const hasDirectPhone = isValidHospitalPhoneNumber(directPhone);
+
+                    return hasDirectPhone ? (
+                      <a
+                        href={`tel:${directPhone}`}
+                        className={`flex-1 min-w-[160px] inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-white font-bold text-xs shadow-xs active:scale-98 transition-all cursor-pointer ${
+                          selectedHospital.isEmergency24x7 ? "bg-rose-600 hover:bg-rose-700" : "bg-[#05070F] hover:bg-black"
                         }`}
                       >
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <SpecialtyIcon id={item.id} className="w-4 h-4 shrink-0" />
-                          <span className="text-xs font-semibold truncate">{item.label}</span>
-                        </div>
-                        <span className={`text-[10px] truncate ${isActive ? "text-cyan-400 font-semibold" : "text-slate-600"}`}>
-                          {item.famousFor}
-                        </span>
-                      </button>
+                        <PhoneCall className="w-3.5 h-3.5" />
+                        <span>Call Facility ({directPhone})</span>
+                      </a>
+                    ) : (
+                      <a
+                        href="tel:108"
+                        className="flex-1 min-w-[160px] inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-white font-bold text-xs shadow-xs active:scale-98 transition-all cursor-pointer bg-rose-600 hover:bg-rose-700"
+                      >
+                        <PhoneCall className="w-3.5 h-3.5" />
+                        <span>Call 108 Ambulance (Dispatch)</span>
+                      </a>
                     );
-                  })}
+                  })()}
+
+                  <a
+                    href={mapsUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex-1 min-w-[160px] inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-[#05070F] hover:bg-black text-white font-bold text-xs shadow-xs active:scale-98 transition-all cursor-pointer"
+                  >
+                    <span>Start Navigation</span>
+                    <ExternalLink className="w-3.5 h-3.5 text-[#B7FF72]" />
+                  </a>
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-3xl bg-white border border-[#E5E7EB] p-6 text-center text-xs text-[#64748B]">
+                Select a facility from the directory to inspect calibrated road routes and emergency lines.
+              </div>
+            )}
+          </div>
+
+          {/* ----------------------------------------------------------------------- */}
+          {/* RIGHT COLUMN: MATCHING FACILITIES DIRECTORY & FILTERS (~42%)            */}
+          {/* ----------------------------------------------------------------------- */}
+          <div className="lg:col-span-5 xl:col-span-5 flex flex-col gap-4 min-w-0">
+
+            {/* Category Fallback Warning Banner */}
+            {categoryFallback && fallbackBanner && (
+              <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-950 text-xs flex items-start gap-2.5 shadow-2xs">
+                <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div className="flex-1 leading-snug">
+                  <strong className="font-bold text-amber-900 block mb-0.5">Specialty Fallback Active</strong>
+                  <span className="text-[11px] text-amber-800">{fallbackBanner}</span>
                 </div>
               </div>
             )}
 
-            {/* DOMINANT WORKSPACE: LIVE MAP + RANKED FACILITIES LIST */}
-            <div id="care-map-section" className="grid grid-cols-1 care-workspace-grid gap-5 lg:gap-6 items-stretch scroll-mt-32">
-
-              {/* LEFT: Dominant Live Route Map + Dedicated Selected Hospital Card (~55% width on large screens) */}
-              <div className="flex flex-col gap-4 min-w-0">
-                {/* MAP CONTAINER */}
-                <div className="rounded-2xl overflow-hidden shadow-xs border border-slate-200/90 bg-white h-[440px] sm:h-[460px] relative">
-                  <InteractiveRouteMap
-                    patientCoords={userLocation ? { lat: userLocation.lat, lng: userLocation.lng } : null}
-                    patientLocationName={userLocation?.label}
-                    mapCenter={searchRegion ? { lat: searchRegion.lat, lng: searchRegion.lng } : undefined}
-                    selectedHospital={selectedHospital}
-                    allHospitals={filteredAndSortedHospitals}
-                    isManualPicking={isManualPicking}
-                    onSelectHospital={(h) => handleSelectHospital(h, false)}
-                    onConfirmManualLocation={handleConfirmManualLocation}
-                    onCancelManualPicking={() => setIsManualPicking(false)}
-                    onRouteCalculated={(stats) => setLiveRoadStats(stats)}
-                    onResetToRecommended={handleResetToRecommended}
-                    onRequestLocation={() => handleDetectLiveLocation()}
-                  />
+            {/* Directory Control Strip: Count, Sort, Ownership */}
+            <div className="p-4 rounded-2xl bg-white border border-[#E5E7EB] shadow-xs flex flex-col gap-2.5">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-xs font-bold text-[#05070F] uppercase tracking-wider">
+                    Matching Facilities
+                  </h3>
+                  <span className="text-[10px] font-mono font-bold bg-[#F1F5F9] text-[#18251D] px-2 py-0.5 rounded-full border border-[#E2E8F0]">
+                    {filteredAndSortedHospitals.length}
+                  </span>
+                  {isRefreshing && (
+                    <RefreshCw className="w-3 h-3 text-[#16A34A] animate-spin" />
+                  )}
                 </div>
 
-                {/* DEDICATED SELECTED HOSPITAL & ROUTE INTELLIGENCE CARD (BELOW THE MAP) */}
-                {selectedHospital ? (
-                  <div className="rounded-2xl bg-white border border-slate-200/90 shadow-xs p-4 sm:p-5 flex flex-col gap-3 transition-all animate-in fade-in duration-200">
-                    {/* HEADER: RANK BADGE, PROVENANCE, NAME & SPECIALTY */}
-                    <div className="flex items-start justify-between gap-3 flex-wrap">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap mb-1">
+                <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
+                  <select
+                    value={sortBy}
+                    onChange={(e) => setSortBy(e.target.value as any)}
+                    className="text-[11px] font-semibold text-[#334155] bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg px-2.5 py-1 focus:outline-none cursor-pointer"
+                  >
+                    <option value="fastest">Fastest / Best Match</option>
+                    <option value="government">Government First</option>
+                    <option value="rating">Highest Rating</option>
+                  </select>
+
+                  <select
+                    value={ownershipFilter}
+                    onChange={(e) => setOwnershipFilter(e.target.value)}
+                    className="text-[11px] font-semibold text-[#334155] bg-[#F8FAFC] border border-[#E2E8F0] rounded-lg px-2.5 py-1 focus:outline-none cursor-pointer"
+                  >
+                    <option value="all">All Ownership</option>
+                    <option value="government">Govt Only</option>
+                    <option value="private">Private Only</option>
+                  </select>
+                </div>
+              </div>
+
+              <div className="text-[11px] text-[#64748B] flex items-center justify-between">
+                <span>{categoryLabel} · Ranked by road distance</span>
+                <button
+                  type="button"
+                  onClick={() => setIsRationaleExpanded(!isRationaleExpanded)}
+                  className="text-[10px] font-bold text-[#16A34A] hover:underline cursor-pointer flex items-center gap-1"
+                >
+                  <Sparkles className="w-3 h-3" />
+                  <span>{isRationaleExpanded ? "Hide Match Factors" : "Why Ranked #1"}</span>
+                </button>
+              </div>
+
+              {/* Collapsible Recommendation Factors */}
+              {isRationaleExpanded && selectedHospital && (
+                <div className="pt-2 border-t border-[#F1F5F9] grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px] text-[#475569]">
+                  <div className="flex items-center gap-1.5">
+                    <Check className="w-3.5 h-3.5 text-[#16A34A] shrink-0" />
+                    <span className="truncate">{selectedHospital.isEmergency24x7 ? "24/7 Verified Emergency Care" : "Specialized Care"}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Check className="w-3.5 h-3.5 text-[#16A34A] shrink-0" />
+                    <span className="truncate">
+                      {selectedHospital.sourceType === "official_registry" ? "Official Health Registry" : "Verified Provider"}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Check className="w-3.5 h-3.5 text-[#16A34A] shrink-0" />
+                    <span className="truncate">~{selectedHospital.distanceKm.toFixed(1)} km road distance</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <Check className="w-3.5 h-3.5 text-[#16A34A] shrink-0" />
+                    <span className="truncate">
+                      {selectedHospital.acceptsPublicInsurance ? "Ayushman PM-JAY Cashless" : "Arterial Road Reachability"}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* RESULTS LIST: NORMAL DOCUMENT FLOW — ZERO NESTED SCROLLBARS */}
+            <div className="flex flex-col gap-2.5">
+              {loading && rawHospitals.length === 0 ? (
+                <div className="p-8 rounded-3xl bg-white border border-[#E5E7EB] text-center flex flex-col items-center justify-center gap-3">
+                  <div className="w-6 h-6 rounded-full border-2 border-[#16A34A] border-t-transparent animate-spin" />
+                  <p className="text-xs font-bold text-[#05070F]">Evaluating verified facilities nearby...</p>
+                </div>
+              ) : filteredAndSortedHospitals.length === 0 ? (
+                <div className="p-8 rounded-3xl bg-white border border-[#E5E7EB] text-center flex flex-col items-center justify-center gap-2">
+                  <Building2 className="w-6 h-6 text-[#94A3B8]" />
+                  <p className="text-xs font-bold text-[#05070F]">No facilities match current filters</p>
+                  <p className="text-[11px] text-[#64748B]">Try selecting another region or clearing specialty filter.</p>
+                </div>
+              ) : (
+                pageHospitals.map((hosp) => {
+                  const isSelected = hosp.id === selectedHospital?.id;
+                  const eta = hosp.etaMinutes || Math.max(3, Math.round(hosp.distanceKm * 1.5));
+
+                  return (
+                    <div
+                      key={hosp.id}
+                      data-facility-card="true"
+                      data-facility-id={hosp.id}
+                      onClick={() => handleSelectHospital(hosp, false)}
+                      className={`p-4 rounded-2xl border transition-all cursor-pointer flex flex-col gap-2 ${
+                        isSelected
+                          ? "bg-[#05070F] text-white border-[#05070F] shadow-md ring-2 ring-[#B7FF72]/40"
+                          : "bg-white hover:bg-[#F8FAFC] text-[#05070F] border-[#E5E7EB] hover:border-[#CBD5E1] shadow-2xs"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-center gap-1.5 flex-wrap min-w-0">
                           <span
-                            className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-md text-white ${
-                              selectedHospital.id === recommendedHospital?.id ? "bg-slate-950" : "bg-slate-800"
+                            className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-md ${
+                              isSelected
+                                ? "bg-[#B7FF72] text-[#05070F]"
+                                : hosp.rank === 1
+                                ? "bg-[#05070F] text-white"
+                                : "bg-[#F1F5F9] text-[#475569]"
                             }`}
                           >
-                            #{selectedHospital.rank} {selectedHospital.id === recommendedHospital?.id ? "Recommended Match" : "Selected Facility"}
+                            #{hosp.rank} {hosp.rank === 1 ? "Top Match" : ""}
                           </span>
 
-                          {/* Verification / Provenance Badge (Strict: Verified only for official registry) */}
-                          <span
-                            className={`text-[10px] font-medium px-2 py-0.5 rounded-md border ${
-                              selectedHospital.sourceType === "official_registry"
-                                ? "bg-emerald-50 text-emerald-800 border-emerald-200 font-semibold"
-                                : "bg-slate-100 text-slate-700 border-slate-200 font-medium"
-                            }`}
-                          >
-                            {selectedHospital.sourceType === "official_registry"
-                              ? "✓ Verified Registry"
-                              : "OSM Care Directory"}
-                          </span>
+                          {hosp.sourceType === "official_registry" && (
+                            <span
+                              className={`text-[10px] font-semibold px-2 py-0.5 rounded-md border ${
+                                isSelected
+                                  ? "bg-white/10 text-[#B7FF72] border-[#B7FF72]/30"
+                                  : "bg-[#F0FDF4] text-[#16A34A] border-[#DCFCE7]"
+                              }`}
+                            >
+                              ✓ Verified
+                            </span>
+                          )}
 
-                          {selectedHospital.isEmergency24x7 && (
-                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-rose-50 text-rose-800 border border-rose-200">
+                          {hosp.isEmergency24x7 && (
+                            <span
+                              className={`text-[10px] font-semibold px-2 py-0.5 rounded-md ${
+                                isSelected
+                                  ? "bg-rose-950/80 text-rose-300 border border-rose-800"
+                                  : "bg-rose-50 text-rose-800 border border-rose-200"
+                              }`}
+                            >
                               24/7 ER
                             </span>
                           )}
-                          {(selectedHospital as any).ownership === "government" && (
-                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-blue-50 text-blue-800 border border-blue-200">
-                              Government
-                            </span>
-                          )}
-                          {selectedHospital.acceptsPublicInsurance && (
-                            <span className="text-[10px] font-medium px-2 py-0.5 rounded-md bg-purple-50 text-purple-800 border border-purple-200">
-                              Ayushman / PM-JAY
+
+                          {(hosp as any).ownership === "government" && (
+                            <span
+                              className={`text-[10px] font-semibold px-2 py-0.5 rounded-md ${
+                                isSelected
+                                  ? "bg-blue-950/80 text-blue-300 border border-blue-800"
+                                  : "bg-blue-50 text-blue-800 border border-blue-200"
+                              }`}
+                            >
+                              Govt
                             </span>
                           )}
                         </div>
 
-                        <h3 className="text-sm sm:text-base font-bold text-slate-900 leading-snug">
-                          {selectedHospital.name}
-                        </h3>
-                        <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">
-                          {selectedHospital.famousFor || getHospitalFamousFor(selectedHospital)}
+                        {/* Distance & ETA */}
+                        <div className="flex items-center gap-1.5 shrink-0 text-right">
+                          <Car className={`w-3.5 h-3.5 ${isSelected ? "text-[#B7FF72]" : "text-[#16A34A]"}`} />
+                          <span className={`text-xs font-mono font-bold ${isSelected ? "text-white" : "text-[#05070F]"}`}>
+                            ~{eta}m
+                          </span>
+                          <span className={`text-[11px] ${isSelected ? "text-white/60" : "text-[#64748B]"}`}>
+                            · {hosp.distanceKm.toFixed(1)} km
+                          </span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <h4 className={`text-xs sm:text-sm font-bold leading-snug ${isSelected ? "text-white" : "text-[#05070F]"}`}>
+                          {hosp.name}
+                        </h4>
+                        <p className={`text-[11px] mt-0.5 line-clamp-1 ${isSelected ? "text-white/70" : "text-[#64748B]"}`}>
+                          {hosp.famousFor || getHospitalFamousFor(hosp)}
                         </p>
                       </div>
-                    </div>
 
-                    {/* ADDRESS STRIP */}
-                    <div className="flex items-center gap-1.5 text-xs text-slate-600 bg-slate-50 px-3 py-2 rounded-xl border border-slate-100">
-                      <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                      <span className="truncate">{selectedHospital.address}</span>
-                    </div>
-
-                    {/* DRIVING ROUTE TELEMETRY STRIP - Fully decoupled from action buttons */}
-                    <div className="flex items-center justify-between gap-3 px-3 py-2 rounded-xl bg-slate-50 border border-slate-200/80 flex-wrap">
-                      <div className="flex items-center gap-2 text-xs font-semibold text-slate-900">
-                        <Car className="w-4 h-4 text-sky-600 shrink-0" />
-                        <span>~{liveRoadStats ? liveRoadStats.etaMinutes : (selectedHospital.etaMinutes || 12)} min drive</span>
-                        <span className="text-slate-300 font-normal">·</span>
-                        <span className="text-slate-600 font-medium">
-                          ~{liveRoadStats ? liveRoadStats.roadDistanceKm.toFixed(1) : selectedHospital.distanceKm.toFixed(1)} km by road
-                        </span>
+                      <div className={`flex items-center gap-1.5 text-[10px] truncate ${isSelected ? "text-white/60" : "text-[#94A3B8]"}`}>
+                        <MapPin className="w-3 h-3 shrink-0" />
+                        <span className="truncate">{hosp.address}</span>
                       </div>
-                      <div
-                        className="flex items-center gap-1.5 text-[10px] font-mono text-slate-500 cursor-help"
-                        title="Route and estimated travel time calculated for car travel along roads."
-                      >
-                        <span className="w-1.5 h-1.5 rounded-full bg-sky-500" />
-                        <span>Driving route · Car</span>
-                        <Info className="w-3 h-3 text-slate-400" />
-                      </div>
-                    </div>
-
-                    {/* ACTION BUTTONS ROW - Responsive wrapping with zero overlap */}
-                    {(() => {
-                      let directPhone = "";
-                      if (selectedHospital.emergencyPhone && selectedHospital.emergencyPhone !== "108" && selectedHospital.emergencyPhone !== "112") {
-                        directPhone = selectedHospital.emergencyPhone.trim();
-                      } else if (selectedHospital.phone && selectedHospital.phone !== "108" && selectedHospital.phone !== "112") {
-                        directPhone = selectedHospital.phone.trim();
-                      }
-                      const hasDirectPhone = isValidHospitalPhoneNumber(directPhone);
-                      const mapsUrl = userLocation
-                        ? `https://www.google.com/maps/dir/?api=1&origin=${userLocation.lat},${userLocation.lng}&destination=${selectedHospital.latitude},${selectedHospital.longitude}&travelmode=driving`
-                        : `https://www.google.com/maps/search/?api=1&query=${selectedHospital.latitude},${selectedHospital.longitude}`;
-
-                      return (
-                        <div className="flex items-center gap-2.5 pt-0.5 flex-wrap">
-                          {hasDirectPhone ? (
-                            <a
-                              href={`tel:${directPhone}`}
-                              className={`flex-1 min-w-[140px] inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-white font-semibold text-xs shadow-xs active:scale-[0.98] transition-all cursor-pointer ${
-                                selectedHospital.isEmergency24x7 ? "bg-rose-600 hover:bg-rose-700" : "bg-slate-950 hover:bg-slate-900"
-                              }`}
-                              title={`Call direct facility line: ${directPhone}`}
-                            >
-                              <PhoneCall className="w-3.5 h-3.5" />
-                              <span>{selectedHospital.actionType === "call_hospital" ? "Call Hospital" : "Call Hospital ED"}</span>
-                              <span className="text-[10.5px] opacity-80 font-mono font-normal">({directPhone})</span>
-                            </a>
-                          ) : (
-                            <a
-                              href="tel:108"
-                              className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-white font-semibold text-xs shadow-xs active:scale-[0.98] transition-all cursor-pointer bg-rose-600 hover:bg-rose-700"
-                              title="Call 108 Emergency Ambulance Dispatch"
-                            >
-                              <PhoneCall className="w-3.5 h-3.5" />
-                              <span>Call 108 Ambulance (Emergency Dispatch)</span>
-                            </a>
-                          )}
-
-                          <a
-                            href={mapsUrl}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex-1 min-w-[140px] inline-flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-slate-950 hover:bg-slate-900 text-white font-semibold text-xs shadow-xs active:scale-[0.98] transition-all cursor-pointer"
-                            title="Open turn-by-turn navigation in Google Maps"
-                          >
-                            <span>Start Navigation</span>
-                            <ExternalLink className="w-3.5 h-3.5" />
-                          </a>
-                        </div>
-                      );
-                    })()}
-                  </div>
-                ) : (
-                  <div className="rounded-2xl bg-white border border-slate-200/90 p-4 text-center text-xs text-slate-500">
-                    Select a facility to view route details and emergency contact
-                  </div>
-                )}
-              </div>
-
-              {/* RIGHT: Decoupled Matching Facilities Rail + Animated List (~45% width on large screens) */}
-              <div className="rounded-2xl bg-white border border-slate-200/90 shadow-xs p-4 sm:p-5 flex flex-col gap-3 min-w-0 h-[700px] sm:h-[710px] lg:h-[720px] max-h-[720px] overflow-hidden">
-
-                {/* CATEGORY FALLBACK ALERT BANNER */}
-                {categoryFallback && fallbackBanner && (
-                  <div className="p-3 rounded-xl bg-amber-50 border border-amber-300 text-amber-950 text-xs flex items-start gap-2.5 shadow-xs shrink-0">
-                    <span className="text-base leading-none shrink-0 mt-0.5">⚠️</span>
-                    <div className="flex-1 leading-snug">
-                      <strong className="font-bold text-amber-900 block mb-0.5">Category fallback active</strong>
-                      <span className="text-[11px] text-amber-800">{fallbackBanner}</span>
-                    </div>
-                  </div>
-                )}
-
-                {/* 1. COMPACT PANEL HEADING & CONTROLS */}
-                <div className="flex flex-col gap-2 pb-2.5 border-b border-slate-200/90 shrink-0">
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
-                    <div className="flex items-center gap-2">
-                      <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider truncate">
-                        Matching Facilities
-                      </h3>
-                      <span className="text-[10px] font-mono font-semibold bg-slate-100 text-slate-700 px-2 py-0.5 rounded-full border border-slate-200">
-                        {filteredAndSortedHospitals.length}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-1.5 shrink-0 flex-wrap">
-                      {selectedHospital && selectedHospital.id !== recommendedHospital?.id && (
-                        <button
-                          onClick={handleResetToRecommended}
-                          className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 text-[11px] font-medium border border-slate-200 transition-colors cursor-pointer"
-                          title="Return to #1 recommended match"
-                        >
-                          Reset to #1
-                        </button>
-                      )}
-                      <select
-                        value={sortBy}
-                        onChange={(e) => setSortBy(e.target.value as any)}
-                        aria-label="Sort order"
-                        className="text-[11px] font-medium text-slate-800 bg-white hover:bg-slate-50 border border-slate-200/90 shadow-2xs rounded-lg px-2.5 py-1 focus:outline-none transition-all cursor-pointer"
-                      >
-                        <option value="fastest">Fastest / Best Match</option>
-                        <option value="government">Government First</option>
-                        <option value="rating">Highest Rating</option>
-                      </select>
-                      <select
-                        value={ownershipFilter}
-                        onChange={(e) => setOwnershipFilter(e.target.value)}
-                        aria-label="Ownership filter"
-                        className="text-[11px] font-medium text-slate-700 bg-white hover:bg-slate-50 border border-slate-200/90 shadow-2xs rounded-lg px-2.5 py-1 focus:outline-none cursor-pointer"
-                      >
-                        <option value="all">All Ownership</option>
-                        <option value="government">Govt Only</option>
-                        <option value="private">Private Only</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="text-[10.5px] text-slate-500 truncate">
-                    {categoryLabel} · Ranked by clinical suitability & road reachability
-                  </div>
-                </div>
-
-                {/* 2. KEY MATCH FACTORS & RECOMMENDATION RATIONALE (Collapsible & compact) */}
-                {selectedHospital && (() => {
-                  const isRecommended = selectedHospital.id === recommendedHospital?.id;
-                  const isGovernment = (selectedHospital as any).ownership === "government";
-                  const distanceKm = liveRoadStats ? liveRoadStats.roadDistanceKm : selectedHospital.distanceKm;
-                  const etaMinutes = liveRoadStats ? liveRoadStats.etaMinutes : (selectedHospital.etaMinutes || Math.max(3, Math.round(distanceKm * 1.5)));
-                  const famousFor = selectedHospital.famousFor || getHospitalFamousFor(selectedHospital);
-
-                  return (
-                    <div className="rounded-xl bg-slate-50/90 border border-slate-200/90 shrink-0 shadow-2xs overflow-hidden transition-all">
-                      <button
-                        type="button"
-                        onClick={() => setIsRationaleExpanded(!isRationaleExpanded)}
-                        className="w-full px-3 py-2 flex items-center justify-between gap-2 text-left hover:bg-slate-100/70 transition-colors cursor-pointer"
-                      >
-                        <div className="flex items-center gap-1.5 min-w-0">
-                          <Sparkles className="w-3.5 h-3.5 text-cyan-600 shrink-0" />
-                          <span className="text-xs font-bold text-slate-900 truncate">
-                            {isRecommended ? "Why Ranked #1 · Key Match Factors" : `Match Rationale · #${selectedHospital.rank}`}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <span className="text-[10px] font-mono font-medium px-1.5 py-0.5 rounded bg-cyan-50 text-cyan-800 border border-cyan-200">
-                            ~{etaMinutes}m drive
-                          </span>
-                          <span className="text-[10.5px] font-semibold text-slate-500">
-                            {isRationaleExpanded ? "Hide" : "Factors"}
-                          </span>
-                          {isRationaleExpanded ? <ChevronUp className="w-3 h-3 text-slate-400" /> : <ChevronDown className="w-3 h-3 text-slate-400" />}
-                        </div>
-                      </button>
-
-                      {isRationaleExpanded && (
-                        <div className="px-3 pb-3 pt-1 border-t border-slate-200/80 grid grid-cols-1 sm:grid-cols-2 gap-1.5 text-[11px] text-slate-700 animate-in fade-in duration-150">
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                            <span className="truncate">{selectedHospital.isEmergency24x7 ? "24/7 Verified Emergency Care" : "Specialized Care"}</span>
-                          </div>
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                            <span className="truncate">
-                              {selectedHospital.sourceType === "official_registry"
-                                ? "State Health Authority Accredited"
-                                : "Verified Care Provider"}
-                            </span>
-                          </div>
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                            <span className="truncate">~{distanceKm.toFixed(1)} km away · ~{etaMinutes}m drive</span>
-                          </div>
-                          <div className="flex items-center gap-1.5 min-w-0">
-                            <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                            <span className="truncate">
-                              {selectedHospital.acceptsPublicInsurance
-                                ? "Ayushman / PM-JAY Cashless"
-                                : isGovernment
-                                ? "Government Hospital"
-                                : famousFor}
-                            </span>
-                          </div>
-                        </div>
-                      )}
                     </div>
                   );
-                })()}
+                })
+              )}
+            </div>
 
-                {/* 3. HOSPITAL RESULTS LIST (FIXED CONTAINER, INTERNAL SCROLL WITH ANIMATED LIST) */}
-                <div className="flex-1 min-h-0 overflow-hidden relative">
-                  {loading ? (
-                    <div className="py-16 text-center text-xs text-slate-600 flex items-center justify-center gap-2">
-                      <div className="w-4 h-4 rounded-full border-2 border-cyan-600 border-t-transparent animate-spin" />
-                      <span>Evaluating verified facilities nearby...</span>
-                    </div>
-                  ) : filteredAndSortedHospitals.length === 0 ? (
-                    <div className="p-8 rounded-2xl bg-white border border-slate-200/90 text-center flex flex-col items-center justify-center gap-2 shadow-xs">
-                      <Building2 className="w-6 h-6 text-slate-400" />
-                      <p className="text-xs font-semibold text-slate-900">No facilities matching criteria</p>
-                      <p className="text-[11px] text-slate-500">Try broadening your medical issue or selecting another region.</p>
-                    </div>
-                  ) : (
-                    <AnimatedList
-                      items={filteredAndSortedHospitals}
-                      selectedIndex={filteredAndSortedHospitals.findIndex((h) => h.id === selectedHospital?.id)}
-                      onItemSelect={(item) => handleSelectHospital(item as any)}
-                      renderItem={(item, index, isSelected) => {
-                        const hosp = item as any;
-                        const isBest = recommendedHospital?.id === hosp.id;
-                        const distanceNum = isSelected && liveRoadStats ? liveRoadStats.roadDistanceKm : hosp.distanceKm;
-                        const durationNum = isSelected && liveRoadStats ? liveRoadStats.etaMinutes : hosp.etaMinutes || Math.max(3, Math.round(distanceNum * 1.5));
-                        const isGovernment = hosp.ownership === "government";
-                        const famousFor = hosp.famousFor || getHospitalFamousFor(hosp);
+            {/* TRUE PAGINATION BAR */}
+            {totalPages > 1 && (
+              <div className="pt-2 flex items-center justify-between gap-3 text-xs border-t border-[#E5E7EB]">
+                <span className="text-[11px] text-[#64748B]">
+                  Showing {startIndex + 1}–{endIndex} of {filteredAndSortedHospitals.length}
+                </span>
 
-                        return (
-                          <div className="w-full flex items-start justify-between gap-3 sm:gap-4">
-                            {/* Left: flexible content column */}
-                            <div className="min-w-0 flex-1 flex flex-col gap-1.5">
-                              {/* Row 1: Rank badge + Full hospital name */}
-                              <div className="flex items-start gap-2.5 min-w-0">
-                                <span
-                                  className={`font-mono font-bold text-xs w-6 h-6 rounded-md flex items-center justify-center shrink-0 mt-0.5 transition-colors ${
-                                    isSelected
-                                      ? "bg-slate-950 text-white shadow-xs"
-                                      : isBest
-                                      ? "bg-cyan-100 text-cyan-900 border border-cyan-300 font-extrabold"
-                                      : "bg-slate-100 text-slate-700 border border-slate-200"
-                                  }`}
-                                >
-                                  #{hosp.rank}
-                                </span>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                    disabled={currentPage === 1}
+                    className="p-1.5 rounded-lg border border-[#E2E8F0] bg-white hover:bg-[#F8FAFC] disabled:opacity-30 disabled:cursor-not-allowed text-[#05070F] transition-colors cursor-pointer"
+                    title="Previous page"
+                  >
+                    <ChevronLeft className="w-3.5 h-3.5" />
+                  </button>
 
-                                <h4
-                                  className="text-[13.5px] sm:text-sm font-bold text-slate-900 leading-snug line-clamp-2 min-w-0"
-                                  title={hosp.name}
-                                >
-                                  {hosp.name}
-                                </h4>
-                              </div>
-
-                              {/* Row 2: Specialty / Service category (indented to align with hospital title) */}
-                              <p className="text-xs text-slate-500 line-clamp-1 font-medium pl-[34px]">
-                                {famousFor}
-                              </p>
-
-                              {/* Row 3: Restrained status badges (indented to align with hospital title) */}
-                              <div className="flex items-center gap-1.5 flex-wrap pl-[34px] pt-0.5">
-                                {hosp.sourceType === "official_registry" && (
-                                  <span className="text-[10px] font-medium text-emerald-800 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200/80">
-                                    ✓ Verified registry
-                                  </span>
-                                )}
-                                {hosp.isEmergency24x7 && (
-                                  <span className="text-[10px] font-medium text-rose-800 bg-rose-50 px-2 py-0.5 rounded-md border border-rose-200/80">
-                                    24/7 ER
-                                  </span>
-                                )}
-                                {isGovernment && (
-                                  <span className="text-[10px] font-medium text-blue-800 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200/80">
-                                    Govt
-                                  </span>
-                                )}
-                              </div>
-                            </div>
-
-                            {/* Right: fixed-width metric column (85–100px, right-aligned) */}
-                            <div className="w-24 sm:w-28 shrink-0 flex flex-col items-end text-right pt-0.5 pl-2">
-                              <span className="text-sm sm:text-base font-extrabold text-slate-950 font-mono tracking-tight leading-tight">
-                                ~{durationNum} min
-                              </span>
-                              <span className="text-[11px] text-slate-500 font-mono leading-tight mt-1 whitespace-nowrap">
-                                {distanceNum.toFixed(1)} km by road
-                              </span>
-                            </div>
-                          </div>
-                        );
-                      }}
-                      animation="pop"
-                      stagger={0.03}
-                      showGradients={true}
-                      fadeSize={16}
-                      displayScrollbar={true}
-                      frame={false}
-                      theme="light"
-                      accentColor="#020617"
-                      radius={12}
-                      gap={10}
-                      width="100%"
-                      maxHeight={isRationaleExpanded ? 460 : 550}
-                      className="w-full"
-                    />
+                  {pageNumbers.map((p, idx) =>
+                    p === -1 ? (
+                      <span key={`ellipsis-${idx}`} className="px-1.5 text-xs text-[#94A3B8]">
+                        …
+                      </span>
+                    ) : (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => setCurrentPage(p)}
+                        className={`w-7 h-7 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                          currentPage === p
+                            ? "bg-[#05070F] text-white shadow-2xs"
+                            : "bg-white hover:bg-[#F8FAFC] text-[#475569] border border-[#E2E8F0]"
+                        }`}
+                      >
+                        {p}
+                      </button>
+                    )
                   )}
+
+                  <button
+                    type="button"
+                    onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                    disabled={currentPage === totalPages}
+                    className="p-1.5 rounded-lg border border-[#E2E8F0] bg-white hover:bg-[#F8FAFC] disabled:opacity-30 disabled:cursor-not-allowed text-[#05070F] transition-colors cursor-pointer"
+                    title="Next page"
+                  >
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
                 </div>
               </div>
-            </div>
-          </>
-        )}
+            )}
+          </div>
+        </div>
 
       </main>
 
-      <AppFooter />
-    </AmbientPageBackground>
+      {/* Global Architectural Brand Ledger Footer */}
+      <ArchitecturalBrandLedgerFooter />
+    </div>
   );
 }
