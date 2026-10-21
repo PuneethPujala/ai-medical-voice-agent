@@ -186,6 +186,7 @@ export function Navbar() {
                   <button
                     ref={accountButtonRef}
                     id="clinical-account-trigger"
+                    data-testid="clinical-profile-trigger"
                     aria-haspopup="menu"
                     aria-expanded={dropdownOpen}
                     aria-controls="clinical-account-menu"
@@ -217,6 +218,7 @@ export function Navbar() {
                   {dropdownOpen && (
                     <div
                       id="clinical-account-menu"
+                      data-testid="clinical-profile-menu"
                       role="menu"
                       aria-labelledby="clinical-account-trigger"
                       aria-orientation="vertical"

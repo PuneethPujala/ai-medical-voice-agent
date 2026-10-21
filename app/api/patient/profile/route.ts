@@ -4,6 +4,12 @@ import { logAuditEventAsync } from "@/lib/audit/audit-logger";
 import { PatientProfileService, PatientProfileDatabaseError } from "@/lib/patient/patient-profile-service";
 import { sanitizeErrorMessage } from "@/lib/security/error-sanitizer";
 
+const PHI_RESPONSE_HEADERS = {
+  "Cache-Control": "private, no-store, no-cache, must-revalidate",
+  "Pragma": "no-cache",
+  "X-Content-Type-Options": "nosniff",
+};
+
 /**
  * GET /api/patient/profile
  * Retrieves saved profile(s) for the authenticated user.
@@ -64,7 +70,7 @@ export async function GET(request: Request) {
         profiles,
         requestId,
       },
-      { headers: { "x-request-id": requestId } }
+      { headers: { ...PHI_RESPONSE_HEADERS, "x-request-id": requestId } }
     );
   } catch (error: any) {
     console.error("[GET /api/patient/profile] Error:", error);
@@ -159,7 +165,7 @@ export async function POST(request: Request) {
         message: "Patient profile saved successfully.",
         requestId,
       },
-      { headers: { "x-request-id": requestId } }
+      { headers: { ...PHI_RESPONSE_HEADERS, "x-request-id": requestId } }
     );
   } catch (error: any) {
     console.error("[POST /api/patient/profile] Error:", error);

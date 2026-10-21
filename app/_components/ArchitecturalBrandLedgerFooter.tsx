@@ -14,15 +14,11 @@ import { FaqToFooterTransitionOverlay } from "./FaqToFooterTransitionOverlay";
 
 export interface ArchitecturalBrandLedgerFooterProps {
   className?: string;
-  sensorRef?: React.Ref<HTMLDivElement>;
-  tabletRef?: React.Ref<HTMLDivElement>;
   wordmarkRef?: React.Ref<HTMLDivElement>;
 }
 
 export function ArchitecturalBrandLedgerFooter({
   className = "",
-  sensorRef,
-  tabletRef,
   wordmarkRef,
 }: ArchitecturalBrandLedgerFooterProps) {
   const currentYear = new Date().getFullYear();
@@ -35,6 +31,7 @@ export function ArchitecturalBrandLedgerFooter({
       {/* ===================================================================== */}
       {/* 1. CINEMATIC RIBBON SCENE (Edge-to-Edge User-Supplied Asset on Black)  */}
       {/* ===================================================================== */}
+
       <section
         id="cta-transition-band"
         className="relative w-full min-h-[640px] sm:min-h-[720px] lg:min-h-[780px] bg-[#05070F] text-white overflow-hidden flex items-center justify-center"
@@ -61,7 +58,7 @@ export function ArchitecturalBrandLedgerFooter({
 
         {/* Unboxed, Floating Editorial Foreground Content */}
         <div className="relative z-20 w-full max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-32 sm:py-40 text-center space-y-9">
-          
+
           {/* Eyebrow Pill */}
           <div className="inline-flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-white/10 border border-white/20 text-[#B7FF72] font-mono text-xs font-semibold uppercase tracking-widest backdrop-blur-md shadow-lg">
             <span className="w-2 h-2 rounded-full bg-[#B7FF72] shadow-[0_0_10px_#B7FF72] animate-pulse" />
@@ -120,7 +117,6 @@ export function ArchitecturalBrandLedgerFooter({
           </div>
         </div>
       </section>
-
       {/* ===================================================================== */}
       {/* 2. NAVIGATION AND LEGAL SURFACES (Pearl White #FAF9F6)                */}
       {/* ===================================================================== */}
@@ -131,7 +127,7 @@ export function ArchitecturalBrandLedgerFooter({
         <div className="relative z-10 w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-16 pb-6 sm:pb-8">
           {/* Navigation Links Grid */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8 lg:gap-12 pb-12">
-            
+
             {/* Column 1: Clinical Applications */}
             <div className="space-y-4">
               <h4 className="font-mono text-xs font-bold uppercase tracking-widest text-slate-500">
@@ -304,46 +300,6 @@ export function ArchitecturalBrandLedgerFooter({
 
         {/* Constrained layout shell ensuring balanced framing */}
         <div className="relative w-full max-w-[1500px] mx-auto px-4 sm:px-6">
-
-          {/* Outgoing 3D Object 1: Sculptural Acoustic Sensor (Left) - Smoothly Fades Out to 0 */}
-          <div
-            id="sensor-object"
-            ref={sensorRef}
-            className="absolute pointer-events-none z-20 will-change-transform will-change-opacity"
-            style={{
-              width: "clamp(65px, 10.5vw, 150px)",
-              left: "clamp(14px, 6vw, 95px)",
-              bottom: "clamp(10px, 2.5vw, 28px)",
-              filter: "drop-shadow(0 18px 25px rgba(15, 23, 42, 0.28))",
-            }}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/images/footer/sculptural-acoustic-sensor.png"
-              alt="Sculptural acoustic biometric transducer artifact"
-              className="w-full h-auto object-contain select-none pointer-events-none"
-            />
-          </div>
-
-          {/* Outgoing 3D Object 2: Architectural Clinical Protocol Tablet Artifact (Right) - Smoothly Fades Out to 0 */}
-          <div
-            id="tablet-object"
-            ref={tabletRef}
-            className="absolute pointer-events-none z-20 will-change-transform will-change-opacity"
-            style={{
-              width: "clamp(90px, 15vw, 215px)",
-              right: "clamp(14px, 6vw, 95px)",
-              bottom: "clamp(14px, 3.2vw, 38px)",
-              filter: "drop-shadow(0 20px 28px rgba(15, 23, 42, 0.30))",
-            }}
-          >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/images/footer/clinical-signal-artifact.png"
-              alt="Architectural clinical signal processing protocol tablet artifact"
-              className="w-full h-auto object-contain select-none pointer-events-none"
-            />
-          </div>
 
           {/* Monumental Edge-to-Edge Display Type in Ink Black (#05070F) */}
           <div className="w-full text-center tracking-tighter leading-none relative z-10 pb-2 sm:pb-4">

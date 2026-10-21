@@ -36,7 +36,7 @@ export default function RootLayout({
         className={`${jakarta.variable} ${jetbrains.variable} h-full antialiased`}
         suppressHydrationWarning
       >
-        <body className="min-h-full flex flex-col font-sans bg-[#F7F9FC] text-slate-900 relative">
+        <body className="min-h-full flex flex-col font-sans bg-[#FAF9F6] text-slate-900 relative">
           <StrandsBackground />
           <ConditionalNavigationShell>
             <PageTransition>
@@ -48,4 +48,3 @@ export default function RootLayout({
     </ClerkProvider>
   );
 }
-
