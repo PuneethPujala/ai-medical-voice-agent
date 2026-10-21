@@ -20,8 +20,14 @@ export function StrandsBackground({
 }: StrandsBackgroundProps) {
   const pathname = usePathname();
 
-  // Keep background atmosphere subtle and clinical across all pages
-  const effectiveOpacity = pathname === '/' ? 0.20 : opacity;
+  // Pure Pearl White canvas for clinical workspaces, settings, profile, and documentation
+  // Only render ambient atmosphere on the marketing landing page
+  const isAmbientPage = pathname === '/';
+  if (!isAmbientPage) {
+    return null;
+  }
+
+  const effectiveOpacity = 0.20;
 
   // Global ambient atmosphere covering entire viewport/page seamlessly
   return (
@@ -42,4 +48,3 @@ export function StrandsBackground({
 }
 
 export default StrandsBackground;
-
