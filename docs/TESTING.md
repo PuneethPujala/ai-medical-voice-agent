@@ -140,7 +140,7 @@ npm run test:coverage
 # 2. Run the deterministic test battery without coverage wrapper
 npm run test:battery
 
-# 3. Run the complete 40-suite regression chain
+# 3. Run the canonical 44-suite regression battery
 npm run test:all
 
 # 4. Run live PostgreSQL datastore verification (requires DATABASE_URL)
@@ -172,7 +172,7 @@ The coverage configuration (`.c8rc.json`) restricts metrics strictly to maintain
 
 ### Empirical Coverage Baseline
 
-The table below reflects the **genuine, measured coverage** produced by executing the canonical 42-suite battery:
+The table below reflects the **historical measured coverage baseline** produced by executing the canonical 44-suite battery:
 
 | Metric | Measured Baseline | Enforcement Threshold | Status |
 |---|:---:|:---:|:---:|
@@ -232,13 +232,18 @@ Real PostgreSQL verification is segregated from offline coverage:
     ```
   - The canonical test runner (`scripts/run-test-battery.ts`) explicitly marks these as `SKIPPED_DB` without spawning database queries, and excludes them from the passed suite count:
     ```text
-    Suites:  42 passed, 2 skipped, 44 total
-    Database Status: MOCK ONLY (DATABASE_URL unset; real PostgreSQL not verified)
+    Total Suites:                44
+    Fully Verified:              42
+    Skipped DB-required suites:  2
+    Failed:                      0
+    Database Status:             SKIPPED (DATABASE_URL unset or --with-db omitted; real PostgreSQL not verified)
     ```
   - A green offline test run is never counted or reported as verified database coverage.
-- **Live Database Verification (`npm run test:db`)**:
-  - Checks for `DATABASE_URL`. If unset, it outputs an explicit notice and exits immediately with code 0 without claiming real datastore verification.
-  - When configured, it connects to Neon PostgreSQL, runs live atomic CAS operations, verifies PostgreSQL table unique constraints on `idempotency_key`, tests concurrent race resolutions, and executes durable SHA-256 audit chain persistence across connection resets.
+- **Live Database Verification via Canonical Battery (`npm run test:all -- --with-db`)**:
+  - Requires both `DATABASE_URL` configured in the environment and the explicit `--with-db` flag passed through npm to enable the database suites within the canonical battery.
+- **Dedicated Database Verification Harness (`npm run test:db`)**:
+  - Directly runs `scripts/run-database-tests.ts`. Requires `DATABASE_URL` configured; does not require the `--with-db` flag. If `DATABASE_URL` is unset, it exits immediately with code 0 without claiming real datastore verification.
+  - When configured, both paths connect to Neon PostgreSQL, run live atomic CAS operations, verify PostgreSQL table unique constraints on `idempotency_key`, test concurrent race resolutions, and execute durable SHA-256 audit chain persistence across connection resets.
 
 ---
 
@@ -251,14 +256,13 @@ flowchart LR
     G1["Gate 1\nType Check\n(tsc)"] --> G2["Gate 2\nLint\n(eslint)"]
     G2 --> G3["Gate 3\nZero-Trust\nSecurity"]
     G3 --> G4["Gate 4\nClinical Safety\n& FHIR"]
-    G4 --> G5["Gate 5\nCanonical\n42-Suite Battery"]
-    G5 --> G6["Gate 6\nCoverage\nGeneration (c8)"]
-    G6 --> G7["Gate 7\nUpload Reports\n(Artifacts)"]
-    G7 --> G8["Gate 8\nProduction Build\n(Turbopack)"]
+    G4 --> G5["Gate 5\nCanonical 44-Suite\nBattery + Coverage (c8)"]
+    G5 --> G6["Gate 6\nUpload Reports\n(Artifacts)"]
+    G6 --> G7["Gate 7\nProduction Build\n(Webpack)"]
 ```
 
 ### Artifact Uploads
-Gate 7 uploads the following artifacts for review and compliance auditing:
+Gate 6 uploads the following artifacts for review and compliance auditing:
 - `coverage/lcov.info` — Machine-readable LCOV format.
 - `coverage/cobertura-coverage.xml` — XML standard for CI integration and DataVendor ingest.
 - `coverage/lcov-report/` — Interactive HTML source-code browser highlighting covered and uncovered lines.

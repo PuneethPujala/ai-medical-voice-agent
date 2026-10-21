@@ -35,7 +35,7 @@ function ExpandCardItem({ item, idx }: { item: ExpandItem; idx: number }) {
     <motion.div
       ref={cardRef}
       style={{ scale, opacity }}
-      className="w-full rounded-3xl bg-white border border-slate-200/90 p-6 sm:p-10 shadow-xs hover:shadow-md transition-all space-y-6"
+      className="w-full rounded-3xl bg-white border border-slate-200/90 p-6 sm:p-10 shadow-xs hover:border-[#18251D]/30 hover:shadow-lg transition-all duration-300 space-y-6"
     >
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-5">
@@ -43,20 +43,20 @@ function ExpandCardItem({ item, idx }: { item: ExpandItem; idx: number }) {
           <span className="font-mono text-xs font-bold text-slate-400">
             {item.num}
           </span>
-          <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />
-          <span className="font-mono text-xs font-bold uppercase tracking-wider text-slate-900 bg-slate-100 border border-slate-200 px-3 py-1 rounded-full">
+          <span className="w-1.5 h-1.5 rounded-full bg-[#B7FF72]" />
+          <span className="font-mono text-xs font-bold uppercase tracking-wider text-[#18251D] bg-[#FAF9F6] border border-slate-200/90 px-3 py-1 rounded-full">
             {item.tag}
           </span>
         </div>
-        <span className="font-mono text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full inline-flex items-center gap-1.5 self-start sm:self-auto">
-          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+        <span className="font-mono text-xs font-semibold text-[#18251D] bg-[#B7FF72]/20 border border-[#B7FF72]/50 px-3.5 py-1 rounded-full inline-flex items-center gap-1.5 self-start sm:self-auto shadow-xs">
+          <CheckCircle2 className="w-3.5 h-3.5 text-[#18251D]" />
           {item.complianceBadge}
         </span>
       </div>
 
       {/* Main Copy */}
       <div className="space-y-2 max-w-3xl">
-        <h3 className="text-2xl sm:text-3xl font-extrabold text-slate-950 tracking-tight">
+        <h3 className="text-2xl sm:text-3xl font-extrabold text-[#05070F] tracking-tight">
           {item.title}
         </h3>
         <p className="text-base sm:text-lg text-slate-600 leading-relaxed font-normal">
@@ -73,17 +73,17 @@ function ExpandCardItem({ item, idx }: { item: ExpandItem; idx: number }) {
           {item.pipelineFlow.map((step, i) => (
             <div
               key={i}
-              className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 flex flex-col justify-between font-mono text-xs"
+              className="p-3.5 rounded-2xl bg-[#FAF9F6] border border-slate-200/80 hover:border-[#18251D]/30 flex flex-col justify-between font-mono text-xs transition-colors"
             >
-              <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1">
-                <span>0{i + 1}</span>
-                {i < item.pipelineFlow.length - 1 && <span className="text-slate-300">→</span>}
+              <div className="flex items-center justify-between text-[10px] text-slate-400 mb-1.5">
+                <span className="font-semibold text-slate-500">0{i + 1}</span>
+                {i < item.pipelineFlow.length - 1 && <span className="text-[#18251D]/40 font-bold">→</span>}
               </div>
-              <span className="font-bold text-slate-900 font-sans text-xs">
+              <span className="font-bold text-[#05070F] font-sans text-xs">
                 {step.label}
               </span>
               {step.sub && (
-                <span className="text-[10px] text-slate-500 font-mono mt-0.5">
+                <span className="text-[10px] text-slate-500 font-mono mt-1">
                   {step.sub}
                 </span>
               )}
@@ -93,9 +93,15 @@ function ExpandCardItem({ item, idx }: { item: ExpandItem; idx: number }) {
       </div>
 
       {/* Summary Note */}
-      <p className="text-xs text-slate-500 leading-relaxed font-mono pt-2 border-t border-slate-100">
-        {item.summary}
-      </p>
+      <div className="pt-3 border-t border-slate-100 flex items-center justify-between gap-4">
+        <p className="text-xs text-slate-500 leading-relaxed font-mono">
+          {item.summary}
+        </p>
+        <div className="shrink-0 flex items-center gap-1.5 text-[10px] font-mono text-slate-400 uppercase tracking-wider">
+          <span className="w-1.5 h-1.5 rounded-full bg-[#B7FF72]" />
+          <span>Verified Protocol</span>
+        </div>
+      </div>
     </motion.div>
   );
 }

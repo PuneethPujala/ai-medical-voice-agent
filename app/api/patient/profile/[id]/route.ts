@@ -4,6 +4,12 @@ import { logAuditEventAsync } from "@/lib/audit/audit-logger";
 import { PatientProfileService, PatientProfileDatabaseError } from "@/lib/patient/patient-profile-service";
 import { sanitizeErrorMessage } from "@/lib/security/error-sanitizer";
 
+const PHI_RESPONSE_HEADERS = {
+  "Cache-Control": "private, no-store, no-cache, must-revalidate",
+  "Pragma": "no-cache",
+  "X-Content-Type-Options": "nosniff",
+};
+
 interface RouteParams {
   params: Promise<{ id: string }>;
 }
@@ -50,7 +56,7 @@ export async function GET(request: Request, context: RouteParams) {
 
     return NextResponse.json(
       { success: true, profile, requestId },
-      { headers: { "x-request-id": requestId } }
+      { headers: { ...PHI_RESPONSE_HEADERS, "x-request-id": requestId } }
     );
   } catch (error: any) {
     console.error("[GET /api/patient/profile/[id]] Error:", error);

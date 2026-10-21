@@ -88,9 +88,9 @@ export async function runTestBattery() {
 
   if (!enableLiveDb) {
     console.log("ℹ️  OFFLINE DETERMINISTIC MODE: Isolated from external network & live datastore.");
-    console.log("   Suites requiring real PostgreSQL will run in verified mock/offline fallback mode.");
+    console.log("   Suites requiring real PostgreSQL are SKIPPED (not verified in offline mode).");
     console.log("   ⚠️  Live PostgreSQL integration coverage is NOT claimed in this run.");
-    console.log("   (Run 'npm run test:db' to execute live database integration verification)");
+    console.log("   (Run 'npm run test:all -- --with-db' or 'npm run test:db' with DATABASE_URL configured to verify live database)");
   } else {
     console.log("✅ LIVE DATABASE MODE: Real PostgreSQL integration verification active.");
   }
@@ -164,15 +164,15 @@ export async function runTestBattery() {
   console.log("\n================================================================================");
   console.log("                   MEDVOICE TEST BATTERY SUMMARY                                ");
   console.log("================================================================================");
-  console.log(`  Total Suites:            ${CANONICAL_TEST_BATTERY.length}`);
-  console.log(`  Fully Verified:          ${passedCount}`);
-  console.log(`  Skipped Real-DB (Mock):  ${skippedDbCount}`);
-  console.log(`  Failed:                  ${failedCount}`);
-  console.log(`  Total Duration:          ${totalDuration}s`);
+  console.log(`  Total Suites:                ${CANONICAL_TEST_BATTERY.length}`);
+  console.log(`  Fully Verified:              ${passedCount}`);
+  console.log(`  Skipped DB-required suites:  ${skippedDbCount}`);
+  console.log(`  Failed:                      ${failedCount}`);
+  console.log(`  Total Duration:              ${totalDuration}s`);
   if (skippedDbCount > 0) {
-    console.log("  ⚠️  Database Status:     MOCK ONLY (DATABASE_URL unset; real PostgreSQL not verified)");
+    console.log("  ⚠️  Database Status:         SKIPPED (DATABASE_URL unset or --with-db omitted; real PostgreSQL not verified)");
   } else {
-    console.log("  ✅ Database Status:     VERIFIED (Real PostgreSQL connected)");
+    console.log("  ✅  Database Status:         VERIFIED (Real PostgreSQL connected)");
   }
   console.log("================================================================================\n");
 

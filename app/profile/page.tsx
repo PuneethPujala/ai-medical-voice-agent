@@ -1,9 +1,9 @@
 "use client";
 
-import React, { useState, useEffect, useTransition } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { useUser } from "@clerk/nextjs";
 import Link from "next/link";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import {
   User,
   HeartPulse,
@@ -30,22 +30,22 @@ import {
   Check,
   Stethoscope,
   Smile,
-  AlertCircle
+  AlertCircle,
+  RefreshCcw,
+  Lock,
+  ArrowLeft,
+  X
 } from "lucide-react";
-import { AppFooter } from "../_components/AppFooter";
-import GradientText from "@/components/ui/GradientText";
-import { JellyRadio } from "@/components/ui/JellyRadio";
-import { GlideSelect } from "@/components/ui/GlideSelect";
-import SplitText from "@/components/ui/SplitText";
-import StarBorder from "@/components/ui/StarBorder";
+import { ArchitecturalBrandLedgerFooter } from "../_components/ArchitecturalBrandLedgerFooter";
 import { PatientProfile, PatientMedication, DrugAllergy } from "@/lib/clinical-knowledge/types";
+import { clientProfileCache, isProfileFormDirty } from "@/lib/patient/profile-cache";
 
-const JELLY_RELATIONSHIP_ITEMS = [
-  { value: "self", label: "Myself" },
-  { value: "parent", label: "Parent" },
-  { value: "child", label: "Child" },
-  { value: "spouse", label: "Spouse" },
-  { value: "other", label: "Other" }
+const RELATIONSHIPS = [
+  { value: "self", label: "Myself", description: "Personal primary record" },
+  { value: "parent", label: "Parent", description: "Mother / Father / Dependent" },
+  { value: "child", label: "Child", description: "Son / Daughter / Pediatric" },
+  { value: "spouse", label: "Spouse", description: "Partner / Next of kin" },
+  { value: "other", label: "Other", description: "Dependent / Extended family" }
 ];
 
 const COMMON_CONDITIONS = [
@@ -70,14 +70,6 @@ const COMMON_DRUG_ALLERGIES = [
   "Cephalosporins"
 ];
 
-const RELATIONSHIPS = [
-  { value: "self", label: "Myself (Self)" },
-  { value: "parent", label: "Parent / Mother / Father" },
-  { value: "child", label: "Child / Son / Daughter" },
-  { value: "spouse", label: "Spouse / Partner" },
-  { value: "other", label: "Other Family / Dependent" }
-];
-
 const LANGUAGES = [
   { value: "en", label: "English" },
   { value: "hi", label: "Hindi (हिंदी)" },
@@ -87,16 +79,119 @@ const LANGUAGES = [
   { value: "es", label: "Spanish (Español)" }
 ];
 
+const EMPTY_PROFILE_TEMPLATE: Partial<PatientProfile> = {
+  name: "",
+  relationshipToUser: "self",
+  language: "en",
+  dateOfBirth: "",
+  age: undefined,
+  sexAssignedAtBirth: undefined,
+  gender: undefined,
+  bloodGroup: "",
+  pregnancyStatus: "not_applicable",
+  knownConditions: [],
+  currentMedications: [],
+  allergyStatus: "unassessed",
+  drugAllergies: [],
+  surgicalHistory: [],
+  smokingStatus: "unknown",
+  emergencyContact: { name: "", phone: "", relationship: "" },
+  accessibilityPreferences: { communicationStyle: "concise", notes: "" },
+  clinicalNotes: ""
+};
+
+function ProfileSkeleton() {
+  return (
+    <div className="flex flex-col gap-6 animate-pulse" aria-busy="true" aria-label="Loading profile data">
+      {/* Section 1 skeleton */}
+      <div className="bg-white border border-[#E5E7EB] rounded-3xl p-6 sm:p-7 shadow-xs flex flex-col gap-5">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-xl bg-slate-200" />
+          <div className="flex flex-col gap-1.5 flex-1">
+            <div className="h-4 w-36 bg-slate-200 rounded-md" />
+            <div className="h-3 w-64 bg-slate-100 rounded-md" />
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 pt-4 border-t border-[#F1F5F9]">
+          <div className="flex flex-col gap-2">
+            <div className="h-3 w-20 bg-slate-100 rounded" />
+            <div className="h-9 w-full bg-slate-100 rounded-xl" />
+          </div>
+          <div className="flex flex-col gap-2">
+            <div className="h-3 w-20 bg-slate-100 rounded" />
+            <div className="h-9 w-full bg-slate-100 rounded-xl" />
+          </div>
+          <div className="flex flex-col gap-2">
+            <div className="h-3 w-20 bg-slate-100 rounded" />
+            <div className="h-9 w-full bg-slate-100 rounded-xl" />
+          </div>
+          <div className="flex flex-col gap-2">
+            <div className="h-3 w-20 bg-slate-100 rounded" />
+            <div className="h-9 w-full bg-slate-100 rounded-xl" />
+          </div>
+          <div className="flex flex-col gap-2">
+            <div className="h-3 w-20 bg-slate-100 rounded" />
+            <div className="h-9 w-full bg-slate-100 rounded-xl" />
+          </div>
+          <div className="flex flex-col gap-2">
+            <div className="h-3 w-20 bg-slate-100 rounded" />
+            <div className="h-9 w-full bg-slate-100 rounded-xl" />
+          </div>
+        </div>
+      </div>
+
+      {/* Section 2 skeleton */}
+      <div className="bg-white border border-[#E5E7EB] rounded-3xl p-6 sm:p-7 shadow-xs flex flex-col gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-xl bg-slate-200" />
+          <div className="flex flex-col gap-1.5 flex-1">
+            <div className="h-4 w-44 bg-slate-200 rounded-md" />
+            <div className="h-3 w-56 bg-slate-100 rounded-md" />
+          </div>
+        </div>
+        <div className="flex flex-wrap gap-2 pt-3 border-t border-[#F1F5F9]">
+          <div className="h-7 w-24 bg-slate-100 rounded-full" />
+          <div className="h-7 w-32 bg-slate-100 rounded-full" />
+          <div className="h-7 w-20 bg-slate-100 rounded-full" />
+          <div className="h-7 w-28 bg-slate-100 rounded-full" />
+        </div>
+      </div>
+
+      {/* Section 3 skeleton */}
+      <div className="bg-white border border-[#E5E7EB] rounded-3xl p-6 sm:p-7 shadow-xs flex flex-col gap-4">
+        <div className="flex items-center gap-3">
+          <div className="w-8 h-8 rounded-xl bg-slate-200" />
+          <div className="flex flex-col gap-1.5 flex-1">
+            <div className="h-4 w-40 bg-slate-200 rounded-md" />
+            <div className="h-3 w-48 bg-slate-100 rounded-md" />
+          </div>
+        </div>
+        <div className="h-10 w-full bg-slate-100 rounded-xl" />
+      </div>
+    </div>
+  );
+}
+
 export default function PatientProfilePage() {
-  const { user, isLoaded } = useUser();
-  const [profiles, setProfiles] = useState<PatientProfile[]>([]);
-  const [selectedRelationship, setSelectedRelationship] = useState<string>("self");
+  const prefersReducedMotion = useReducedMotion();
+  const { user, isLoaded: isUserLoaded } = useUser();
+  const userId = user?.id || "guest_session";
+
+  // Data Lifecycle States
   const [loading, setLoading] = useState<boolean>(true);
+  const [selectedRelationship, setSelectedRelationship] = useState<string>("self");
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
 
-  // Collapsible section toggles for clean hierarchy
+  // Baselines and Form state
+  const [baselineProfiles, setBaselineProfiles] = useState<Record<string, PatientProfile | null>>({});
+  const [formData, setFormData] = useState<Partial<PatientProfile>>(EMPTY_PROFILE_TEMPLATE);
+
+  // Unsaved changes confirmation modal
+  const [pendingSwitchRelationship, setPendingSwitchRelationship] = useState<string | null>(null);
+
+  // Collapsible section toggles
   const [sectionsOpen, setSectionsOpen] = useState({
     demographics: true,
     conditions: true,
@@ -106,30 +201,8 @@ export default function PatientProfilePage() {
     emergency: false
   });
 
-  // Current Form State
-  const [formData, setFormData] = useState<Partial<PatientProfile>>({
-    name: "",
-    relationshipToUser: "self",
-    language: "en",
-    dateOfBirth: "",
-    age: undefined,
-    sexAssignedAtBirth: undefined,
-    gender: undefined,
-    bloodGroup: "",
-    pregnancyStatus: "not_applicable",
-    knownConditions: [],
-    currentMedications: [],
-    allergyStatus: "unassessed",
-    drugAllergies: [],
-    surgicalHistory: [],
-    smokingStatus: "unknown",
-    emergencyContact: { name: "", phone: "", relationship: "" },
-    accessibilityPreferences: { communicationStyle: "concise", notes: "" },
-    clinicalNotes: ""
-  });
-
+  // Section custom inputs
   const [customCondition, setCustomCondition] = useState("");
-  const [customSurgical, setCustomSurgical] = useState("");
   const [newMed, setNewMed] = useState({ name: "", dose: "", frequency: "" });
   const [newAllergy, setNewAllergy] = useState({ drugName: "", severity: "moderate" as const, reactionDescription: "" });
 
@@ -137,105 +210,134 @@ export default function PatientProfilePage() {
     setSectionsOpen((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  // Fetch all user profiles on mount
+  // Determine if form is dirty relative to baseline for currently active relationship
+  const isDirty = useMemo(() => {
+    const currentBaseline = baselineProfiles[selectedRelationship] || null;
+    return isProfileFormDirty(currentBaseline, formData);
+  }, [baselineProfiles, selectedRelationship, formData]);
+
+  // Load profile data on mount / user change
   useEffect(() => {
-    async function loadProfiles() {
-      if (!user) {
+    let isMounted = true;
+
+    async function loadAllProfiles() {
+      // Check in-memory cache first
+      const cachedSelf = clientProfileCache.get(userId, "self");
+      if (cachedSelf && isMounted) {
+        setFormData({ ...cachedSelf });
+        setBaselineProfiles((prev) => ({ ...prev, self: cachedSelf }));
+        if (cachedSelf.updatedAt) {
+          setLastSavedAt(new Date(cachedSelf.updatedAt).toLocaleTimeString());
+        }
         setLoading(false);
-        return;
-      }
-      try {
+      } else {
         setLoading(true);
+      }
+
+      try {
         const res = await fetch("/api/patient/profile?all=true");
+        if (!res.ok) {
+          throw new Error(`Failed to load profile (${res.status})`);
+        }
         const data = await res.json();
-        if (data.success && Array.isArray(data.profiles)) {
-          setProfiles(data.profiles);
-          const selfProfile = data.profiles.find((p: any) => p.relationshipToUser === "self") || data.profiles[0];
-          if (selfProfile) {
-            populateForm(selfProfile);
-            setSelectedRelationship(selfProfile.relationshipToUser || "self");
-            if (selfProfile.updatedAt) {
-              setLastSavedAt(new Date(selfProfile.updatedAt).toLocaleTimeString());
+
+        if (isMounted && data.success && Array.isArray(data.profiles)) {
+          const newBaselines: Record<string, PatientProfile | null> = {};
+
+          data.profiles.forEach((p: PatientProfile) => {
+            const relKey = (p.relationshipToUser || "self").toLowerCase();
+            newBaselines[relKey] = p;
+            clientProfileCache.set(userId, relKey, p);
+          });
+
+          setBaselineProfiles(newBaselines);
+
+          // If user hasn't edited anything yet, populate form with active relationship
+          const activeRecord = newBaselines[selectedRelationship];
+          if (activeRecord) {
+            setFormData({ ...activeRecord });
+            if (activeRecord.updatedAt) {
+              setLastSavedAt(new Date(activeRecord.updatedAt).toLocaleTimeString());
             }
           } else {
-            // Default empty self profile
-            setFormData((prev) => ({
-              ...prev,
-              name: user.fullName || user.firstName || "",
-              relationshipToUser: "self"
-            }));
+            // Setup fresh draft
+            setFormData({
+              ...EMPTY_PROFILE_TEMPLATE,
+              name: selectedRelationship === "self" ? (user?.fullName || user?.firstName || "") : "",
+              relationshipToUser: selectedRelationship as any
+            });
           }
         }
       } catch (err: any) {
-        console.error("Failed to load patient profiles:", err);
+        console.warn("[Profile] Server load exception (using local baseline):", err);
       } finally {
         setLoading(false);
       }
     }
 
-    if (isLoaded) {
-      loadProfiles();
+    loadAllProfiles();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [isUserLoaded, userId]);
+
+  // Switch between patient relationships safely
+  const performRelationshipSwitch = useCallback((targetRel: string) => {
+    setSelectedRelationship(targetRel);
+    setSaveStatus("idle");
+    setErrorMessage("");
+
+    // Check if there is a pending in-memory draft first
+    const draft = clientProfileCache.getDraft(userId, targetRel);
+    if (draft) {
+      setFormData({ ...draft });
+      return;
     }
-  }, [user, isLoaded]);
 
-  const populateForm = (p: PatientProfile) => {
-    setFormData({
-      id: p.id,
-      name: p.name || "",
-      relationshipToUser: p.relationshipToUser || "self",
-      language: p.language || "en",
-      dateOfBirth: p.dateOfBirth || "",
-      age: p.age,
-      sexAssignedAtBirth: p.sexAssignedAtBirth,
-      gender: p.gender,
-      bloodGroup: p.bloodGroup || "",
-      pregnancyStatus: p.pregnancyStatus || "not_applicable",
-      knownConditions: p.knownConditions || [],
-      currentMedications: p.currentMedications || [],
-      allergyStatus: p.allergyStatus || "unassessed",
-      drugAllergies: p.drugAllergies || [],
-      surgicalHistory: p.surgicalHistory || [],
-      smokingStatus: p.smokingStatus || "unknown",
-      emergencyContact: p.emergencyContact || { name: "", phone: "", relationship: "" },
-      accessibilityPreferences: p.accessibilityPreferences || { communicationStyle: "concise", notes: "" },
-      clinicalNotes: p.clinicalNotes || ""
-    });
-  };
-
-  // Switch between Self and Family Profiles
-  const handleSelectRelationship = (rel: string) => {
-    setSelectedRelationship(rel);
-    const existing = profiles.find((p) => (p.relationshipToUser || "self") === rel);
-    if (existing) {
-      populateForm(existing);
-      if (existing.updatedAt) setLastSavedAt(new Date(existing.updatedAt).toLocaleTimeString());
+    // Check baseline profile for target relationship
+    const record = baselineProfiles[targetRel] || clientProfileCache.get(userId, targetRel);
+    if (record) {
+      setFormData({ ...record });
+      if (record.updatedAt) {
+        setLastSavedAt(new Date(record.updatedAt).toLocaleTimeString());
+      }
     } else {
-      // Create new clean profile draft for that relationship
+      // New profile for this relationship
       setFormData({
-        name: "",
-        relationshipToUser: rel as any,
-        language: "en",
-        dateOfBirth: "",
-        age: undefined,
-        sexAssignedAtBirth: undefined,
-        gender: undefined,
-        bloodGroup: "",
-        pregnancyStatus: "not_applicable",
-        knownConditions: [],
-        currentMedications: [],
-        allergyStatus: "unassessed",
-        drugAllergies: [],
-        surgicalHistory: [],
-        smokingStatus: "unknown",
-        emergencyContact: { name: "", phone: "", relationship: "" },
-        accessibilityPreferences: { communicationStyle: "concise", notes: "" },
-        clinicalNotes: ""
+        ...EMPTY_PROFILE_TEMPLATE,
+        name: targetRel === "self" ? (user?.fullName || user?.firstName || "") : "",
+        relationshipToUser: targetRel as any
       });
       setLastSavedAt(null);
     }
+  }, [userId, baselineProfiles, user]);
+
+  const handleRelationshipClick = (targetRel: string) => {
+    if (targetRel === selectedRelationship) return;
+
+    if (isDirty) {
+      // Guard against silent loss of unsaved changes
+      setPendingSwitchRelationship(targetRel);
+    } else {
+      performRelationshipSwitch(targetRel);
+    }
   };
 
-  // Dynamic Age calculation from DOB
+  const confirmDiscardAndSwitch = () => {
+    if (pendingSwitchRelationship) {
+      // Clear draft for the abandoned relationship
+      clientProfileCache.clearDraft(userId, selectedRelationship);
+      performRelationshipSwitch(pendingSwitchRelationship);
+      setPendingSwitchRelationship(null);
+    }
+  };
+
+  const cancelSwitch = () => {
+    setPendingSwitchRelationship(null);
+  };
+
+  // DOB and Age handling
   const handleDobChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const dob = e.target.value;
     let computedAge: number | undefined = undefined;
@@ -254,7 +356,7 @@ export default function PatientProfilePage() {
     }));
   };
 
-  // Condition toggles
+  // Condition handlers
   const toggleCondition = (cond: string) => {
     setFormData((prev) => {
       const current = prev.knownConditions || [];
@@ -329,11 +431,14 @@ export default function PatientProfilePage() {
     });
   };
 
-  // Save profile to backend
+  // Save profile with fault-tolerant draft preservation & retry
   const handleSave = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setSaveStatus("saving");
     setErrorMessage("");
+
+    // Cache current form as draft so user work is never lost if network drops
+    clientProfileCache.setDraft(userId, selectedRelationship, formData);
 
     try {
       const payload = {
@@ -349,805 +454,961 @@ export default function PatientProfilePage() {
 
       const data = await res.json();
       if (!res.ok || !data.success) {
-        throw new Error(data.error || "Failed to save profile.");
+        throw new Error(data.error || "Failed to save patient profile.");
       }
 
-      setSaveStatus("saved");
-      setLastSavedAt(new Date().toLocaleTimeString());
+      // Success: update cache & baseline
+      const saved: PatientProfile = data.profile;
+      clientProfileCache.set(userId, selectedRelationship, saved);
+      clientProfileCache.clearDraft(userId, selectedRelationship);
 
-      // Update local profiles list
-      setProfiles((prev) => {
-        const idx = prev.findIndex((p) => p.id === data.profile.id || p.relationshipToUser === data.profile.relationshipToUser);
-        if (idx >= 0) {
-          const updated = [...prev];
-          updated[idx] = data.profile;
-          return updated;
-        }
-        return [...prev, data.profile];
-      });
+      setBaselineProfiles((prev) => ({
+        ...prev,
+        [selectedRelationship]: saved
+      }));
+      setFormData({ ...saved });
+
+      setSaveStatus("saved");
+      const timestamp = new Date().toLocaleTimeString();
+      setLastSavedAt(timestamp);
 
       setTimeout(() => {
         setSaveStatus("idle");
-      }, 3000);
+      }, 4000);
     } catch (err: any) {
-      console.error("Save error:", err);
+      console.error("[Profile Save Error]", err);
       setSaveStatus("error");
-      setErrorMessage(err.message || "Could not save profile.");
+      setErrorMessage(err.message || "Failed to save profile. Your changes are preserved locally.");
     }
   };
 
+  const handleResetToBaseline = () => {
+    const baseline = baselineProfiles[selectedRelationship] || EMPTY_PROFILE_TEMPLATE;
+    setFormData({ ...baseline });
+    clientProfileCache.clearDraft(userId, selectedRelationship);
+    setSaveStatus("idle");
+    setErrorMessage("");
+  };
+
   return (
-    <div className="relative min-h-screen bg-slate-50/50 text-slate-900 flex flex-col font-sans selection:bg-cyan-500 selection:text-white overflow-x-clip">
+    <div className="relative min-h-screen bg-[#FAF9F6] text-[#05070F] flex flex-col font-sans selection:bg-[#B7FF72] selection:text-[#05070F]">
 
-      <main className="relative z-10 flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 pt-6 sm:pt-10 pb-24 flex flex-col gap-8">
-        
-        {/* ========================================================================= */}
-        {/* HERO HEADER: CLINICAL INTELLIGENCE HEALTH PROFILE                        */}
-        {/* ========================================================================= */}
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.4, ease: "easeOut" }}
-          className="flex flex-col items-center text-center space-y-4 pt-2 sm:pt-4"
-        >
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-cyan-50 border border-cyan-200/90 shadow-2xs font-mono">
-            <span className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
-            <span className="text-xs font-bold uppercase tracking-[0.1em] text-cyan-900">
-              MEDVOICE · PATIENT HEALTH CONTEXT
-            </span>
-          </div>
-
-          <div className="space-y-1">
-            <SplitText
-              text="Patient Health Profile"
-              tag="h1"
-              className="text-3xl sm:text-4xl lg:text-5xl font-black text-slate-950 tracking-tight leading-[1.1]"
-            />
-            <div className="pt-1">
-              <GradientText
-                colors={["#0891b2", "#06b6d4", "#0e7490"]}
-                className="text-xs sm:text-sm font-bold uppercase tracking-wider font-mono"
-              >
-                Comprehensive Longitudinal Pre-Hospital Baseline
-              </GradientText>
-            </div>
-          </div>
-
-          <p className="text-sm sm:text-base text-slate-600 max-w-2xl font-normal leading-relaxed">
-            Optionally maintain your clinical background so MedVoice can personalize consultations, avoid repeated questions, and account for your medical history. All fields are completely optional.
-          </p>
-
-          {/* Privacy & Non-Interrogation Assurance Badge */}
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-2xl bg-white border border-slate-200 shadow-2xs text-xs text-slate-600 max-w-xl">
-            <ShieldCheck className="w-4 h-4 text-emerald-600 flex-shrink-0" />
-            <span>
-              <strong>Privacy Assurance:</strong> The chatbot will <em>never</em> interrogate you for blank fields. Details are used only when pertinent to active symptoms.
-            </span>
-          </div>
-        </motion.div>
+      {/* Main Container: Expanded to full desktop canvas (1200-1280px) */}
+      <main className="relative z-10 flex-1 max-w-[1240px] w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-10 pb-12 sm:pb-16 flex flex-col gap-8">
 
         {/* ========================================================================= */}
-        {/* PATIENT PROFILE SWITCHER: SELF VS FAMILY MEMBERS                         */}
+        {/* EDITORIAL SETTINGS HEADER: LINEAR / RAYCAST / APPLE HIG PATTERN           */}
         {/* ========================================================================= */}
-        <motion.div
-          initial={{ opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.35, delay: 0.1, ease: "easeOut" }}
-          className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs"
-        >
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-teal-50 border border-teal-200 flex items-center justify-center text-teal-700">
-              <User className="w-5 h-5" />
-            </div>
-            <div>
-              <div className="text-xs font-bold text-slate-950 uppercase tracking-wider font-mono">
-                Active Profile
-              </div>
-              <div className="text-sm font-semibold text-slate-700">
-                {selectedRelationship === "self" ? "Personal Profile (Self)" : `Family Member (${selectedRelationship})`}
-              </div>
-            </div>
-          </div>
-
-          {/* Authentic React Bits JellyRadio Relationship Switcher */}
-          <div className="flex items-center justify-center">
-            <JellyRadio
-              items={JELLY_RELATIONSHIP_ITEMS}
-              value={selectedRelationship}
-              onChange={(val) => handleSelectRelationship(val)}
-              activeColor="#020617"
-              chipColor="#f8fafc"
-              textColor="#475569"
-              activeTextColor="#ffffff"
-              ariaLabel="Select active patient relationship"
-            />
-          </div>
-        </motion.div>
-
-        {/* ========================================================================= */}
-        {/* FORM CONTAINER WITH STAGGERED REVEAL & ACCORDION CARDS                  */}
-        {/* ========================================================================= */}
-        <form onSubmit={handleSave} className="flex flex-col gap-6">
-
-          {/* ----------------------------------------------------------------------- */}
-          {/* SECTION 1: BASIC INFORMATION & DEMOGRAPHICS                            */}
-          {/* ----------------------------------------------------------------------- */}
-          <motion.div
-            initial={{ opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.35, delay: 0.15 }}
-            className="bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-8 shadow-xs"
-          >
-            <div
-              onClick={() => toggleSection("demographics")}
-              className="flex items-center justify-between cursor-pointer group"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-cyan-50 border border-cyan-200 flex items-center justify-center text-cyan-700">
-                  <User className="w-4 h-4" />
-                </div>
-                <div>
-                  <h2 className="text-base sm:text-lg font-bold text-slate-950">
-                    Basic Demographics
-                  </h2>
-                  <p className="text-xs text-slate-500">
-                    Preferred name, date of birth, biological sex, and communication language
-                  </p>
-                </div>
-              </div>
-              <button type="button" className="text-slate-400 group-hover:text-slate-700 p-1">
-                {sectionsOpen.demographics ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-              </button>
-            </div>
-
-            {sectionsOpen.demographics && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 pt-6 mt-4 border-t border-slate-100">
-                {/* Full / Preferred Name */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-slate-700 flex items-center justify-between">
-                    <span>Full / Preferred Name</span>
-                    <span className="text-[10px] text-slate-400 font-normal">Optional</span>
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.name || ""}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    placeholder="e.g. Marcus Vance"
-                    className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 bg-slate-50/50"
-                  />
+        <header className="relative border-b border-[#E5E7EB] pb-8">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start relative z-10">
+            {/* Left Column: Title, status, relationship selector */}
+            <div className="lg:col-span-7 xl:col-span-8 flex flex-col gap-4">
+              <div className="flex flex-wrap items-center gap-2.5">
+                <div className="inline-flex items-center gap-2 px-2.5 py-1 rounded-full bg-[#F0FDF4] border border-[#DCFCE7] text-[11px] font-mono font-bold uppercase tracking-[0.12em] text-[#16A34A]">
+                  <span className="w-1.5 h-1.5 rounded-full bg-[#16A34A] animate-pulse" />
+                  <span>MEDVOICE · CLINICAL HEALTH CONTEXT</span>
                 </div>
 
-                {/* Date of Birth */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-slate-700 flex items-center justify-between">
-                    <span>Date of Birth</span>
-                    <span className="text-[10px] text-slate-400 font-normal">Calculates age</span>
-                  </label>
-                  <input
-                    type="date"
-                    value={formData.dateOfBirth || ""}
-                    onChange={handleDobChange}
-                    className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 bg-slate-50/50"
-                  />
-                </div>
-
-                {/* Age (Direct or Computed) */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-slate-700 flex items-center justify-between">
-                    <span>Age (Years)</span>
-                    <span className="text-[10px] text-slate-400 font-normal">{formData.dateOfBirth ? "Auto-computed" : "Optional"}</span>
-                  </label>
-                  <input
-                    type="number"
-                    min={0}
-                    max={125}
-                    value={formData.age !== undefined && formData.age !== null ? formData.age : ""}
-                    onChange={(e) => setFormData({ ...formData, age: e.target.value ? parseInt(e.target.value, 10) : undefined })}
-                    placeholder="e.g. 56"
-                    className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 bg-slate-50/50 font-mono"
-                  />
-                </div>
-
-                {/* Sex Assigned at Birth */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-slate-700 flex items-center justify-between">
-                    <span>Biological Sex</span>
-                    <span className="text-[10px] text-slate-400 font-normal">For clinical risks</span>
-                  </label>
-                  <select
-                    value={formData.sexAssignedAtBirth || ""}
-                    onChange={(e) => setFormData({ ...formData, sexAssignedAtBirth: (e.target.value || undefined) as any })}
-                    className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 bg-slate-50/50"
-                  >
-                    <option value="">Unspecified</option>
-                    <option value="male">Male</option>
-                    <option value="female">Female</option>
-                    <option value="intersex">Intersex</option>
-                  </select>
-                </div>
-
-                {/* Pregnancy Status (when biologically female) */}
-                {formData.sexAssignedAtBirth === "female" && (
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-xs font-semibold text-slate-700 flex items-center justify-between">
-                      <span>Pregnancy Status</span>
-                      <span className="text-[10px] text-slate-400 font-normal">Clinical safety</span>
-                    </label>
-                    <select
-                      value={formData.pregnancyStatus || "not_applicable"}
-                      onChange={(e) => setFormData({ ...formData, pregnancyStatus: e.target.value as any })}
-                      className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 bg-slate-50/50"
-                    >
-                      <option value="not_pregnant">Not Pregnant</option>
-                      <option value="pregnant">Currently Pregnant</option>
-                      <option value="not_applicable">Not Applicable</option>
-                      <option value="unknown">Unknown</option>
-                    </select>
+                <div className="flex items-center gap-2">
+                  <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#F3F4F6] border border-[#E5E7EB] text-[11px] text-[#475569]">
+                    <Lock className="w-3 h-3 text-[#16A34A]" />
+                    <span>Strictly Private & Client-Controlled</span>
                   </div>
-                )}
 
-                {/* Preferred Language */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-slate-700 flex items-center justify-between">
-                    <span>Preferred Language</span>
-                    <span className="text-[10px] text-slate-400 font-normal">Consultation style</span>
-                  </label>
-                  <GlideSelect
-                    options={LANGUAGES.map((l) => ({ value: l.value, label: l.label }))}
-                    value={formData.language || "en"}
-                    onChange={(val) => setFormData((prev) => ({ ...prev, language: val }))}
-                    menuWidth={260}
-                    className="w-full"
-                  />
-                </div>
-
-                {/* Blood Group */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-slate-700 flex items-center justify-between">
-                    <span>Blood Group</span>
-                    <span className="text-[10px] text-slate-400 font-normal">Optional</span>
-                  </label>
-                  <select
-                    value={formData.bloodGroup || ""}
-                    onChange={(e) => setFormData({ ...formData, bloodGroup: e.target.value })}
-                    className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 focus:border-cyan-500 bg-slate-50/50"
-                  >
-                    <option value="">Unknown</option>
-                    <option value="A+">A+</option>
-                    <option value="A-">A-</option>
-                    <option value="B+">B+</option>
-                    <option value="B-">B-</option>
-                    <option value="O+">O+</option>
-                    <option value="O-">O-</option>
-                    <option value="AB+">AB+</option>
-                    <option value="AB-">AB-</option>
-                  </select>
+                  {!isDirty && (
+                    <div className="hidden sm:inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#F0FDF4] border border-[#DCFCE7] text-[11px] text-[#16A34A] font-medium">
+                      <Check className="w-3 h-3 text-[#16A34A]" />
+                      <span>All changes saved</span>
+                    </div>
+                  )}
                 </div>
               </div>
-            )}
-          </motion.div>
 
-          {/* ----------------------------------------------------------------------- */}
-          {/* SECTION 2: KNOWN MEDICAL CONDITIONS                                    */}
-          {/* ----------------------------------------------------------------------- */}
-          <motion.div
-            initial={{ opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.35, delay: 0.2 }}
-            className="bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-8 shadow-xs"
-          >
-            <div
-              onClick={() => toggleSection("conditions")}
-              className="flex items-center justify-between cursor-pointer group"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-700">
-                  <HeartPulse className="w-4 h-4" />
-                </div>
-                <div>
-                  <h2 className="text-base sm:text-lg font-bold text-slate-950">
-                    Known Medical Conditions
-                  </h2>
-                  <p className="text-xs text-slate-500">
-                    Existing chronic diagnoses (e.g. hypertension, diabetes, asthma)
-                  </p>
-                </div>
-              </div>
-              <button type="button" className="text-slate-400 group-hover:text-slate-700 p-1">
-                {sectionsOpen.conditions ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-              </button>
-            </div>
-
-            {sectionsOpen.conditions && (
-              <div className="pt-6 mt-4 border-t border-slate-100 flex flex-col gap-4">
-                <p className="text-xs text-slate-500">
-                  Select common conditions or add your own. The chatbot will know these baseline conditions and won&apos;t ask you to re-list them.
+              <div className="flex flex-col gap-1.5">
+                <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-[#05070F] tracking-tight">
+                  Patient Profile & Health Baseline
+                </h1>
+                <p className="text-sm sm:text-base text-[#475569] max-w-2xl leading-relaxed">
+                  Maintain an optional baseline so consultations remain seamless, personalized, and informed. MedVoice respects your boundaries and will never interrogate you for unprovided details.
                 </p>
+              </div>
 
-                {/* Preset Chips */}
-                <div className="flex flex-wrap gap-2">
-                  {COMMON_CONDITIONS.map((cond) => {
-                    const active = formData.knownConditions?.includes(cond);
+              {/* Relationship Selector Pills */}
+              <div className="pt-2 flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <div className="text-[11px] font-mono uppercase tracking-wider text-[#94A3B8] font-bold">
+                    Active Patient Record
+                  </div>
+                  {!isDirty && (
+                    <span className="text-[11px] text-[#64748B]">
+                      {lastSavedAt ? `Saved at ${lastSavedAt}` : "Baseline is up to date"}
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5 p-1 bg-[#F3F4F6] border border-[#E5E7EB] rounded-2xl w-fit">
+                  {RELATIONSHIPS.map((rel) => {
+                    const isActive = selectedRelationship === rel.value;
+                    const hasPending = clientProfileCache.hasPendingEdits(userId, rel.value);
+
                     return (
                       <button
-                        key={cond}
+                        key={rel.value}
                         type="button"
-                        onClick={() => toggleCondition(cond)}
-                        className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all cursor-pointer inline-flex items-center gap-1.5 ${
-                          active
-                            ? "bg-rose-50 text-rose-800 border border-rose-200 font-bold shadow-2xs"
-                            : "bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200"
+                        onClick={() => handleRelationshipClick(rel.value)}
+                        className={`relative px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
+                          isActive
+                            ? "bg-[#05070F] text-white shadow-xs"
+                            : "text-[#475569] hover:text-[#05070F] hover:bg-white/60"
                         }`}
                       >
-                        {active ? <Check className="w-3.5 h-3.5 text-rose-600" /> : <Plus className="w-3.5 h-3.5 text-slate-400" />}
-                        <span>{cond}</span>
+                        <span>{rel.label}</span>
+                        {hasPending && !isActive && (
+                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" title="Unsaved changes in this profile" />
+                        )}
                       </button>
                     );
                   })}
                 </div>
-
-                {/* Custom condition input */}
-                <div className="flex items-center gap-2 pt-2">
-                  <input
-                    type="text"
-                    value={customCondition}
-                    onChange={(e) => setCustomCondition(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        addCustomCondition();
-                      }
-                    }}
-                    placeholder="Add other diagnosed condition..."
-                    className="flex-1 px-3.5 py-2 text-xs rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 bg-slate-50/50"
-                  />
-                  <button
-                    type="button"
-                    onClick={addCustomCondition}
-                    className="px-3 py-2 text-xs font-semibold bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl transition-colors cursor-pointer"
-                  >
-                    Add
-                  </button>
-                </div>
               </div>
-            )}
-          </motion.div>
-
-          {/* ----------------------------------------------------------------------- */}
-          {/* SECTION 3: CURRENT MEDICATIONS                                         */}
-          {/* ----------------------------------------------------------------------- */}
-          <motion.div
-            initial={{ opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.35, delay: 0.25 }}
-            className="bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-8 shadow-xs"
-          >
-            <div
-              onClick={() => toggleSection("medications")}
-              className="flex items-center justify-between cursor-pointer group"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-700">
-                  <Pill className="w-4 h-4" />
-                </div>
-                <div>
-                  <h2 className="text-base sm:text-lg font-bold text-slate-950">
-                    Current Medications
-                  </h2>
-                  <p className="text-xs text-slate-500">
-                    Regular prescriptions, over-the-counter drugs, or supplements
-                  </p>
-                </div>
-              </div>
-              <button type="button" className="text-slate-400 group-hover:text-slate-700 p-1">
-                {sectionsOpen.medications ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-              </button>
             </div>
 
-            {sectionsOpen.medications && (
-              <div className="pt-6 mt-4 border-t border-slate-100 flex flex-col gap-4">
-                {/* List of existing medications */}
-                {formData.currentMedications && formData.currentMedications.length > 0 ? (
-                  <div className="flex flex-col gap-2">
-                    {formData.currentMedications.map((med, idx) => (
-                      <div
-                        key={idx}
-                        className="flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs"
-                      >
-                        <div className="flex items-center gap-2">
-                          <Pill className="w-3.5 h-3.5 text-amber-600" />
-                          <span className="font-bold text-slate-900">{med.name}</span>
-                          {med.dose && <span className="text-slate-500 font-mono">({med.dose})</span>}
-                          {med.frequency && <span className="text-slate-400 italic">• {med.frequency}</span>}
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => removeMedication(idx)}
-                          className="text-slate-400 hover:text-rose-600 transition-colors p-1"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-xs text-slate-400 italic">No regular medications listed.</p>
-                )}
+            {/* Right Column: Sculptural Acoustic Wave Identity */}
+            <div className="lg:col-span-5 xl:col-span-4 hidden lg:flex flex-col justify-end relative">
+              <motion.div
+                animate={prefersReducedMotion ? {} : { y: [0, -6, 0] }}
+                transition={{ duration: 7, repeat: Infinity, ease: "easeInOut" }}
+                className="relative w-full h-[210px] rounded-3xl bg-linear-to-br from-emerald-50/60 via-[#FAF9F6] to-teal-50/30 border border-[#E5E7EB] p-5 flex flex-col justify-between overflow-hidden shadow-2xs"
+              >
+                {/* Sculptural Mint Ribbon graphic with smooth blend */}
+                <div className="absolute -right-8 -top-12 w-[280px] h-[300px] pointer-events-none select-none opacity-45 mix-blend-multiply">
+                  <img
+                    src="/images/profile/sculptural-mint-ribbon.png"
+                    alt=""
+                    className="w-full h-full object-cover [mask-image:radial-gradient(ellipse_at_70%_40%,black_30%,transparent_75%)]"
+                  />
+                </div>
 
-                {/* Add medication input row */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2">
-                  <input
-                    type="text"
-                    value={newMed.name}
-                    onChange={(e) => setNewMed({ ...newMed, name: e.target.value })}
-                    placeholder="Medication name (e.g. Metformin)"
-                    className="px-3.5 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50/50 focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
+                {/* Acoustic Waveform Filament */}
+                <div className="absolute right-0 bottom-0 w-[240px] h-[150px] pointer-events-none select-none opacity-30">
+                  <img
+                    src="/images/profile/acoustic-waveform-filament.png"
+                    alt=""
+                    className="w-full h-full object-contain"
                   />
-                  <input
-                    type="text"
-                    value={newMed.dose}
-                    onChange={(e) => setNewMed({ ...newMed, dose: e.target.value })}
-                    placeholder="Dosage (e.g. 500mg)"
-                    className="px-3.5 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50/50 focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
-                  />
-                  <div className="flex items-center gap-2">
+                </div>
+
+                {/* Micro-spec metadata */}
+                <div className="relative z-10 flex items-center justify-between text-[10px] font-mono text-[#64748B]">
+                  <span className="inline-flex items-center gap-1.5 uppercase tracking-wider font-semibold text-[#18251D]">
+                    <Activity className="w-3.5 h-3.5 text-[#16A34A]" />
+                    ACOUSTIC CONTEXT CORE
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full bg-white/90 border border-[#E2E8F0] text-[10px] text-[#475569]">
+                    CLIENT-SIDE · PHI
+                  </span>
+                </div>
+
+                <div className="relative z-10 flex flex-col gap-1">
+                  <div className="text-xs font-semibold text-[#18251D]">
+                    Zero-Interrogation Clinical Flow
+                  </div>
+                  <p className="text-[11px] text-[#64748B] leading-relaxed">
+                    Baseline medical facts pre-populate clinical reasoning silently, eliminating redundant intake questions.
+                  </p>
+                </div>
+              </motion.div>
+            </div>
+          </div>
+        </header>
+
+        {/* ========================================================================= */}
+        {/* SKELETON PLACEHOLDER WHILE DATA FETCHES                                  */}
+        {/* ========================================================================= */}
+        {loading ? (
+          <ProfileSkeleton />
+        ) : (
+          <form onSubmit={handleSave} className="relative flex flex-col gap-6">
+
+            {/* --------------------------------------------------------------------- */}
+            {/* SECTION 1: CORE DEMOGRAPHICS                                          */}
+            {/* --------------------------------------------------------------------- */}
+            <motion.div
+              initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, ease: "easeOut" }}
+              className="bg-white border border-[#E5E7EB] rounded-3xl p-6 sm:p-7 shadow-xs hover:border-[#CBD5E1] transition-colors"
+            >
+              <div
+                onClick={() => toggleSection("demographics")}
+                className="flex items-center justify-between cursor-pointer select-none group"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-[#F0FDF4] border border-[#DCFCE7] flex items-center justify-center text-[#16A34A]">
+                    <User className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-[#05070F]">
+                      Basic Demographics
+                    </h2>
+                    <p className="text-xs text-[#64748B]">
+                      Identity, age calculation, biological sex, and communication language
+                    </p>
+                  </div>
+                </div>
+                <button type="button" className="text-[#94A3B8] group-hover:text-[#05070F] p-1">
+                  {sectionsOpen.demographics ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                </button>
+              </div>
+
+              {sectionsOpen.demographics && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 pt-6 mt-4 border-t border-[#F1F5F9]">
+                  {/* Full / Preferred Name */}
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-semibold text-[#334155] flex items-center justify-between">
+                      <span>Full / Preferred Name</span>
+                      <span className="text-[10px] text-[#94A3B8] font-normal">Optional</span>
+                    </label>
                     <input
                       type="text"
-                      value={newMed.frequency}
-                      onChange={(e) => setNewMed({ ...newMed, frequency: e.target.value })}
-                      placeholder="Frequency (e.g. Twice daily)"
-                      className="flex-1 px-3.5 py-2 text-xs rounded-xl border border-slate-200 bg-slate-50/50 focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
+                      value={formData.name || ""}
+                      onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                      placeholder="e.g. Marcus Vance"
+                      className="w-full px-3.5 py-2 text-sm rounded-xl border border-[#E2E8F0] focus:outline-none focus:ring-2 focus:ring-[#16A34A]/20 focus:border-[#16A34A] bg-[#F8FAFC]"
+                    />
+                  </div>
+
+                  {/* Date of Birth */}
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-semibold text-[#334155] flex items-center justify-between">
+                      <span>Date of Birth</span>
+                      <span className="text-[10px] text-[#94A3B8] font-normal">Auto-computes age</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={formData.dateOfBirth || ""}
+                      onChange={handleDobChange}
+                      className="w-full px-3.5 py-2 text-sm rounded-xl border border-[#E2E8F0] focus:outline-none focus:ring-2 focus:ring-[#16A34A]/20 focus:border-[#16A34A] bg-[#F8FAFC]"
+                    />
+                  </div>
+
+                  {/* Age (Direct or Computed) */}
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-semibold text-[#334155] flex items-center justify-between">
+                      <span>Age (Years)</span>
+                      <span className="text-[10px] text-[#94A3B8] font-normal">{formData.dateOfBirth ? "Calculated" : "Optional"}</span>
+                    </label>
+                    <input
+                      type="number"
+                      min={0}
+                      max={125}
+                      value={formData.age !== undefined && formData.age !== null ? formData.age : ""}
+                      onChange={(e) => setFormData({ ...formData, age: e.target.value ? parseInt(e.target.value, 10) : undefined })}
+                      placeholder="e.g. 56"
+                      className="w-full px-3.5 py-2 text-sm rounded-xl border border-[#E2E8F0] focus:outline-none focus:ring-2 focus:ring-[#16A34A]/20 focus:border-[#16A34A] bg-[#F8FAFC] font-mono"
+                    />
+                  </div>
+
+                  {/* Biological Sex (Sex Assigned at Birth) */}
+                  <div className="flex flex-col gap-1.5">
+                    <label htmlFor="patient-biological-sex" className="text-xs font-semibold text-[#334155] flex items-center justify-between">
+                      <span>Biological Sex</span>
+                      <span className="text-[10px] text-[#94A3B8] font-normal">For clinical risks</span>
+                    </label>
+                    <select
+                      id="patient-biological-sex"
+                      value={formData.sexAssignedAtBirth || ""}
+                      onChange={(e) => {
+                        const newSex = (e.target.value || undefined) as any;
+                        setFormData((prev) => ({
+                          ...prev,
+                          sexAssignedAtBirth: newSex,
+                          pregnancyStatus: newSex === "female" ? prev.pregnancyStatus : "not_applicable"
+                        }));
+                      }}
+                      className="w-full px-3.5 py-2 text-sm rounded-xl border border-[#E2E8F0] focus:outline-none focus:ring-2 focus:ring-[#16A34A]/20 focus:border-[#16A34A] bg-[#F8FAFC]"
+                    >
+                      <option value="">Unspecified</option>
+                      <option value="male">Male</option>
+                      <option value="female">Female</option>
+                      <option value="intersex">Intersex</option>
+                    </select>
+                  </div>
+
+                  {/* Gender Identity */}
+                  <div className="flex flex-col gap-1.5">
+                    <label htmlFor="patient-gender-identity" className="text-xs font-semibold text-[#334155] flex items-center justify-between">
+                      <span>Gender Identity</span>
+                      <span className="text-[10px] text-[#94A3B8] font-normal">Personal identity</span>
+                    </label>
+                    <select
+                      id="patient-gender-identity"
+                      value={formData.gender || ""}
+                      onChange={(e) => {
+                        const newGender = (e.target.value || undefined) as any;
+                        setFormData((prev) => ({
+                          ...prev,
+                          gender: newGender
+                        }));
+                      }}
+                      className="w-full px-3.5 py-2 text-sm rounded-xl border border-[#E2E8F0] focus:outline-none focus:ring-2 focus:ring-[#16A34A]/20 focus:border-[#16A34A] bg-[#F8FAFC]"
+                    >
+                      <option value="">Unspecified</option>
+                      <option value="male">Identifies as Male</option>
+                      <option value="female">Identifies as Female</option>
+                      <option value="other">Non-binary / Other</option>
+                    </select>
+                  </div>
+
+                  {/* Pregnancy Status (if biologically female) */}
+                  {formData.sexAssignedAtBirth === "female" && (
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-xs font-semibold text-[#334155] flex items-center justify-between">
+                        <span>Pregnancy Status</span>
+                        <span className="text-[10px] text-[#94A3B8] font-normal">Medication safety</span>
+                      </label>
+                      <select
+                        value={formData.pregnancyStatus || "not_applicable"}
+                        onChange={(e) => setFormData({ ...formData, pregnancyStatus: e.target.value as any })}
+                        className="w-full px-3.5 py-2 text-sm rounded-xl border border-[#E2E8F0] focus:outline-none focus:ring-2 focus:ring-[#16A34A]/20 focus:border-[#16A34A] bg-[#F8FAFC]"
+                      >
+                        <option value="not_pregnant">Not Pregnant</option>
+                        <option value="pregnant">Currently Pregnant</option>
+                        <option value="not_applicable">Not Applicable</option>
+                        <option value="unknown">Unknown</option>
+                      </select>
+                    </div>
+                  )}
+
+                  {/* Preferred Language */}
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-semibold text-[#334155] flex items-center justify-between">
+                      <span>Preferred Language</span>
+                      <span className="text-[10px] text-[#94A3B8] font-normal">ASR / TTS Voice</span>
+                    </label>
+                    <select
+                      value={formData.language || "en"}
+                      onChange={(e) => setFormData({ ...formData, language: e.target.value })}
+                      className="w-full px-3.5 py-2 text-sm rounded-xl border border-[#E2E8F0] focus:outline-none focus:ring-2 focus:ring-[#16A34A]/20 focus:border-[#16A34A] bg-[#F8FAFC]"
+                    >
+                      {LANGUAGES.map((lang) => (
+                        <option key={lang.value} value={lang.value}>
+                          {lang.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Blood Group */}
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-semibold text-[#334155] flex items-center justify-between">
+                      <span>Blood Group</span>
+                      <span className="text-[10px] text-[#94A3B8] font-normal">Optional</span>
+                    </label>
+                    <select
+                      value={formData.bloodGroup || ""}
+                      onChange={(e) => setFormData({ ...formData, bloodGroup: e.target.value })}
+                      className="w-full px-3.5 py-2 text-sm rounded-xl border border-[#E2E8F0] focus:outline-none focus:ring-2 focus:ring-[#16A34A]/20 focus:border-[#16A34A] bg-[#F8FAFC]"
+                    >
+                      <option value="">Unknown</option>
+                      <option value="A+">A+</option>
+                      <option value="A-">A-</option>
+                      <option value="B+">B+</option>
+                      <option value="B-">B-</option>
+                      <option value="O+">O+</option>
+                      <option value="O-">O-</option>
+                      <option value="AB+">AB+</option>
+                      <option value="AB-">AB-</option>
+                    </select>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+
+            {/* --------------------------------------------------------------------- */}
+            {/* SECTION 2: KNOWN MEDICAL CONDITIONS                                   */}
+            {/* --------------------------------------------------------------------- */}
+            <motion.div
+              initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: 0.04, ease: "easeOut" }}
+              className="bg-white border border-[#E5E7EB] rounded-3xl p-6 sm:p-7 shadow-xs hover:border-[#CBD5E1] transition-colors"
+            >
+              <div
+                onClick={() => toggleSection("conditions")}
+                className="flex items-center justify-between cursor-pointer select-none group"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-rose-50 border border-rose-100 flex items-center justify-center text-rose-600">
+                    <HeartPulse className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-[#05070F]">
+                      Known Medical Conditions
+                    </h2>
+                    <p className="text-xs text-[#64748B]">
+                      Existing chronic diagnoses (e.g. hypertension, diabetes, asthma)
+                    </p>
+                  </div>
+                </div>
+                <button type="button" className="text-[#94A3B8] group-hover:text-[#05070F] p-1">
+                  {sectionsOpen.conditions ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                </button>
+              </div>
+
+              {sectionsOpen.conditions && (
+                <div className="pt-6 mt-4 border-t border-[#F1F5F9] flex flex-col gap-4">
+                  <p className="text-xs text-[#64748B]">
+                    Select common conditions or add custom diagnoses. MedVoice will recognize these in consultations without asking repetitive questions.
+                  </p>
+
+                  {/* Preset Chips */}
+                  <div className="flex flex-wrap gap-2">
+                    {COMMON_CONDITIONS.map((cond) => {
+                      const active = formData.knownConditions?.includes(cond);
+                      return (
+                        <button
+                          key={cond}
+                          type="button"
+                          onClick={() => toggleCondition(cond)}
+                          className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all cursor-pointer inline-flex items-center gap-1.5 ${
+                            active
+                              ? "bg-rose-50 text-rose-800 border border-rose-200 font-bold"
+                              : "bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#334155] border border-[#E2E8F0]"
+                          }`}
+                        >
+                          {active ? <Check className="w-3.5 h-3.5 text-rose-600" /> : <Plus className="w-3.5 h-3.5 text-[#94A3B8]" />}
+                          <span>{cond}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* Custom condition input */}
+                  <div className="flex items-center gap-2 pt-2">
+                    <input
+                      type="text"
+                      value={customCondition}
+                      onChange={(e) => setCustomCondition(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          addCustomCondition();
+                        }
+                      }}
+                      placeholder="Add other diagnosed condition..."
+                      className="flex-1 px-3.5 py-2 text-xs rounded-xl border border-[#E2E8F0] focus:outline-none focus:ring-2 focus:ring-[#16A34A]/20 bg-[#F8FAFC]"
                     />
                     <button
                       type="button"
-                      onClick={addMedication}
-                      className="px-3.5 py-2 text-xs font-semibold bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-xl transition-colors cursor-pointer"
+                      onClick={addCustomCondition}
+                      className="px-3 py-2 text-xs font-semibold bg-[#F1F5F9] hover:bg-[#E2E8F0] text-[#05070F] rounded-xl transition-colors cursor-pointer"
                     >
                       Add
                     </button>
                   </div>
                 </div>
-              </div>
-            )}
-          </motion.div>
+              )}
+            </motion.div>
 
-          {/* ----------------------------------------------------------------------- */}
-          {/* SECTION 4: KNOWN ALLERGIES & SENSITIVITIES                             */}
-          {/* ----------------------------------------------------------------------- */}
-          <motion.div
-            initial={{ opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.35, delay: 0.3 }}
-            className="bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-8 shadow-xs"
-          >
-            <div
-              onClick={() => toggleSection("allergies")}
-              className="flex items-center justify-between cursor-pointer group"
+            {/* --------------------------------------------------------------------- */}
+            {/* SECTION 3: CURRENT MEDICATIONS                                        */}
+            {/* --------------------------------------------------------------------- */}
+            <motion.div
+              initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: 0.08, ease: "easeOut" }}
+              className="bg-white border border-[#E5E7EB] rounded-3xl p-6 sm:p-7 shadow-xs hover:border-[#CBD5E1] transition-colors"
             >
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-purple-50 border border-purple-200 flex items-center justify-center text-purple-700">
-                  <AlertTriangle className="w-4 h-4" />
+              <div
+                onClick={() => toggleSection("medications")}
+                className="flex items-center justify-between cursor-pointer select-none group"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-600">
+                    <Pill className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-[#05070F]">
+                      Current Medications
+                    </h2>
+                    <p className="text-xs text-[#64748B]">
+                      Regular prescriptions, over-the-counter drugs, or daily supplements
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h2 className="text-base sm:text-lg font-bold text-slate-950">
-                    Known Drug Allergies
-                  </h2>
-                  <p className="text-xs text-slate-500">
-                    Allergic reactions or adverse sensitivities to medications
-                  </p>
-                </div>
+                <button type="button" className="text-[#94A3B8] group-hover:text-[#05070F] p-1">
+                  {sectionsOpen.medications ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                </button>
               </div>
-              <button type="button" className="text-slate-400 group-hover:text-slate-700 p-1">
-                {sectionsOpen.allergies ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-              </button>
-            </div>
 
-            {sectionsOpen.allergies && (
-              <div className="pt-6 mt-4 border-t border-slate-100 flex flex-col gap-4">
-                {/* Allergy status radio */}
-                <div className="flex items-center gap-4 text-xs">
-                  <label className="flex items-center gap-2 cursor-pointer font-medium text-slate-700">
-                    <input
-                      type="radio"
-                      name="allergyStatus"
-                      checked={formData.allergyStatus === "none_known"}
-                      onChange={() => setFormData({ ...formData, allergyStatus: "none_known", drugAllergies: [] })}
-                      className="text-cyan-600 focus:ring-cyan-500"
-                    />
-                    <span>No known drug allergies (NKDA)</span>
-                  </label>
-                  <label className="flex items-center gap-2 cursor-pointer font-medium text-slate-700">
-                    <input
-                      type="radio"
-                      name="allergyStatus"
-                      checked={formData.allergyStatus === "confirmed"}
-                      onChange={() => setFormData({ ...formData, allergyStatus: "confirmed" })}
-                      className="text-cyan-600 focus:ring-cyan-500"
-                    />
-                    <span>I have confirmed drug allergies</span>
-                  </label>
-                </div>
-
-                {formData.allergyStatus === "confirmed" && (
-                  <>
-                    {/* Common allergy chips */}
-                    <div className="flex flex-wrap gap-2 pt-1">
-                      {COMMON_DRUG_ALLERGIES.map((allergyName) => {
-                        const active = formData.drugAllergies?.some((a) => a.drugName.toLowerCase() === allergyName.toLowerCase());
-                        return (
-                          <button
-                            key={allergyName}
-                            type="button"
-                            onClick={() => (active ? removeAllergy(allergyName) : addAllergy(allergyName))}
-                            className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all cursor-pointer inline-flex items-center gap-1.5 ${
-                              active
-                                ? "bg-purple-50 text-purple-800 border border-purple-200 font-bold shadow-2xs"
-                                : "bg-slate-50 hover:bg-slate-100 text-slate-700 border border-slate-200"
-                            }`}
-                          >
-                            {active ? <Check className="w-3.5 h-3.5 text-purple-600" /> : <Plus className="w-3.5 h-3.5 text-slate-400" />}
-                            <span>{allergyName}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-
-                    {/* Active allergies list */}
-                    {formData.drugAllergies && formData.drugAllergies.length > 0 && (
-                      <div className="flex flex-col gap-2 pt-2">
-                        {formData.drugAllergies.map((a, idx) => (
-                          <div
-                            key={idx}
-                            className="flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-purple-50/50 border border-purple-200/70 text-xs"
-                          >
-                            <div className="flex items-center gap-2">
-                              <AlertTriangle className="w-3.5 h-3.5 text-purple-600" />
-                              <strong className="text-slate-900">{a.drugName}</strong>
-                              <span className="text-purple-700 font-mono text-[11px]">({a.severity})</span>
-                              {a.reactionDescription && <span className="text-slate-500">• {a.reactionDescription}</span>}
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => removeAllergy(a.drugName)}
-                              className="text-slate-400 hover:text-rose-600 transition-colors p-1"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
+              {sectionsOpen.medications && (
+                <div className="pt-6 mt-4 border-t border-[#F1F5F9] flex flex-col gap-4">
+                  {/* List of existing medications */}
+                  {formData.currentMedications && formData.currentMedications.length > 0 ? (
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                      {formData.currentMedications.map((med, idx) => (
+                        <div
+                          key={idx}
+                          className="flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] text-xs"
+                        >
+                          <div className="flex items-center gap-2">
+                            <Pill className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                            <span className="font-bold text-[#05070F]">{med.name}</span>
+                            {med.dose && <span className="text-[#64748B] font-mono">({med.dose})</span>}
+                            {med.frequency && <span className="text-[#94A3B8] italic">• {med.frequency}</span>}
                           </div>
-                        ))}
+                          <button
+                            type="button"
+                            onClick={() => removeMedication(idx)}
+                            className="text-[#94A3B8] hover:text-rose-600 transition-colors p-1"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-xs text-[#94A3B8] italic">No regular medications listed.</p>
+                  )}
+
+                  {/* Add medication input row */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 pt-2">
+                    <input
+                      type="text"
+                      value={newMed.name}
+                      onChange={(e) => setNewMed({ ...newMed, name: e.target.value })}
+                      placeholder="Medication name (e.g. Metformin)"
+                      className="px-3.5 py-2 text-xs rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] focus:outline-none focus:ring-2 focus:ring-[#16A34A]/20"
+                    />
+                    <input
+                      type="text"
+                      value={newMed.dose}
+                      onChange={(e) => setNewMed({ ...newMed, dose: e.target.value })}
+                      placeholder="Dosage (e.g. 500mg)"
+                      className="px-3.5 py-2 text-xs rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] focus:outline-none focus:ring-2 focus:ring-[#16A34A]/20"
+                    />
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={newMed.frequency}
+                        onChange={(e) => setNewMed({ ...newMed, frequency: e.target.value })}
+                        placeholder="Frequency (e.g. Twice daily)"
+                        className="flex-1 px-3.5 py-2 text-xs rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] focus:outline-none focus:ring-2 focus:ring-[#16A34A]/20"
+                      />
+                      <button
+                        type="button"
+                        onClick={addMedication}
+                        className="px-3.5 py-2 text-xs font-semibold bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 rounded-xl transition-colors cursor-pointer"
+                      >
+                        Add
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </motion.div>
+
+            {/* --------------------------------------------------------------------- */}
+            {/* SECTION 4: KNOWN DRUG ALLERGIES                                       */}
+            {/* --------------------------------------------------------------------- */}
+            <motion.div
+              initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: 0.12, ease: "easeOut" }}
+              className="bg-white border border-[#E5E7EB] rounded-3xl p-6 sm:p-7 shadow-xs hover:border-[#CBD5E1] transition-colors"
+            >
+              <div
+                onClick={() => toggleSection("allergies")}
+                className="flex items-center justify-between cursor-pointer select-none group"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-purple-50 border border-purple-100 flex items-center justify-center text-purple-600">
+                    <AlertTriangle className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-[#05070F]">
+                      Known Drug Allergies
+                    </h2>
+                    <p className="text-xs text-[#64748B]">
+                      Allergic reactions or adverse sensitivities to medications
+                    </p>
+                  </div>
+                </div>
+                <button type="button" className="text-[#94A3B8] group-hover:text-[#05070F] p-1">
+                  {sectionsOpen.allergies ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                </button>
+              </div>
+
+              {sectionsOpen.allergies && (
+                <div className="pt-6 mt-4 border-t border-[#F1F5F9] flex flex-col gap-4">
+                  {/* Allergy status radio */}
+                  <div className="flex items-center gap-5 text-xs">
+                    <label className="flex items-center gap-2 cursor-pointer font-medium text-[#334155]">
+                      <input
+                        type="radio"
+                        name="allergyStatus"
+                        checked={formData.allergyStatus === "none_known"}
+                        onChange={() => setFormData({ ...formData, allergyStatus: "none_known", drugAllergies: [] })}
+                        className="text-[#16A34A] focus:ring-[#16A34A]"
+                      />
+                      <span>No known drug allergies (NKDA)</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer font-medium text-[#334155]">
+                      <input
+                        type="radio"
+                        name="allergyStatus"
+                        checked={formData.allergyStatus === "confirmed"}
+                        onChange={() => setFormData({ ...formData, allergyStatus: "confirmed" })}
+                        className="text-[#16A34A] focus:ring-[#16A34A]"
+                      />
+                      <span>I have confirmed drug allergies</span>
+                    </label>
+                  </div>
+
+                  {formData.allergyStatus === "confirmed" && (
+                    <>
+                      {/* Common allergy chips */}
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        {COMMON_DRUG_ALLERGIES.map((allergyName) => {
+                          const active = formData.drugAllergies?.some((a) => a.drugName.toLowerCase() === allergyName.toLowerCase());
+                          return (
+                            <button
+                              key={allergyName}
+                              type="button"
+                              onClick={() => (active ? removeAllergy(allergyName) : addAllergy(allergyName))}
+                              className={`px-3 py-1.5 rounded-full text-xs font-medium transition-all cursor-pointer inline-flex items-center gap-1.5 ${
+                                active
+                                  ? "bg-purple-50 text-purple-800 border border-purple-200 font-bold"
+                                  : "bg-[#F8FAFC] hover:bg-[#F1F5F9] text-[#334155] border border-[#E2E8F0]"
+                              }`}
+                            >
+                              {active ? <Check className="w-3.5 h-3.5 text-purple-600" /> : <Plus className="w-3.5 h-3.5 text-[#94A3B8]" />}
+                              <span>{allergyName}</span>
+                            </button>
+                          );
+                        })}
                       </div>
-                    )}
-                  </>
-                )}
-              </div>
-            )}
-          </motion.div>
 
-          {/* ----------------------------------------------------------------------- */}
-          {/* SECTION 5: SURGICAL HISTORY & LIFESTYLE                                */}
-          {/* ----------------------------------------------------------------------- */}
-          <motion.div
-            initial={{ opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.35, delay: 0.35 }}
-            className="bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-8 shadow-xs"
-          >
-            <div
-              onClick={() => toggleSection("history")}
-              className="flex items-center justify-between cursor-pointer group"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-700">
-                  <Stethoscope className="w-4 h-4" />
-                </div>
-                <div>
-                  <h2 className="text-base sm:text-lg font-bold text-slate-950">
-                    Surgical History & Lifestyle
-                  </h2>
-                  <p className="text-xs text-slate-500">
-                    Past procedures, surgeries, and tobacco use
-                  </p>
-                </div>
-              </div>
-              <button type="button" className="text-slate-400 group-hover:text-slate-700 p-1">
-                {sectionsOpen.history ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-              </button>
-            </div>
-
-            {sectionsOpen.history && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 pt-6 mt-4 border-t border-slate-100">
-                {/* Smoking Status */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-slate-700">Smoking / Tobacco History</label>
-                  <select
-                    value={formData.smokingStatus || "unknown"}
-                    onChange={(e) => setFormData({ ...formData, smokingStatus: e.target.value as any })}
-                    className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200 bg-slate-50/50 focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
-                  >
-                    <option value="never">Never Smoked</option>
-                    <option value="former">Former Smoker</option>
-                    <option value="current">Current Smoker</option>
-                    <option value="unknown">Prefer not to say / Unknown</option>
-                  </select>
-                </div>
-
-                {/* Surgical notes */}
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-slate-700">Major Surgeries</label>
-                  <input
-                    type="text"
-                    value={formData.clinicalNotes || ""}
-                    onChange={(e) => setFormData({ ...formData, clinicalNotes: e.target.value })}
-                    placeholder="e.g. Appendectomy (2018), Knee replacement (2022)"
-                    className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200 bg-slate-50/50 focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
-                  />
-                </div>
-              </div>
-            )}
-          </motion.div>
-
-          {/* ----------------------------------------------------------------------- */}
-          {/* SECTION 6: EMERGENCY CONTACT & ACCESSIBILITY                           */}
-          {/* ----------------------------------------------------------------------- */}
-          <motion.div
-            initial={{ opacity: 0, y: 14 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.35, delay: 0.4 }}
-            className="bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-8 shadow-xs"
-          >
-            <div
-              onClick={() => toggleSection("emergency")}
-              className="flex items-center justify-between cursor-pointer group"
-            >
-              <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-teal-50 border border-teal-200 flex items-center justify-center text-teal-700">
-                  <Phone className="w-4 h-4" />
-                </div>
-                <div>
-                  <h2 className="text-base sm:text-lg font-bold text-slate-950">
-                    Emergency Contact & Preferences
-                  </h2>
-                  <p className="text-xs text-slate-500">
-                    Next of kin contact and communication style preferences
-                  </p>
-                </div>
-              </div>
-              <button type="button" className="text-slate-400 group-hover:text-slate-700 p-1">
-                {sectionsOpen.emergency ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
-              </button>
-            </div>
-
-            {sectionsOpen.emergency && (
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 pt-6 mt-4 border-t border-slate-100">
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-slate-700">Contact Name</label>
-                  <input
-                    type="text"
-                    value={formData.emergencyContact?.name || ""}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        emergencyContact: { ...(formData.emergencyContact || {}), name: e.target.value }
-                      })
-                    }
-                    placeholder="e.g. Elena Vance"
-                    className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200 bg-slate-50/50 focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
-                  />
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-slate-700">Phone Number</label>
-                  <input
-                    type="tel"
-                    value={formData.emergencyContact?.phone || ""}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        emergencyContact: { ...(formData.emergencyContact || {}), phone: e.target.value }
-                      })
-                    }
-                    placeholder="e.g. +91 98765 43210"
-                    className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200 bg-slate-50/50 focus:outline-none focus:ring-2 focus:ring-cyan-500/20 font-mono"
-                  />
-                </div>
-
-                <div className="flex flex-col gap-1.5">
-                  <label className="text-xs font-semibold text-slate-700">Relationship</label>
-                  <input
-                    type="text"
-                    value={formData.emergencyContact?.relationship || ""}
-                    onChange={(e) =>
-                      setFormData({
-                        ...formData,
-                        emergencyContact: { ...(formData.emergencyContact || {}), relationship: e.target.value }
-                      })
-                    }
-                    placeholder="e.g. Spouse / Sister"
-                    className="w-full px-3.5 py-2 text-sm rounded-xl border border-slate-200 bg-slate-50/50 focus:outline-none focus:ring-2 focus:ring-cyan-500/20"
-                  />
-                </div>
-              </div>
-            )}
-          </motion.div>
-
-          {/* ======================================================================= */}
-          {/* BOTTOM ACTION BAR: SAVE / STATUS FEEDBACK                              */}
-          {/* ======================================================================= */}
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.35, delay: 0.45 }}
-            className="sticky bottom-6 z-20 bg-white/95 backdrop-blur-md border border-slate-200/90 rounded-2xl p-4 shadow-lg flex flex-col sm:flex-row items-center justify-between gap-4"
-          >
-            <div className="flex items-center gap-3">
-              <div className="flex flex-col">
-                <span className="text-xs font-bold text-slate-900">
-                  {selectedRelationship === "self" ? "Personal Profile" : `Family Member (${selectedRelationship})`}
-                </span>
-                <span className="text-[11px] text-slate-500">
-                  {lastSavedAt ? `Last saved at ${lastSavedAt}` : "Unsaved changes"}
-                </span>
-              </div>
-
-              {saveStatus === "saved" && (
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold animate-in fade-in zoom-in-95">
-                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                  <span>Saved to Health Record</span>
+                      {/* Active allergies list */}
+                      {formData.drugAllergies && formData.drugAllergies.length > 0 && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5 pt-2">
+                          {formData.drugAllergies.map((a, idx) => (
+                            <div
+                              key={idx}
+                              className="flex items-center justify-between px-3.5 py-2.5 rounded-xl bg-purple-50/50 border border-purple-200/70 text-xs"
+                            >
+                              <div className="flex items-center gap-2">
+                                <AlertTriangle className="w-3.5 h-3.5 text-purple-600 shrink-0" />
+                                <strong className="text-[#05070F]">{a.drugName}</strong>
+                                <span className="text-purple-700 font-mono text-[11px]">({a.severity})</span>
+                                {a.reactionDescription && <span className="text-[#64748B]">• {a.reactionDescription}</span>}
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => removeAllergy(a.drugName)}
+                                className="text-[#94A3B8] hover:text-rose-600 transition-colors p-1"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
               )}
+            </motion.div>
 
-              {saveStatus === "error" && (
-                <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-rose-50 border border-rose-200 text-rose-800 text-xs font-bold">
-                  <AlertCircle className="w-3.5 h-3.5 text-rose-600" />
-                  <span>{errorMessage || "Save failed"}</span>
+            {/* --------------------------------------------------------------------- */}
+            {/* SECTION 5: SURGICAL HISTORY & LIFESTYLE                               */}
+            {/* --------------------------------------------------------------------- */}
+            <motion.div
+              initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: 0.16, ease: "easeOut" }}
+              className="bg-white border border-[#E5E7EB] rounded-3xl p-6 sm:p-7 shadow-xs hover:border-[#CBD5E1] transition-colors"
+            >
+              <div
+                onClick={() => toggleSection("history")}
+                className="flex items-center justify-between cursor-pointer select-none group"
+              >
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-[#F8FAFC] border border-[#E2E8F0] flex items-center justify-center text-[#334155]">
+                    <Stethoscope className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-[#05070F]">
+                      Surgical History & Lifestyle
+                    </h2>
+                    <p className="text-xs text-[#64748B]">
+                      Past procedures, major surgeries, and tobacco history
+                    </p>
+                  </div>
+                </div>
+                <button type="button" className="text-[#94A3B8] group-hover:text-[#05070F] p-1">
+                  {sectionsOpen.history ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                </button>
+              </div>
+
+              {sectionsOpen.history && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 pt-6 mt-4 border-t border-[#F1F5F9]">
+                  {/* Smoking Status */}
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-semibold text-[#334155]">Smoking / Tobacco History</label>
+                    <select
+                      value={formData.smokingStatus || "unknown"}
+                      onChange={(e) => setFormData({ ...formData, smokingStatus: e.target.value as any })}
+                      className="w-full px-3.5 py-2 text-sm rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] focus:outline-none focus:ring-2 focus:ring-[#16A34A]/20"
+                    >
+                      <option value="never">Never Smoked</option>
+                      <option value="former">Former Smoker</option>
+                      <option value="current">Current Smoker</option>
+                      <option value="unknown">Prefer not to say / Unknown</option>
+                    </select>
+                  </div>
+
+                  {/* Surgical notes */}
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-semibold text-[#334155]">Major Surgeries</label>
+                    <input
+                      type="text"
+                      value={formData.clinicalNotes || ""}
+                      onChange={(e) => setFormData({ ...formData, clinicalNotes: e.target.value })}
+                      placeholder="e.g. Appendectomy (2018), Knee replacement (2022)"
+                      className="w-full px-3.5 py-2 text-sm rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] focus:outline-none focus:ring-2 focus:ring-[#16A34A]/20"
+                    />
+                  </div>
                 </div>
               )}
-            </div>
+            </motion.div>
 
-            <div className="flex items-center gap-3 w-full sm:w-auto">
-              <Link
-                href="/consult"
-                className="flex-1 sm:flex-none text-center px-4 py-2.5 rounded-xl border border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700 text-xs font-semibold transition-all cursor-pointer"
+            {/* --------------------------------------------------------------------- */}
+            {/* SECTION 6: EMERGENCY CONTACT & PREFERENCES                            */}
+            {/* --------------------------------------------------------------------- */}
+            <motion.div
+              initial={prefersReducedMotion ? false : { opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: 0.2, ease: "easeOut" }}
+              className="bg-white border border-[#E5E7EB] rounded-3xl p-6 sm:p-7 shadow-xs hover:border-[#CBD5E1] transition-colors"
+            >
+              <div
+                onClick={() => toggleSection("emergency")}
+                className="flex items-center justify-between cursor-pointer select-none group"
               >
-                Return to Consult
-              </Link>
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-xl bg-teal-50 border border-teal-100 flex items-center justify-center text-teal-700">
+                    <Phone className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h2 className="text-base font-bold text-[#05070F]">
+                      Emergency Contact & Preferences
+                    </h2>
+                    <p className="text-xs text-[#64748B]">
+                      Designated next of kin contact for urgent situations
+                    </p>
+                  </div>
+                </div>
+                <button type="button" className="text-[#94A3B8] group-hover:text-[#05070F] p-1">
+                  {sectionsOpen.emergency ? <ChevronUp className="w-5 h-5" /> : <ChevronDown className="w-5 h-5" />}
+                </button>
+              </div>
 
-              <StarBorder
-                as="button"
-                type="submit"
-                disabled={saveStatus === "saving"}
-                color="#06b6d4"
-                duration={4}
-                theme="dark"
-                backgroundColor="#020617"
-                textColor="#ffffff"
-                radius={12}
-                className={`flex-1 sm:flex-none inline-flex items-center justify-center gap-2 px-6 py-2.5 rounded-xl text-xs font-bold text-white shadow-sm transition-all cursor-pointer ${
-                  saveStatus === "saving"
-                    ? "bg-slate-400 cursor-not-allowed opacity-60"
-                    : "bg-slate-950 hover:shadow-cyan-500/20 active:scale-98"
-                }`}
-              >
-                {saveStatus === "saving" ? (
-                  <>
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                    <span>Saving Profile...</span>
-                  </>
-                ) : (
-                  <>
-                    <Save className="w-3.5 h-3.5" />
-                    <span>Save Profile Details</span>
-                  </>
-                )}
-              </StarBorder>
-            </div>
-          </motion.div>
+              {sectionsOpen.emergency && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 pt-6 mt-4 border-t border-[#F1F5F9]">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-semibold text-[#334155]">Contact Name</label>
+                    <input
+                      type="text"
+                      value={formData.emergencyContact?.name || ""}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          emergencyContact: { ...(formData.emergencyContact || {}), name: e.target.value }
+                        })
+                      }
+                      placeholder="e.g. Elena Vance"
+                      className="w-full px-3.5 py-2 text-sm rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] focus:outline-none focus:ring-2 focus:ring-[#16A34A]/20"
+                    />
+                  </div>
 
-        </form>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-semibold text-[#334155]">Phone Number</label>
+                    <input
+                      type="tel"
+                      value={formData.emergencyContact?.phone || ""}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          emergencyContact: { ...(formData.emergencyContact || {}), phone: e.target.value }
+                        })
+                      }
+                      placeholder="e.g. +91 98765 43210"
+                      className="w-full px-3.5 py-2 text-sm rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] focus:outline-none focus:ring-2 focus:ring-[#16A34A]/20 font-mono"
+                    />
+                  </div>
+
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-xs font-semibold text-[#334155]">Relationship</label>
+                    <input
+                      type="text"
+                      value={formData.emergencyContact?.relationship || ""}
+                      onChange={(e) =>
+                        setFormData({
+                          ...formData,
+                          emergencyContact: { ...(formData.emergencyContact || {}), relationship: e.target.value }
+                        })
+                      }
+                      placeholder="e.g. Spouse / Sister"
+                      className="w-full px-3.5 py-2 text-sm rounded-xl border border-[#E2E8F0] bg-[#F8FAFC] focus:outline-none focus:ring-2 focus:ring-[#16A34A]/20"
+                    />
+                  </div>
+                </div>
+              )}
+            </motion.div>
+
+            {/* =================================================================== */}
+            {/* IN-FLOW STATUS (WHILE UNCHANGED)                                    */}
+            {/* =================================================================== */}
+            {!isDirty && saveStatus !== "saving" && saveStatus !== "error" && (
+              <div className="pt-6 pb-2 border-t border-[#E5E7EB] flex flex-col sm:flex-row items-center justify-between gap-4 text-xs">
+                <div className="flex items-center gap-2.5 text-[#475569]">
+                  <div className="w-5 h-5 rounded-full bg-[#16A34A]/10 border border-[#16A34A]/30 flex items-center justify-center text-[#16A34A] shrink-0">
+                    <Check className="w-3 h-3" />
+                  </div>
+                  <div className="flex items-baseline gap-2">
+                    <span className="font-semibold text-[#18251D]">
+                      All profile changes saved
+                    </span>
+                    <span className="text-[11px] text-[#94A3B8]">
+                      {lastSavedAt ? `· Saved at ${lastSavedAt}` : "· Clinical baseline is up to date"}
+                    </span>
+                  </div>
+                </div>
+
+                <Link
+                  href="/consult"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-[#E5E7EB] bg-white hover:bg-[#F8FAFC] text-[#05070F] font-semibold text-xs shadow-2xs hover:shadow-xs transition-all"
+                >
+                  <span>Return to Consult</span>
+                  <ArrowRight className="w-3.5 h-3.5 text-[#64748B]" />
+                </Link>
+              </div>
+            )}
+
+            {/* =================================================================== */}
+            {/* SCOPED STICKY SAVE BAR (ONLY REVEALED ON EDITS / ERROR / SAVING)     */}
+            {/* =================================================================== */}
+            {(isDirty || saveStatus === "saving" || saveStatus === "error") && (
+              <div className="sticky bottom-4 sm:bottom-6 z-20 mt-4">
+                <div className="bg-[#05070F] text-white rounded-2xl p-3 sm:px-5 sm:py-3.5 shadow-xl border border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3 backdrop-blur-md">
+                  <div className="flex items-center gap-3 w-full sm:w-auto">
+                    <span className="w-2.5 h-2.5 rounded-full bg-[#B7FF72] animate-pulse shrink-0" />
+                    <div className="flex flex-col">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-white">
+                          Unsaved Changes
+                        </span>
+                        <span className="px-2 py-0.5 rounded-md bg-white/10 text-[10px] font-mono uppercase tracking-wide text-white/80">
+                          {selectedRelationship === "self" ? "Myself" : selectedRelationship}
+                        </span>
+                      </div>
+                      <span className="text-[11px] text-[#94A3B8]">
+                        {saveStatus === "error"
+                          ? errorMessage || "Save failed. Your edits are safely preserved."
+                          : "Pending edits in this profile will be used in future consultations"}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 w-full sm:w-auto justify-end shrink-0">
+                    <button
+                      type="button"
+                      onClick={handleResetToBaseline}
+                      disabled={saveStatus === "saving"}
+                      className="px-3.5 py-2 rounded-xl border border-white/15 bg-white/5 hover:bg-white/10 text-white/80 hover:text-white text-xs font-semibold transition-all cursor-pointer"
+                    >
+                      Discard Changes
+                    </button>
+
+                    <button
+                      type="submit"
+                      disabled={saveStatus === "saving"}
+                      className="inline-flex items-center justify-center gap-2 px-5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer bg-[#B7FF72] hover:bg-[#a6f75c] text-[#05070F] shadow-sm active:scale-98"
+                    >
+                      {saveStatus === "saving" ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <span>Saving...</span>
+                        </>
+                      ) : saveStatus === "error" ? (
+                        <>
+                          <RefreshCcw className="w-3.5 h-3.5" />
+                          <span>Retry Save</span>
+                        </>
+                      ) : (
+                        <>
+                          <Save className="w-3.5 h-3.5" />
+                          <span>Save Changes</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+          </form>
+        )}
 
       </main>
 
-      <AppFooter />
+      {/* ========================================================================= */}
+      {/* UNSAVED CHANGES CONFIRMATION MODAL                                        */}
+      {/* ========================================================================= */}
+      {pendingSwitchRelationship && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white border border-[#E5E7EB] rounded-3xl p-6 max-w-md w-full shadow-2xl flex flex-col gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-700">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-[#05070F]">
+                  Unsaved Changes in Draft
+                </h3>
+                <p className="text-xs text-[#64748B]">
+                  Switching to another patient profile
+                </p>
+              </div>
+            </div>
+
+            <p className="text-sm text-[#475569] leading-relaxed">
+              You have uncommitted edits in your <strong className="text-[#05070F] capitalize">{selectedRelationship}</strong> profile. Would you like to discard them and switch to <strong className="text-[#05070F] capitalize">{pendingSwitchRelationship}</strong>, or keep editing?
+            </p>
+
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={cancelSwitch}
+                className="px-4 py-2 rounded-xl text-xs font-semibold text-[#475569] hover:bg-[#F1F5F9] transition-colors"
+              >
+                Keep Editing
+              </button>
+              <button
+                type="button"
+                onClick={confirmDiscardAndSwitch}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white transition-colors"
+              >
+                Discard & Switch
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <ArchitecturalBrandLedgerFooter />
     </div>
   );
 }

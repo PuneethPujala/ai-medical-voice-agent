@@ -253,6 +253,7 @@ function BrightCircularInstrumentCanvas({
       {/* SVG Connecting Flow Lines (Crisp Vector Data Bus Highways) */}
       <svg
         className="absolute inset-0 w-full h-full pointer-events-none z-0"
+        viewBox="0 0 100 100"
         preserveAspectRatio="none"
       >
         <defs>
@@ -275,67 +276,67 @@ function BrightCircularInstrumentCanvas({
         {/* 1. Main Forward Processing Pipeline (Ingest -> ASR -> Arbiter -> Cloud LLM) */}
         {/* Track Bedding */}
         <line
-          x1="16%"
-          y1="28%"
-          x2="84%"
-          y2="28%"
+          x1="16"
+          y1="28"
+          x2="84"
+          y2="28"
           stroke="#cbd5e1"
-          strokeWidth="3.5"
+          strokeWidth="0.8"
           strokeLinecap="round"
         />
         {/* Animated Active Beam along Forward Pipeline */}
         <line
-          x1="16%"
-          y1="28%"
-          x2="84%"
-          y2="28%"
+          x1="16"
+          y1="28"
+          x2="84"
+          y2="28"
           stroke="url(#activeCyanFlow)"
-          strokeWidth="3.5"
+          strokeWidth="0.8"
           strokeLinecap="round"
-          strokeDasharray="8 8"
+          strokeDasharray="2 2"
           className={isPaused ? "" : "animate-[pulse_3s_ease-in-out_infinite]"}
         />
 
         {/* 2. Downward Branch A: Memory Purge (from 02 Local ASR down to 05A Purge) */}
         <path
-          d="M 38% 28% L 38% 74%"
+          d="M 38 28 L 38 74"
           stroke="#cbd5e1"
-          strokeWidth="3"
+          strokeWidth="0.8"
           strokeLinecap="round"
-          strokeDasharray="6 6"
+          strokeDasharray="1.5 1.5"
         />
         <path
-          d="M 38% 28% L 38% 74%"
+          d="M 38 28 L 38 74"
           stroke="url(#purgeGreenFlow)"
-          strokeWidth="3"
+          strokeWidth="0.8"
           strokeLinecap="round"
-          strokeDasharray="6 6"
+          strokeDasharray="1.5 1.5"
         />
 
         {/* 3. Downward Branch B: Cryptographic Audit Ledger (from 03 Arbiter & 04 Cloud LLM down to 05B) */}
         <path
-          d="M 62% 28% C 62% 52%, 72% 52%, 72% 74%"
+          d="M 62 28 C 62 52, 72 52, 72 74"
           stroke="#cbd5e1"
-          strokeWidth="3"
+          strokeWidth="0.8"
           fill="none"
           strokeLinecap="round"
-          strokeDasharray="6 6"
+          strokeDasharray="1.5 1.5"
         />
         <path
-          d="M 84% 28% C 84% 52%, 72% 52%, 72% 74%"
+          d="M 84 28 C 84 52, 72 52, 72 74"
           stroke="#cbd5e1"
-          strokeWidth="3"
+          strokeWidth="0.8"
           fill="none"
           strokeLinecap="round"
-          strokeDasharray="6 6"
+          strokeDasharray="1.5 1.5"
         />
         <path
-          d="M 62% 28% C 62% 52%, 72% 52%, 72% 74%"
+          d="M 62 28 C 62 52, 72 52, 72 74"
           stroke="url(#ledgerVioletFlow)"
-          strokeWidth="3"
+          strokeWidth="0.8"
           fill="none"
           strokeLinecap="round"
-          strokeDasharray="6 6"
+          strokeDasharray="1.5 1.5"
         />
       </svg>
 

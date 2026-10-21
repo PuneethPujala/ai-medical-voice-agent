@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { FileText, ChevronLeft, ChevronRight, Activity, Stethoscope, CheckCircle2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Sparkles } from "lucide-react";
 
 export interface SoapSection {
   id: "subjective" | "objective" | "assessment" | "plan";
@@ -47,100 +47,128 @@ export function ClinicalSwipeRow({
   };
 
   return (
-    <div className={`space-y-4 ${className}`}>
-      {/* Horizontal Nav Bar with Sliding Pill */}
-      <div className="flex items-center justify-between gap-2 p-1.5 rounded-2xl bg-slate-100/90 border border-slate-200/80">
-        <div className="flex items-center gap-1 flex-1 overflow-x-auto pb-0.5">
+    <div className={`space-y-3.5 ${className}`}>
+      {/* ===================================================================== */}
+      {/* UNMISTAKABLE S · O · A · P SEGMENTED CONTROL                          */}
+      {/* ===================================================================== */}
+      <div
+        role="tablist"
+        aria-label="Clinical SOAP Sections"
+        className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 p-1.5 rounded-2xl bg-slate-100/90 border border-slate-200/90 shadow-2xs"
+      >
+        {/* The 4 Segmented Tabs */}
+        <div className="grid grid-cols-2 sm:flex sm:items-center gap-1.5 flex-1">
           {sections.map((section) => {
             const isActive = section.id === selectedId;
             return (
               <button
                 key={section.id}
+                role="tab"
+                id={`soap-tab-${section.id}`}
+                aria-selected={isActive}
+                aria-controls={`soap-panel-${section.id}`}
+                tabIndex={isActive ? 0 : -1}
                 onClick={() => handleSelect(section.id)}
-                className={`relative px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                className={`relative px-3.5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center justify-center sm:justify-start gap-2 cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#18251D] ${
                   isActive
-                    ? "text-white"
-                    : "text-slate-600 hover:text-slate-900"
+                    ? "bg-[#18251D] text-white shadow-sm ring-1 ring-[#18251D]"
+                    : "bg-white/80 hover:bg-white text-slate-700 hover:text-slate-950 border border-slate-200/60 shadow-2xs"
                 }`}
               >
-                {isActive && (
-                  <motion.span
-                    layoutId="activeSoapPill"
-                    className="absolute inset-0 rounded-xl bg-slate-950 -z-10 shadow-xs"
-                    transition={{ type: "spring", stiffness: 420, damping: 32 }}
-                  />
-                )}
+                {/* Active Indicator Letter Badge */}
                 <span
-                  className={`w-5 h-5 rounded-md flex items-center justify-center font-mono text-[10px] font-bold ${
-                    isActive ? "bg-cyan-500/20 text-cyan-300" : "bg-slate-200 text-slate-700"
+                  className={`w-5 h-5 rounded-md flex items-center justify-center font-mono text-[11px] font-black transition-colors ${
+                    isActive
+                      ? "bg-[#B7FF72] text-[#05070F] shadow-xs"
+                      : "bg-slate-100 text-slate-600 border border-slate-200/70"
                   }`}
                 >
                   {section.letter}
                 </span>
-                <span className="uppercase tracking-wider font-mono text-[11px]">
+
+                {/* Full Unambiguous Section Label */}
+                <span className="font-semibold text-xs tracking-tight">
                   {section.name}
                 </span>
+
+                {/* Active Acid Mint Glow Dot */}
+                {isActive && (
+                  <span
+                    className="w-1.5 h-1.5 rounded-full bg-[#B7FF72] shadow-[0_0_8px_#B7FF72] ml-auto hidden sm:inline-block animate-pulse"
+                    aria-hidden="true"
+                  />
+                )}
               </button>
             );
           })}
         </div>
 
-        {/* Prev / Next triggers */}
-        <div className="flex items-center gap-1 pr-1">
+        {/* Previous / Next Dimension Shortcuts */}
+        <div className="flex items-center justify-end gap-1 px-1 border-t sm:border-t-0 sm:border-l border-slate-200/80 pt-1.5 sm:pt-0 sm:pl-2">
           <button
             onClick={handlePrev}
             aria-label="Previous SOAP section"
-            className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/80 transition-colors cursor-pointer"
+            className="p-1.5 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-200/70 transition-colors cursor-pointer"
+            title="Previous section"
           >
             <ChevronLeft className="w-4 h-4" />
           </button>
           <button
             onClick={handleNext}
             aria-label="Next SOAP section"
-            className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-200/80 transition-colors cursor-pointer"
+            className="p-1.5 rounded-xl text-slate-500 hover:text-slate-900 hover:bg-slate-200/70 transition-colors cursor-pointer"
+            title="Next section"
           >
             <ChevronRight className="w-4 h-4" />
           </button>
         </div>
       </div>
 
-      {/* Swipe Content Card */}
+      {/* ===================================================================== */}
+      {/* SELECTED SOAP CONTENT SURFACE (Fully Readable, Zero Fadeout)          */}
+      {/* ===================================================================== */}
       <AnimatePresence mode="wait">
         <motion.div
           key={currentSection.id}
-          initial={{ opacity: 0, x: 12 }}
-          animate={{ opacity: 1, x: 0 }}
-          exit={{ opacity: 0, x: -12 }}
-          transition={{ duration: 0.2 }}
-          className="p-6 rounded-3xl bg-white border border-slate-200/90 shadow-xs space-y-4"
+          id={`soap-panel-${currentSection.id}`}
+          role="tabpanel"
+          aria-labelledby={`soap-tab-${currentSection.id}`}
+          initial={{ opacity: 0.85, y: 4 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0.85, y: -4 }}
+          transition={{ duration: 0.15 }}
+          className="p-6 sm:p-7 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-4"
         >
-          <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-            <div>
-              <span className="font-mono text-[10px] font-bold uppercase tracking-wider text-cyan-700 bg-cyan-50 border border-cyan-200 px-2 py-0.5 rounded-md">
-                SECTION {currentSection.letter}
+          {/* Section Header */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3.5">
+            <div className="flex items-center gap-2.5">
+              <span className="font-mono text-[10px] font-black uppercase tracking-wider text-[#18251D] bg-[#FAF9F6] border border-slate-200 px-2.5 py-1 rounded-md">
+                SECTION {currentSection.letter} · {currentSection.name.toUpperCase()}
               </span>
-              <h3 className="text-lg font-bold text-slate-950 mt-1">
-                {currentSection.name} Notes
-              </h3>
+              <h4 className="text-base sm:text-lg font-black text-[#05070F] tracking-tight">
+                {currentSection.name} Findings
+              </h4>
             </div>
-            <span className="text-xs text-slate-400 font-mono">
+            <span className="text-xs text-slate-400 font-mono font-medium">
               {currentSection.subtitle}
             </span>
           </div>
 
-          <p className="text-sm text-slate-700 leading-relaxed font-sans whitespace-pre-line font-medium">
+          {/* Primary Clinical Narrative Text */}
+          <div className="text-sm sm:text-[14.5px] text-slate-800 leading-relaxed font-sans whitespace-pre-line font-normal selection:bg-[#B7FF72] selection:text-[#05070F]">
             {currentSection.content || "No clinical observations recorded for this section."}
-          </p>
+          </div>
 
+          {/* Extracted Clinical Entities (Subordinate, Quiet) */}
           {currentSection.tags && currentSection.tags.length > 0 && (
-            <div className="pt-2 flex flex-wrap items-center gap-1.5 border-t border-slate-100">
-              <span className="font-mono text-[10px] font-bold text-slate-400 mr-1 uppercase">
+            <div className="pt-3 flex flex-wrap items-center gap-1.5 border-t border-slate-100">
+              <span className="font-mono text-[10px] font-bold text-slate-400 mr-1 uppercase tracking-wider">
                 Extracted Entities:
               </span>
               {currentSection.tags.map((tag, idx) => (
                 <span
                   key={idx}
-                  className="font-mono text-[11px] font-semibold px-2.5 py-0.5 rounded-md bg-slate-50 text-slate-700 border border-slate-200"
+                  className="font-mono text-[11px] font-medium px-2.5 py-0.5 rounded-lg bg-[#FAF9F6] text-slate-700 border border-slate-200/80"
                 >
                   {tag}
                 </span>
