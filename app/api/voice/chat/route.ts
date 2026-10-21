@@ -556,7 +556,7 @@ export async function POST(request: Request) {
     const isChest = /\b(chest|heart|sternum|angina)\b/i.test(turnResult.state.cumulativeTranscript) ||
       Boolean(slots.character || slots.location === "chest");
     const isNeuro = /\b(headache|dizz|droop|weak|speech)\b/i.test(turnResult.state.cumulativeTranscript) ||
-      slots.neurological_signs.length > 0;
+      (Array.isArray(slots?.neurological_signs) && slots.neurological_signs.length > 0);
 
     const subfields = extractSubfieldState(slots, turnResult.state.slots.known_facts, turnResult.state.conversationMemory);
 
@@ -1076,6 +1076,7 @@ export async function POST(request: Request) {
         },
         phase: turnResult.state.phase,
         interviewState: turnResult.state,
+        caseVersion: encounterId ? expectedCaseVersion : 1,
         nearbyHospitals: nearbyHospitals.length > 0 ? nearbyHospitals : undefined,
         careOptions: careOptions.length > 0 ? careOptions : undefined,
         llmMeta: {
@@ -1303,6 +1304,7 @@ export async function POST(request: Request) {
       },
       phase: "board_decision",
       interviewState: decidedInterviewState,
+      caseVersion: encounterId ? expectedCaseVersion : 1,
       nearbyHospitals: nearbyHospitals.length > 0 ? nearbyHospitals : undefined,
       careOptions: careOptions.length > 0 ? careOptions : undefined,
       llmMeta: {

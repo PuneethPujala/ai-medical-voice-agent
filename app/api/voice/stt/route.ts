@@ -25,6 +25,7 @@ import {
   RESOURCE_LIMITS,
 } from "@/lib/security/rate-limiter";
 import { sanitizeErrorDetails } from "@/lib/security/error-sanitizer";
+import { reconcileClinicalTranscript } from "@/lib/audio/transcript-reconciler";
 
 export async function POST(request: Request) {
   try {
@@ -119,6 +120,8 @@ export async function POST(request: Request) {
     }
 
     const file = formData.get("file") as File | Blob | null;
+    const prompt = (formData.get("prompt") as string) || (formData.get("context") as string) || "";
+    const preview = (formData.get("preview") as string) || "";
 
     if (!file || (file instanceof Blob && file.size === 0)) {
       return NextResponse.json(
@@ -138,62 +141,116 @@ export async function POST(request: Request) {
       );
     }
 
-    // Forward multipart form data to FastAPI STT service
-    const backendForm = new FormData();
+    // Forward multipart form data to FastAPI STT service with local fallback failover
     const fileName = (file as any).name || "utterance.webm";
-    backendForm.append("file", file, fileName);
+    const primaryUrl = getFastApiSttUrl();
+    const localFallbackUrl = "http://127.0.0.1:8000/api/v1/stt";
+    const candidateUrls = [primaryUrl];
+    if (primaryUrl !== localFallbackUrl) {
+      candidateUrls.push(localFallbackUrl);
+    }
 
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000); // 15s turn timeout
+    let sttResult: { ok: boolean; status: number; data?: any; errorDetail?: string } | null = null;
 
-    try {
-      const response = await fetch(getFastApiSttUrl(), {
-        method: "POST",
-        body: backendForm,
-        signal: controller.signal,
-      });
+    for (let i = 0; i < candidateUrls.length; i++) {
+      const targetUrl = candidateUrls[i];
+      const isPrimary = i === 0;
+      const hasFallback = candidateUrls.length > 1 && isPrimary;
+      // 5s timeout on remote primary if local fallback is available; 15s otherwise
+      const timeoutMs = hasFallback ? 5000 : 15000;
 
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        const detail = errorData.detail || `FastAPI STT returned status ${response.status}`;
-        console.error("FastAPI Whisper STT Error:", detail);
-        return NextResponse.json(
-          {
-            error: "Speech-to-text recognition failed. Please repeat your statement.",
-            detail: sanitizeErrorDetails(detail),
-          },
-          { status: response.status }
-        );
+      const backendForm = new FormData();
+      backendForm.append("file", file, fileName);
+      if (prompt) {
+        backendForm.append("prompt", prompt);
       }
 
-      const data = await response.json();
-      const transcript = (data.transcript || "").trim();
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
-      return NextResponse.json({
-        status: "success",
-        transcript,
-        engine: data.engine || "whisper_base_en",
-        isEmpty: transcript.length === 0,
-      });
-    } catch (fetchErr: any) {
-      clearTimeout(timeoutId);
-      if (fetchErr.name === "AbortError") {
+      try {
+        const response = await fetch(targetUrl, {
+          method: "POST",
+          body: backendForm,
+          signal: controller.signal,
+        });
+        clearTimeout(timeoutId);
+
+        if (!response.ok) {
+          const errorData = await response.json().catch(() => ({}));
+          const detail = errorData.detail || `FastAPI STT returned status ${response.status}`;
+          console.warn(`FastAPI STT at ${targetUrl} returned status ${response.status}: ${detail}`);
+          if (hasFallback && response.status >= 500) {
+            console.warn(`Failing over to local FastAPI STT at ${localFallbackUrl}...`);
+            continue;
+          }
+          sttResult = { ok: false, status: response.status, errorDetail: detail };
+          break;
+        }
+
+        const data = await response.json();
+        sttResult = { ok: true, status: 200, data };
+        break;
+      } catch (fetchErr: any) {
+        clearTimeout(timeoutId);
+        const isAbort = fetchErr.name === "AbortError";
+        console.warn(`FastAPI STT attempt at ${targetUrl} failed: ${fetchErr?.message || (isAbort ? "Timed out" : "Unknown error")}`);
+        if (hasFallback) {
+          console.warn(`Failing over to local FastAPI STT at ${localFallbackUrl}...`);
+          continue;
+        }
+        sttResult = {
+          ok: false,
+          status: isAbort ? 504 : 503,
+          errorDetail: isAbort ? "Transcription request timed out." : (fetchErr?.message || "Local Whisper ASR service unavailable."),
+        };
+        break;
+      }
+    }
+
+    if (!sttResult || !sttResult.ok) {
+      const status = sttResult?.status || 503;
+      const detail = sttResult?.errorDetail || "Whisper STT service unavailable";
+      if (status === 504) {
         return NextResponse.json(
           { error: "Transcription request timed out. Please try speaking again." },
           { status: 504 }
         );
       }
-      console.error("Failed to connect to FastAPI Whisper service:", fetchErr?.message);
       return NextResponse.json(
         {
-          error: "Local Whisper ASR service unavailable. Please ensure the backend is running.",
-          detail: sanitizeErrorDetails(fetchErr?.message),
+          error: "Speech-to-text recognition failed. Please repeat your statement.",
+          detail: sanitizeErrorDetails(detail),
         },
-        { status: 503 }
+        { status }
       );
     }
+
+    const data = sttResult.data;
+    const rawTranscript = (data.transcript || "").trim();
+
+    // Clinical Context Reconciliation
+    const reconciled = reconcileClinicalTranscript({
+      whisperText: rawTranscript,
+      previewText: preview,
+      doctorLastQuestion: prompt,
+    });
+
+    const finalTranscript = reconciled.transcript;
+
+    return NextResponse.json({
+      status: "success",
+      transcript: finalTranscript,
+      rawWhisper: rawTranscript,
+      rawPreview: preview,
+      wasReconciled: reconciled.wasReconciled,
+      isAmbiguous: Boolean(reconciled.isAmbiguous),
+      requiresPatientConfirmation: Boolean(reconciled.requiresPatientConfirmation),
+      ambiguityReason: reconciled.ambiguityReason,
+      reconciliationNotes: reconciled.reconciliationNotes,
+      engine: data.engine || "whisper_base_en",
+      isEmpty: finalTranscript.length === 0,
+    });
   } catch (err: any) {
     console.error("STT route error:", err);
     return NextResponse.json(

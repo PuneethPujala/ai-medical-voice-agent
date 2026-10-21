@@ -559,6 +559,7 @@ export async function POST(request: Request) {
               success: false,
               error: `Concurrency conflict: Submitted version (${submittedVersion}) is behind or equal to datastore version (${expectedVersion}).`,
               code: "CONCURRENCY_CONFLICT",
+              currentVersion: expectedVersion,
             },
             { status: 409 }
           );
@@ -570,6 +571,7 @@ export async function POST(request: Request) {
             success: false,
             error: `Concurrency conflict: Expected version (${body.expectedVersion}) does not match datastore version (${expectedVersion}).`,
             code: "CONCURRENCY_CONFLICT",
+            currentVersion: expectedVersion,
           },
           { status: 409 }
         );

@@ -188,6 +188,52 @@ class KokoroService {
         `[Kokoro Voice Security] Client attempted to override voice to '${options.voice}' for doctor '${options.doctorId}'. Enforcing authoritative persona voice '${selectedVoice}'.`
       );
     }
+    const selectedSpeed = typeof options.speed === "number" && options.speed > 0
+      ? options.speed
+      : resolveAuthoritativeSpeed(options.doctorId);
+
+    // Remote GPU worker dispatch: if FASTAPI_URL or REMOTE_TTS_URL points to a remote GPU worker,
+    // dispatch to GPU and fall back gracefully to local CPU if unavailable or timed out.
+    const remoteBase = process.env.REMOTE_TTS_URL || process.env.FASTAPI_URL;
+    if (remoteBase && !remoteBase.includes("127.0.0.1") && !remoteBase.includes("localhost")) {
+      const ttsEndpoint = remoteBase.endsWith("/api/v1/tts")
+        ? remoteBase
+        : `${remoteBase.replace(/\/+$/, "")}/api/v1/tts`;
+      try {
+        const t0_remote = performance.now();
+        const res = await fetch(ttsEndpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text: cleanText,
+            voice: selectedVoice,
+            speed: selectedSpeed,
+            doctorId: options.doctorId,
+          }),
+          signal: AbortSignal.timeout(5000),
+        });
+
+        if (res.ok) {
+          const arrayBuf = await res.arrayBuffer();
+          const latencyMs = Math.round(performance.now() - t0_remote);
+          const durationSec = Math.max(0.5, arrayBuf.byteLength / (24000 * 2));
+          console.log(
+            `[Kokoro TTS Remote GPU] Synthesized ${durationSec.toFixed(2)}s audio on GPU in ${latencyMs}ms (Voice: ${selectedVoice})`
+          );
+          return {
+            buffer: Buffer.from(arrayBuf),
+            sampleRate: 24000,
+            durationSec,
+            latencyMs,
+            voice: selectedVoice,
+          };
+        } else {
+          console.warn(`[Kokoro TTS Remote GPU] Worker returned ${res.status}, failing over to local CPU.`);
+        }
+      } catch (remoteErr: any) {
+        console.warn("[Kokoro TTS Remote GPU] Remote worker notice, using local CPU fallback:", remoteErr?.message || remoteErr);
+      }
+    }
 
     const tts = await this.getModel();
     const t0 = Date.now();
@@ -197,10 +243,6 @@ class KokoroService {
         options.doctorId || "dr-sarah-chen"
       } | Voice: ${selectedVoice}`
     );
-
-    const selectedSpeed = typeof options.speed === "number" && options.speed > 0
-      ? options.speed
-      : resolveAuthoritativeSpeed(options.doctorId);
 
     const rawAudio = await tts.generate(cleanText, {
       voice: selectedVoice as any,
