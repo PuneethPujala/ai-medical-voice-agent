@@ -77,6 +77,7 @@ import {
 } from "../../lib/audit/audit-logger";
 
 (process.env as Record<string, string | undefined>).NODE_ENV = "test";
+(process.env as Record<string, string | undefined>).INTERNAL_TEST_SECRET = DEFAULT_INTERNAL_TEST_SECRET;
 
 interface TestCounter {
   total: number;
