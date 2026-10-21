@@ -310,7 +310,7 @@ export class ResponsePlanner {
     const slotAskCount = memory.slotAskCount || {};
     const askedQuestions = new Set(memory.questionsAlreadyAsked.map(q => q.toLowerCase()));
     const deniedSymptoms = new Set((memory.deniedSymptoms || []).map(d => d.toLowerCase()));
-    const isTopicAddressed = (topic: string) => {
+    const isTopicAddressed = (topic: string): boolean => {
       const topLower = topic.toLowerCase();
       // Generic slot repetition guard: if asked 2 or more times without being filled, mark exhausted!
       if ((slotAskCount[topLower] || 0) >= 2) return true;
@@ -326,6 +326,29 @@ export class ResponsePlanner {
         return askedQuestions.has("timing_pattern") ||
           askedQuestions.has("severity_pattern") ||
           state.slots.known_facts.some(f => /constant|intermittent|comes and goes|severity_pattern|timing_pattern/i.test(f));
+      }
+      if (topLower === "weakness" || topLower === "neurological_weakness") {
+        return askedQuestions.has("weakness") ||
+          askedQuestions.has("neurological_weakness") ||
+          deniedSymptoms.has("weakness") ||
+          deniedSymptoms.has("unilateral weakness") ||
+          state.slots.known_facts.some(f => /weakness:\s*(?:absent|no)|no weakness/i.test(f));
+      }
+      if (topLower === "facial_droop") {
+        return askedQuestions.has("facial_droop") ||
+          deniedSymptoms.has("facial droop") ||
+          deniedSymptoms.has("facial drooping") ||
+          state.slots.known_facts.some(f => /droop|facial:\s*absent/i.test(f));
+      }
+      if (topLower === "speech_difficulty") {
+        return askedQuestions.has("speech_difficulty") ||
+          deniedSymptoms.has("speech") ||
+          deniedSymptoms.has("speech difficulty") ||
+          state.slots.known_facts.some(f => /speech:\s*absent/i.test(f));
+      }
+      if (topLower === "neurological_signs") {
+        return askedQuestions.has("neurological_signs") ||
+          (isTopicAddressed("weakness") && isTopicAddressed("facial_droop") && isTopicAddressed("speech_difficulty"));
       }
       if (topLower === "onset_pattern") {
         return subfields.onset.onsetPattern !== "unknown" || (slotAskCount[topLower] || 0) >= 2;
@@ -364,7 +387,7 @@ export class ResponsePlanner {
     const REPHRASED_PHRASINGS: Record<string, string> = {
       onset_pattern: "Just to clarify, did your symptoms begin all at once out of nowhere, or did they develop slowly over time?",
       onset_time: "To help me understand the timeline better, roughly when did you first notice this starting?",
-      onset: "To help me pin down the onset, when did this start, and did it come on all of a sudden or gradually?",
+      onset: "To help me understand the timeline better, roughly when did this first begin?",
       swallowing_difficulty: "Just to make sure I have this completely right—are you able to swallow liquids and saliva normally, or does it feel stuck or painful?",
       fever: "Have you felt feverish, hot to the touch, or experienced any temperature spikes or chills?",
       character: "To help me understand better, how would you describe the feeling — would you say it's more of an ache, a burning sensation, or a sharp pressure?",
@@ -379,7 +402,10 @@ export class ResponsePlanner {
       blood_in_stool: "Have you noticed any blood in your stool?",
       ear_pain: "Has that pain spread up into your ears at all?",
       course: "Over the last day or two, has the symptom progression been worsening, getting better, or remaining about the same?",
-      neurological_signs: "Just to be thorough, have you felt any weakness on one side, difficulty speaking clearly, or face numbness?",
+      neurological_signs: "Just to be thorough, have you noticed any weakness in your arms or legs?",
+      weakness: "Have you noticed any weakness in your arms or legs?",
+      facial_droop: "Have you noticed any facial drooping or unevenness in your smile?",
+      speech_difficulty: "Have you had any trouble speaking clearly or difficulty finding your words?",
     };
 
     let nextInquiry: { topic: string; clinicalRationale: string; suggestedPhrasing: string } | undefined = undefined;
@@ -581,7 +607,10 @@ export class ResponsePlanner {
         }
       }
     } else if (hasNeuro) {
-      const weaknessReported = neuroSigns.some(s => /weak|drift|paralysis|cannot lift/i.test(s));
+      const isWeaknessUncertain = (memory.uncertainties && memory.uncertainties.includes("weakness")) ||
+        neuroSigns.some(s => /weak.*uncertain/i.test(s)) ||
+        state.slots.known_facts.some(f => /weakness:\s*uncertain/i.test(f));
+      const weaknessReported = neuroSigns.some(s => /weak|drift|paralysis|cannot lift/i.test(s)) && !isWeaknessUncertain;
       const numbnessReported = neuroSigns.some(s => /numb|pins|tingl/i.test(s));
       const lateralityAddressed = isTopicAddressed("weakness_distribution") ||
         isTopicAddressed("numbness_distribution") ||
@@ -589,7 +618,13 @@ export class ResponsePlanner {
         Boolean((state.slots as any).laterality) ||
         state.slots.known_facts.some(f => /laterality|distribution|head only|bilateral|unilateral|one side|both sides/i.test(f));
 
-      if (weaknessReported && !lateralityAddressed) {
+      if (isWeaknessUncertain && !isTopicAddressed("weakness")) {
+        nextInquiry = {
+          topic: "weakness",
+          clinicalRationale: "Clarify whether patient has true motor weakness (difficulty lifting limbs or moving).",
+          suggestedPhrasing: "Regarding the weakness you mentioned, are you having trouble lifting your arm or moving your leg?",
+        };
+      } else if (weaknessReported && !lateralityAddressed) {
         nextInquiry = {
           topic: "weakness_distribution",
           clinicalRationale: "Clarify whether weakness is unilateral (focal stroke/TIA) or bilateral/generalized.",
@@ -601,11 +636,23 @@ export class ResponsePlanner {
           clinicalRationale: "Clarify whether numbness is unilateral/focal or non-focal/generalized.",
           suggestedPhrasing: "Is that numbness on one side of your body or both sides, or where do you feel it?",
         };
-      } else if (neuroSigns.length === 0 && !isTopicAddressed("neurological_signs") && !deniedSymptoms.has("facial drooping")) {
+      } else if (neuroSigns.length === 0 && !isTopicAddressed("weakness")) {
         nextInquiry = {
-          topic: "neurological_signs",
-          clinicalRationale: "Screen for BE-FAST stroke signs (facial droop, unilateral arm/leg weakness, speech difficulty).",
-          suggestedPhrasing: "Have you noticed any weakness in your arms or legs, facial drooping, or difficulty finding your words?",
+          topic: "weakness",
+          clinicalRationale: "Screen for focal limb weakness / hemiparesis.",
+          suggestedPhrasing: "Have you noticed any weakness in your arms or legs?",
+        };
+      } else if (neuroSigns.length === 0 && !isTopicAddressed("facial_droop")) {
+        nextInquiry = {
+          topic: "facial_droop",
+          clinicalRationale: "Screen for acute facial droop or facial asymmetry.",
+          suggestedPhrasing: "Have you noticed any facial drooping or unevenness in your smile?",
+        };
+      } else if (neuroSigns.length === 0 && !isTopicAddressed("speech_difficulty")) {
+        nextInquiry = {
+          topic: "speech_difficulty",
+          clinicalRationale: "Screen for dysarthria or speech difficulty.",
+          suggestedPhrasing: "Have you had any trouble speaking clearly or difficulty finding your words?",
         };
       } else if (!state.slots.duration && !isTopicAddressed("duration") && !memory.durationPattern) {
         nextInquiry = {
@@ -630,7 +677,7 @@ export class ResponsePlanner {
           nextInquiry = {
             topic: "onset",
             clinicalRationale: "Establish symptom timeline and progression.",
-            suggestedPhrasing: "When did you first notice these symptoms, and did they come on all of a sudden?",
+            suggestedPhrasing: "When did you first notice these symptoms?",
           };
         }
       } else if (!isTopicAddressed("timing_pattern") && !state.slots.known_facts.some(f => /constant|intermittent|comes and goes|severity_pattern/i.test(f))) {
@@ -648,8 +695,8 @@ export class ResponsePlanner {
       } else if (!isTopicAddressed("red_flag_screen") && !state.slots.known_facts.some(f => /neck stiffness|vision changes/i.test(f))) {
         nextInquiry = {
           topic: "red_flag_screen",
-          clinicalRationale: "Screen for secondary headache red flags (neck stiffness, vision changes, high fever).",
-          suggestedPhrasing: "Have you noticed any stiff neck, fever, or changes in your vision alongside this?",
+          clinicalRationale: "Screen for secondary headache red flags (neck stiffness).",
+          suggestedPhrasing: "Have you noticed any stiff neck alongside this?",
         };
       }
     } else {
@@ -694,7 +741,7 @@ export class ResponsePlanner {
           nextInquiry = {
             topic: "onset",
             clinicalRationale: "Establish symptom timeline and progression.",
-            suggestedPhrasing: "Could you tell me when this began, and whether it started suddenly or built up gradually?",
+            suggestedPhrasing: "Could you tell me roughly when this began?",
           };
         }
       } else if (hasThroat && !state.slots.known_facts.some(f => /course/i.test(f)) && !isTopicAddressed("course")) {
@@ -739,7 +786,7 @@ export class ResponsePlanner {
         nextInquiry = {
           topic: "postural_dizziness",
           clinicalRationale: "Screen for orthostatic hypotension, dehydration, and lightheadedness in fatigue.",
-          suggestedPhrasing: "Do you feel lightheaded or dizzy when you stand up quickly, or have you had any fever or cough?",
+          suggestedPhrasing: "Do you feel lightheaded or dizzy when you stand up quickly?",
         };
       } else if (hasFatigue && !isTopicAddressed("oral_intake")) {
         nextInquiry = {
@@ -751,7 +798,7 @@ export class ResponsePlanner {
         nextInquiry = {
           topic: "red_flag_screen",
           clinicalRationale: "Screen for cardiopulmonary and neurological red flags in fatigue.",
-          suggestedPhrasing: "Are you having any chest pain, difficulty breathing, or numbness in your hands or feet?",
+          suggestedPhrasing: "Are you having any shortness of breath or chest pain?",
         };
       } else if (hasThroat && !isTopicAddressed("ear_pain")) {
         nextInquiry = {

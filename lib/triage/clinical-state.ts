@@ -1280,6 +1280,12 @@ export function detectQuestionTargetSlot(questionText: string, defaultSlot?: str
     return "laterality";
   }
 
+  // Neurological signs & deficits
+  if (/facial\s+droop|face\s+numbness|drooping/i.test(lower)) return "facial_droop";
+  if (/speech|finding\s+your\s+words|speaking\s+clearly|slurr/i.test(lower)) return "speech_difficulty";
+  if (!/one\s+side|both\s+sides|which\s+side/i.test(lower) && /\b(?:weakness|weak)\b/i.test(lower)) return "weakness";
+  if (!/one\s+side|both\s+sides|which\s+side/i.test(lower) && /\b(?:numbness|numb)\b/i.test(lower)) return "numbness";
+
   // Orthostatic / postural timing
   if (/\b(?:stand(?:ing)?\s+up|sitting\s+up|lying\s+down|postur(?:e|al)|orthostatic|when\s+you\s+walk)\b/i.test(lower)) {
     return "orthostatic_timing";
@@ -1323,7 +1329,7 @@ export function detectQuestionTargetSlots(questionText: string): string[] {
 
   const asksOnsetPattern = /clap\s+of\s+thunder|thunderclap|sudden|gradual|come\s+on\s+all\s+at\s+once|build\s+up/.test(lower);
   if (asksOnsetPattern) targets.add("onset_pattern");
-  if (/when\s+did|how\s+long\s+have\s+you\s+had|how\s+many\s+(?:days|hours)|when\s+did\s+this\s+start/.test(lower)) targets.add("onset_time");
+  if (/when\s+(?:did|this\s+began|it\s+began|this\s+started|it\s+started)|when\s+did\s+this\s+start|how\s+long\s+have\s+you\s+had|how\s+many\s+(?:days|hours)/.test(lower)) targets.add("onset_time");
   if (/scale|0\s*[-–to]\s*10|zero\s*[-–to]\s*ten|how\s+severe|severity|rate\s+your\s+pain/.test(lower)) targets.add("severity");
   if (/constant\s+or\s+(?:does\s+it\s+)?come\s+and\s+go|comes\s+and\s+goes|in\s+waves|intermittent/.test(lower)) targets.add("timing_pattern");
   if (/what\s+(?:does\s+it|it)\s+feel\s+like|sharp|dull|burning|pressure|tightness|squeezing|character|crushing|throbbing/.test(lower)) targets.add("character");
@@ -1355,12 +1361,17 @@ export function detectQuestionTargetSlots(questionText: string): string[] {
   if (/\b(?:stand(?:ing)?\s+up|sitting\s+up|lying\s+down|postur(?:e|al)|orthostatic|when\s+you\s+walk)\b/.test(lower)) {
     targets.add("orthostatic_timing");
   }
-  if (/facial\s+droop|speech/.test(lower)) {
-    targets.add("neurological_signs");
-  } else if (!targets.has("weakness_distribution") && /weakness/.test(lower)) {
-    targets.add("neurological_signs");
-  } else if (!targets.has("numbness_distribution") && /numbness/.test(lower)) {
-    targets.add("neurological_signs");
+  if (/facial\s+droop|face\s+numbness|drooping/.test(lower)) {
+    targets.add("facial_droop");
+  }
+  if (/speech|finding\s+your\s+words|speaking\s+clearly|slurr/.test(lower)) {
+    targets.add("speech_difficulty");
+  }
+  if (!targets.has("weakness_distribution") && /\b(?:weakness|weak)\b/.test(lower)) {
+    targets.add("weakness");
+  }
+  if (!targets.has("numbness_distribution") && /\b(?:numbness|numb)\b/.test(lower)) {
+    targets.add("numbness");
   }
 
   return [...targets];
@@ -1394,6 +1405,19 @@ export function isTargetSlotMatch(expectedTopic: string, detectedSlot: string): 
     "laterality",
   ]);
   if (lateralityGroup.has(exp) && lateralityGroup.has(det)) {
+    return true;
+  }
+
+  // Neurological red flag variants
+  const neuroGroup = new Set([
+    "neurological_signs",
+    "weakness",
+    "neurological_weakness",
+    "facial_droop",
+    "speech_difficulty",
+    "numbness",
+  ]);
+  if (neuroGroup.has(exp) && neuroGroup.has(det)) {
     return true;
   }
 
@@ -1493,19 +1517,20 @@ export function validateDoctorReplyTarget(
 
   const distinctTargets = detectQuestionTargetSlots(questionClause);
   if (distinctTargets.length > 1) {
-    // Permit closely related clinical subfields within a single focused inquiry
+    // Permit closely related clinical subfields within a single focused inquiry (strictly 2 related facets)
     const isRelated =
-      distinctTargets.includes("severity") || // Severity qualified by posture, trigger, or character
-      distinctTargets.includes("character") || // Character qualified by posture, trigger, or timing
-      (distinctTargets.includes("timing_pattern") && distinctTargets.includes("orthostatic_timing")) ||
-      (distinctTargets.includes("dizziness_character") && distinctTargets.includes("orthostatic_timing")) ||
-      (distinctTargets.includes("course") && distinctTargets.includes("orthostatic_timing")) ||
-      (distinctTargets.includes("course") && distinctTargets.includes("triggers")) ||
-      (distinctTargets.includes("course") && distinctTargets.includes("timing_pattern")) ||
-      (distinctTargets.includes("weakness_distribution") && distinctTargets.includes("laterality")) ||
-      (distinctTargets.includes("numbness_distribution") && distinctTargets.includes("laterality")) ||
-      (distinctTargets.includes("weakness_distribution") && distinctTargets.includes("neurological_signs")) ||
-      (distinctTargets.includes("numbness_distribution") && distinctTargets.includes("neurological_signs"));
+      distinctTargets.length === 2 &&
+      ((distinctTargets.includes("timing_pattern") && distinctTargets.includes("orthostatic_timing")) ||
+       (distinctTargets.includes("dizziness_character") && distinctTargets.includes("orthostatic_timing")) ||
+       (distinctTargets.includes("course") && distinctTargets.includes("orthostatic_timing")) ||
+       (distinctTargets.includes("course") && distinctTargets.includes("triggers")) ||
+       (distinctTargets.includes("course") && distinctTargets.includes("timing_pattern")) ||
+       (distinctTargets.includes("weakness_distribution") && distinctTargets.includes("laterality")) ||
+       (distinctTargets.includes("numbness_distribution") && distinctTargets.includes("laterality")) ||
+       (distinctTargets.includes("weakness_distribution") && distinctTargets.includes("weakness")) ||
+       (distinctTargets.includes("numbness_distribution") && distinctTargets.includes("numbness")) ||
+       (distinctTargets.includes("weakness_distribution") && distinctTargets.includes("neurological_signs")) ||
+       (distinctTargets.includes("numbness_distribution") && distinctTargets.includes("neurological_signs")));
 
     if (!isRelated) {
       return {
