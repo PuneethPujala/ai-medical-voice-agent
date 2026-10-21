@@ -191,73 +191,64 @@ export function LandingFloatingNavbar() {
             })}
           </nav>
 
-          {/* Group 3: Right Action Area / Profile Control */}
+          {/* Group 3: Right Action Area / Profile / Sign in */}
           <div className="flex items-center justify-end min-w-0 gap-2 shrink-0">
-            {/* Integrated Profile Pill Control */}
-            <div className="relative" ref={dropdownRef}>
-              <button
-                ref={accountButtonRef}
-                id="clinical-profile-trigger"
-                aria-haspopup="menu"
-                aria-expanded={dropdownOpen}
-                aria-controls="clinical-profile-menu"
-                onClick={() => setDropdownOpen(!dropdownOpen)}
-                onKeyDown={handleTriggerKeyDown}
-                className="inline-flex items-center gap-1.5 sm:gap-2 rounded-full py-1.5 px-3 sm:px-3.5 text-xs font-semibold text-slate-700 hover:text-slate-950 bg-slate-100/80 hover:bg-slate-200/80 border border-slate-200/60 transition-all cursor-pointer group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900"
-              >
-                {mounted && isLoaded && isSignedIn ? (
-                  <>
+            {mounted && isLoaded ? (
+              isSignedIn ? (
+                /* Polished Clinical Account Capsule */
+                <div className="relative" ref={dropdownRef}>
+                  <button
+                    ref={accountButtonRef}
+                    id="clinical-account-trigger"
+                    data-testid="clinical-profile-trigger"
+                    aria-haspopup="menu"
+                    aria-expanded={dropdownOpen}
+                    aria-controls="clinical-account-menu"
+                    onClick={() => setDropdownOpen(!dropdownOpen)}
+                    onKeyDown={handleTriggerKeyDown}
+                    className="inline-flex items-center gap-2 rounded-full py-1 pl-1 pr-2.5 text-xs font-semibold text-slate-800 hover:bg-slate-100/80 transition-all cursor-pointer group focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900"
+                  >
                     <div className="relative shrink-0">
                       {user?.imageUrl ? (
                         <img
                           src={user.imageUrl}
-                          alt={userName || "Profile"}
-                          className="h-5 w-5 rounded-full object-cover border border-slate-200"
+                          alt={userName}
+                          className="h-7 w-7 rounded-full object-cover border border-slate-200"
                         />
                       ) : (
-                        <div className="h-5 w-5 rounded-full bg-slate-950 text-white font-bold text-[9px] flex items-center justify-center">
+                        <div className="h-7 w-7 rounded-full bg-slate-950 text-white font-bold text-[10px] flex items-center justify-center">
                           {userInitials}
                         </div>
                       )}
-                      <span className="absolute -bottom-0.5 -right-0.5 h-1.5 w-1.5 rounded-full bg-emerald-500 border border-white" />
+                      <span className="absolute -bottom-0.5 -right-0.5 h-2 w-2 rounded-full bg-emerald-500 border border-white" />
                     </div>
-                    <span className="max-w-[100px] truncate text-xs font-semibold text-slate-800 group-hover:text-slate-950">
-                      {userName || "Profile"}
+                    <span className="hidden sm:inline-block max-w-[110px] truncate text-xs font-semibold text-slate-800 group-hover:text-slate-950">
+                      {userName}
                     </span>
-                  </>
-                ) : (
-                  <>
-                    <User className="h-3.5 w-3.5 text-slate-600 group-hover:text-slate-900 shrink-0" />
-                    <span className="text-xs font-semibold text-slate-700 group-hover:text-slate-950">
-                      Profile
-                    </span>
-                  </>
-                )}
-                <ChevronDown
-                  className={`h-3.5 w-3.5 text-slate-400 group-hover:text-slate-600 transition-transform duration-200 ${
-                    dropdownOpen ? "rotate-180" : ""
-                  }`}
-                />
-              </button>
+                    <ChevronDown
+                      className={`h-3.5 w-3.5 text-slate-400 group-hover:text-slate-600 transition-transform duration-200 ${
+                        dropdownOpen ? "rotate-180" : ""
+                      }`}
+                    />
+                  </button>
 
-              {/* Clinical Profile Dropdown Panel */}
-              {dropdownOpen && (
-                <div
-                  id="clinical-profile-menu"
-                  role="menu"
-                  aria-labelledby="clinical-profile-trigger"
-                  aria-orientation="vertical"
-                  onKeyDown={handleMenuKeyDown}
-                  className="absolute right-0 top-full mt-2.5 w-72 sm:w-80 rounded-2xl bg-white/98 backdrop-blur-2xl border border-slate-200/90 shadow-2xl p-3 flex flex-col gap-2 z-50 animate-in fade-in zoom-in-95 duration-150"
-                >
-                  {mounted && isLoaded && isSignedIn ? (
-                    <>
+                  {/* PREMIUM CLINICAL WORKSPACE HUD DROPDOWN PANEL */}
+                  {dropdownOpen && (
+                    <div
+                      id="clinical-account-menu"
+                      data-testid="clinical-profile-menu"
+                      role="menu"
+                      aria-labelledby="clinical-account-trigger"
+                      aria-orientation="vertical"
+                      onKeyDown={handleMenuKeyDown}
+                      className="absolute right-0 top-full mt-2.5 w-72 sm:w-80 rounded-2xl bg-white/98 backdrop-blur-2xl border border-slate-200/90 shadow-2xl p-3 flex flex-col gap-2 z-50 animate-in fade-in zoom-in-95 duration-150"
+                    >
                       {/* Physician Profile Header */}
                       <div className="flex items-center gap-3 p-2 border-b border-slate-100">
                         {user?.imageUrl ? (
                           <img
                             src={user.imageUrl}
-                            alt={userName || "Physician"}
+                            alt={userName}
                             className="h-10 w-10 rounded-full object-cover border border-slate-200 shrink-0"
                           />
                         ) : (
@@ -267,7 +258,7 @@ export function LandingFloatingNavbar() {
                         )}
                         <div className="min-w-0 flex-1">
                           <p className="font-bold text-slate-950 text-sm truncate leading-snug">
-                            {userName || "Authenticated Clinician"}
+                            {userName}
                           </p>
                           <p className="text-xs text-slate-500 font-mono truncate">
                             {user?.primaryEmailAddress?.emailAddress || "physician@hospital.org"}
@@ -280,20 +271,27 @@ export function LandingFloatingNavbar() {
                         <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-2 py-1">
                           Clinical workspace
                         </span>
-                        
+
                         <Link
                           href="/consult"
                           role="menuitem"
                           tabIndex={-1}
                           ref={(el) => { menuItemRefs.current[0] = el; }}
                           onClick={() => setDropdownOpen(false)}
-                          className="flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-slate-950 hover:bg-slate-100 transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900"
+                          aria-current={pathname === "/consult" ? "page" : undefined}
+                          className={`flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold transition-all group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 ${
+                            pathname === "/consult"
+                              ? "bg-slate-950 text-white font-bold shadow-xs"
+                              : "text-slate-700 hover:text-slate-950 hover:bg-slate-100"
+                          }`}
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
-                            <Stethoscope className="w-4 h-4 text-cyan-600 shrink-0" />
+                            <Stethoscope className={`w-4 h-4 shrink-0 ${pathname === "/consult" ? "text-white" : "text-slate-700"}`} />
                             <span className="truncate">Voice Consultation</span>
                           </div>
-                          <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                          {pathname === "/consult" && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0" />
+                          )}
                         </Link>
 
                         <Link
@@ -302,13 +300,20 @@ export function LandingFloatingNavbar() {
                           tabIndex={-1}
                           ref={(el) => { menuItemRefs.current[1] = el; }}
                           onClick={() => setDropdownOpen(false)}
-                          className="flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-slate-950 hover:bg-slate-100 transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900"
+                          aria-current={pathname === "/profile" ? "page" : undefined}
+                          className={`flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold transition-all group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 ${
+                            pathname === "/profile"
+                              ? "bg-slate-950 text-white font-bold shadow-xs"
+                              : "text-slate-700 hover:text-slate-950 hover:bg-slate-100"
+                          }`}
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
-                            <User className="w-4 h-4 text-teal-600 shrink-0" />
+                            <User className={`w-4 h-4 shrink-0 ${pathname === "/profile" ? "text-white" : "text-slate-700"}`} />
                             <span className="truncate">Patient Profile & History</span>
                           </div>
-                          <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                          {pathname === "/profile" && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0" />
+                          )}
                         </Link>
 
                         <Link
@@ -317,13 +322,20 @@ export function LandingFloatingNavbar() {
                           tabIndex={-1}
                           ref={(el) => { menuItemRefs.current[2] = el; }}
                           onClick={() => setDropdownOpen(false)}
-                          className="flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-slate-950 hover:bg-slate-100 transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900"
+                          aria-current={pathname === "/dashboard" ? "page" : undefined}
+                          className={`flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold transition-all group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 ${
+                            pathname === "/dashboard"
+                              ? "bg-slate-950 text-white font-bold shadow-xs"
+                              : "text-slate-700 hover:text-slate-950 hover:bg-slate-100"
+                          }`}
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
-                            <FileText className="w-4 h-4 text-indigo-600 shrink-0" />
+                            <FileText className={`w-4 h-4 shrink-0 ${pathname === "/dashboard" ? "text-white" : "text-slate-700"}`} />
                             <span className="truncate">SOAP Charts & History</span>
                           </div>
-                          <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                          {pathname === "/dashboard" && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0" />
+                          )}
                         </Link>
                       </div>
 
@@ -339,13 +351,20 @@ export function LandingFloatingNavbar() {
                           tabIndex={-1}
                           ref={(el) => { menuItemRefs.current[3] = el; }}
                           onClick={() => setDropdownOpen(false)}
-                          className="flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-slate-950 hover:bg-slate-100 transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900"
+                          aria-current={pathname === "/care" ? "page" : undefined}
+                          className={`flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold transition-all group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 ${
+                            pathname === "/care"
+                              ? "bg-slate-950 text-white font-bold shadow-xs"
+                              : "text-slate-700 hover:text-slate-950 hover:bg-slate-100"
+                          }`}
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
-                            <Building2 className="w-4 h-4 text-slate-700 shrink-0" />
+                            <Building2 className={`w-4 h-4 shrink-0 ${pathname === "/care" ? "text-white" : "text-slate-700"}`} />
                             <span className="truncate">Hospital Routing</span>
                           </div>
-                          <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                          {pathname === "/care" && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0" />
+                          )}
                         </Link>
 
                         <Link
@@ -354,14 +373,45 @@ export function LandingFloatingNavbar() {
                           tabIndex={-1}
                           ref={(el) => { menuItemRefs.current[4] = el; }}
                           onClick={() => setDropdownOpen(false)}
-                          className="flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-slate-950 hover:bg-slate-100 transition-all cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900"
+                          aria-current={pathname === "/privacy" ? "page" : undefined}
+                          className={`flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold transition-all group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 ${
+                            pathname === "/privacy"
+                              ? "bg-slate-950 text-white font-bold shadow-xs"
+                              : "text-slate-700 hover:text-slate-950 hover:bg-slate-100"
+                          }`}
                         >
                           <div className="flex items-center gap-2.5 min-w-0">
-                            <ShieldCheck className="w-4 h-4 text-slate-700 shrink-0" />
+                            <ShieldCheck className={`w-4 h-4 shrink-0 ${pathname === "/privacy" ? "text-white" : "text-slate-700"}`} />
                             <span className="truncate">Privacy & Technical Safeguards</span>
                           </div>
-                          <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                          {pathname === "/privacy" && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0" />
+                          )}
                         </Link>
+
+                        {user?.publicMetadata?.role === "admin" && (
+                          <Link
+                            href="/admin"
+                            role="menuitem"
+                            tabIndex={-1}
+                            ref={(el) => { menuItemRefs.current[5] = el; }}
+                            onClick={() => setDropdownOpen(false)}
+                            aria-current={pathname === "/admin" ? "page" : undefined}
+                            className={`flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold transition-all group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 ${
+                              pathname === "/admin"
+                                ? "bg-slate-950 text-white font-bold shadow-xs"
+                                : "text-slate-700 hover:text-slate-950 hover:bg-slate-100"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <ShieldCheck className={`w-4 h-4 shrink-0 ${pathname === "/admin" ? "text-white" : "text-slate-700"}`} />
+                              <span className="truncate">Governance & Audit</span>
+                            </div>
+                            {pathname === "/admin" && (
+                              <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0" />
+                            )}
+                          </Link>
+                        )}
                       </div>
 
                       {/* Group 3: Account */}
@@ -369,7 +419,7 @@ export function LandingFloatingNavbar() {
                         <button
                           role="menuitem"
                           tabIndex={-1}
-                          ref={(el) => { menuItemRefs.current[5] = el; }}
+                          ref={(el) => { menuItemRefs.current[6] = el; }}
                           onClick={() => {
                             setDropdownOpen(false);
                             signOut({ redirectUrl: "/" });
@@ -380,84 +430,22 @@ export function LandingFloatingNavbar() {
                           <span>Sign Out</span>
                         </button>
                       </div>
-                    </>
-                  ) : (
-                    <>
-                      {/* Clinical Workspace Guest Card */}
-                      <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 flex flex-col gap-2">
-                        <div className="flex items-center gap-2 text-xs font-bold text-slate-900">
-                          <User className="w-3.5 h-3.5 text-slate-600" />
-                          <span>Clinical Workspace Access</span>
-                        </div>
-                        <p className="text-[11px] text-slate-500 leading-relaxed">
-                          Sign in to access voice consultation, SOAP charting records, and your patient history.
-                        </p>
-                        <Link
-                          href="/sign-in"
-                          onClick={() => setDropdownOpen(false)}
-                          className="w-full py-2 bg-slate-950 hover:bg-slate-800 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs"
-                        >
-                          <span>Sign In to MedVoice</span>
-                          <ArrowRight className="w-3.5 h-3.5 text-cyan-400" />
-                        </Link>
-                      </div>
-
-                      {/* Navigation Shortcuts */}
-                      <div className="flex flex-col gap-0.5 pt-1">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 px-2 py-1">
-                          Direct Access
-                        </span>
-
-                        <Link
-                          href="/consult"
-                          role="menuitem"
-                          tabIndex={-1}
-                          ref={(el) => { menuItemRefs.current[0] = el; }}
-                          onClick={() => setDropdownOpen(false)}
-                          className="flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-slate-950 hover:bg-slate-100 transition-all cursor-pointer"
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <Stethoscope className="w-4 h-4 text-cyan-600 shrink-0" />
-                            <span className="truncate">Voice Consultation</span>
-                          </div>
-                          <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-                        </Link>
-
-                        <Link
-                          href="/care"
-                          role="menuitem"
-                          tabIndex={-1}
-                          ref={(el) => { menuItemRefs.current[1] = el; }}
-                          onClick={() => setDropdownOpen(false)}
-                          className="flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-slate-950 hover:bg-slate-100 transition-all cursor-pointer"
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <Building2 className="w-4 h-4 text-slate-700 shrink-0" />
-                            <span className="truncate">Hospital Routing</span>
-                          </div>
-                          <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-                        </Link>
-
-                        <Link
-                          href="/privacy"
-                          role="menuitem"
-                          tabIndex={-1}
-                          ref={(el) => { menuItemRefs.current[2] = el; }}
-                          onClick={() => setDropdownOpen(false)}
-                          className="flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold text-slate-700 hover:text-slate-950 hover:bg-slate-100 transition-all cursor-pointer"
-                        >
-                          <div className="flex items-center gap-2.5 min-w-0">
-                            <ShieldCheck className="w-4 h-4 text-slate-700 shrink-0" />
-                            <span className="truncate">Privacy & Safeguards</span>
-                          </div>
-                          <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-                        </Link>
-                      </div>
-                    </>
+                    </div>
                   )}
                 </div>
-              )}
-            </div>
+              ) : (
+                /* Signed-out Sign In Button - Apple Grade Deep Solid Black */
+                <Link
+                  href="/sign-in"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-slate-950 hover:bg-slate-800 text-white px-4 py-1.5 text-xs font-semibold shadow-xs transition-all cursor-pointer group"
+                >
+                  <span>Sign in</span>
+                  <ArrowRight className="h-3.5 w-3.5 text-slate-400 group-hover:text-white group-hover:translate-x-0.5 transition-all" />
+                </Link>
+              )
+            ) : (
+              <div className="h-7 w-20 bg-slate-200/70 rounded-full animate-pulse" />
+            )}
 
             {/* Mobile Menu Trigger (hidden on desktop) */}
             <button

@@ -6,11 +6,11 @@ import { Navbar } from "@/app/_components/Navbar";
 
 export function ConditionalNavigationShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
-  const isHomePage = pathname === "/";
+  const isCustomNavbarPage = pathname === "/" || pathname === "/privacy" || pathname === "/dashboard" || pathname === "/consult";
 
   return (
     <>
-      {!isHomePage && <Navbar />}
+      {!isCustomNavbarPage && <Navbar />}
       {children}
     </>
   );
