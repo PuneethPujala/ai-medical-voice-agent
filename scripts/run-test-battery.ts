@@ -25,6 +25,7 @@ export const CANONICAL_TEST_BATTERY: TestSuiteDefinition[] = [
 
   // 2. Concurrency, Durability, and Persistence
   { id: "test:concurrency-durable", file: "tests/security-eval/optimistic-concurrency-durable-state.test.ts", description: "Optimistic Concurrency & Case Versioning" },
+    { id: "test:persistence-audit", file: "tests/verification/persistence-and-audit-integrity.test.ts", description: "Clinical Evidence Ledger, Audit Chaining & Failure-Path Safety" },
   { id: "test:atomic-concurrency", file: "tests/security-eval/atomic-concurrency-idempotency.test.ts", description: "Atomic CAS & Unique Idempotency", requiresDatabase: true },
   { id: "test:durable-audit", file: "tests/security-eval/durable-audit.test.ts", description: "Durable SHA-256 Chained Audit Ledger", requiresDatabase: true },
 
