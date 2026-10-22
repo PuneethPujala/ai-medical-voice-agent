@@ -63,6 +63,7 @@ export const CANONICAL_TEST_BATTERY: TestSuiteDefinition[] = [
   { id: "test:rag", file: "scripts/test-clinical-rag.ts", description: "Deterministic Clinical RAG Engine" },
   { id: "test:context-rag", file: "scripts/test-context-aware-retrieval.ts", description: "Context-Aware Retrieval & Ranking" },
   { id: "test:presentation", file: "scripts/test-presentation-context.ts", description: "Presentation Context & Disease Matching" },
+  { id: "test:medication-safety", file: "tests/triage/medication-safety-engine.test.ts", description: "Deterministic Medication Safety & Contraindication Engine" },
   { id: "test:explanatory", file: "scripts/test-explanatory-clinical-reasoning.ts", description: "Explanatory Clinical Reasoning & Provenance" },
 
   // 7. Multi-Agent Clinical Board

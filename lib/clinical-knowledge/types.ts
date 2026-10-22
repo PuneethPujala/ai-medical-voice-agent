@@ -181,12 +181,27 @@ export interface PatientProfile {
 }
 
 export interface ContraindicationAlert {
-  category: "allergy" | "drug_interaction" | "pregnancy" | "pediatric_warning";
+  category:
+    | "allergy"
+    | "drug_interaction"
+    | "pregnancy"
+    | "pediatric_warning"
+    | "condition_contraindication"
+    | "unknown_substance"
+    | "duplicate_therapy";
   triggerItem: string;
   conflictingItem: string;
-  severity: "critical" | "warning";
+  severity: "critical" | "warning" | "review_needed";
   clinicalRationale: string;
-  actionRequired: "block" | "warn";
+  actionRequired: "block" | "warn" | "flag_for_review";
+  evidenceSource?: {
+    ruleId?: string;
+    source: string;
+    sourceUrl?: string;
+    jurisdiction?: "India (CDSCO/MoHFW)" | "US (FDA/DailyMed)" | "Global (WHO/NLM)";
+    retrievalDate?: string;
+    limitations?: string;
+  };
 }
 
 // ─── CURRENT ENCOUNTER ─────────────────────────────────────────────────────────
