@@ -1,6 +1,7 @@
 import {
   logAuditEvent,
   clearAuditLedger,
+  syncAuditLedgerFromDb,
   verifyAuditChain,
   getAuditEvents,
   computeEventHash,
@@ -177,7 +178,7 @@ async function runSecurityAndAuditTestSuite() {
       resourceId: "MED-TEST-001",
       status: "SUCCESS",
       metadata: { chiefComplaint: "Shortness of breath on exertion" },
-    });
+    }, true);
 
     assert(event1.index === 0, "Genesis event index is 0");
     assert(event1.previousHash === GENESIS_HASH, "Genesis event previousHash equals GENESIS_HASH constant");
@@ -191,7 +192,7 @@ async function runSecurityAndAuditTestSuite() {
       resourceId: "MED-TEST-001",
       status: "SUCCESS",
       metadata: { reason: "Platform telemetry and compliance review" },
-    });
+    }, true);
 
     assert(event2.index === 1, "Second event index is 1");
     assert(event2.previousHash === event1.eventHash, "Event 2 previousHash links cryptographically to Event 1 hash");
@@ -204,7 +205,7 @@ async function runSecurityAndAuditTestSuite() {
       resourceId: "MED-TEST-001",
       status: "DENIED",
       metadata: { reason: "Unauthorized attempt to view other patient record" },
-    });
+    }, true);
 
     assert(event3.previousHash === event2.eventHash, "Event 3 previousHash links cryptographically to Event 2 hash");
 
@@ -238,6 +239,7 @@ async function runSecurityAndAuditTestSuite() {
     const verifySwapped = verifyAuditChain(swappedEvents);
     assert(verifySwapped.valid === false, "Verification correctly FAILS when record sequence is reordered");
     console.log(`  ✓ Reordering detection correctly flagged: "${verifySwapped.reason}"`);
+    await syncAuditLedgerFromDb();
   }
 
   // TEST 4: Triage Safety Arbiter Negation & Emergency Flagging
