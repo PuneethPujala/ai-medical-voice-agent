@@ -77,7 +77,7 @@ export async function POST(request: Request) {
       clientWantsStream ||
       request.headers.get("accept")?.includes("text/event-stream")
     );
-    // inferredSubject declared earlier in route scope
+    let inferredSubject: "self" | "mother" | "child" | "third_party" = "self";
 
     // 2. Abuse Protection: Enforce strict payload constraints before expensive AI reasoning
     if (!message || typeof message !== "string" || !message.trim()) {
@@ -420,7 +420,7 @@ export async function POST(request: Request) {
     // Only allow greeting, thank-you, or acknowledgment short-circuit when NO red flags exist on current utterance
     if (!hasRedFlagOnCurrentUtterance) {
       const isGreeting =
-        /^(?:hello|hi|hey|good\s+(?:morning|afternoon|evening)|can\s+you\s+hear\s+me|testing|greetings)(?:\s+(?:doctor|dr\b|there|chen|vance|rostova|pendelton|bennett))?[.!?\s]*$/i.test(cleanMsgLower);
+        /^(?:hello|hi|hey|good\s+(?:morning|afternoon|evening)|can\s+you\s+hear\s+me|testing|greetings)(?:\s+(?:doctor|dr\b|there|chen|vance|rostova|pendelton|bennett))?(?:[,.]?\s*(?:can\s+you\s+hear\s+me|mic\s+check|are\s+you\s+there))?[.!?\s]*$/i.test(cleanMsgLower);
 
       const isPureThankYou =
         /^(?:thank\s+you|thanks)(?:\s+(?:so\s+much|very\s+much|a\s+lot))?(?:\s+(?:doctor|dr\b|chen|vance|rostova|pendelton|bennett))?[.!?\s]*$/i.test(cleanMsgLower) ||
@@ -572,7 +572,7 @@ export async function POST(request: Request) {
 
     // Resolve target patient profile strictly scoped to authenticated user
     let activeProfile: PatientProfile | null = null;
-    let inferredSubject: "self" | "mother" | "child" | "third_party" = "self";
+    inferredSubject = "self";
 
     if (effectiveUserId !== "unauthenticated") {
       const resolved = await PatientProfileService.resolveTargetPatientProfile(
