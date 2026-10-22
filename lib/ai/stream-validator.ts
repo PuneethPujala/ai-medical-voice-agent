@@ -56,7 +56,7 @@ export interface ChunkValidationResult {
 
 const FALSE_REASSURANCE_PATTERNS: RegExp[] = [
   /\b(?:don'?t\s+worry|nothing\s+to\s+worry\s+about)\b/i,
-  /\b(?:you|she|he|they|your\s+(?:mother|mom|child|father|parent|dad|baby|son|daughter))\s+(?:'?re|\s+are|\s+is|\s+will\s+be)\s+(?:completely\s+|totally\s+|just\s+)?(?:fine|okay|alright)\b/i,
+  /\b(?:you|she|he|they|your\s+(?:mother|mom|child|father|parent|dad|baby|son|daughter))\s*(?:'re|\s+(?:are|is|will\s+be))\s+(?:completely\s+|totally\s+|just\s+)?(?:fine|okay|alright)\b/i,
   /\b(?:it'?s|it\s+is)\s+(?:probably\s+|likely\s+|certainly\s+)?nothing\s+(?:serious|to\s+worry\s+about)?\b/i,
   /\b(?:there\s+is\s+nothing\s+(?:to\s+worry\s+about|wrong|serious))\b/i,
   /\b(?:this\s+is\s+(?:completely\s+)?harmless|harmless\s+condition|benign\s+condition)\b/i,
@@ -117,10 +117,13 @@ export function validateAudioBoundChunk(
   const lowerChunk = cleanChunk.toLowerCase();
   const lowerUtterance = (context.patientUtterance || "").toLowerCase();
   const deniedList = (context.deniedSymptoms || []).map((s) => s.toLowerCase());
+  const combinedText = context.accumulatedValidatedText
+    ? `${context.accumulatedValidatedText} ${cleanChunk}`.trim()
+    : cleanChunk;
 
-  // 1. CRITICAL: False Ambulance Dispatch Claim Guard
+  // 1. CRITICAL: False Ambulance Dispatch Claim Guard (Checked on chunk and cross-chunk combined text)
   for (const pattern of FALSE_DISPATCH_PATTERNS) {
-    if (pattern.test(cleanChunk)) {
+    if (pattern.test(cleanChunk) || pattern.test(combinedText)) {
       return {
         isValid: false,
         action: "HOLD_AND_FALLBACK",
@@ -131,9 +134,9 @@ export function validateAudioBoundChunk(
     }
   }
 
-  // 2. CRITICAL: False Reassurance Guard (Disallow minimization of symptoms)
+  // 2. CRITICAL: False Reassurance Guard (Disallow minimization of symptoms, including cross-chunk splits)
   for (const pattern of FALSE_REASSURANCE_PATTERNS) {
-    if (pattern.test(cleanChunk)) {
+    if (pattern.test(cleanChunk) || pattern.test(combinedText)) {
       return {
         isValid: false,
         action: "HOLD_AND_FALLBACK",
@@ -144,9 +147,9 @@ export function validateAudioBoundChunk(
     }
   }
 
-  // 3. CRITICAL: Premature Triage Dismissal Guard
+  // 3. CRITICAL: Premature Triage Dismissal Guard (Checked on chunk and cross-chunk combined text)
   for (const pattern of PREMATURE_DISMISSAL_PATTERNS) {
-    if (pattern.test(cleanChunk)) {
+    if (pattern.test(cleanChunk) || pattern.test(combinedText)) {
       return {
         isValid: false,
         action: "HOLD_AND_FALLBACK",

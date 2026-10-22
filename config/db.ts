@@ -2,11 +2,11 @@ import { drizzle } from 'drizzle-orm/neon-http';
 import * as schema from './schema';
 import dns from 'dns';
 import net from 'net';
+import { setGlobalDispatcher, Agent } from 'undici';
 
 // Resilient DNS resolution fallback for Neon Serverless when local router/ISP DNS drops or refuses cloud domains
 if (typeof process !== 'undefined' && process.versions?.node) {
   try {
-    const { setGlobalDispatcher, Agent } = require('undici');
     const resolver = new dns.promises.Resolver();
     resolver.setServers(['8.8.8.8', '1.1.1.1']);
 

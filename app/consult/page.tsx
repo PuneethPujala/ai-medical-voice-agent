@@ -749,6 +749,7 @@ export default function ConsultPage() {
   const activeAudioRef = useRef<HTMLAudioElement | null>(null);
   const persistentAudioRef = useRef<HTMLAudioElement | null>(null);
   const playbackSessionTokenRef = useRef<number>(0);
+  const chatAbortControllerRef = useRef<AbortController | null>(null);
 
   // Natural conversational voice intake refs
   const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -1163,6 +1164,12 @@ export default function ConsultPage() {
     // Invalidate any in-flight async TTS generation so late-arriving audio is suppressed
     playbackSessionTokenRef.current += 1;
     setPendingDoctorMessage(null);
+
+    // Immediately cancel any in-flight AI deliberation over the network
+    if (chatAbortControllerRef.current) {
+      try { chatAbortControllerRef.current.abort(); } catch {}
+      chatAbortControllerRef.current = null;
+    }
 
     stopAndClearActiveAudio();
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
@@ -2395,10 +2402,20 @@ export default function ConsultPage() {
         audioMetrics: audioMetrics || undefined,
       };
 
+      if (chatAbortControllerRef.current) {
+        try { chatAbortControllerRef.current.abort(); } catch {}
+      }
+      const abortCtrl = new AbortController();
+      chatAbortControllerRef.current = abortCtrl;
+
       let res = await fetch("/api/voice/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(chatPayload),
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "text/event-stream, application/json",
+        },
+        body: JSON.stringify({ ...chatPayload, stream: true }),
+        signal: abortCtrl.signal,
       });
 
       // Self-healing recovery: if server lost in-memory state or encounter was not registered, register on server and retry once
@@ -2419,7 +2436,50 @@ export default function ConsultPage() {
       }
 
       const clinicalReceivedTime = performance.now();
-      const data = await res.json();
+      const isSse = Boolean(res.headers.get("content-type")?.includes("text/event-stream"));
+      let data: any;
+      let earlyStreamAudioDispatched = false;
+
+      if (isSse && res.body) {
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let buffer = "";
+        let finalData: any = null;
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const blocks = buffer.split("\n\n");
+          buffer = blocks.pop() || "";
+
+          for (const block of blocks) {
+            if (!block.trim()) continue;
+            let eventType = "message";
+            let eventData = "";
+            for (const line of block.split("\n")) {
+              if (line.startsWith("event:")) eventType = line.slice(6).trim();
+              else if (line.startsWith("data:")) eventData = line.slice(5).trim();
+            }
+            if (eventData) {
+              let parsed: any;
+              try { parsed = JSON.parse(eventData); } catch { parsed = eventData; }
+
+              if (eventType === "emergency" && !earlyStreamAudioDispatched) {
+                earlyStreamAudioDispatched = true;
+                const emergDocId = parsed.doctor?.id || selectedDoctor.id;
+                speakDoctorResponse(parsed.directive, emergDocId, playbackSessionTokenRef.current);
+              } else if (eventType === "done") {
+                finalData = parsed;
+              }
+            }
+          }
+        }
+        data = finalData || { doctorReply: "I have received your symptoms and documented them." };
+      } else {
+        data = await res.json();
+      }
+
       const doctorReplyText = data.doctorReply || "I have received your symptoms and documented them.";
 
       const respondingDoctorId = data.doctor?.id || selectedDoctor.id;
@@ -2529,24 +2589,36 @@ export default function ConsultPage() {
         currentCaseVersionRef.current + 1
       );
 
-      speakDoctorResponse(doctorReplyText, respondingDoctorId, undefined, {
-        clinicalReceivedAt: clinicalReceivedTime,
-        onPlaybackStart: () => {
-          setPendingDoctorMessage(null);
-          setMessages((prev) => {
-            if (prev.some((m) => m.id === newDoctorMessage.id)) return prev;
-            return [...prev, newDoctorMessage];
-          });
-        },
-        onFallback: () => {
-          setPendingDoctorMessage(null);
-          setMessages((prev) => {
-            if (prev.some((m) => m.id === newDoctorMessage.id)) return prev;
-            return [...prev, newDoctorMessage];
-          });
-        },
-      });
+      if (!earlyStreamAudioDispatched) {
+        speakDoctorResponse(doctorReplyText, respondingDoctorId, undefined, {
+          clinicalReceivedAt: clinicalReceivedTime,
+          onPlaybackStart: () => {
+            setPendingDoctorMessage(null);
+            setMessages((prev) => {
+              if (prev.some((m) => m.id === newDoctorMessage.id)) return prev;
+              return [...prev, newDoctorMessage];
+            });
+          },
+          onFallback: () => {
+            setPendingDoctorMessage(null);
+            setMessages((prev) => {
+              if (prev.some((m) => m.id === newDoctorMessage.id)) return prev;
+              return [...prev, newDoctorMessage];
+            });
+          },
+        });
+      } else {
+        setPendingDoctorMessage(null);
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === newDoctorMessage.id)) return prev;
+          return [...prev, newDoctorMessage];
+        });
+      }
     } catch (err: any) {
+      if (err?.name === "AbortError" || err?.message?.includes("aborted")) {
+        console.log("⚡ [MedVoice] Dialogue turn cleanly cancelled by barge-in or navigation.");
+        return;
+      }
       console.error("Consultation chat error:", err);
       setPendingDoctorMessage(null);
       // Safe fallback: never revert to listening on a clinical failure
