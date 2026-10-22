@@ -84,6 +84,7 @@ export const CANONICAL_TEST_BATTERY: TestSuiteDefinition[] = [
 
   // 9. Healthcare Standards & Emergency Dispatch
   { id: "test:fhir", file: "tests/fhir-eval/fhir.test.ts", description: "HL7 FHIR R4 Bundle Validation & Conformance" },
+  { id: "test:fhir-paralinguistic", file: "tests/fhir/paralinguistic-observation.test.ts", description: "HL7 FHIR R4 Paralinguistic Acoustic Observation Conformance" },
   { id: "test:dispatch", file: "tests/emergency-eval/dispatch.test.ts", description: "Emergency Pre-Arrival Dispatch & Audit Hash" },
 ];
 

@@ -394,6 +394,7 @@ export function screenMedicationSafety(context: MedicationScreeningContext): Med
   const profileConditions = [
     ...(context.patientProfile?.knownConditions || []),
     ...(context.patientProfile?.conditions || []),
+    ...(context.patientProfile?.pregnancyStatus ? [context.patientProfile.pregnancyStatus] : []),
   ];
 
   const textCorpus = [
