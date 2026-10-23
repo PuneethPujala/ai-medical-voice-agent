@@ -11,6 +11,9 @@
  * - ICD-10-CM Diagnosis Coding
  */
 
+import { LiveAudioMetrics } from "../acoustic/acoustic-dsp-analyzer";
+import { SpeechFeatures } from "../agents/schemas";
+
 export interface ConsultationRecordFHIR {
   id: string;
   patientName?: string;
@@ -32,6 +35,8 @@ export interface ConsultationRecordFHIR {
   recommendedAction?: string;
   createdAt?: string | Date;
   transcript?: Array<{ role: string; text: string; timestamp: string }>;
+  audioMetrics?: LiveAudioMetrics | Partial<LiveAudioMetrics>;
+  speechFeatures?: SpeechFeatures | Partial<SpeechFeatures>;
 }
 
 export interface FHIRResource {
@@ -307,6 +312,232 @@ export function generateFHIRBundle(record: ConsultationRecordFHIR): FHIRBundle {
     })
   );
 
+  // 5b. Paralinguistic Acoustic Telemetry Observation (Optional, only if audio metrics present)
+  let acousticObservation: FHIRResource | null = null;
+  const audioMetrics = record.audioMetrics;
+  const speechFeatures = record.speechFeatures;
+
+  const hasAcousticData = Boolean(
+    (audioMetrics && (
+      (audioMetrics.durationMs !== undefined && audioMetrics.durationMs > 0) ||
+      (audioMetrics.meanF0Hz !== null && audioMetrics.meanF0Hz !== undefined) ||
+      (audioMetrics.speechPauseRatio !== undefined)
+    )) ||
+    (speechFeatures && speechFeatures.speech_rate_wpm !== undefined)
+  );
+
+  if (hasAcousticData) {
+    const acousticComponents: any[] = [];
+
+    // Component 1: Fundamental Frequency (f0) - strictly only if voiced and valid
+    if (audioMetrics?.meanF0Hz !== null && audioMetrics?.meanF0Hz !== undefined && audioMetrics.meanF0Hz > 0) {
+      acousticComponents.push({
+        code: {
+          coding: [
+            {
+              system: "https://medvoice.health/fhir/CodeSystem/acoustic-metrics",
+              code: "mean-f0",
+              display: "Mean fundamental frequency (f0)",
+            },
+          ],
+          text: "Mean Fundamental Frequency",
+        },
+        valueQuantity: {
+          value: audioMetrics.meanF0Hz,
+          unit: "Hz",
+          system: "http://unitsofmeasure.org",
+          code: "Hz",
+        },
+      });
+    }
+
+    // Component 2: Speech Rate in Words Per Minute
+    if (speechFeatures?.speech_rate_wpm !== undefined && speechFeatures.speech_rate_wpm !== null) {
+      acousticComponents.push({
+        code: {
+          coding: [
+            {
+              system: "https://medvoice.health/fhir/CodeSystem/acoustic-metrics",
+              code: "speech-rate",
+              display: "Speech rate in words per minute",
+            },
+          ],
+          text: "Speech Rate",
+        },
+        valueQuantity: {
+          value: speechFeatures.speech_rate_wpm,
+          unit: "{words}/min",
+          system: "http://unitsofmeasure.org",
+          code: "{words}/min",
+        },
+      });
+    }
+
+    // Component 3: Conversational Pause-to-Speech Ratio
+    if (audioMetrics?.speechPauseRatio !== undefined && audioMetrics.speechPauseRatio !== null) {
+      acousticComponents.push({
+        code: {
+          coding: [
+            {
+              system: "https://medvoice.health/fhir/CodeSystem/acoustic-metrics",
+              code: "speech-pause-ratio",
+              display: "Conversational pause-to-speech ratio",
+            },
+          ],
+          text: "Speech-to-Pause Ratio",
+        },
+        valueQuantity: {
+          value: audioMetrics.speechPauseRatio,
+          unit: "{ratio}",
+          system: "http://unitsofmeasure.org",
+          code: "1",
+        },
+      });
+    }
+
+    // Component 4: Mean Conversational Pause Duration
+    if (audioMetrics?.meanPauseDurationMs !== undefined && audioMetrics.meanPauseDurationMs !== null && audioMetrics.meanPauseDurationMs > 0) {
+      acousticComponents.push({
+        code: {
+          coding: [
+            {
+              system: "https://medvoice.health/fhir/CodeSystem/acoustic-metrics",
+              code: "mean-pause-duration",
+              display: "Mean conversational pause duration",
+            },
+          ],
+          text: "Mean Pause Duration",
+        },
+        valueQuantity: {
+          value: audioMetrics.meanPauseDurationMs,
+          unit: "ms",
+          system: "http://unitsofmeasure.org",
+          code: "ms",
+        },
+      });
+    }
+
+    // Component 5: Voice Fundamental Frequency Pitch Variability
+    if (audioMetrics?.pitchVariance !== undefined && audioMetrics.pitchVariance !== null && audioMetrics.pitchVariance > 0) {
+      acousticComponents.push({
+        code: {
+          coding: [
+            {
+              system: "https://medvoice.health/fhir/CodeSystem/acoustic-metrics",
+              code: "pitch-variability",
+              display: "Voice fundamental frequency pitch variability",
+            },
+          ],
+          text: "Pitch Variability (f0 CV)",
+        },
+        valueQuantity: {
+          value: audioMetrics.pitchVariance,
+          unit: "{ratio}",
+          system: "http://unitsofmeasure.org",
+          code: "1",
+        },
+      });
+    }
+
+    // Component 6: Voice RMS Energy Variability
+    if (audioMetrics?.energyVariance !== undefined && audioMetrics.energyVariance !== null) {
+      acousticComponents.push({
+        code: {
+          coding: [
+            {
+              system: "https://medvoice.health/fhir/CodeSystem/acoustic-metrics",
+              code: "energy-variability",
+              display: "Voice acoustic RMS energy variability",
+            },
+          ],
+          text: "Voice Energy Variability",
+        },
+        valueQuantity: {
+          value: audioMetrics.energyVariance,
+          unit: "{ratio}",
+          system: "http://unitsofmeasure.org",
+          code: "1",
+        },
+      });
+    }
+
+    // Component 7: Total Analyzed Audio Duration
+    if (audioMetrics?.durationMs !== undefined && audioMetrics.durationMs !== null && audioMetrics.durationMs > 0) {
+      acousticComponents.push({
+        code: {
+          coding: [
+            {
+              system: "https://medvoice.health/fhir/CodeSystem/acoustic-metrics",
+              code: "analyzed-audio-duration",
+              display: "Total duration of speech audio analyzed",
+            },
+          ],
+          text: "Analyzed Audio Duration",
+        },
+        valueQuantity: {
+          value: audioMetrics.durationMs,
+          unit: "ms",
+          system: "http://unitsofmeasure.org",
+          code: "ms",
+        },
+      });
+    }
+
+    acousticObservation = {
+      resourceType: "Observation",
+      id: `observation-acoustic-${cleanId}`,
+      status: "final",
+      category: [
+        {
+          coding: [
+            {
+              system: "http://terminology.hl7.org/CodeSystem/observation-category",
+              code: "exam",
+              display: "Exam",
+            },
+          ],
+        },
+      ],
+      code: {
+        coding: [
+          {
+            system: "https://medvoice.health/fhir/CodeSystem/acoustic-metrics",
+            code: "voice-paralinguistic-panel",
+            display: "MedVoice Acoustic & Paralinguistic Speech Telemetry Panel",
+          },
+        ],
+        text: "Acoustic & Speech Paralinguistic Telemetry Panel",
+      },
+      subject: {
+        reference: `Patient/${patientId}`,
+      },
+      encounter: {
+        reference: `Encounter/${encounterId}`,
+      },
+      effectiveDateTime: timestamp,
+      issued: timestamp,
+      method: {
+        coding: [
+          {
+            system: "https://medvoice.health/fhir/CodeSystem/measurement-methods",
+            code: "in-browser-dsp-autocorrelation",
+            display: "Web Audio DSP 25ms Frame Normalized Autocorrelation & RMS Telemetry",
+          },
+        ],
+        text: "Client-side Web Audio DSP (25ms window, 10ms hop, -38 dBFS VAD)",
+      },
+      device: {
+        display: "MedVoice In-Browser DSP Acoustic Telemetry Analyzer v3.1",
+      },
+      component: acousticComponents,
+      note: [
+        {
+          text: "Clinical Safety Invariant: Acoustic telemetry reflects observational speech characteristics measured over the consultation. It does not establish clinical diagnoses, assign triage acuity, or override clinician judgment.",
+        },
+      ],
+    };
+  }
+
   // 6. Composition (Structured Clinical SOAP Document)
   const compositionResource: FHIRResource = {
     resourceType: "Composition",
@@ -378,7 +609,11 @@ export function generateFHIRBundle(record: ConsultationRecordFHIR): FHIRBundle {
         },
         text: {
           status: "generated",
-          div: `<div xmlns="http://www.w3.org/1999/xhtml"><p>${record.soapObjective || "No objective clinical measurements recorded (remote voice consultation)."}</p></div>`,
+          div: `<div xmlns="http://www.w3.org/1999/xhtml"><p>${record.soapObjective || "No objective clinical measurements recorded (remote voice consultation)."}</p>${
+            acousticObservation
+              ? `<p><strong>Paralinguistic Acoustic Telemetry:</strong> Mean f0: ${audioMetrics?.meanF0Hz ? `${audioMetrics.meanF0Hz} Hz` : "unvoiced / not detected"}, Speech Rate: ${speechFeatures?.speech_rate_wpm ? `${speechFeatures.speech_rate_wpm} WPM` : "N/A"}, Pause Ratio: ${audioMetrics?.speechPauseRatio ?? "N/A"} (Ref: Observation/observation-acoustic-${cleanId})</p>`
+              : ""
+          }</div>`,
         },
       },
       {
@@ -423,6 +658,7 @@ export function generateFHIRBundle(record: ConsultationRecordFHIR): FHIRBundle {
     { fullUrl: `urn:uuid:${practitionerId}`, resource: practitionerResource },
     { fullUrl: `urn:uuid:${encounterId}`, resource: encounterResource },
     { fullUrl: `urn:uuid:observation-esi-${cleanId}`, resource: triageObservation },
+    ...(acousticObservation ? [{ fullUrl: `urn:uuid:${acousticObservation.id}`, resource: acousticObservation }] : []),
     ...conditions.map((c) => ({ fullUrl: `urn:uuid:${c.id}`, resource: c })),
   ];
 
@@ -460,6 +696,9 @@ export const REQUIRED_CODING_SYSTEMS = new Set([
   "http://hl7.org/fhir/sid/icd-10",
   "http://terminology.hl7.org/CodeSystem/condition-clinical",
   "http://terminology.hl7.org/CodeSystem/observation-category",
+  "https://medvoice.health/fhir/CodeSystem/acoustic-metrics",
+  "https://medvoice.health/fhir/CodeSystem/measurement-methods",
+  "http://unitsofmeasure.org",
 ]);
 
 export function validateFhirR4Bundle(bundle: Record<string, unknown>): FhirValidationResult {

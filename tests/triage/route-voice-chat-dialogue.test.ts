@@ -2,7 +2,7 @@ import assert from "assert";
 import { POST as postVoiceChat } from "../../app/api/voice/chat/route";
 import { DEFAULT_INTERNAL_TEST_SECRET, INTERNAL_TEST_SECRET_HEADER, Role } from "../../lib/auth/rbac";
 import { ClinicalInterviewState } from "../../lib/triage/conversation-manager";
-import { memoryConsultations } from "../../app/api/consultations/route";
+import { memoryConsultations, POST as postConsultation } from "../../app/api/consultations/route";
 import { setCustomDbClient } from "../../config/db";
 import * as dotenv from "dotenv";
 
@@ -27,8 +27,11 @@ async function runRouteVoiceChatDialogueTests() {
   console.log("  ROUTE-LEVEL /api/voice/chat MULTI-TURN DIALOGUE & STATE CONTRACT HARNESS    ");
   console.log("================================================================================");
 
-  const testUserId = `user-chat-eval-${Date.now()}`;
-  let passedTests = 0;
+  // Enforce suite-level test isolation: controlled in-memory datastore for deterministic execution
+  setCustomDbClient(false);
+  try {
+    const testUserId = `user-chat-eval-${Date.now()}`;
+    let passedTests = 0;
 
   // ---------------------------------------------------------------------------
   // TEST 1: Compound Question Partial Answer & Unanswered Dimension Survival
@@ -302,30 +305,38 @@ async function runRouteVoiceChatDialogueTests() {
   }
 
   // ---------------------------------------------------------------------------
-  // TEST 4: Server-Authoritative State Turn-by-Turn Persistence
   // ---------------------------------------------------------------------------
-  console.log("\n[Test 4] Server-Authoritative State Turn-by-Turn Persistence");
+  // TEST 4: Consultation Creation & Server-Authoritative Multi-Turn Persistence
+  // ---------------------------------------------------------------------------
+  console.log("\n[Test 4] Consultation Creation & Server-Authoritative Multi-Turn Persistence");
+  const encounterId = `ENC-SERVER-AUTH-${Date.now()}`;
+  const testEncounterUser = `user-server-auth-${Date.now()}`;
   {
-    const encounterId = `ENC-SERVER-AUTH-${Date.now()}`;
-    const testEncounterUser = `user-server-auth-${Date.now()}`;
-
-    // Ensure test isolation: force in-memory fallback for memoryConsultations unit test
-    setCustomDbClient(undefined);
-
-    // Seed authoritative encounter (encounters cannot be arbitrarily auto-created by client ID)
-    memoryConsultations.push({
-      id: encounterId,
-      userId: testEncounterUser,
-      doctorId: "dr-sarah-chen",
-      doctorName: "Dr. Sarah Chen, MD",
-      specialty: "Internal Medicine",
-      chiefComplaint: "Temple pain",
-      caseVersion: 1,
-      interviewState: null,
-      transcript: [],
+    // Step 4a: Create authoritative consultation encounter via POST /api/consultations
+    const reqCreate = new Request("https://medvoice.org/api/consultations", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...createTestHeaders("patient", testEncounterUser),
+      },
+      body: JSON.stringify({
+        id: encounterId,
+        patientName: "Authoritative Test Patient",
+        doctorId: "dr-sarah-chen",
+        doctorName: "Dr. Sarah Chen, MD",
+        specialty: "Internal Medicine",
+        chiefComplaint: "Temple pain",
+        status: "completed_pending_review",
+      }),
     });
 
-    // Turn 1: Submit turn WITH encounterId
+    const resCreate = await postConsultation(reqCreate);
+    assert.strictEqual(resCreate.status, 200, "Consultation creation route returns 200 OK");
+    const jsonCreate = await resCreate.json();
+    assert.strictEqual(jsonCreate.success, true, "Consultation created successfully");
+    console.log("  ✓ Step 4a: Consultation encounter initiated via POST /api/consultations.");
+
+    // Step 4b: Turn 1: Submit turn WITH encounterId
     const reqTurn1 = new Request("https://medvoice.org/api/voice/chat", {
       method: "POST",
       headers: {
@@ -343,8 +354,9 @@ async function runRouteVoiceChatDialogueTests() {
     assert.strictEqual(resTurn1.status, 200, "Turn 1 returns 200");
     const dataTurn1 = await resTurn1.json();
     assert(dataTurn1.interviewState, "Turn 1 creates interviewState on server");
+    console.log("  ✓ Step 4b: Turn 1 persisted on server, caseVersion:", dataTurn1.interviewState.caseVersion);
 
-    // Turn 2: Submit turn WITH encounterId but WITHOUT interviewState in body!
+    // Step 4c: Turn 2: Submit turn WITH encounterId but WITHOUT interviewState in body!
     // The server MUST retrieve authoritative state persisted from Turn 1!
     const reqTurn2 = new Request("https://medvoice.org/api/voice/chat", {
       method: "POST",
@@ -371,8 +383,7 @@ async function runRouteVoiceChatDialogueTests() {
       /temple|throbbing/i.test(turn2Transcript) || dataTurn2.interviewState.slots.known_facts.some((f: string) => /temple|throbbing/i.test(f)),
       `Expected Turn 2 to retain Turn 1 facts from server-persisted state, transcript: "${turn2Transcript}"`
     );
-    console.log("  ✓ Server-authoritative encounter state successfully persisted and retrieved turn-by-turn without client reliance.");
-    setCustomDbClient(null);
+    console.log("  ✓ Step 4c: Server-authoritative encounter state successfully persisted and retrieved turn-by-turn without client reliance.");
     passedTests++;
   }
 
@@ -405,9 +416,91 @@ async function runRouteVoiceChatDialogueTests() {
     passedTests++;
   }
 
-  console.log("\n================================================================================");
-  console.log(`  ALL ${passedTests}/${passedTests} ROUTE-LEVEL DIALOGUE TESTS PASSED (100% VERIFIED)        `);
-  console.log("================================================================================");
+  // ---------------------------------------------------------------------------
+  // TEST 6: Authorization & Cross-Tenant Access Guards
+  // ---------------------------------------------------------------------------
+  console.log("\n[Test 6] Authorization & Cross-Tenant Access Guards");
+  {
+    // 6a. Unauthenticated access rejection (HTTP 401 UNAUTHORIZED)
+    const reqUnauth = new Request("https://medvoice.org/api/voice/chat", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        [INTERNAL_TEST_SECRET_HEADER]: DEFAULT_INTERNAL_TEST_SECRET,
+        // Omit user identity/headers to simulate unauthenticated call
+      },
+      body: JSON.stringify({
+        encounterId,
+        doctorId: "dr-sarah-chen",
+        message: "Attempting unauthenticated access to consultation.",
+      }),
+    });
+
+    const resUnauth = await postVoiceChat(reqUnauth);
+    assert.strictEqual(resUnauth.status, 401, "Unauthenticated access rejected with HTTP 401");
+    const jsonUnauth = await resUnauth.json();
+    assert.strictEqual(jsonUnauth.code, "UNAUTHORIZED", "Code must be UNAUTHORIZED");
+    console.log("  ✓ Unauthenticated access cleanly rejected with HTTP 401 UNAUTHORIZED.");
+
+    // 6b. Cross-tenant access rejection (HTTP 403 CROSS_TENANT_ACCESS)
+    const reqCross = new Request("https://medvoice.org/api/voice/chat", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...createTestHeaders("patient", "malicious-intruder-user"),
+      },
+      body: JSON.stringify({
+        encounterId,
+        doctorId: "dr-sarah-chen",
+        message: "Attempting cross-tenant access to another patient encounter.",
+      }),
+    });
+
+    const resCross = await postVoiceChat(reqCross);
+    assert.strictEqual(resCross.status, 403, "Cross-tenant access rejected with HTTP 403");
+    const jsonCross = await resCross.json();
+    assert.strictEqual(jsonCross.code, "CROSS_TENANT_ACCESS", "Code must be CROSS_TENANT_ACCESS");
+    console.log("  ✓ Cross-tenant access cleanly rejected with HTTP 403 CROSS_TENANT_ACCESS.");
+
+    passedTests++;
+  }
+
+  // ---------------------------------------------------------------------------
+  // TEST 7: Optimistic Concurrency & Version-Conflict Handling (HTTP 409)
+  // ---------------------------------------------------------------------------
+  console.log("\n[Test 7] Optimistic Concurrency & Version-Conflict Handling (HTTP 409)");
+  {
+    // Server is at expectedCaseVersion 3 after Turn 2 above. Client submits stale caseVersion: 1
+    const reqStale = new Request("https://medvoice.org/api/voice/chat", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...createTestHeaders("patient", testEncounterUser),
+      },
+      body: JSON.stringify({
+        encounterId,
+        doctorId: "dr-sarah-chen",
+        message: "Concurrent stale client update.",
+        caseVersion: 1, // Stale! Server is at version 3
+      }),
+    });
+
+    const resStale = await postVoiceChat(reqStale);
+    assert.strictEqual(resStale.status, 409, "Stale caseVersion rejected with HTTP 409 Conflict");
+    const jsonStale = await resStale.json();
+    assert.strictEqual(jsonStale.code, "CONCURRENT_MODIFICATION_CONFLICT", "Code must be CONCURRENT_MODIFICATION_CONFLICT");
+    assert(jsonStale.expectedVersion >= 2, "Expected version must reflect current server version");
+    console.log("  ✓ Stale caseVersion conflict cleanly rejected with HTTP 409 CONCURRENT_MODIFICATION_CONFLICT (expectedVersion:", jsonStale.expectedVersion, ").");
+
+    passedTests++;
+  }
+
+    console.log("\n================================================================================");
+    console.log(`  ALL ${passedTests}/${passedTests} ROUTE-LEVEL DIALOGUE TESTS PASSED (100% VERIFIED)        `);
+    console.log("================================================================================");
+  } finally {
+    setCustomDbClient(null);
+  }
 }
 
 runRouteVoiceChatDialogueTests().catch((err) => {

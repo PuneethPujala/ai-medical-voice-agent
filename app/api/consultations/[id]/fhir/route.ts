@@ -190,7 +190,12 @@ export async function GET(
     }
 
     // 4. Generate valid HL7 FHIR R4 Bundle
-    const bundle = generateFHIRBundle(record);
+    const consultationRecord: ConsultationRecordFHIR = {
+      ...record,
+      audioMetrics: record.audioMetrics || record.interviewState?.audio_metrics,
+      speechFeatures: record.speechFeatures || record.interviewState?.speech_features,
+    };
+    const bundle = generateFHIRBundle(consultationRecord);
 
     // 4b. Deterministic HL7 FHIR R4 structural & cardinality validation
     const validationResult = validateFhirR4Bundle(bundle as unknown as Record<string, unknown>);

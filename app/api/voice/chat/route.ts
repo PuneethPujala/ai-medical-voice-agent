@@ -8,6 +8,8 @@ import { PhiScrubber } from "@/lib/security/phi-scrubber";
 import { conversationManager } from "@/lib/triage/conversation-manager";
 import { clinicalKnowledgeRetriever } from "@/lib/clinical-knowledge/retriever";
 import { generateDoctorTurnResponse } from "@/lib/ai/clinical-llm";
+import { splitIntoSpeechChunks } from "@/lib/audio/sentence-splitter";
+import { IncrementalStreamValidator } from "@/lib/ai/stream-validator";
 import { hospitalRagService } from "@/lib/care-network/hospital-rag";
 import { buildProvenanceEvidenceFromClinicalState } from "@/lib/agents/provenance";
 import { extractSubfieldState, detectQuestionTargetSlot, controlledFactReconciliationEngine } from "@/lib/triage/clinical-state";
@@ -68,8 +70,14 @@ export async function POST(request: Request) {
       interruptedAgent = "",
       userLocation,
       locationPermission,
+      stream: clientWantsStream = false,
     } = body;
     const encounterId = rawEncounterId || consultationId;
+    const isStreamRequested = Boolean(
+      clientWantsStream ||
+      request.headers.get("accept")?.includes("text/event-stream")
+    );
+    let inferredSubject: "self" | "mother" | "child" | "third_party" = "self";
 
     // 2. Abuse Protection: Enforce strict payload constraints before expensive AI reasoning
     if (!message || typeof message !== "string" || !message.trim()) {
@@ -118,6 +126,87 @@ export async function POST(request: Request) {
         payload.doctorReply = PhiScrubber.rehydrate(payload.doctorReply, phiVault);
       }
       return NextResponse.json(payload, { status, headers });
+    };
+
+    const buildSseResponse = (payload: any) => {
+      const encoder = new TextEncoder();
+      const rehydratedReply = payload && payload.doctorReply
+        ? PhiScrubber.rehydrate(payload.doctorReply, phiVault)
+        : "";
+      if (payload) {
+        payload.doctorReply = rehydratedReply;
+      }
+
+      const isEmergency = Boolean(
+        payload?.triage?.isEmergency ||
+        payload?.triage?.triageLevel === "emergency" ||
+        (typeof preCheck !== "undefined" && (preCheck?.immediate_danger || (preCheck?.pre_safety_flags && preCheck.pre_safety_flags.length > 0)))
+      );
+
+      const stream = new ReadableStream({
+        start(controller) {
+          const emit = (event: string, data: any) => {
+            const chunkText = `event: ${event}\ndata: ${typeof data === "string" ? data : JSON.stringify(data)}\n\n`;
+            controller.enqueue(encoder.encode(chunkText));
+          };
+
+          if (isEmergency) {
+            emit("emergency", {
+              isEmergency: true,
+              directive: rehydratedReply || "This is a life-threatening medical emergency. Please call 112 or 108 immediately or proceed to the nearest emergency department right now.",
+              firedRules: payload?.triage?.redFlagsTriggered || (typeof preCheck !== "undefined" ? preCheck?.pre_safety_flags : []) || [],
+              doctor: payload?.doctor,
+            });
+          } else if (rehydratedReply) {
+            const rawChunks = splitIntoSpeechChunks(rehydratedReply);
+            const validator = new IncrementalStreamValidator({
+              patientUtterance: cleanMsg,
+              targetSubject: inferredSubject,
+              isEmergency: false,
+            });
+
+            for (let i = 0; i < rawChunks.length; i++) {
+              const isFinal = i === rawChunks.length - 1;
+              const valRes = validator.evaluateNextChunk(rawChunks[i], isFinal);
+              const textToEmit = (valRes.isValid && valRes.approvedText)
+                ? valRes.approvedText
+                : (valRes.fallbackReply || "Can you tell me more about how you are feeling?");
+
+              emit("chunk", {
+                chunkIndex: i,
+                text: textToEmit,
+                isFirst: i === 0,
+                totalChunks: rawChunks.length,
+              });
+
+              if (!valRes.isValid) {
+                break;
+              }
+            }
+          }
+
+          emit("done", payload);
+          controller.close();
+        },
+      });
+
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/event-stream; charset=utf-8",
+          "Cache-Control": "no-cache, no-transform",
+          "Connection": "keep-alive",
+          "X-Accel-Buffering": "no",
+          "x-fast-loop-latency-ms": String(Math.round(performance.now() - startTime)),
+          "x-phi-redactions": String(redactionCount),
+        },
+      });
+    };
+
+    const buildResponse = (payload: any, status = 200) => {
+      if (isStreamRequested && status === 200) {
+        return buildSseResponse(payload);
+      }
+      return buildJsonResponse(payload, status);
     };
 
     const doctor = getDoctorById(doctorId);
@@ -331,7 +420,7 @@ export async function POST(request: Request) {
     // Only allow greeting, thank-you, or acknowledgment short-circuit when NO red flags exist on current utterance
     if (!hasRedFlagOnCurrentUtterance) {
       const isGreeting =
-        /^(?:hello|hi|hey|good\s+(?:morning|afternoon|evening)|can\s+you\s+hear\s+me|testing|greetings)(?:\s+(?:doctor|dr\b|there|chen|vance|rostova|pendelton|bennett))?[.!?\s]*$/i.test(cleanMsgLower);
+        /^(?:hello|hi|hey|good\s+(?:morning|afternoon|evening)|can\s+you\s+hear\s+me|testing|greetings)(?:\s+(?:doctor|dr\b|there|chen|vance|rostova|pendelton|bennett))?(?:[,.]?\s*(?:can\s+you\s+hear\s+me|mic\s+check|are\s+you\s+there))?[.!?\s]*$/i.test(cleanMsgLower);
 
       const isPureThankYou =
         /^(?:thank\s+you|thanks)(?:\s+(?:so\s+much|very\s+much|a\s+lot))?(?:\s+(?:doctor|dr\b|chen|vance|rostova|pendelton|bennett))?[.!?\s]*$/i.test(cleanMsgLower) ||
@@ -379,7 +468,7 @@ export async function POST(request: Request) {
           }
         }
 
-        return buildJsonResponse({
+        return buildResponse({
           doctorReply: doctorGreeting,
           doctor: {
             id: doctor.id,
@@ -435,7 +524,7 @@ export async function POST(request: Request) {
           }
         }
 
-        return buildJsonResponse({
+        return buildResponse({
           doctorReply: closingDoctorReply,
           doctor: {
             id: doctor.id,
@@ -483,7 +572,7 @@ export async function POST(request: Request) {
 
     // Resolve target patient profile strictly scoped to authenticated user
     let activeProfile: PatientProfile | null = null;
-    let inferredSubject: "self" | "mother" | "child" | "third_party" = "self";
+    inferredSubject = "self";
 
     if (effectiveUserId !== "unauthenticated") {
       const resolved = await PatientProfileService.resolveTargetPatientProfile(
@@ -1064,7 +1153,7 @@ export async function POST(request: Request) {
         );
       }
 
-      return buildJsonResponse({
+      return buildResponse({
         doctorReply: activeDoctorReply,
         doctor: {
           id: doctor.id,
@@ -1292,7 +1381,7 @@ export async function POST(request: Request) {
       );
     }
 
-    return buildJsonResponse({
+    return buildResponse({
       doctorReply: finalDoctorReply,
       doctor: {
         id: doctor.id,

@@ -204,7 +204,7 @@ export class EvidenceExtractor {
     // Fever / Chills
     const mentionsFever = /\b(fever|chills|temperature|hot\s+and\s+cold|feverish|sweats?)\b/i.test(lower);
     if (mentionsFever) {
-      const isDenied = /\b(no|nope|not|neither|without|no\s+fever|haven'?t\s+had\s+fever)\b/i.test(lower);
+      const isDenied = /\b(no|nope|not|neither|without|no\s+fever|haven'?t\s+had\s+(?:a\s+|any\s+)?fever|don'?t\s+have\s+(?:a\s+|any\s+)?fever)\b/i.test(lower);
       const status = isDenied ? "absent" : "present";
       const normalizedText = isDenied ? "Denied (No fever)" : "Present (Fever / chills)";
 

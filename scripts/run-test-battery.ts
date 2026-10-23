@@ -25,6 +25,7 @@ export const CANONICAL_TEST_BATTERY: TestSuiteDefinition[] = [
 
   // 2. Concurrency, Durability, and Persistence
   { id: "test:concurrency-durable", file: "tests/security-eval/optimistic-concurrency-durable-state.test.ts", description: "Optimistic Concurrency & Case Versioning" },
+    { id: "test:persistence-audit", file: "tests/verification/persistence-and-audit-integrity.test.ts", description: "Clinical Evidence Ledger, Audit Chaining & Failure-Path Safety" },
   { id: "test:atomic-concurrency", file: "tests/security-eval/atomic-concurrency-idempotency.test.ts", description: "Atomic CAS & Unique Idempotency", requiresDatabase: true },
   { id: "test:durable-audit", file: "tests/security-eval/durable-audit.test.ts", description: "Durable SHA-256 Chained Audit Ledger", requiresDatabase: true },
 
@@ -62,6 +63,7 @@ export const CANONICAL_TEST_BATTERY: TestSuiteDefinition[] = [
   { id: "test:rag", file: "scripts/test-clinical-rag.ts", description: "Deterministic Clinical RAG Engine" },
   { id: "test:context-rag", file: "scripts/test-context-aware-retrieval.ts", description: "Context-Aware Retrieval & Ranking" },
   { id: "test:presentation", file: "scripts/test-presentation-context.ts", description: "Presentation Context & Disease Matching" },
+  { id: "test:medication-safety", file: "tests/triage/medication-safety-engine.test.ts", description: "Deterministic Medication Safety & Contraindication Engine" },
   { id: "test:explanatory", file: "scripts/test-explanatory-clinical-reasoning.ts", description: "Explanatory Clinical Reasoning & Provenance" },
 
   // 7. Multi-Agent Clinical Board
@@ -74,6 +76,7 @@ export const CANONICAL_TEST_BATTERY: TestSuiteDefinition[] = [
   { id: "test:voicestate", file: "scripts/test-voice-state-lifecycle.ts", description: "Voice State Machine Lifecycle & Discard" },
   { id: "test:bargein", file: "scripts/test-bargein.ts", description: "Barge-in Interruption & Playback Invalidation" },
   { id: "test:acceptance", file: "scripts/test-bargein-acceptance.ts", description: "Browser Barge-In End-to-End Acceptance" },
+  { id: "test:safety-streaming", file: "tests/streaming/safety-gated-streaming-and-bargein.test.ts", description: "Safety-Gated Voice Streaming & Deterministic Barge-In Battery" },
   { id: "test:voice-intelligence", file: "tests/voice/conversation-intelligence.test.ts", description: "Multi-Clause Temporal Progression & Non-Destructive Ledger" },
   { id: "test:voice-intake", file: "tests/voice/voice-intake-review.test.ts", description: "Voice Intake State Machine & Transcript Review Safety" },
   { id: "test:multi-turn-concurrency", file: "tests/voice/multi-turn-concurrency.test.ts", description: "Multi-Turn Concurrency & Optimistic Version Synchronization" },
@@ -81,6 +84,7 @@ export const CANONICAL_TEST_BATTERY: TestSuiteDefinition[] = [
 
   // 9. Healthcare Standards & Emergency Dispatch
   { id: "test:fhir", file: "tests/fhir-eval/fhir.test.ts", description: "HL7 FHIR R4 Bundle Validation & Conformance" },
+  { id: "test:fhir-paralinguistic", file: "tests/fhir/paralinguistic-observation.test.ts", description: "HL7 FHIR R4 Paralinguistic Acoustic Observation Conformance" },
   { id: "test:dispatch", file: "tests/emergency-eval/dispatch.test.ts", description: "Emergency Pre-Arrival Dispatch & Audit Hash" },
 ];
 

@@ -42,10 +42,67 @@ export interface SemanticInterpretation {
   isAccessBarrier?: boolean;
   extractedFrequency?: string;
   extractedRiskFactors?: string;
-  newEvidence: Array<{ slot: string; value: string }>;
+  newEvidence: Array<{ slot: string; value: string; assertionStatus?: "present" | "absent" | "uncertain" }>;
   proposals?: FactProposal[];
   ambiguities: string[];
   confidence: number;
+}
+
+/**
+ * Scans a lowercase utterance for a regex match that is NOT negated within its local clause.
+ * Evaluates preceding clause tokens (after clause boundaries like '.', ';', '!', '?', 'but', 'however', 'yet')
+ * for negation tokens ('no', 'not', 'without', 'neither', 'never', 'denies', 'deny', 'free of'),
+ * as well as post-positioned resolution phrases ('yesterday but not now', 'resolved', 'gone').
+ */
+export function findNonNegatedMatch(lowerText: string, regex: RegExp, windowChars = 55): RegExpExecArray | null {
+  regex.lastIndex = 0;
+  let match: RegExpExecArray | null;
+  while ((match = regex.exec(lowerText)) !== null) {
+    const startIndex = match.index;
+    const preceding = lowerText.slice(Math.max(0, startIndex - windowChars), startIndex);
+    const lastBoundary = Math.max(
+      preceding.lastIndexOf("."),
+      preceding.lastIndexOf(";"),
+      preceding.lastIndexOf("!"),
+      preceding.lastIndexOf("?"),
+      preceding.search(/\b(?:but|however|yet)\b/i)
+    );
+    const clausePrefix = lastBoundary >= 0 ? preceding.slice(lastBoundary) : preceding;
+    const preNegated = /\b(?:no|not|without|neither|never|denies|deny|free\s+of)\b/i.test(clausePrefix);
+
+    const following = lowerText.slice(startIndex, Math.min(lowerText.length, startIndex + 50));
+    const postNegated = /\b(?:yesterday|past|earlier|before)\b.*?\b(?:not\s+now|resolved|gone|settled)\b/i.test(following) ||
+                        /^[a-z\s,]{0,30}\b(?:not\s+now|is\s+gone|has\s+resolved|resolved|gone|settled)\b/i.test(following);
+
+    if (!preNegated && !postNegated) {
+      return match;
+    }
+  }
+  return null;
+}
+
+/**
+ * Evaluates whether a matched symptom occurrence is qualified by epistemic uncertainty
+ * or hedging within its immediate clause or conversational window (e.g. "maybe", "might have",
+ * "not sure", "hard to tell", "possibly").
+ */
+export function isHedgedMatch(lowerText: string, match: RegExpExecArray, windowChars = 55): boolean {
+  const startIndex = match.index;
+  const preceding = lowerText.slice(Math.max(0, startIndex - windowChars), startIndex);
+  const lastBoundary = Math.max(
+    preceding.lastIndexOf("."),
+    preceding.lastIndexOf(";"),
+    preceding.lastIndexOf("!"),
+    preceding.lastIndexOf("?"),
+    preceding.search(/\b(?:but|however|yet)\b/i)
+  );
+  const clausePrefix = lastBoundary >= 0 ? preceding.slice(lastBoundary) : preceding;
+  const preHedged = /\b(?:maybe|might(?:\s+have)?|could\s+be|possibly|possible|perhaps|suspect|guess|i\s+think|wondering\s+if|not\s+sure\s+if|hard\s+to\s+tell\s+if|unclear\s+if)\b/i.test(clausePrefix);
+
+  const following = lowerText.slice(startIndex, Math.min(lowerText.length, startIndex + 55));
+  const postHedged = /\b(?:not\s+(?:really\s+)?sure|hard\s+to\s+(?:say|tell)|maybe|perhaps|sort\s+of|kind\s+of|unclear)\b/i.test(following);
+
+  return preHedged || postHedged;
 }
 
 export class ConversationInterpreter {
@@ -70,7 +127,7 @@ export class ConversationInterpreter {
     const lower = text.toLowerCase();
 
     // 1. Detect Small Talk / Greetings
-    const hasClinicalKeywords = /\b(pain|tightness|pressure|ache|hurt|droop|stroke|fever|cough|breath|dizzy|numb|bleeding|nausea|vomit|symptom|chest|arm|head|stomach|belly|throat|rash|swelling)\b/i.test(lower);
+    const hasClinicalKeywords = /\b(pain|tightness|pressure|flutter|ache|hurt|droop|stroke|fever|feverish|temperature|chills|cough|breath|dizzy|numb|weak|weakness|hoarse|voice|bleeding|nausea|vomit|symptom|chest|arm|head|stomach|belly|throat|rash|swelling|stiff|photophob)\b/i.test(lower);
     if (
       !hasClinicalKeywords &&
       (/^(hello|hi|hey|good\s+(morning|afternoon|evening)|can\s+you\s+hear\s+me|testing|greetings)[.!?\s]*$/i.test(lower) ||
@@ -336,7 +393,7 @@ export class ConversationInterpreter {
     const isUncertainty =
       /^(?:i\s+don'?t\s+know|not\s+sure|hard\s+to\s+tell|no\s+idea|can'?t\s+remember|not\s+really\s+sure|really\s+not\s+sure)[.!?\s]*$/i.test(lower) ||
       /\b(i\s+don'?t\s+know|not\s+(?:really\s+)?sure|(?:really\s+)?not\s+sure|hard\s+to\s+(?:say|tell)|can(?:not|'?t)\s+tell|cannot\s+say|no\s+idea|can'?t\s+remember)\b/i.test(lower);
-    if (isUncertainty) {
+    if (isUncertainty && !hasClinicalKeywords) {
       return {
         rawUtterance: text,
         intent: "uncertainty_or_unknown",
@@ -480,38 +537,92 @@ export class ConversationInterpreter {
 
       // Check Swallowing Difficulty slot
       if (targetSlot === "swallowing_difficulty") {
-        const isDenied = /\b(no|nope|not|neither|no\s+trouble|can\s+swallow|fine)\b/i.test(lower);
-        const val = isDenied ? "denied" : "difficulty swallowing";
-        return {
-          rawUtterance: text,
-          intent: "answer_pending_question",
-          resolvedQuestionId: pendingQuestion.id,
-          resolvedSlot: "swallowing_difficulty",
-          resolvedValue: val,
-          isConfirmationOrRepetition: false,
-          isEmergencyInquiry: false,
-          newEvidence: [{ slot: "swallowing_difficulty", value: val }],
-          ambiguities: [],
-          confidence: 0.95,
-        };
+        const hasSpecificDenial =
+          /\b(?:no|not|neither|without|no\s+trouble|no\s+problem|no\s+issue|can\s+swallow\s+(?:fine|ok|normally))\s+(?:trouble\s+swallowing|difficulty\s+swallowing|problems?\s+swallowing|dysphagia)\b/i.test(lower) ||
+          /^(?:no|nope|not\s+really|neither|none|nothing|nothing\s+with\s+that|nothing\s+like\s+that|no\s+(?:trouble|problem|issue)\s+with\s+that|none\s+of\s+that)[.!?\s]*$/i.test(lower) ||
+          /\b(?:nothing\s+with\s+that|nothing\s+like\s+that|no\s+trouble\s+with\s+that|no\s+issues?\s+with\s+that|none\s+of\s+that|swallow(?:ing)?\s+is\s+(?:fine|ok|normal)|can\s+swallow\s+(?:fine|liquids|normally))\b/i.test(lower);
+        const hasSpecificComplaint = /\b(trouble\s+swallowing|difficulty\s+swallowing|hard\s+to\s+swallow|cannot\s+swallow|can't\s+swallow|choking|dysphagia)\b/i.test(lower);
+        const hasOdynophagiaOnly = /\b(?:hurts?|painful|pain|burning|sharp)\s+(?:when\s+(?:i\s+)?swallow|to\s+swallow|swallowing)\b/i.test(lower) ||
+          /\b(?:when\s+(?:i\s+)?swallow|swallowing)\s+(?:it\s+)?(?:hurts?|is\s+painful)\b/i.test(lower);
+        const hasAffirmative = /^(?:yes|yeah|yep|definitely|i do|i am|it does|it is|somewhat|a lot|very much)[.!?\s]*$/i.test(lower) ||
+          (/\b(?:yes|yeah|yep)\b/i.test(lower) && /\b(?:swallow|liquid|saliva|stuck)\b/i.test(lower));
+
+        if (hasSpecificDenial) {
+          return {
+            rawUtterance: text,
+            intent: "answer_pending_question",
+            resolvedQuestionId: pendingQuestion.id,
+            resolvedSlot: "swallowing_difficulty",
+            resolvedValue: "denied",
+            isConfirmationOrRepetition: false,
+            isEmergencyInquiry: false,
+            newEvidence: [{ slot: "swallowing_difficulty", value: "denied" }],
+            ambiguities: [],
+            confidence: 0.95,
+          };
+        } else if (hasSpecificComplaint || hasAffirmative) {
+          return {
+            rawUtterance: text,
+            intent: "answer_pending_question",
+            resolvedQuestionId: pendingQuestion.id,
+            resolvedSlot: "swallowing_difficulty",
+            resolvedValue: "difficulty swallowing",
+            isConfirmationOrRepetition: false,
+            isEmergencyInquiry: false,
+            newEvidence: [{ slot: "swallowing_difficulty", value: "difficulty swallowing" }],
+            ambiguities: [],
+            confidence: 0.95,
+          };
+        } else if (hasOdynophagiaOnly) {
+          return {
+            rawUtterance: text,
+            intent: "answer_pending_question",
+            resolvedQuestionId: pendingQuestion.id,
+            resolvedSlot: "odynophagia",
+            resolvedValue: "painful swallowing",
+            isConfirmationOrRepetition: false,
+            isEmergencyInquiry: false,
+            newEvidence: [{ slot: "odynophagia", value: "painful swallowing" }],
+            ambiguities: [],
+            confidence: 0.95,
+          };
+        }
       }
 
       // Check Fever slot
       if (targetSlot === "fever") {
-        const isDenied = /\b(no|nope|not|neither|haven'?t|no\s+fever)\b/i.test(lower);
-        const val = isDenied ? "denied" : "fever reported";
-        return {
-          rawUtterance: text,
-          intent: "answer_pending_question",
-          resolvedQuestionId: pendingQuestion.id,
-          resolvedSlot: "fever",
-          resolvedValue: val,
-          isConfirmationOrRepetition: false,
-          isEmergencyInquiry: false,
-          newEvidence: [{ slot: "fever", value: val }],
-          ambiguities: [],
-          confidence: 0.95,
-        };
+        const hasDenial = /\b(no\s+fever|haven'?t\s+had\s+(?:a\s+|any\s+)?fever|don'?t\s+have\s+(?:a\s+|any\s+)?fever|without\s+(?:a\s+|any\s+)?fever|no\s+temperature|denies\s+fever)\b/i.test(lower) ||
+          /^(?:no|nope|neither|none|not\s+really)[.!?\s]*$/i.test(lower);
+        const hasFever = /\b(fever|chills|temperature|feverish|sweats|sweating|burning\s+up)\b/i.test(lower) && !hasDenial;
+        const hasAffirmative = /^(?:yes|yeah|yep|definitely|i do|i have)[.!?\s]*$/i.test(lower);
+
+        if (hasDenial) {
+          return {
+            rawUtterance: text,
+            intent: "answer_pending_question",
+            resolvedQuestionId: pendingQuestion.id,
+            resolvedSlot: "fever",
+            resolvedValue: "denied",
+            isConfirmationOrRepetition: false,
+            isEmergencyInquiry: false,
+            newEvidence: [{ slot: "fever", value: "denied" }],
+            ambiguities: [],
+            confidence: 0.95,
+          };
+        } else if (hasFever || hasAffirmative) {
+          return {
+            rawUtterance: text,
+            intent: "answer_pending_question",
+            resolvedQuestionId: pendingQuestion.id,
+            resolvedSlot: "fever",
+            resolvedValue: "fever reported",
+            isConfirmationOrRepetition: false,
+            isEmergencyInquiry: false,
+            newEvidence: [{ slot: "fever", value: "fever reported" }],
+            ambiguities: [],
+            confidence: 0.95,
+          };
+        }
       }
 
       // Check Severity slot
@@ -627,122 +738,173 @@ export class ConversationInterpreter {
     }
 
     // 6. Generic Symptom Report
-    const extracted: Array<{ slot: string; value: string }> = [];
+    const extracted: Array<{ slot: string; value: string; assertionStatus?: "present" | "absent" | "uncertain" }> = [];
     const opportunisticSev = extractEpisodicSeverity(lower)?.display || extractNumericSeverity(lower);
     if (opportunisticSev) {
-      extracted.push({ slot: "severity", value: opportunisticSev });
+      extracted.push({ slot: "severity", value: opportunisticSev, assertionStatus: "present" });
     }
-        const charRegex = /\b(tightness|pressure|squeezing|crushing|burning|sharp|heavy|elephant|cramp(?:ing)?|colic(?:ky)?|spasm|gnawing)\b/gi;
-    let matchedChar: string | null = null;
-    let charExec: RegExpExecArray | null;
-    while ((charExec = charRegex.exec(lower)) !== null) {
-      const word = charExec[1];
-      const startIndex = charExec.index;
-      const preceding = lower.slice(Math.max(0, startIndex - 45), startIndex);
-      const lastBoundary = Math.max(
-        preceding.lastIndexOf("."),
-        preceding.lastIndexOf(";"),
-        preceding.lastIndexOf("!"),
-        preceding.lastIndexOf("?"),
-        preceding.search(/\b(?:but|however|yet)\b/i)
-      );
-      const clausePrefix = lastBoundary >= 0 ? preceding.slice(lastBoundary) : preceding;
-      const isNegated = /\b(?:no|not|without|neither|never|denies|deny|free\s+of)\b/i.test(clausePrefix);
-      if (!isNegated) {
-        matchedChar = word;
-        break;
-      }
-    }
+    const charRegex = /\b(tightness|pressure|squeezing|crushing|burning|sharp|heavy|elephant|cramp(?:ing)?|colic(?:ky)?|spasm|gnawing|flutter|fluttering)\b/gi;
+    const matchedChar = findNonNegatedMatch(lower, charRegex);
     if (matchedChar) {
-      extracted.push({ slot: "character", value: matchedChar });
+      const hedged = isHedgedMatch(lower, matchedChar);
+      extracted.push({
+        slot: "character",
+        value: hedged ? `${matchedChar[1]} (uncertain)` : matchedChar[1],
+        assertionStatus: hedged ? "uncertain" : "present",
+      });
     }
-    if (/throat\s+pain|sore\s+throat|throat\s+is\s+paining|throat\s+hurts?/i.test(lower)) {
-      extracted.push({ slot: "chief_complaint", value: "throat pain" });
+    if (findNonNegatedMatch(lower, /throat\s+pain|sore\s+throat|throat\s+is\s+paining|throat\s+hurts?/gi)) {
+      extracted.push({ slot: "chief_complaint", value: "throat pain", assertionStatus: "present" });
     }
-    if (/stomach\s+ache|stomach\s+pain|abdominal\s+pain|belly\s+ache/i.test(lower)) {
-      extracted.push({ slot: "chief_complaint", value: "abdominal pain" });
+    if (findNonNegatedMatch(lower, /stomach\s+ache|stomach\s+pain|abdominal\s+pain|belly\s+ache/gi)) {
+      extracted.push({ slot: "chief_complaint", value: "abdominal pain", assertionStatus: "present" });
     }
-    if (/headache|migraine|head\s+pain/i.test(lower)) {
-      extracted.push({ slot: "chief_complaint", value: "headache" });
+    if (findNonNegatedMatch(lower, /headache|migraine|head\s+pain/gi)) {
+      extracted.push({ slot: "chief_complaint", value: "headache", assertionStatus: "present" });
     }
-    if (/voice\s+has\s+been\s+ruined|voice\s+changed|voice\s+is\s+different|lost\s+my\s+voice|hoarse|hoarseness/i.test(lower)) {
-      extracted.push({ slot: "associated_symptoms", value: "voice change" });
+    const feverMatch = findNonNegatedMatch(lower, /\b(fever|feverish|high\s+temperature|temperature|chills|shivering|pyrexia|warm\s+to\s+(?:the\s+)?touch|feeling\s+hot)\b/gi);
+    if (feverMatch) {
+      const hedged = isHedgedMatch(lower, feverMatch);
+      const tempMatch = lower.match(/\b(?:temperature\s+(?:is|of)\s+|measured\s+.*?|is\s+)?(\d{2,3}(?:\.\d)?)\s*(?:degrees?|°|f\b)?/i);
+      const val = hedged
+        ? "possible / subjective fever (unmeasured)"
+        : tempMatch && parseFloat(tempMatch[1]) >= 99
+          ? `measured fever (${tempMatch[1]}°F)`
+          : "fever reported";
+      extracted.push({
+        slot: "fever",
+        value: val,
+        assertionStatus: hedged ? "uncertain" : "present",
+      });
+    } else if (/\b(?:no\s+fever|not\s+feverish|without\s+(?:any\s+)?fever|haven'?t\s+had\s+(?:a\s+|any\s+)?fever|don'?t\s+have\s+(?:a\s+|any\s+)?fever|denies?\s+fever|never\s+had\s+(?:a\s+|any\s+)?fever)\b/i.test(lower)) {
+      extracted.push({
+        slot: "fever",
+        value: "denied",
+        assertionStatus: "absent",
+      });
     }
-    if (/sweat|clammy|diaphoresis/i.test(lower)) {
-      extracted.push({ slot: "associated_symptoms", value: "cold sweats/diaphoresis" });
+    const voiceMatch = findNonNegatedMatch(lower, /voice\s+has\s+been\s+ruined|voice\s+changed|voice\s+is\s+different|lost\s+my\s+voice|hoarse|hoarseness/gi);
+    if (voiceMatch) {
+      const hedged = isHedgedMatch(lower, voiceMatch);
+      extracted.push({
+        slot: "associated_symptoms",
+        value: hedged ? "voice change (uncertain)" : "voice change",
+        assertionStatus: hedged ? "uncertain" : "present",
+      });
+    }
+    if (findNonNegatedMatch(lower, /sweat|clammy|diaphoresis/gi)) {
+      extracted.push({ slot: "associated_symptoms", value: "cold sweats/diaphoresis", assertionStatus: "present" });
     }
     for (const gi of extractGiAssociatedSymptoms(lower)) {
       if (gi.status === "present") {
-        extracted.push({ slot: "associated_symptoms", value: gi.name === "diarrhea" ? "diarrhea" : gi.name.replace(/_/g, " ") });
+        extracted.push({ slot: "associated_symptoms", value: gi.name === "diarrhea" ? "diarrhea" : gi.name.replace(/_/g, " "), assertionStatus: "present" });
       }
     }
-    if (/droop|facial\s+droop/i.test(lower)) {
-      extracted.push({ slot: "neurological_signs", value: "facial droop" });
+    const droopMatch = findNonNegatedMatch(lower, /droop|facial\s+droop/gi);
+    if (droopMatch) {
+      const hedged = isHedgedMatch(lower, droopMatch);
+      extracted.push({
+        slot: "neurological_signs",
+        value: hedged ? "facial droop (uncertain)" : "facial droop",
+        assertionStatus: hedged ? "uncertain" : "present",
+      });
     }
-    if (/slur|trouble\s+speaking|difficulty\s+speaking|slurred/i.test(lower)) {
-      extracted.push({ slot: "neurological_signs", value: "speech difficulty" });
+    const speechMatch = findNonNegatedMatch(lower, /slur|trouble\s+speaking|difficulty\s+speaking|slurred/gi);
+    if (speechMatch) {
+      const hedged = isHedgedMatch(lower, speechMatch);
+      extracted.push({
+        slot: "neurological_signs",
+        value: hedged ? "speech difficulty (uncertain)" : "speech difficulty",
+        assertionStatus: hedged ? "uncertain" : "present",
+      });
     }
     const dizzyRegex = /\b(dizzy|dizziness|lightheaded)\b/gi;
-    let matchedDizzy: string | null = null;
-    let dizzyExec: RegExpExecArray | null;
-    while ((dizzyExec = dizzyRegex.exec(lower)) !== null) {
-      const word = dizzyExec[1];
-      const startIndex = dizzyExec.index;
-      const preceding = lower.slice(Math.max(0, startIndex - 45), startIndex);
-      const lastBoundary = Math.max(
-        preceding.lastIndexOf("."),
-        preceding.lastIndexOf(";"),
-        preceding.lastIndexOf("!"),
-        preceding.lastIndexOf("?"),
-        preceding.search(/\b(?:but|however|yet)\b/i)
-      );
-      const clausePrefix = lastBoundary >= 0 ? preceding.slice(lastBoundary) : preceding;
-      const isNegated = /\b(?:no|not|without|neither|never|denies|deny|free\s+of)\b/i.test(clausePrefix);
-      if (!isNegated) {
-        matchedDizzy = word;
-        break;
-      }
-    }
+    const matchedDizzy = findNonNegatedMatch(lower, dizzyRegex);
     if (matchedDizzy) {
       const isPostural = /\b(when\s+i\s+stand|after\s+i\s+sat|standing\s+up|getting\s+up|sitting\s+for\s+long)\b/i.test(lower);
       extracted.push({
         slot: "character",
-        value: isPostural ? "postural dizziness upon standing" : "dizziness"
+        value: isPostural ? "postural dizziness upon standing" : "dizziness",
+        assertionStatus: "present",
       });
-      extracted.push({ slot: "associated_symptoms", value: "dizziness" });
+      extracted.push({ slot: "associated_symptoms", value: "dizziness", assertionStatus: "present" });
       if (isPostural) {
-        extracted.push({ slot: "onset", value: "intermittent upon standing after prolonged sitting" });
+        extracted.push({ slot: "onset", value: "intermittent upon standing after prolonged sitting", assertionStatus: "present" });
       }
     }
     // Independent extraction for weakness vs numbness — NEVER conflate!
-    const hasWeak = /\b(weak|weakness|cannot\s+lift|arm\s+weak|leg\s+weak|drift|paralysis)\b/i.test(lower) && !/\b(no\s+weak|neither)\b/i.test(lower);
-    const hasNumb = /\b(numb|numbness|pins\s+and\s+needles|tingl(?:ing|e)?)\b/i.test(lower) && !/\b(no\s+numb|neither)\b/i.test(lower);
-    if (hasWeak) {
-      extracted.push({ slot: "neurological_signs", value: "weakness" });
+    const weakMatch = findNonNegatedMatch(lower, /\b(weak|weakness|cannot\s+lift|arm\s+weak|leg\s+weak|drift|paralysis)\b/gi);
+    if (weakMatch) {
+      const hedged = isHedgedMatch(lower, weakMatch);
+      extracted.push({
+        slot: "neurological_signs",
+        value: hedged ? "weakness (uncertain)" : "weakness",
+        assertionStatus: hedged ? "uncertain" : "present",
+      });
     }
-    if (hasNumb) {
-      extracted.push({ slot: "neurological_signs", value: "numbness" });
+    const numbMatch = findNonNegatedMatch(lower, /\b(numb|numbness|pins\s+and\s+needles|tingl(?:ing|e)?)\b/gi);
+    if (numbMatch) {
+      const hedged = isHedgedMatch(lower, numbMatch);
+      extracted.push({
+        slot: "neurological_signs",
+        value: hedged ? "numbness (uncertain)" : "numbness",
+        assertionStatus: hedged ? "uncertain" : "present",
+      });
     }
-    if (/\b(neck\s+stiff|stiff\s+neck|nuchal\s+rigidity)\b/i.test(lower)) {
-      extracted.push({ slot: "neurological_signs", value: "neck stiffness" });
+    if (findNonNegatedMatch(lower, /\b(neck\s+stiff|stiff\s+neck|nuchal\s+rigidity)\b/gi)) {
+      extracted.push({ slot: "neurological_signs", value: "neck stiffness", assertionStatus: "present" });
     }
-    if (/\b(photophob|light\s+sensitiv|bright\s+lights?\s+(?:really\s+)?(?:hurt|bother)|lights?\s+(?:hurt|bother))\b/i.test(lower)) {
-      extracted.push({ slot: "associated_symptoms", value: "photophobia" });
+    if (findNonNegatedMatch(lower, /\b(photophob|light\s+sensitiv|bright\s+lights?\s+(?:really\s+)?(?:hurt|bother)|lights?\s+(?:hurt|bother))\b/gi)) {
+      extracted.push({ slot: "associated_symptoms", value: "photophobia", assertionStatus: "present" });
     }
-
     // Positional exacerbation / orthostatic headache pattern
     if (/\b(?:severe\s+when\s+i\s+stand|worse\s+when\s+standing|standing\s+up\s+and\s+walk)\b/i.test(lower)) {
-      extracted.push({ slot: "severity_pattern", value: "constant baseline, severe upon standing/walking" });
-      extracted.push({ slot: "orthostatic_exacerbation", value: "worsens standing or walking after resting" });
+      extracted.push({ slot: "severity_pattern", value: "constant baseline, severe upon standing/walking", assertionStatus: "present" });
+      extracted.push({ slot: "orthostatic_exacerbation", value: "worsens standing or walking after resting", assertionStatus: "present" });
     }
 
-    const durationMatch = lower.match(/\b(?:for\s+)?(\d+\s*(?:minutes?|hours?|seconds?|days?)|a\s+minute|few\s+seconds|few\s+minutes)\b/i);
-    if (durationMatch) {
-      extracted.push({ slot: "duration", value: `approx. ${durationMatch[0]}` });
+    // Onset timeline
+    const onsetMatch = lower.match(/\b(?:started|began|onset|going\s+on\s+since)\s+(?:about|around|approx\.?|roughly)?\s*(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s*(days?|hours?|weeks?|months?)(?:\s+ago)?\b/i) ||
+                       lower.match(/\b(?:about|around|approx\.?|roughly)\s+(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s*(days?|hours?|weeks?|months?)\s+ago\b/i);
+    if (onsetMatch) {
+      const rawNum = onsetMatch[1].toLowerCase();
+      const numMap: Record<string, string> = { one: "1", two: "2", three: "3", four: "4", five: "5", six: "6", seven: "7", eight: "8", nine: "9", ten: "10" };
+      const numStr = numMap[rawNum] || rawNum;
+      const unit = onsetMatch[2].toLowerCase();
+      const hedged = /\b(i\s+think|think|maybe|about|around|approx|not\s+(?:really\s+)?sure|guess)\b/i.test(lower);
+      extracted.push({
+        slot: "onset",
+        value: `approx. ${numStr} ${unit} ago`,
+        assertionStatus: hedged ? "uncertain" : "present",
+      });
     }
+
+    const rangeDuration = lower.match(/\b(?:for\s+)?(?:maybe|around|about|approx\.?|roughly)?\s*(?:(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s*(?:to|or|-)\s*(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\s*(minutes?|hours?|seconds?|days?|weeks?|months?))\b/i);
+    if (rangeDuration) {
+      const raw1 = rangeDuration[1].toLowerCase();
+      const raw2 = rangeDuration[2].toLowerCase();
+      const numMap: Record<string, string> = { one: "1", two: "2", three: "3", four: "4", five: "5", six: "6", seven: "7", eight: "8", nine: "9", ten: "10" };
+      const num1 = numMap[raw1] || raw1;
+      const num2 = numMap[raw2] || raw2;
+      const unit = rangeDuration[3].toLowerCase();
+      extracted.push({
+        slot: "duration",
+        value: `approx. ${num1}-${num2} ${unit}`,
+        assertionStatus: "uncertain",
+      });
+    } else {
+      const durationMatch = lower.match(/\b(?:for\s+)?(\d+\s*(?:minutes?|hours?|seconds?|days?)|a\s+minute|few\s+seconds|few\s+minutes)\b/i);
+      if (durationMatch) {
+        extracted.push({ slot: "duration", value: `approx. ${durationMatch[0]}`, assertionStatus: "present" });
+      }
+    }
+
     if (/like\s+everytime|every\s+time/i.test(lower)) {
-      extracted.push({ slot: "frequency", value: "occurs essentially every time upon standing" });
+      extracted.push({ slot: "frequency", value: "occurs essentially every time upon standing", assertionStatus: "present" });
     }
+
+    const hasUncertainties = extracted.some(e => e.assertionStatus === "uncertain");
+    const ambiguitiesList = hasUncertainties ? ["Patient reports clinical symptoms with epistemic uncertainty; requires clinical clarification"] : [];
 
     return {
       rawUtterance: text,
@@ -750,12 +912,12 @@ export class ConversationInterpreter {
       isConfirmationOrRepetition: false,
       isEmergencyInquiry: false,
       newEvidence: extracted,
-      ambiguities: [],
-      confidence: 0.85,
+      ambiguities: ambiguitiesList,
+      confidence: hasUncertainties ? 0.75 : 0.85,
     };
   }
 
-  private generateFactProposals(
+    private generateFactProposals(
     interp: SemanticInterpretation,
     rawText: string,
     pendingQuestion: PendingQuestion | null,
@@ -865,15 +1027,34 @@ export class ConversationInterpreter {
     // 4. Evidence extracted from standard clinical interpretation
     for (const ev of interp.newEvidence) {
       const isDenied = ev.value === "denied" || ev.value === "none reported";
-      // Avoid duplicate if already covered by multi-clause or correction
-      if (!proposals.some(p => p.concept === ev.slot)) {
-        proposals.push({
-          concept: ev.slot,
-          value: ev.value,
-          assertionStatus: isDenied ? "absent" : "present",
-          temporalScope: "current",
-          rawSnippet: rawText,
-        });
+      const isUncertain = ev.assertionStatus === "uncertain" || ev.value.includes("(uncertain)") || ev.value.startsWith("possible") || ev.value.startsWith("approx.");
+      const status: "present" | "absent" | "uncertain" = isDenied ? "absent" : isUncertain ? "uncertain" : (ev.assertionStatus || "present");
+
+      const concepts = [ev.slot];
+      if (ev.slot === "neurological_signs") {
+        if (ev.value.includes("weakness")) concepts.push("weakness");
+        if (ev.value.includes("droop")) concepts.push("facial_droop");
+        if (ev.value.includes("speech") || ev.value.includes("slurred")) concepts.push("speech_difficulty");
+      }
+      if (ev.slot === "fever") {
+        concepts.push("subjective_fever");
+      }
+      if (ev.slot === "associated_symptoms" && ev.value.includes("voice")) {
+        concepts.push("voice_character");
+      }
+
+      for (const concept of concepts) {
+        if (!proposals.some(p => p.concept === concept)) {
+          proposals.push({
+            concept,
+            value: ev.value,
+            assertionStatus: status,
+            temporalScope: "current",
+            rawSnippet: rawText,
+            confidence: isUncertain ? 0.7 : 0.95,
+            uncertaintyReason: isUncertain ? "Patient expressed epistemic uncertainty or approximate timeline" : undefined,
+          });
+        }
       }
     }
 

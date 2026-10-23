@@ -20,6 +20,7 @@ import { GET as getConsultationById, PATCH as patchConsultationById } from "../a
 import { DEFAULT_INTERNAL_TEST_SECRET, INTERNAL_TEST_SECRET_HEADER, Role } from "../lib/auth/rbac";
 
 (process.env as Record<string, string | undefined>).NODE_ENV = "test";
+(process.env as Record<string, string | undefined>).INTERNAL_TEST_SECRET = DEFAULT_INTERNAL_TEST_SECRET;
 
 function createTestHeaders(role: Role, userId: string, extra: Record<string, string> = {}) {
   return {
@@ -56,11 +57,11 @@ async function runRealNeonVerification() {
         },
         body: JSON.stringify({
           id: raceEncounterId,
-          patientName: `Concurrent Neon Patient ${i}`,
+          patientName: "Concurrent Neon Patient",
           doctorId: assignedDoctor,
           doctorName: "Dr. Sarah Chen, MD",
           specialty: "Internal Medicine",
-          chiefComplaint: `Concurrent Neon Test complaint iteration ${i}`,
+          chiefComplaint: "Concurrent Neon Test complaint",
           triageLevel: "routine",
           status: "completed_pending_review",
           durationSeconds: 150,

@@ -16,6 +16,8 @@ const eslintConfig = defineConfig([
     "scratch/**",
     "scripts/**",
     "tests/**",
+    "design-taste-frontend/**",
+    "ui-ux-pro-max/**",
     "*.png",
   ]),
   {

@@ -124,15 +124,23 @@ export class AudioPlaybackQueue {
   private interruptReason: string | null = null;
   private playedBuffers: Buffer[] = [];
   private totalPlayedDurationSec: number = 0;
+  private currentSessionToken: number = 0;
   private onPlaybackStartCallback?: (item: AudioPlayItem, timestamp: number) => void;
 
   public setOnPlaybackStart(callback: (item: AudioPlayItem, timestamp: number) => void): void {
     this.onPlaybackStartCallback = callback;
   }
 
-  public enqueue(item: AudioPlayItem): boolean {
+  public getCurrentSessionToken(): number {
+    return this.currentSessionToken;
+  }
+
+  public enqueue(item: AudioPlayItem, sessionToken?: number): boolean {
     if (this.isInterrupted) {
       return false; // Reject new audio if already interrupted
+    }
+    if (sessionToken !== undefined && sessionToken !== this.currentSessionToken) {
+      return false; // Reject stale late-arriving chunk from an older session
     }
     this.queue.push(item);
     return true;
@@ -144,12 +152,15 @@ export class AudioPlaybackQueue {
     this.queue = []; // Immediately drop all pending unplayed audio
   }
 
-  public reset(): void {
+  public reset(newSessionToken?: number): void {
     this.queue = [];
     this.isInterrupted = false;
     this.interruptReason = null;
     this.playedBuffers = [];
     this.totalPlayedDurationSec = 0;
+    if (newSessionToken !== undefined) {
+      this.currentSessionToken = newSessionToken;
+    }
   }
 
   public getStatus(): {

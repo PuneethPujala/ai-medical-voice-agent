@@ -1,4 +1,5 @@
 import { ToolResult } from "../schemas";
+import { screenMedicationSafety } from "../../clinical-knowledge/safety-matrix";
 
 /**
  * BOUNDED SPECIALIST CLINICAL DIAGNOSTIC TOOLS
@@ -299,10 +300,28 @@ export function checkDrugInteractions(params: {
   const meds = (params.currentMedications || []).map(m => m.toLowerCase());
   const proposed = (params.proposedMedications || []).map(m => m.toLowerCase());
 
-  // Nitrates + PDE5 Inhibitors
+  // Deterministic medication safety screening engine invocation
+  const screeningResult = screenMedicationSafety({
+    patientUtterance: params.transcript,
+    candidateAdvice: (params.proposedMedications || []).join(", "),
+    encounterMedications: [...(params.currentMedications || []), ...(params.proposedMedications || [])],
+    clinicalFacts: params.clinicalCondition ? [params.clinicalCondition] : [],
+  });
+
+  for (const alert of screeningResult.alerts) {
+    if (alert.severity === "critical" || alert.actionRequired === "block") {
+      contraindications.push(`CRITICAL [${alert.category.toUpperCase()}]: ${alert.clinicalRationale}`);
+    } else if (alert.severity === "warning") {
+      warnings.push(`WARNING: ${alert.clinicalRationale}`);
+    } else if (alert.severity === "review_needed") {
+      warnings.push(`REVIEW NEEDED: ${alert.clinicalRationale}`);
+    }
+  }
+
+  // Nitrates + PDE5 Inhibitors (Defense in depth)
   const hasNitrate = meds.some(m => m.includes("nitr")) || proposed.some(m => m.includes("nitr")) || /nitroglycerin|nitrate|nitrostat/i.test(text);
   const hasPde5 = meds.some(m => m.includes("sildenafil") || m.includes("tadalafil") || m.includes("viagra") || m.includes("cialis")) || /sildenafil|viagra|tadalafil|cialis|revatio|levitra/i.test(text);
-  if (hasNitrate && hasPde5) {
+  if (hasNitrate && hasPde5 && !contraindications.some(c => c.toLowerCase().includes("nitrate"))) {
     contraindications.push("FATAL CONTRAINDICATION: Nitrates co-administered with PDE-5 inhibitors can cause refractory hemodynamic collapse / fatal hypotension.");
   }
 
@@ -310,6 +329,8 @@ export function checkDrugInteractions(params: {
   if ((params.clinicalCondition?.toLowerCase().includes("hemorrhag") || text.includes("hemorrhag")) && (proposed.some(m => m.includes("tpa") || m.includes("alteplase") || m.includes("thrombolytic")) || /tpa|alteplase|thrombolytic/i.test(text))) {
     contraindications.push("ABSOLUTE CONTRAINDICATION: Thrombolytic therapy in active intracranial hemorrhage.");
   }
+
+  const safeToAdminister = screeningResult.isSafe && contraindications.length === 0;
 
   const t1 = typeof performance !== "undefined" ? performance.now() : Date.now();
 
@@ -319,11 +340,15 @@ export function checkDrugInteractions(params: {
     latency_ms: Math.round(t1 - t0),
     clinical_summary: contraindications.length > 0
       ? `CRITICAL CONTRAINDICATION DETECTED: ${contraindications[0]}`
+      : screeningResult.safetyStatus === "review_needed"
+      ? "MEDICATION SAFETY REVIEW NEEDED: Incomplete history or unidentified substance requires pharmacist review."
       : "No fatal drug-drug interactions or absolute contraindications flagged.",
     output: {
-      safeToAdminister: contraindications.length === 0,
+      safeToAdminister,
+      safetyStatus: screeningResult.safetyStatus,
       contraindications,
-      warnings
+      warnings,
+      requiresClinicianReview: screeningResult.requiresClinicianReview,
     }
   };
 }
