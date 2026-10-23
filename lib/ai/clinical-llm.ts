@@ -960,7 +960,7 @@ export async function generateDoctorTurnResponse(
             model: activeModel,
             max_tokens: tokenLimit,
             temperature: 0.2,
-            timeoutMs: 12000,
+            timeoutMs: 8000,
           });
         } catch (groqErr: any) {
           const backupModel = process.env.GROQ_BACKUP_MODEL || "openai/gpt-oss-120b";
@@ -972,7 +972,7 @@ export async function generateDoctorTurnResponse(
               model: backupModel,
               max_tokens: backupLimit,
               temperature: 0.2,
-              timeoutMs: 12000,
+              timeoutMs: 8000,
             });
           } else {
             throw groqErr;
@@ -982,7 +982,7 @@ export async function generateDoctorTurnResponse(
         completion = await nvidiaClient.createChatCompletion(messages, {
           max_tokens: 420,
           temperature: 0.2,
-          timeoutMs: 20000,
+          timeoutMs: 5000,
         });
       }
 
@@ -1089,26 +1089,31 @@ export async function generateDoctorTurnResponse(
             });
             continue;
           }
-          return {
-            reply: effectiveFallback,
-            provider: "fallback",
-            responseProvenance: "validated_fallback",
-            model: activeModel,
-            latencyMs: totalLatency,
-            liveGenerated: false,
-            fallbackReason: `target_slot_mismatch: ${targetValResult.reason}`,
-            intendedTargets: [plannedTopic || "symptoms"],
-            telemetry: {
+          // On attempt 2, if it is merely multi-target without violating mustAvoidAsking, keep the live response
+          if (targetValResult.reason?.startsWith("LLM_MULTIPLE_CLINICAL_TARGETS")) {
+            console.warn(`[MedVoice Validator] Soft-permitting multi-target inquiry on attempt 2 to preserve conversational fluidity.`);
+          } else {
+            return {
+              reply: effectiveFallback,
               provider: "fallback",
+              responseProvenance: "validated_fallback",
               model: activeModel,
-              liveGenerated: false,
               latencyMs: totalLatency,
-              fallbackUsed: true,
-              fallbackReason: `target_slot_mismatch: ${detectedTopic} vs ${plannedTopic}`,
-              telemetryIntegrityHash: createTelemetryIntegrityHash(turnId, "fallback", activeModel, totalLatency, new Date().toISOString()),
-              timestamp: new Date().toISOString(),
-            },
-          };
+              liveGenerated: false,
+              fallbackReason: `target_slot_mismatch: ${targetValResult.reason}`,
+              intendedTargets: [plannedTopic || "symptoms"],
+              telemetry: {
+                provider: "fallback",
+                model: activeModel,
+                liveGenerated: false,
+                latencyMs: totalLatency,
+                fallbackUsed: true,
+                fallbackReason: `target_slot_mismatch: ${detectedTopic} vs ${plannedTopic}`,
+                telemetryIntegrityHash: createTelemetryIntegrityHash(turnId, "fallback", activeModel, totalLatency, new Date().toISOString()),
+                timestamp: new Date().toISOString(),
+              },
+            };
+          }
         }
       }
 

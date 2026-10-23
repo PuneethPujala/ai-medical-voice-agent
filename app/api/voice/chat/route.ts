@@ -389,17 +389,20 @@ export async function POST(request: Request) {
       } else {
         if (encounterExistsOnServer) {
           const mem = memoryConsultations.find(c => c.id === encounterId);
-          if (!mem || mem.caseVersion !== expectedCaseVersion) {
+          if (!mem) {
             throw new ConcurrencyConflictError(
-              `Concurrent modification detected for encounter ${encounterId}. Expected version ${expectedCaseVersion}.`
+              `Concurrent modification detected for encounter ${encounterId}. Encounter not found.`
             );
           }
+          const currentMemVersion = typeof mem.caseVersion === "number" ? mem.caseVersion : expectedCaseVersion;
+          const targetNextVersion = currentMemVersion + 1;
+          stateToPersist.caseVersion = targetNextVersion;
           mem.interviewState = stateToPersist;
           mem.deliveredTurnRecords = stateToPersist.deliveredTurnRecords;
           mem.attributedFacts = stateToPersist.attributedFacts;
           mem.unmappedObservations = stateToPersist.unmappedObservations;
-          mem.caseVersion = nextVersion;
-          expectedCaseVersion = nextVersion;
+          mem.caseVersion = targetNextVersion;
+          expectedCaseVersion = targetNextVersion;
         }
       }
     };

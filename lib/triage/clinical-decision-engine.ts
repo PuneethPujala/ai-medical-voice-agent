@@ -243,9 +243,15 @@ export class ClinicalDecisionEngine {
     const mentionsLeg = /\b(leg|foot|walk|feet|stumble|fall)\b/i.test(lower) && !lower.includes("no leg");
     const mentionsNumbness = /\b(numb|tingling|pins\s+and\s+needles)\b/i.test(lower);
     const mentionsMuffled = /\b(muffled|hot potato|something in (?:my )?mouth|potato in (?:my )?mouth)\b/i.test(lower);
+    const mentionsThroat = /\b(throat|sore\s+throat|throat\s+pain|swallow|trouble\s+swallowing|pharynx)\b/i.test(lower);
+    const mentionsFever = /\b(fever|chills|high\s+temp|temperature|feverish|shiver)\b/i.test(lower);
+    const mentionsRespiratory = /\b(cough|coughing|shortness\s+of\s+breath|breath|wheez|congest)\b/i.test(lower);
+    const mentionsGI = /\b(nausea|vomit|stomach\s+pain|belly\s+pain|abdomen|loose\s+motions?|diarrhea|cramps?)\b/i.test(lower);
+    const mentionsChest = /\b(chest|heart\s+racing|palpitation|chest\s+tight|chest\s+pain)\b/i.test(lower);
+    const mentionsBodyAche = /\b(body\s+(?:ache|pain)|fatigue|tired|weakness|malaise|muscle\s+pain)\b/i.test(lower);
 
-    const hasNewSymptomIntro = /\b(i\s+also\s+(?:feel|have|noticed?|got)|and\s+also|another\s+thing|now\s+i\s+(?:feel|have))\b/i.test(lower);
-    if (mentionsHeadBurning || mentionsVision || mentionsHeadache || mentionsLeg || mentionsNumbness || mentionsMuffled || hasNewSymptomIntro) {
+    const hasNewSymptomIntro = /\b(i\s+also\s+(?:feel|have|noticed?|got)|and\s+also|another\s+thing|now\s+i\s+(?:feel|have)|along\s+with|having\s+this|experiencing)\b/i.test(lower);
+    if (mentionsHeadBurning || mentionsVision || mentionsHeadache || mentionsLeg || mentionsNumbness || mentionsMuffled || mentionsThroat || mentionsFever || mentionsRespiratory || mentionsGI || mentionsChest || mentionsBodyAche || hasNewSymptomIntro) {
       const symptoms: Array<{ name: string; laterality?: string; location?: string }> = [];
       if (mentionsHeadBurning) symptoms.push({ name: "burning sensation on head/scalp", location: "head" });
       if (mentionsVision) symptoms.push({ name: "visual disturbance / blurry vision", location: "eyes" });
@@ -253,6 +259,16 @@ export class ClinicalDecisionEngine {
       if (mentionsLeg) symptoms.push({ name: "lower extremity weakness / trouble walking", location: "leg" });
       if (mentionsNumbness) symptoms.push({ name: "numbness / paresthesia", location: "extremity" });
       if (mentionsMuffled) symptoms.push({ name: "muffled voice", location: "throat" });
+      if (mentionsThroat) symptoms.push({ name: "sore throat / swallowing discomfort", location: "throat" });
+      if (mentionsFever) symptoms.push({ name: "fever / chills", location: "systemic" });
+      if (mentionsRespiratory) symptoms.push({ name: "cough / breathing discomfort", location: "respiratory" });
+      if (mentionsGI) symptoms.push({ name: "gastrointestinal discomfort / nausea", location: "abdomen" });
+      if (mentionsChest) symptoms.push({ name: "chest discomfort", location: "chest" });
+      if (mentionsBodyAche) symptoms.push({ name: "generalized body ache / fatigue", location: "systemic" });
+
+      if (symptoms.length === 0 && hasNewSymptomIntro) {
+        symptoms.push({ name: "reported symptom", location: "general" });
+      }
 
       return {
         intent: "NEW_SYMPTOM",
@@ -1115,6 +1131,55 @@ function extractVerbatimSymptomPhrase(text: string, defaultPhrase = "chest pain"
           specialty: "Internal Medicine & Critical Care Lead"
         };
       }
+
+      if (symName.includes("throat") || symName.includes("swallow")) {
+        const reply = "I noted the throat pain and swallowing difficulty. Are you able to swallow liquids and saliva safely, and have you noticed any high fever or difficulty breathing?";
+        return {
+          action: "EXPLORE_NEW_SYMPTOM",
+          spokenDoctorReply: this.guardAgainstRepetition(reply, recentReplies, "throat symptom"),
+          doctorName: "Dr. Sarah Chen, MD",
+          specialty: "Internal Medicine & Primary Triage"
+        };
+      }
+
+      if (symName.includes("fever") || symName.includes("chills")) {
+        const reply = "I understand you are experiencing a fever. Have you checked your temperature, and are you having any chills, body aches, or a rash?";
+        return {
+          action: "EXPLORE_NEW_SYMPTOM",
+          spokenDoctorReply: this.guardAgainstRepetition(reply, recentReplies, "fever symptom"),
+          doctorName: "Dr. Sarah Chen, MD",
+          specialty: "Internal Medicine & Primary Triage"
+        };
+      }
+
+      if (symName.includes("gastrointestinal") || symName.includes("nausea") || symName.includes("vomit") || symName.includes("stomach") || symName.includes("abdomen")) {
+        const reply = "Thank you for sharing that. Where in your belly is the discomfort located, and are you able to keep water or fluids down without vomiting?";
+        return {
+          action: "EXPLORE_NEW_SYMPTOM",
+          spokenDoctorReply: this.guardAgainstRepetition(reply, recentReplies, "gi symptom"),
+          doctorName: "Dr. Sarah Chen, MD",
+          specialty: "Internal Medicine & Primary Triage"
+        };
+      }
+
+      if (symName.includes("cough") || symName.includes("breathing") || symName.includes("respiratory")) {
+        const reply = "I noted your cough and breathing concerns. Are you feeling short of breath while sitting still, or experiencing any wheezing or chest tightness?";
+        return {
+          action: "EXPLORE_NEW_SYMPTOM",
+          spokenDoctorReply: this.guardAgainstRepetition(reply, recentReplies, "respiratory symptom"),
+          doctorName: "Dr. Sarah Chen, MD",
+          specialty: "Internal Medicine & Primary Triage"
+        };
+      }
+
+      // General dynamic new symptom acknowledgment
+      const reply = `Thank you for telling me about that symptom. How would you describe the intensity on a scale of 1 to 10, and does anything seem to make it better or worse?`;
+      return {
+        action: "EXPLORE_NEW_SYMPTOM",
+        spokenDoctorReply: this.guardAgainstRepetition(reply, recentReplies, "generic symptom inquiry"),
+        doctorName: "Dr. Sarah Chen, MD",
+        specialty: "Internal Medicine & Primary Triage"
+      };
     }
 
     // CASE 7: Initial Turn or Answering Questions — Methodical Clinical Progression
@@ -1224,7 +1289,13 @@ function extractVerbatimSymptomPhrase(text: string, defaultPhrase = "chest pain"
     }
 
     // Ambulatory / General intake - Evidence-first graduated inquiry
-    if (!state.slots.onset) {
+    const onsetAlreadyAsked = recentReplies.some(r => /first begin|start after|when did|how long/i.test(r)) ||
+      Boolean(state.conversationMemory?.questionsAlreadyAsked?.includes("onset") || state.conversationMemory?.questionsAlreadyAsked?.includes("onset_time"));
+
+    if (!state.slots.onset && !onsetAlreadyAsked) {
+      if (state.conversationMemory && !state.conversationMemory.questionsAlreadyAsked.includes("onset")) {
+        state.conversationMemory.questionsAlreadyAsked.push("onset");
+      }
       const defaultReply = "I want to make sure we evaluate this carefully. When did this discomfort first begin, and did it start after an injury or sudden strain?";
       return {
         action: "ADVANCE_INTERVIEW",
@@ -1336,6 +1407,31 @@ function extractVerbatimSymptomPhrase(text: string, defaultPhrase = "chest pain"
       "closing guidance": [
         "You are very welcome! Please rest, continue sipping fluids, and have someone check in on you. Don't hesitate to reach back out if your symptoms worsen.",
         "Take care, and please keep resting. If you notice any new or worsening symptoms, please seek prompt medical care."
+      ],
+      "general onset inquiry": [
+        "To help me understand your timeline, approximately when did these symptoms first start?",
+        "Have these symptoms been going on for a few hours, or over several days?",
+        "Did this begin suddenly out of the blue, or build up gradually over time?"
+      ],
+      "throat symptom": [
+        "Are you having any severe pain when you swallow, or trouble getting fluids down?",
+        "Have you noticed any voice changes or feeling like something is stuck in your throat?"
+      ],
+      "fever symptom": [
+        "How high has the fever reached, and have you taken any fever-reducing medication today?",
+        "Are you having any chills, sweating, or body aches alongside the fever?"
+      ],
+      "gi symptom": [
+        "Is the pain cramping, sharp, or dull, and are you having any vomiting or diarrhea?",
+        "Have you been able to drink water or electrolyte fluids without nausea?"
+      ],
+      "respiratory symptom": [
+        "Is the cough dry or producing phlegm, and are you having any chest pain when breathing deeply?",
+        "Does the shortness of breath get worse when walking or lying flat?"
+      ],
+      "generic symptom inquiry": [
+        "Thank you for that context. Could you describe how that feels and how it is affecting your day?",
+        "Noted. To help complete our picture, how has this been affecting your normal daily routine and energy levels?"
       ],
       "reassurance non-emergency": [
         "I understand why you are worried, but based on what you have described, this is not an immediate life-threatening emergency. Staying seated and sipping electrolyte fluids is your best next step.",

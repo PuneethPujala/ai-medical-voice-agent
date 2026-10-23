@@ -141,16 +141,60 @@ export async function POST(request: Request) {
       );
     }
 
-    // Forward multipart form data to FastAPI STT service with local fallback failover
+    // Forward audio to Groq Whisper STT first if API key is present, otherwise FastAPI
     const fileName = (file as any).name || "utterance.webm";
-    const primaryUrl = getFastApiSttUrl();
-    const localFallbackUrl = "http://127.0.0.1:8000/api/v1/stt";
-    const candidateUrls = [primaryUrl];
-    if (primaryUrl !== localFallbackUrl) {
-      candidateUrls.push(localFallbackUrl);
+    let sttResult: { ok: boolean; status: number; data?: any; errorDetail?: string } | null = null;
+
+    const groqApiKey = process.env.GROQ_API_KEY;
+    if (groqApiKey && groqApiKey.trim()) {
+      try {
+        const groqForm = new FormData();
+        groqForm.append("file", file, fileName);
+        groqForm.append("model", "whisper-large-v3-turbo");
+        if (prompt) {
+          groqForm.append("prompt", prompt);
+        }
+        groqForm.append("response_format", "json");
+
+        const groqController = new AbortController();
+        const groqTimeout = setTimeout(() => groqController.abort(), 10000);
+
+        const groqRes = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${groqApiKey.trim()}`,
+          },
+          body: groqForm,
+          signal: groqController.signal,
+        });
+        clearTimeout(groqTimeout);
+
+        if (groqRes.ok) {
+          const groqData = await groqRes.json();
+          sttResult = {
+            ok: true,
+            status: 200,
+            data: {
+              transcript: groqData.text || "",
+              engine: "groq_whisper_large_v3_turbo",
+            },
+          };
+        } else {
+          const errText = await groqRes.text().catch(() => "");
+          console.warn(`[Groq Whisper STT] Returned status ${groqRes.status}: ${errText}`);
+        }
+      } catch (groqErr: any) {
+        console.warn("[Groq Whisper STT] Failed, attempting local fallback:", groqErr?.message || groqErr);
+      }
     }
 
-    let sttResult: { ok: boolean; status: number; data?: any; errorDetail?: string } | null = null;
+    if (!sttResult || !sttResult.ok) {
+      const primaryUrl = getFastApiSttUrl();
+      const localFallbackUrl = "http://127.0.0.1:8000/api/v1/stt";
+      const candidateUrls = [primaryUrl];
+      if (primaryUrl !== localFallbackUrl) {
+        candidateUrls.push(localFallbackUrl);
+      }
 
     for (let i = 0; i < candidateUrls.length; i++) {
       const targetUrl = candidateUrls[i];
@@ -206,6 +250,7 @@ export async function POST(request: Request) {
         };
         break;
       }
+    }
     }
 
     if (!sttResult || !sttResult.ok) {

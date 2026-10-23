@@ -608,6 +608,7 @@ export default function ConsultPage() {
   // Encounter Persistence & Review State Machine
   const stableEncounterIdRef = useRef<string>("");
   const serverEncounterCreatedRef = useRef<boolean>(false);
+  const serverEncounterPromiseRef = useRef<Promise<boolean> | null>(null);
   const currentCaseVersionRef = useRef<number>(1);
   const isPersistingEncounterRef = useRef<boolean>(false);
   const [currentEncounterId, setCurrentEncounterId] = useState<string>("");
@@ -1313,13 +1314,13 @@ export default function ConsultPage() {
       }
     };
 
-    // Safety timeout: If playback doesn't start within 10s (e.g. autoplay policy blocked or network stall), force text display
+    // Safety timeout: If playback doesn't start within 4s (e.g. autoplay policy blocked or network stall), force text display
     const safetyCommitTimer = setTimeout(() => {
       if (playbackSessionTokenRef.current === token && !textCommitted) {
         console.warn(`[MedVoice Audio Safety] Playback timeout reached; committing text transcript to preserve UX.`);
         commitDoctorText();
       }
-    }, 10000);
+    }, 4000);
 
     const handleSpeechEnd = () => {
       clearTimeout(safetyCommitTimer);
@@ -1469,35 +1470,48 @@ export default function ConsultPage() {
     const t_tts_started = performance.now();
 
     const fetchTTSChunk = async (chunkText: string): Promise<{ blob: Blob; engineHeader: string; t_received: number; modelWarmupMs?: number | null }> => {
-      const response = await fetch("/api/voice/tts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          text: chunkText,
-          doctorId: targetDoctor.id,
-          speed: targetDoctor.voiceProfile?.speed || 0.96,
-        }),
-      });
+      const abortCtrl = new AbortController();
+      const timeoutId = setTimeout(() => {
+        try { abortCtrl.abort("TTS_TIMEOUT"); } catch {}
+      }, 3500);
 
-      const t_received = performance.now();
+      try {
+        const response = await fetch("/api/voice/tts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            text: chunkText,
+            doctorId: targetDoctor.id,
+            speed: targetDoctor.voiceProfile?.speed || 0.96,
+          }),
+          signal: abortCtrl.signal,
+        });
+        clearTimeout(timeoutId);
 
-      const contentType = response.headers.get("content-type") || "";
-      if (contentType.includes("application/json")) {
-        const data = await response.json();
-        if (data.fallbackRequired) {
-          throw new Error(`Fallback signal: ${data.reason}`);
+        const t_received = performance.now();
+
+        const contentType = response.headers.get("content-type") || "";
+        if (contentType.includes("application/json")) {
+          const data = await response.json().catch(() => ({}));
+          if (data.fallbackRequired) {
+            throw new Error(`Fallback signal: ${data.reason}`);
+          }
         }
-      }
 
-      if (!response.ok) {
-        throw new Error(`TTS route returned status ${response.status}`);
-      }
+        if (!response.ok) {
+          throw new Error(`TTS route returned status ${response.status}`);
+        }
 
-      const blob = await response.blob();
-      const engineHeader = response.headers.get("X-TTS-Engine") || (targetDoctor.voiceProfile?.provider === "azure-speech" ? "Azure Speech" : "Kokoro");
-      const modelWarmupHeader = response.headers.get("X-TTS-Model-Warmup-Ms");
-      const modelWarmupMs = modelWarmupHeader ? parseInt(modelWarmupHeader, 10) : null;
-      return { blob, engineHeader, t_received, modelWarmupMs };
+        const blob = await response.blob();
+        const engineHeader = response.headers.get("X-TTS-Engine") || (targetDoctor.voiceProfile?.provider === "azure-speech" ? "Azure Speech" : "Kokoro");
+        const modelWarmupHeader = response.headers.get("X-TTS-Model-Warmup-Ms");
+        const modelWarmupMs = modelWarmupHeader ? parseInt(modelWarmupHeader, 10) : null;
+        return { blob, engineHeader, t_received, modelWarmupMs };
+      } catch (err: any) {
+        clearTimeout(timeoutId);
+        const isAbort = err?.name === "AbortError" || abortCtrl.signal.aborted;
+        throw new Error(isAbort ? "TTS_CHUNK_TIMEOUT" : (err?.message || "TTS_CHUNK_FAILED"));
+      }
     };
 
     try {
@@ -1506,8 +1520,12 @@ export default function ConsultPage() {
       // Immediately dispatch Chunk 0 for fast Time-To-First-Audio (TTFA)
       const chunk0Promise = fetchTTSChunk(chunks[0]);
 
-      // In parallel, queue synthesis of remaining chunks in background
-      const remainingPromises = chunks.slice(1).map((c) => fetchTTSChunk(c));
+      // In parallel, queue synthesis of remaining chunks in background with rejection suppression
+      const remainingPromises = chunks.slice(1).map((c) => {
+        const p = fetchTTSChunk(c);
+        p.catch(() => {}); // Suppress unhandled rejection notices so abort doesn't bubble to Turbopack
+        return p;
+      });
 
       let chunk1ReadyTime: number | null = null;
       if (remainingPromises.length > 0) {
@@ -2186,20 +2204,31 @@ export default function ConsultPage() {
   // Pre-initialize or confirm encounter record exists on the server datastore
   const ensureServerEncounter = async (encId: string, initialChiefConcern?: string): Promise<boolean> => {
     if (serverEncounterCreatedRef.current) return true;
-    const ok = await persistEncounterRecord(
-      encId,
-      0,
-      "in_progress",
-      messages.length > 0 ? messages : undefined,
-      undefined,
-      initialChiefConcern,
-      1
-    );
-    if (ok) {
-      serverEncounterCreatedRef.current = true;
-      currentCaseVersionRef.current = 1;
+    if (serverEncounterPromiseRef.current) {
+      return serverEncounterPromiseRef.current;
     }
-    return ok;
+    const p = (async () => {
+      const ok = await persistEncounterRecord(
+        encId,
+        0,
+        "in_progress",
+        messages.length > 0 ? messages : undefined,
+        undefined,
+        initialChiefConcern,
+        1
+      );
+      if (ok) {
+        serverEncounterCreatedRef.current = true;
+        currentCaseVersionRef.current = 1;
+      }
+      return ok;
+    })();
+    serverEncounterPromiseRef.current = p;
+    try {
+      return await p;
+    } finally {
+      serverEncounterPromiseRef.current = null;
+    }
   };
 
   // Start consultation session
@@ -2427,6 +2456,24 @@ export default function ConsultPage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(chatPayload),
+        });
+      } else if (res.status === 409 && stableEncounterIdRef.current) {
+        console.warn("[MedVoice] Encounter 409 concurrency conflict detected; synchronizing case version and retrying...");
+        const conflictJson = await res.json().catch(() => ({}));
+        if (conflictJson.expectedVersion) {
+          currentCaseVersionRef.current = conflictJson.expectedVersion;
+        }
+        res = await fetch("/api/voice/chat", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Accept": "text/event-stream, application/json",
+          },
+          body: JSON.stringify({
+            ...chatPayload,
+            caseVersion: conflictJson.expectedVersion || undefined,
+            stream: true,
+          }),
         });
       }
 
