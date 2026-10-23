@@ -1089,31 +1089,26 @@ export async function generateDoctorTurnResponse(
             });
             continue;
           }
-          // On attempt 2, if it is merely multi-target without violating mustAvoidAsking, keep the live response
-          if (targetValResult.reason?.startsWith("LLM_MULTIPLE_CLINICAL_TARGETS")) {
-            console.warn(`[MedVoice Validator] Soft-permitting multi-target inquiry on attempt 2 to preserve conversational fluidity.`);
-          } else {
-            return {
-              reply: effectiveFallback,
+          return {
+            reply: effectiveFallback,
+            provider: "fallback",
+            responseProvenance: "validated_fallback",
+            model: activeModel,
+            latencyMs: totalLatency,
+            liveGenerated: false,
+            fallbackReason: `target_slot_mismatch: ${targetValResult.reason}`,
+            intendedTargets: [plannedTopic || "symptoms"],
+            telemetry: {
               provider: "fallback",
-              responseProvenance: "validated_fallback",
               model: activeModel,
-              latencyMs: totalLatency,
               liveGenerated: false,
-              fallbackReason: `target_slot_mismatch: ${targetValResult.reason}`,
-              intendedTargets: [plannedTopic || "symptoms"],
-              telemetry: {
-                provider: "fallback",
-                model: activeModel,
-                liveGenerated: false,
-                latencyMs: totalLatency,
-                fallbackUsed: true,
-                fallbackReason: `target_slot_mismatch: ${detectedTopic} vs ${plannedTopic}`,
-                telemetryIntegrityHash: createTelemetryIntegrityHash(turnId, "fallback", activeModel, totalLatency, new Date().toISOString()),
-                timestamp: new Date().toISOString(),
-              },
-            };
-          }
+              latencyMs: totalLatency,
+              fallbackUsed: true,
+              fallbackReason: `target_slot_mismatch: ${detectedTopic} vs ${plannedTopic}`,
+              telemetryIntegrityHash: createTelemetryIntegrityHash(turnId, "fallback", activeModel, totalLatency, new Date().toISOString()),
+              timestamp: new Date().toISOString(),
+            },
+          };
         }
       }
 

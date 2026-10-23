@@ -1132,51 +1132,9 @@ function extractVerbatimSymptomPhrase(text: string, defaultPhrase = "chest pain"
         };
       }
 
-      if (symName.includes("throat") || symName.includes("swallow")) {
-        const reply = "I noted the throat pain and swallowing difficulty. Are you able to swallow liquids and saliva safely, and have you noticed any high fever or difficulty breathing?";
-        return {
-          action: "EXPLORE_NEW_SYMPTOM",
-          spokenDoctorReply: this.guardAgainstRepetition(reply, recentReplies, "throat symptom"),
-          doctorName: "Dr. Sarah Chen, MD",
-          specialty: "Internal Medicine & Primary Triage"
-        };
-      }
-
-      if (symName.includes("fever") || symName.includes("chills")) {
-        const reply = "I understand you are experiencing a fever. Have you checked your temperature, and are you having any chills, body aches, or a rash?";
-        return {
-          action: "EXPLORE_NEW_SYMPTOM",
-          spokenDoctorReply: this.guardAgainstRepetition(reply, recentReplies, "fever symptom"),
-          doctorName: "Dr. Sarah Chen, MD",
-          specialty: "Internal Medicine & Primary Triage"
-        };
-      }
-
-      if (symName.includes("gastrointestinal") || symName.includes("nausea") || symName.includes("vomit") || symName.includes("stomach") || symName.includes("abdomen")) {
-        const reply = "Thank you for sharing that. Where in your belly is the discomfort located, and are you able to keep water or fluids down without vomiting?";
-        return {
-          action: "EXPLORE_NEW_SYMPTOM",
-          spokenDoctorReply: this.guardAgainstRepetition(reply, recentReplies, "gi symptom"),
-          doctorName: "Dr. Sarah Chen, MD",
-          specialty: "Internal Medicine & Primary Triage"
-        };
-      }
-
-      if (symName.includes("cough") || symName.includes("breathing") || symName.includes("respiratory")) {
-        const reply = "I noted your cough and breathing concerns. Are you feeling short of breath while sitting still, or experiencing any wheezing or chest tightness?";
-        return {
-          action: "EXPLORE_NEW_SYMPTOM",
-          spokenDoctorReply: this.guardAgainstRepetition(reply, recentReplies, "respiratory symptom"),
-          doctorName: "Dr. Sarah Chen, MD",
-          specialty: "Internal Medicine & Primary Triage"
-        };
-      }
-
-      // General dynamic new symptom acknowledgment
-      const reply = `Thank you for telling me about that symptom. How would you describe the intensity on a scale of 1 to 10, and does anything seem to make it better or worse?`;
       return {
-        action: "EXPLORE_NEW_SYMPTOM",
-        spokenDoctorReply: this.guardAgainstRepetition(reply, recentReplies, "generic symptom inquiry"),
+        action: "ADVANCE_INTERVIEW",
+        spokenDoctorReply: "",
         doctorName: "Dr. Sarah Chen, MD",
         specialty: "Internal Medicine & Primary Triage"
       };

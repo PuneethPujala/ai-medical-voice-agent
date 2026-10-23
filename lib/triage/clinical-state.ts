@@ -1517,23 +1517,10 @@ export function validateDoctorReplyTarget(
 
   const distinctTargets = detectQuestionTargetSlots(questionClause);
   if (distinctTargets.length > 1) {
-    // Permit closely related clinical subfields within a focused inquiry
-    const mustAvoidList = (plan?.mustAvoidAsking || []).map((m: string) => m.toLowerCase().trim());
-    const hasForbiddenTarget = distinctTargets.some(t => {
-      const tLower = t.toLowerCase();
-      return mustAvoidList.some((m: string) => m === tLower || isTargetSlotMatch(m, tLower));
-    });
-
-    const isRelated = !hasForbiddenTarget && (
-      distinctTargets.length <= 3 ||
+    // Permit closely related clinical subfields within a single focused inquiry (strictly 2 related facets)
+    const isRelated =
+      distinctTargets.length === 2 &&
       ((distinctTargets.includes("timing_pattern") && distinctTargets.includes("orthostatic_timing")) ||
-       (distinctTargets.includes("onset_time") && distinctTargets.includes("timing_pattern")) ||
-       (distinctTargets.includes("onset_pattern") && distinctTargets.includes("timing_pattern")) ||
-       (distinctTargets.includes("onset_time") && distinctTargets.includes("onset_pattern")) ||
-       (distinctTargets.includes("character") && distinctTargets.includes("severity")) ||
-       (distinctTargets.includes("location") && distinctTargets.includes("character")) ||
-       (distinctTargets.includes("fever") && distinctTargets.includes("onset_pattern")) ||
-       (distinctTargets.includes("nausea") && distinctTargets.includes("vomiting")) ||
        (distinctTargets.includes("dizziness_character") && distinctTargets.includes("orthostatic_timing")) ||
        (distinctTargets.includes("course") && distinctTargets.includes("orthostatic_timing")) ||
        (distinctTargets.includes("course") && distinctTargets.includes("triggers")) ||
@@ -1543,8 +1530,7 @@ export function validateDoctorReplyTarget(
        (distinctTargets.includes("weakness_distribution") && distinctTargets.includes("weakness")) ||
        (distinctTargets.includes("numbness_distribution") && distinctTargets.includes("numbness")) ||
        (distinctTargets.includes("weakness_distribution") && distinctTargets.includes("neurological_signs")) ||
-       (distinctTargets.includes("numbness_distribution") && distinctTargets.includes("neurological_signs")))
-    );
+       (distinctTargets.includes("numbness_distribution") && distinctTargets.includes("neurological_signs")));
 
     if (!isRelated) {
       return {
