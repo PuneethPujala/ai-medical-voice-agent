@@ -24,9 +24,18 @@ export interface LiveAudioMetrics {
   totalPauseDurationMs: number;
   speechPauseRatio: number;
   meanPauseDurationMs: number;
+  /**
+   * Voice RMS Energy Variability (Coefficient of Variation: CV = sigma_rms / mu_rms).
+   * Dimensionless ratio [0.0, 1.0], mapped to FHIR UCUM unit "{ratio}", code "1".
+   */
   energyVariance: number;
+  /**
+   * Voice Fundamental Frequency Pitch Variability (Coefficient of Variation: CV = sigma_f0 / mu_f0).
+   * Dimensionless ratio [0.0, 1.0], mapped to FHIR UCUM unit "{ratio}", code "1".
+   */
   pitchVariance: number;
   meanF0Hz?: number | null;
+  meanRms?: number;
   voicedFramesCount: number;
   totalFramesCount: number;
   sampleRate: number;
@@ -278,9 +287,11 @@ export function aggregateAcousticMetrics(
   // 2. RMS Energy Variability across active frames
   const activeFrames = frames.filter((f) => f.isVoiced);
   let energyVariance = 0.1;
+  let computedMeanRms: number | undefined = undefined;
   if (activeFrames.length >= 2) {
     const rmsValues = activeFrames.map((f) => f.rms);
     const meanRms = rmsValues.reduce((a, b) => a + b, 0) / rmsValues.length;
+    computedMeanRms = meanRms;
     if (meanRms > 1e-4) {
       const varSum = rmsValues.reduce((acc, v) => acc + Math.pow(v - meanRms, 2), 0);
       const stdDev = Math.sqrt(varSum / rmsValues.length);
@@ -316,6 +327,7 @@ export function aggregateAcousticMetrics(
     energyVariance,
     pitchVariance,
     meanF0Hz,
+    meanRms: computedMeanRms !== undefined ? Number(computedMeanRms.toFixed(4)) : undefined,
     voicedFramesCount: activeFrames.length,
     totalFramesCount: totalFrames,
     sampleRate,
@@ -556,5 +568,221 @@ export async function analyzeAudioBufferAsync(
   }
 
   return aggregateAcousticMetrics(frameResults, sampleRate, hopMs);
+}
+
+export interface TurnAudioMetricRecord {
+  turnIndex: number;
+  caseVersion?: number;
+  timestamp: string;
+  metrics: LiveAudioMetrics;
+}
+
+/**
+ * Strict server boundary validator for client-submitted acoustic telemetry.
+ * Enforces:
+ * - Strips any raw PCM buffers, base64 payloads, audio blobs, or unexpected properties.
+ * - Finite number checks and plausible physiological bounds.
+ * - Null preservation for unvoiced f0 measurements (never fabricates 0 Hz).
+ * - Bounded variance values [0.0, 2.0].
+ * - Bounded speech-to-pause ratio [0.0, 1.0].
+ */
+export function validateAudioMetrics(untrusted: unknown): LiveAudioMetrics | null {
+  if (!untrusted || typeof untrusted !== "object") {
+    return null;
+  }
+  const raw = untrusted as Record<string, unknown>;
+
+  // Strips any raw audio buffers or base64 samples from ever passing into the domain
+  if (
+    typeof raw.durationMs !== "number" ||
+    !Number.isFinite(raw.durationMs) ||
+    raw.durationMs < 0 ||
+    raw.durationMs > 600000
+  ) {
+    return null;
+  }
+  const durationMs = Math.round(raw.durationMs);
+
+  const sampleRate = typeof raw.sampleRate === "number" && Number.isFinite(raw.sampleRate) && raw.sampleRate >= 8000 && raw.sampleRate <= 192000
+    ? Math.round(raw.sampleRate)
+    : 16000;
+
+  const pauseCount = typeof raw.pauseCount === "number" && Number.isFinite(raw.pauseCount)
+    ? Math.max(0, Math.min(1000, Math.round(raw.pauseCount)))
+    : 0;
+
+  const totalPauseDurationMs = typeof raw.totalPauseDurationMs === "number" && Number.isFinite(raw.totalPauseDurationMs)
+    ? Math.max(0, Math.min(durationMs, Math.round(raw.totalPauseDurationMs)))
+    : 0;
+
+  const speechPauseRatio = typeof raw.speechPauseRatio === "number" && Number.isFinite(raw.speechPauseRatio)
+    ? Math.max(0, Math.min(1.0, Number(raw.speechPauseRatio.toFixed(2))))
+    : (durationMs > 0 ? Number((totalPauseDurationMs / durationMs).toFixed(2)) : 0);
+
+  const meanPauseDurationMs = typeof raw.meanPauseDurationMs === "number" && Number.isFinite(raw.meanPauseDurationMs)
+    ? Math.max(0, Math.min(durationMs, Math.round(raw.meanPauseDurationMs)))
+    : (pauseCount > 0 ? Math.round(totalPauseDurationMs / pauseCount) : 0);
+
+  const energyVariance = typeof raw.energyVariance === "number" && Number.isFinite(raw.energyVariance)
+    ? Math.max(0, Math.min(2.0, Number(raw.energyVariance.toFixed(2))))
+    : 0.1;
+
+  const pitchVariance = typeof raw.pitchVariance === "number" && Number.isFinite(raw.pitchVariance)
+    ? Math.max(0, Math.min(2.0, Number(raw.pitchVariance.toFixed(2))))
+    : 0;
+
+  let meanF0Hz: number | null = null;
+  if (typeof raw.meanF0Hz === "number" && Number.isFinite(raw.meanF0Hz) && raw.meanF0Hz >= 50 && raw.meanF0Hz <= 600) {
+    meanF0Hz = Number(raw.meanF0Hz.toFixed(1));
+  }
+
+  const meanRms = typeof raw.meanRms === "number" && Number.isFinite(raw.meanRms) && raw.meanRms >= 0
+    ? Number(raw.meanRms.toFixed(4))
+    : undefined;
+
+  const voicedFramesCount = typeof raw.voicedFramesCount === "number" && Number.isFinite(raw.voicedFramesCount)
+    ? Math.max(0, Math.round(raw.voicedFramesCount))
+    : (meanF0Hz !== null ? 10 : 0);
+
+  const totalFramesCount = typeof raw.totalFramesCount === "number" && Number.isFinite(raw.totalFramesCount)
+    ? Math.max(voicedFramesCount, Math.round(raw.totalFramesCount))
+    : Math.max(voicedFramesCount, Math.round(durationMs / 10));
+
+  return {
+    durationMs,
+    pauseCount,
+    totalPauseDurationMs,
+    speechPauseRatio,
+    meanPauseDurationMs,
+    energyVariance,
+    pitchVariance,
+    meanF0Hz,
+    meanRms,
+    voicedFramesCount,
+    totalFramesCount,
+    sampleRate,
+    isLiveDsp: true,
+  };
+}
+
+/**
+ * Deterministic aggregation policy for multi-turn clinical consultations.
+ * - Total duration = sum of utterance durations
+ * - Total pause duration = sum of pause durations
+ * - Total pause count = sum of pause counts
+ * - Mean pause duration = total pause duration / total pause count
+ * - Speech-pause ratio = total pause duration / total duration
+ * - Fundamental frequency (f0): pooled weighted mean across voiced frames:
+ *     mu_f0 = sum(v_i * f0_i) / sum(v_i)
+ * - Pitch Variability (f0 CV): exact pooled population coefficient of variation
+ *   accounting for both within-utterance variance and between-utterance pitch shift:
+ *     sigma_pooled^2 = sum[ v_i * (sigma_i^2 + (mu_i - mu_pooled)^2) ] / sum(v_i)
+ *     CV_pooled = sigma_pooled / mu_pooled
+ * - RMS Energy Variability (RMS CV): exact pooled population coefficient of variation.
+ * - Voiced and total frames: summed across utterances.
+ */
+export function aggregateTurnAudioMetrics(
+  existingAggregate: LiveAudioMetrics | null | undefined,
+  newTurnMetrics: LiveAudioMetrics
+): LiveAudioMetrics {
+  if (!existingAggregate) {
+    return { ...newTurnMetrics };
+  }
+
+  const durationMs = existingAggregate.durationMs + newTurnMetrics.durationMs;
+  const pauseCount = existingAggregate.pauseCount + newTurnMetrics.pauseCount;
+  const totalPauseDurationMs = existingAggregate.totalPauseDurationMs + newTurnMetrics.totalPauseDurationMs;
+  const speechPauseRatio = durationMs > 0
+    ? Math.min(1.0, Math.max(0.0, Number((totalPauseDurationMs / durationMs).toFixed(2))))
+    : 0;
+  const meanPauseDurationMs = pauseCount > 0
+    ? Math.round(totalPauseDurationMs / pauseCount)
+    : 0;
+
+  const totalVoicedFrames = existingAggregate.voicedFramesCount + newTurnMetrics.voicedFramesCount;
+  const totalFrames = existingAggregate.totalFramesCount + newTurnMetrics.totalFramesCount;
+
+  // 1. Exact Pooled Fundamental Frequency (f0) and Pitch Variability (CV)
+  let pitchVariance = 0;
+  let meanF0Hz: number | null = null;
+
+  const v1 = existingAggregate.voicedFramesCount;
+  const v2 = newTurnMetrics.voicedFramesCount;
+  const f1 = existingAggregate.meanF0Hz;
+  const f2 = newTurnMetrics.meanF0Hz;
+
+  if (v1 > 0 && f1 !== null && f1 !== undefined && v2 > 0 && f2 !== null && f2 !== undefined) {
+    const totalVoiced = v1 + v2;
+    const pooledMeanF0 = (v1 * f1 + v2 * f2) / totalVoiced;
+    meanF0Hz = Number(pooledMeanF0.toFixed(1));
+
+    if (totalVoiced >= 3 && pooledMeanF0 > 10) {
+      // sigma_i^2 = (CV_i * mu_i)^2
+      const var1 = Math.pow(existingAggregate.pitchVariance * f1, 2);
+      const var2 = Math.pow(newTurnMetrics.pitchVariance * f2, 2);
+
+      // Pooled population variance
+      const pooledVarF0 = (
+        v1 * (var1 + Math.pow(f1 - pooledMeanF0, 2)) +
+        v2 * (var2 + Math.pow(f2 - pooledMeanF0, 2))
+      ) / totalVoiced;
+
+      const pooledStdDevF0 = Math.sqrt(Math.max(0, pooledVarF0));
+      pitchVariance = Math.min(1.0, Math.max(0.0, Number((pooledStdDevF0 / pooledMeanF0).toFixed(2))));
+    }
+  } else if (v2 > 0 && f2 !== null && f2 !== undefined) {
+    meanF0Hz = f2;
+    pitchVariance = newTurnMetrics.pitchVariance;
+  } else if (v1 > 0 && f1 !== null && f1 !== undefined) {
+    meanF0Hz = f1;
+    pitchVariance = existingAggregate.pitchVariance;
+  }
+
+  // 2. Exact Pooled RMS Energy Variability (CV)
+  let energyVariance = 0.1;
+  let pooledMeanRms: number | undefined = undefined;
+
+  const a1 = existingAggregate.totalFramesCount;
+  const a2 = newTurnMetrics.totalFramesCount;
+  const rms1 = existingAggregate.meanRms;
+  const rms2 = newTurnMetrics.meanRms;
+
+  if (a1 > 0 && rms1 !== undefined && rms1 > 1e-4 && a2 > 0 && rms2 !== undefined && rms2 > 1e-4) {
+    const totalA = a1 + a2;
+    const combinedMeanRms = (a1 * rms1 + a2 * rms2) / totalA;
+
+    const varRms1 = Math.pow(existingAggregate.energyVariance * rms1, 2);
+    const varRms2 = Math.pow(newTurnMetrics.energyVariance * rms2, 2);
+
+    const pooledVarRms = (
+      a1 * (varRms1 + Math.pow(rms1 - combinedMeanRms, 2)) +
+      a2 * (varRms2 + Math.pow(rms2 - combinedMeanRms, 2))
+    ) / totalA;
+
+    const pooledStdDevRms = Math.sqrt(Math.max(0, pooledVarRms));
+    energyVariance = Math.min(1.0, Math.max(0.0, Number((pooledStdDevRms / combinedMeanRms).toFixed(2))));
+    pooledMeanRms = Number(combinedMeanRms.toFixed(4));
+  } else {
+    energyVariance = a1 + a2 > 0
+      ? Number(((existingAggregate.energyVariance * a1 + newTurnMetrics.energyVariance * a2) / (a1 + a2)).toFixed(2))
+      : newTurnMetrics.energyVariance;
+    pooledMeanRms = rms2 ?? rms1;
+  }
+
+  return {
+    durationMs,
+    pauseCount,
+    totalPauseDurationMs,
+    speechPauseRatio,
+    meanPauseDurationMs,
+    energyVariance,
+    pitchVariance,
+    meanF0Hz,
+    meanRms: pooledMeanRms,
+    voicedFramesCount: totalVoicedFrames,
+    totalFramesCount: totalFrames,
+    sampleRate: newTurnMetrics.sampleRate || existingAggregate.sampleRate,
+    isLiveDsp: true,
+  };
 }
 

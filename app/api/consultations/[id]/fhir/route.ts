@@ -189,11 +189,11 @@ export async function GET(
       );
     }
 
-    // 4. Generate valid HL7 FHIR R4 Bundle
+    // 4. Generate valid HL7 FHIR R4 Bundle (preferring canonical server-authoritative encounter aggregate)
     const consultationRecord: ConsultationRecordFHIR = {
       ...record,
-      audioMetrics: record.audioMetrics || record.interviewState?.audio_metrics,
-      speechFeatures: record.speechFeatures || record.interviewState?.speech_features,
+      audioMetrics: record.interviewState?.audio_metrics || record.audioMetrics,
+      speechFeatures: record.interviewState?.speech_features || record.speechFeatures,
     };
     const bundle = generateFHIRBundle(consultationRecord);
 

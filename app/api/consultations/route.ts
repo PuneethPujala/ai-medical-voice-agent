@@ -4,6 +4,7 @@ import { consultationsTable } from "@/config/schema";
 import { and, desc, eq, ne, or } from "drizzle-orm";
 import { getAuthContext, hasPermission } from "@/lib/auth/rbac";
 import { logAuditEventAsync } from "@/lib/audit/audit-logger";
+import { validateAudioMetrics } from "@/lib/acoustic/acoustic-dsp-analyzer";
 
 // Baseline synthetic clinical demonstration encounters (strictly segregated from production patient queries)
 export const memoryConsultations: any[] = [
@@ -582,6 +583,20 @@ export async function POST(request: Request) {
       const isTransitioningToApproved = isApprovingRequested && existingRecord.status !== "approved";
       const finalStatus = isApprovingRequested ? "approved" : (requestedStatus || existingRecord.status || "completed_pending_review");
 
+      const validatedUpdateMetrics = body.audioMetrics ? validateAudioMetrics(body.audioMetrics) : null;
+      const effectiveAudioMetrics = body.interviewState?.audio_metrics || validatedUpdateMetrics || existingRecord.interviewState?.audio_metrics || existingRecord.audioMetrics || null;
+      const effectiveSpeechFeatures = body.interviewState?.speech_features || body.speechFeatures || existingRecord.interviewState?.speech_features || existingRecord.speechFeatures || null;
+
+      const mergedInterviewState = body.interviewState !== undefined ? body.interviewState : existingRecord.interviewState;
+      if (mergedInterviewState) {
+        if (effectiveAudioMetrics && !mergedInterviewState.audio_metrics) {
+          mergedInterviewState.audio_metrics = effectiveAudioMetrics;
+        }
+        if (effectiveSpeechFeatures && !mergedInterviewState.speech_features) {
+          mergedInterviewState.speech_features = effectiveSpeechFeatures;
+        }
+      }
+
       const updateData: any = {
         patientName,
         patientAge: patientAge ? String(patientAge) : existingRecord.patientAge,
@@ -605,7 +620,9 @@ export async function POST(request: Request) {
         status: finalStatus,
         version: nextVersion,
         caseVersion: nextVersion,
-        interviewState: body.interviewState !== undefined ? body.interviewState : existingRecord.interviewState,
+        interviewState: mergedInterviewState,
+        audioMetrics: effectiveAudioMetrics,
+        speechFeatures: effectiveSpeechFeatures,
         deliveredTurnRecords: body.deliveredTurnRecords !== undefined ? body.deliveredTurnRecords : existingRecord.deliveredTurnRecords,
         attributedFacts: body.attributedFacts !== undefined ? body.attributedFacts : existingRecord.attributedFacts,
         unmappedObservations: body.unmappedObservations !== undefined ? body.unmappedObservations : existingRecord.unmappedObservations,
@@ -619,7 +636,7 @@ export async function POST(request: Request) {
 
       if (dbClient) {
         try {
-          const { version, ...dbUpdateData } = updateData;
+          const { version, audioMetrics, speechFeatures, ...dbUpdateData } = updateData;
           const updatedRows = await dbClient
             .update(consultationsTable)
             .set(dbUpdateData)
@@ -720,6 +737,21 @@ export async function POST(request: Request) {
 
     // 5. If record does not exist: perform initial insertion
     const initialStatus = requestedStatus || "completed_pending_review";
+
+    const validatedInitialMetrics = body.audioMetrics ? validateAudioMetrics(body.audioMetrics) : null;
+    const initialAudioMetrics = body.interviewState?.audio_metrics || validatedInitialMetrics || null;
+    const initialSpeechFeatures = body.interviewState?.speech_features || body.speechFeatures || null;
+
+    const initialInterviewState = body.interviewState || null;
+    if (initialInterviewState) {
+      if (initialAudioMetrics && !initialInterviewState.audio_metrics) {
+        initialInterviewState.audio_metrics = initialAudioMetrics;
+      }
+      if (initialSpeechFeatures && !initialInterviewState.speech_features) {
+        initialInterviewState.speech_features = initialSpeechFeatures;
+      }
+    }
+
     const newRecord = {
       id,
       userId: effectiveUserId,
@@ -745,7 +777,9 @@ export async function POST(request: Request) {
       status: initialStatus,
       version: body.version !== undefined ? Number(body.version) : 1,
       caseVersion: body.caseVersion !== undefined ? Number(body.caseVersion) : (body.version !== undefined ? Number(body.version) : 1),
-      interviewState: body.interviewState || null,
+      interviewState: initialInterviewState,
+      audioMetrics: initialAudioMetrics,
+      speechFeatures: initialSpeechFeatures,
       deliveredTurnRecords: body.deliveredTurnRecords || [],
       attributedFacts: body.attributedFacts || [],
       unmappedObservations: body.unmappedObservations || [],
@@ -757,7 +791,7 @@ export async function POST(request: Request) {
 
     if (dbClient) {
       try {
-        const { version, ...dbRecord } = newRecord;
+        const { version, audioMetrics, speechFeatures, ...dbRecord } = newRecord;
         await dbClient.insert(consultationsTable).values(dbRecord as any);
       } catch (dbErr: any) {
         const isUniqueViolation =

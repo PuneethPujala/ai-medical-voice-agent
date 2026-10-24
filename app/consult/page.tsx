@@ -738,6 +738,7 @@ export default function ConsultPage() {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const audioStateRef = useRef<AudioState>("IDLE");
   const pendingAudioMetricsRef = useRef<LiveAudioMetrics | undefined>(undefined);
+  const lastAudioMetricsRef = useRef<LiveAudioMetrics | undefined>(undefined);
   const callActiveRef = useRef<boolean>(false);
 
   useEffect(() => {
@@ -1130,6 +1131,7 @@ export default function ConsultPage() {
 
     audioStateRef.current = "PROCESSING_CLINICAL";
     const metrics = pendingAudioMetricsRef.current;
+    lastAudioMetricsRef.current = metrics;
     pendingAudioMetricsRef.current = undefined;
     setPendingTranscript("");
     setAudioState("PROCESSING_CLINICAL");
@@ -2104,6 +2106,8 @@ export default function ConsultPage() {
         durationSeconds: durationSecs,
         status: statusOverride,
         interviewState: interviewState,
+        audioMetrics: interviewState?.audio_metrics || lastAudioMetricsRef.current || undefined,
+        speechFeatures: interviewState?.speech_features || undefined,
         deliveredTurnRecords: interviewState?.deliveredTurnRecords || [],
         attributedFacts: interviewState?.attributedFacts || [],
         unmappedObservations: interviewState?.unmappedObservations || [],
