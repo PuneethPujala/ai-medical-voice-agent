@@ -71,6 +71,7 @@
     "test:safety-streaming": "tsx tests/streaming/safety-gated-streaming-and-bargein.test.ts",
     "test:medication-safety": "tsx tests/triage/medication-safety-engine.test.ts",
     "test:fhir-paralinguistic": "tsx tests/fhir/paralinguistic-observation.test.ts",
+    "test:acoustic-e2e": "tsx tests/acoustic/e2e-acoustic-to-fhir.test.ts",
     "benchmark:acoustic": "tsx scripts/benchmark-acoustic-dsp.ts",
     "benchmark:acoustic-real": "tsx scripts/benchmark-real-patient-audio.ts"
   },

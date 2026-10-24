@@ -1,4 +1,5 @@
-import { AgentRequest, PendingQuestion, PatientCase, AttributedClinicalFactV3, UnmappedObservation, DeliveredTurnRecord } from "../agents/schemas";
+import { AgentRequest, PendingQuestion, PatientCase, AttributedClinicalFactV3, UnmappedObservation, DeliveredTurnRecord, SpeechFeatures } from "../agents/schemas";
+import { LiveAudioMetrics, TurnAudioMetricRecord } from "../acoustic/acoustic-dsp-analyzer";
 import { evaluatePreArbiter, PreArbiterResult } from "./pre-arbiter";
 import { CardiologyAgent } from "../agents/specialists/cardiology-agent";
 import { NeurologyAgent } from "../agents/specialists/neurology-agent";
@@ -128,6 +129,9 @@ export interface ClinicalInterviewState {
   unmappedObservations?: UnmappedObservation[];
   deliveredTurnRecords?: DeliveredTurnRecord[];
   contextState?: ConversationContextState;
+  audio_metrics?: LiveAudioMetrics;
+  audio_metrics_history?: TurnAudioMetricRecord[];
+  speech_features?: SpeechFeatures;
 }
 
 export interface ConversationTurnResult {

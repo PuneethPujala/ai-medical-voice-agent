@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getDoctorById } from "@/config/doctors";
 import { clinicalBoard } from "@/lib/agents/clinical-board";
 import { extractSpeechFeatures } from "@/lib/acoustic/speech-features";
+import { validateAudioMetrics, aggregateTurnAudioMetrics, TurnAudioMetricRecord } from "@/lib/acoustic/acoustic-dsp-analyzer";
 import { PatientCase, DeliveredTurnRecord } from "@/lib/agents/schemas";
 import { PhiScrubber } from "@/lib/security/phi-scrubber";
 
@@ -558,19 +559,44 @@ export async function POST(request: Request) {
     const uniqueUtterances = allUtterances.filter((u, i) => allUtterances.indexOf(u) === i);
     const cumulativeTranscript = uniqueUtterances.join(". ");
 
-    // 1. Extract measured speech features & paralinguistics
+    // 1. Validate & sanitize incoming acoustic telemetry at the server trust boundary
+    const validatedTurnAudioMetrics = audioMetrics ? validateAudioMetrics(audioMetrics) : null;
+    let cumulativeAudioMetrics = authoritativeInterviewState?.audio_metrics || null;
+    let audioMetricsHistory: TurnAudioMetricRecord[] = authoritativeInterviewState?.audio_metrics_history
+      ? [...authoritativeInterviewState.audio_metrics_history]
+      : [];
+
+    if (validatedTurnAudioMetrics) {
+      // Prevent double aggregation if the exact same turn / version was already recorded (idempotent retry)
+      const isAlreadyRecorded = audioMetricsHistory.some(
+        (h) => h.caseVersion !== undefined && h.caseVersion === expectedCaseVersion
+      );
+
+      if (!isAlreadyRecorded) {
+        cumulativeAudioMetrics = aggregateTurnAudioMetrics(cumulativeAudioMetrics, validatedTurnAudioMetrics);
+        const currentTurnNumber = audioMetricsHistory.length + 1;
+        audioMetricsHistory.push({
+          turnIndex: currentTurnNumber,
+          caseVersion: expectedCaseVersion,
+          timestamp: new Date().toISOString(),
+          metrics: validatedTurnAudioMetrics,
+        });
+      }
+    }
+
+    const effectiveAcoustics = validatedTurnAudioMetrics || cumulativeAudioMetrics;
     const speechFeatures = extractSpeechFeatures({
       transcriptText: message,
-      durationMs: audioMetrics?.durationMs,
-      pauseCount: audioMetrics?.pauseCount,
-      totalPauseDurationMs: audioMetrics?.totalPauseDurationMs,
-      wordCount: audioMetrics?.wordCount,
-      energyVariance: audioMetrics?.energyVariance,
-      pitchVariance: audioMetrics?.pitchVariance,
-      meanF0Hz: audioMetrics?.meanF0Hz,
-      speechPauseRatio: audioMetrics?.speechPauseRatio,
-      meanPauseDurationMs: audioMetrics?.meanPauseDurationMs,
-      isLiveDsp: audioMetrics?.isLiveDsp,
+      durationMs: effectiveAcoustics?.durationMs,
+      pauseCount: effectiveAcoustics?.pauseCount,
+      totalPauseDurationMs: effectiveAcoustics?.totalPauseDurationMs,
+      wordCount: undefined,
+      energyVariance: effectiveAcoustics?.energyVariance,
+      pitchVariance: effectiveAcoustics?.pitchVariance,
+      meanF0Hz: effectiveAcoustics?.meanF0Hz,
+      speechPauseRatio: effectiveAcoustics?.speechPauseRatio,
+      meanPauseDurationMs: effectiveAcoustics?.meanPauseDurationMs,
+      isLiveDsp: effectiveAcoustics?.isLiveDsp,
     });
 
     // Resolve target patient profile strictly scoped to authenticated user
@@ -637,6 +663,11 @@ export async function POST(request: Request) {
       undefined,
       { patientProfile: activeProfile || undefined }
     );
+
+    // Preserve encounter-scoped acoustic telemetry on interview state
+    turnResult.state.audio_metrics = cumulativeAudioMetrics || undefined;
+    turnResult.state.audio_metrics_history = audioMetricsHistory.length > 0 ? audioMetricsHistory : undefined;
+    turnResult.state.speech_features = speechFeatures;
 
     const knownFactsCount = turnResult.state.slots.known_facts.length;
     const slots = turnResult.state.slots;
@@ -1358,6 +1389,9 @@ export async function POST(request: Request) {
 
     const decidedInterviewState = {
       ...turnResult.state,
+      audio_metrics: cumulativeAudioMetrics || turnResult.state.audio_metrics || undefined,
+      audio_metrics_history: audioMetricsHistory.length > 0 ? audioMetricsHistory : turnResult.state.audio_metrics_history || undefined,
+      speech_features: speechFeatures,
       phase: "decided" as const,
       informationState: "sufficient_for_decision" as const,
     };
