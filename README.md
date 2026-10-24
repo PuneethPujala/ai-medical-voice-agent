@@ -24,6 +24,7 @@
   - [10. Monotonic Barge-in Interruption](#10-monotonic-barge-in-interruption)
   - [11. Code Reality & Audit Concordance Matrix (20-Point Specification)](#11-code-reality--audit-concordance-matrix-20-point-specification)
 - [Technology Stack](#-technology-stack)
+- [Acoustic DSP Performance & Validation](#-acoustic-dsp-performance--validation)
 - [Repository Structure](#-repository-structure)
 - [Verification, Test Suites & Coverage](#-verification-test-suites--coverage)
 - [Getting Started & Safe Demo Guidance](#-getting-started--safe-demo-guidance)
@@ -177,13 +178,13 @@ The following matrix documents the verified technical alignment across all 20 ev
 | **9** | Paralinguistic DSP | 🟢 | Live MediaStream PCM, 25 ms/10 ms framing, RMS/dBFS VAD, pause statistics, and autocorrelation $f_0$. | Browser runtime extracts short-term acoustic features as observational telemetry only; not used as autonomous diagnostic biomarkers. |
 | **10** | MedlinePlus RAG | 🟢 | 2,112 processed passages + curated guidelines loaded locally. | Offline MedlinePlus XML-derived passages indexed locally alongside curated clinical practice guidelines. |
 | **11** | RAG Math | 🔴 | Replaced Eq. 8 (no BM25 or DPR). Deterministic lexical, domain, section, and authority formula. | Evaluated with implemented formula: $S(d, q) = (L_{\text{multi-field}}(d, q) + \Delta_{\text{domain}}) \times \gamma_{\text{section}} + \alpha_{\text{auth}}$. |
-| **12** | Medication Routing | 🟡 | Local curated reference categories without live external APIs. | Task-aware retrieval routes queries over locally curated, pre-indexed source-tagged content corresponding to RxNorm, DailyMed, and openFDA categories. |
+| **12** | Medication Routing | 🟢 | Deterministic medication reconciliation, contraindication screening (DailyMed / openFDA rules), and allergy cross-checks (12/12 tests). | Task-aware retrieval routes queries over locally curated, pre-indexed source-tagged content corresponding to RxNorm, DailyMed, and openFDA categories. |
 | **13** | SHA-256 Ledger | 🟢 | Durable SHA-256 chained audit records with Neon PostgreSQL persistence. | Durable SHA-256 chained audit ledger provides tamper-evident event integrity and traceability. |
 | **14** | Reasoning Logging | 🟡 | Internal CoT is isolated from permanent medical records. | Records auditable clinical state transitions, triage dispositions, arbiter decisions, and associated provenance. |
 | **15** | HL7 FHIR Export | 🟢 | FHIR R4 document bundle generation validated by automated tests (43/43 passed). | Generates FHIR R4 bundles validated by automated serialization, provenance, and structural tests. |
-| **16** | Paralinguistic FHIR | 🟡 | Speech observations documented in SOAP/Composition, not separate clinical observations. | FHIR bundles include structured clinical observations (e.g., ESI acuity); runtime acoustic telemetry is documented as descriptive intake metadata. |
+| **16** | Paralinguistic FHIR | 🟢 | Enriched HL7 FHIR R4 export with structured acoustic Observation resources (7 physical metrics, UCUM units, provenance, safety boundaries; 7/7 tests). | FHIR bundles include structured clinical observations (e.g., ESI acuity) and dedicated paralinguistic acoustic telemetry observations with validated units. |
 | **17** | Emergency Dispatch | 🟡 | Care Network provides facility discovery & road routing; gated 5-state location FSM. | Geospatial Emergency Facility Discovery & Road Routing; decoupled from public 911 dispatch. |
-| **18** | Barge-in Latency | 🟡 | Monotonic playback token invalidation passing browser acceptance. | Low-latency barge-in cancellation using monotonic playback-session invalidation, verified by automated acceptance tests. |
+| **18** | Barge-in Latency | 🟢 | Monotonic playback token invalidation, safety-gated SSE streaming, and cross-chunk false reassurance interception (7/7 tests). | Low-latency barge-in cancellation using monotonic playback-session invalidation, verified by automated acceptance tests. |
 | **19** | Anti-Leakage | 🟢 | Sanitizers strip internal prompt tokens and unverified diagnostic labels. | Clinical output sanitization prevents selected internal/unsupported details from leaking into patient-facing responses. |
 | **20** | Diagnostic Scope | 🟢 | Framed as clinical decision support/triage intake prototype. | The system is designed for AI-assisted intake, triage, and clinical decision support and does not autonomously diagnose patients. |
 
@@ -237,23 +238,101 @@ ai-medical-voice-agent/
 
 ---
 
-## 🧪 Verification, Test Suites & Coverage
+## 📊 Acoustic DSP Performance & Validation
 
-MedVoice includes an automated test battery with **41 canonical verification suites** spanning clinical safety arbiters, security RBAC, durable audit ledgers, paralinguistic DSP, and audio pipelines. For detailed breakdowns, tier definitions, and CI gates, see [**`docs/TESTING.md`**](docs/TESTING.md).
+MedVoice incorporates an in-memory, client-side paralinguistic acoustic DSP analyzer ([`lib/acoustic/acoustic-dsp-analyzer.ts`](lib/acoustic/acoustic-dsp-analyzer.ts)) designed to extract standardized physical voice characteristics without cloud egress, external API dependencies, or heavy neural networks.
+
+> [!IMPORTANT]
+> **Strict Clinical Isolation**: Acoustic measurements serve strictly as descriptive observational telemetry in the clinical encounter record and HL7® FHIR® R4 export. They **never** make autonomous clinical diagnoses, calculate disease probabilities, or alter Emergency Severity Index (ESI) triage tiers.
+
+### 1. Mathematical Telemetry & Derived Features
+The lightweight runtime processes short-term PCM frames (25 ms analysis window, 10 ms hop interval):
+* **Fundamental Frequency ($F_0$)**: Extracted via normalized autocorrelation across clinical vocal registers ($60\text{ Hz} \le F_0 \le 400\text{ Hz}$) with confidence threshold gating ($\ge 0.45$). Unvoiced frames strictly yield `null` (never fabricated as $0\text{ Hz}$).
+* **Root-Mean-Square (RMS) Energy & Decibels**: Short-term frame energy converted to logarithmic amplitude bounded between $-100\text{ dBFS}$ (silence floor) and $0\text{ dBFS}$ (peak).
+* **Voice Activity Detection (VAD)**: Energy-based voice activity detector configured with an engineering threshold of $-38\text{ dBFS}$.
+* **Conversational Pause Dynamics**: Tracks contiguous silence runs ($\ge 150\text{ ms}$) to compute total pause duration, pause count, and the dimensionless speech-to-pause ratio ($[0.0, 1.0]$).
+* **Pitch & Energy Variability**: Computes the normalized **Coefficient of Variation** ($CV = \frac{\sigma}{\mu}$, dimensionless ratio, UCUM unit `{ratio}`, code `1`) across voiced frames. *Note: This represents relative dispersion, distinct from raw variance ($\text{Hz}^2$).*
+
+---
+
+### 2. Empirical Benchmark Suite & Commands
+
+MedVoice provides two dedicated CLI performance harnesses and an automated FHIR serialization verification battery:
 
 ```bash
-# 1. Run the Full 41-Suite Canonical Regression Battery (Isolated Offline Mode)
+# 1. Synthetic Calibrated DSP Benchmark (Male/Female pitch tones, variable pauses, 1s - 30s)
+npm run benchmark:acoustic
+
+# 2. Representative Clinical Speech Benchmark (N=20 Kokoro-82M speech files + noise injection)
+npm run benchmark:acoustic-real
+
+# 3. Dedicated HL7 FHIR R4 Paralinguistic Observation Serialization & Provenance Battery
+npm run test:fhir-paralinguistic
+```
+
+#### Interpretation of Real-Time Factor ($RTF$)
+$$\text{RTF} = \frac{\text{Processing Time } (T_{\text{proc}})}{\text{Audio Duration } (T_{\text{audio}})}$$
+* $\text{RTF} < 1.0$: Audio is processed faster than real-time playback.
+* $\text{RTF} < 0.05$ (**MedVoice Engineering Gate**): Audio is processed $\ge 20\times$ faster than real-time, ensuring negligible CPU consumption.
+
+---
+
+### 3. Tested CPU-Only Execution Performance
+
+*The following metrics were empirically measured on an Intel/AMD x64 development workstation running Node.js v22.22.0. Actual execution times will vary depending on device CPU clock speed and background system load.*
+
+| Benchmark Corpus | Total Audio Duration | Total CPU Compute Time | Median Processing Latency | Median Real-Time Factor ($RTF$) | Aggregate Throughput |
+| :--- | :---: | :---: | :---: | :---: | :---: |
+| **Synthetic Audio (1s – 30s @ 16 kHz)** | $49.0\text{ s}$ | $298.6\text{ ms}$ | $29.4\text{ ms}$ | **0.0059** | **$164.1\times\text{ real-time}$** |
+| **Clinical Speech Corpus ($N=20$ @ 16 kHz)** | $170.6\text{ s}$ | $935.1\text{ ms}$ | $47.0\text{ ms}$ | **0.0054** | **$182.4\times\text{ real-time}$** |
+
+#### Key Engineering Findings
+1. **Zero GPU Dependency**: Pure CPU processing requires only **$\sim 47\text{ ms}$** to analyze an entire $10\text{-second}$ patient utterance ($\text{RTF} \approx 0.005$). Introducing a GPU or neural paralinguistic model (e.g. Wav2Vec2/HuBERT) is computationally unjustified for basic FHIR R4 acoustic observations.
+2. **Mandatory Anti-Aliased Decimation ($48\text{ kHz} \to 16\text{ kHz}$)**:
+   - At native $48\text{ kHz}$ Web Audio, autocorrelation search space scales quadratically $O(N \cdot K)$, causing a $9\times$ multiplication penalty ($1,859\text{ ms}$ compute time).
+   - Downsampling to $16\text{ kHz}$ with a 5-tap symmetric anti-aliasing FIR filter drops execution time to **$53\text{ ms}$** with zero loss of pitch estimation accuracy ($\pm 0.0\text{ Hz}$).
+3. **Noise Robustness**: Under simulated clinical noise floors ($+25\text{ dB}$ to $+8\text{ dB SNR}$ emergency room acoustic stress), confidence-gated pitch drift remained within $\pm 2.4\text{ Hz}$ without pitch hallucinations on unvoiced intervals.
+
+---
+
+### 4. Critical Path Latency & Integration Boundary
+
+```
+[Patient Utterance (10s)]
+       ├──► Whisper STT (350ms) ──► Groq LLM (400ms) ──► Kokoro TTS (180ms) ──► [Doctor Speaks Audio] (930ms TTFA)
+       └──► [Asynchronous AudioWorklet / Worker Buffer] ──► 16kHz DSP (47ms) ──► [Populates FHIR Observation] (0ms penalty)
+```
+
+* **Decoupled Asynchronous Execution**: In the MedVoice client architecture, acoustic DSP execution is decoupled from the conversational turn-taking critical path. Voice synthesis starts immediately upon LLM token generation; acoustic features are committed to the clinical record at turn boundary.
+* **Kaggle vs. Production Boundary**: Kaggle GPU notebooks are strictly reserved for **offline research experimentation** on synthetic or public benchmark speech corpora (e.g., exploring neural speech models via [`scripts/kaggle_paralinguistic_benchmark.py`](scripts/kaggle_paralinguistic_benchmark.py)). Kaggle is **not** part of MedVoice's live production or runtime architecture.
+* **Corpus Provenance & Privacy**: All benchmark audio fixtures (`LAT-01` through `LAT-20`) are 100% synthetic audio files generated via local open-weights Kokoro-82M neural voices from standardized clinical text vignettes. Zero real patient biometric data or protected health information (PHI) is contained or committed.
+* **Known Limitations**: Synthetic and clean audio benchmarks establish mathematical correctness and algorithmic speed. They do **not** constitute clinical validation for detecting physical vocal cord pathologies, dyspnea, or stridor.
+
+For complete latency distributions, noise injection tables, and mathematical derivations, see the [**`reproducible-evidence-report.md`**](reproducible-evidence-report.md).
+
+---
+
+## 🧪 Verification, Test Suites & Coverage
+
+MedVoice includes an automated test battery with **54 canonical verification suites** (52 offline suites, 2 live database-gated) spanning clinical safety arbiters, security RBAC, durable audit ledgers, paralinguistic DSP, and audio pipelines. For detailed breakdowns, tier definitions, and CI gates, see [**`docs/TESTING.md`**](docs/TESTING.md).
+
+```bash
+# 1. Run the Full 54-Suite Canonical Regression Battery (Isolated Offline Mode)
 npm run test:battery
 
-# 2. Run Deterministic Coverage Reporting (c8 via tsx)
+# 2. Run Acoustic DSP Performance & Robustness Benchmarks
+npm run benchmark:acoustic      # Synthetic calibrated tone & pause matrix
+npm run benchmark:acoustic-real # N=20 clinical speech corpus + noise injection
+
+# 3. Run Deterministic Coverage Reporting (c8 via tsx)
 # Produces coverage/lcov.info, coverage/cobertura-coverage.xml, and terminal summary
 npm run test:coverage
 
-# 3. Dedicated Real PostgreSQL Integration Test Harness
+# 4. Dedicated Real PostgreSQL Integration Test Harness
 # Connects to live database when DATABASE_URL is set; reports explicit SKIPPED if unset
 npm run test:db
 
-# 4. Individual Test Suites (Examples)
+# 5. Individual Test Suites (Examples)
 npm run test:security        # RBAC, IDOR guards, and CSP headers
 npm run test:durable-audit   # Cryptographic SHA-256 audit ledger & CAS concurrency
 npm run test:goldendialogue  # 11-turn clinical dialogue & negation invariants
