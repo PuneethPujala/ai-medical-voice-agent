@@ -15,11 +15,14 @@ export type Demographics = z.infer<typeof DemographicsSchema>;
  * Structured as measured signals and observed acoustic characteristics.
  */
 export const SpeechFeaturesSchema = z.object({
-  speech_pause_ratio: z.number().min(0).max(1).default(0.15),
-  mean_pause_duration_ms: z.number().nonnegative().default(350),
-  speech_rate_wpm: z.number().nonnegative().default(130),
-  voice_energy_variability: z.number().min(0).max(1).default(0.1),
-  pitch_variability: z.number().min(0).max(1).default(0.12),
+  speech_pause_ratio: z.number().min(0).max(1).nullable().optional(),
+  mean_pause_duration_ms: z.number().nonnegative().nullable().optional(),
+  speech_rate_wpm: z.number().nonnegative().nullable().optional(),
+  voice_energy_variability: z.number().min(0).max(1).nullable().optional(),
+  pitch_variability: z.number().min(0).max(1).nullable().optional(),
+  // Nominal speaking pace configuration for conversational pacing when acoustic telemetry is absent.
+  // Not an estimate of the patient's biological speech.
+  dialogue_pacing_wpm: z.number().nonnegative().optional(),
   observations: z.array(z.string()).default([]),
   clinical_relevance: z.object({
     respiratory_distress_signal: z.enum(["unlikely", "possible", "probable", "severe"]).default("unlikely"),
