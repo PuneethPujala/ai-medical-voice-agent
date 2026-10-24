@@ -204,11 +204,12 @@ runTest("FHIR-PARA-03-MEASUREMENT-PROVENANCE", "Captures measurement timestamp, 
 // Test 4: Missing or Unvoiced Measurements: Zero-Fabrication Prevention
 // -----------------------------------------------------------------------------
 runTest("FHIR-PARA-04-MISSING-MEASUREMENTS", "Unvoiced or missing measurements must NOT be fabricated as 0 Hz or false values", () => {
-  // Scenario: Audio was unvoiced (whisper or non-periodic sound), so meanF0Hz is null
+  // Scenario: Audio was unvoiced (whisper or non-periodic sound), so meanF0Hz and pitchVariance are null
   const unvoicedMetrics: LiveAudioMetrics = {
     ...sampleAudioMetrics,
     meanF0Hz: null,
-    pitchVariance: 0,
+    pitchVariance: null,
+    energyVariance: null,
   };
 
   const record: ConsultationRecordFHIR = {
@@ -216,7 +217,8 @@ runTest("FHIR-PARA-04-MISSING-MEASUREMENTS", "Unvoiced or missing measurements m
     audioMetrics: unvoicedMetrics,
     speechFeatures: {
       ...sampleSpeechFeatures,
-      pitch_variability: 0,
+      pitch_variability: null,
+      voice_energy_variability: null,
     },
   };
 
@@ -229,6 +231,35 @@ runTest("FHIR-PARA-04-MISSING-MEASUREMENTS", "Unvoiced or missing measurements m
     c.code.coding.some((cod: any) => cod.code === "mean-f0") && c.valueQuantity?.value === 0
   );
   assert.strictEqual(zeroF0, undefined, "Must NOT fabricate 0 Hz for unvoiced frames");
+
+  // Must NOT contain energy-variability or pitch-variability if unmeasured (null)
+  const pitchComp = obs.component.find((c: any) =>
+    c.code.coding.some((cod: any) => cod.code === "pitch-variability")
+  );
+  assert.strictEqual(pitchComp, undefined, "Must NOT emit pitch-variability when null/unmeasured");
+
+  const energyComp = obs.component.find((c: any) =>
+    c.code.coding.some((cod: any) => cod.code === "energy-variability")
+  );
+  assert.strictEqual(energyComp, undefined, "Must NOT emit energy-variability when null/unmeasured");
+
+  // Legitimate measured zero values are NOT discarded when present (e.g. measured pitchVariance = 0.0)
+  const zeroMeasuredRecord: ConsultationRecordFHIR = {
+    ...baseRecord,
+    audioMetrics: {
+      ...sampleAudioMetrics,
+      pitchVariance: 0.0,
+      energyVariance: 0.0,
+    },
+  };
+  const zeroBundle = generateFHIRBundle(zeroMeasuredRecord);
+  const zeroObs = zeroBundle.entry.find((e) => e.resource.id?.startsWith("observation-acoustic-"))?.resource;
+  assert.ok(zeroObs, "Zero bundle must produce an acoustic observation");
+  const legitZeroPitch = zeroObs.component.find((c: any) =>
+    c.code.coding.some((cod: any) => cod.code === "pitch-variability")
+  );
+  assert.ok(legitZeroPitch, "Legitimate measured pitchVariance = 0.0 must be preserved");
+  assert.strictEqual(legitZeroPitch.valueQuantity.value, 0.0);
 
   // Record with NO acoustic metrics must not create any acoustic observation entry
   const recordWithoutAudio: ConsultationRecordFHIR = { ...baseRecord };

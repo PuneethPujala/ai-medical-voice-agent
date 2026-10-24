@@ -76,7 +76,10 @@ async function runVoiceSttTestSuite() {
       const res = await postVoiceStt(req);
       assert.strictEqual(res.status, 503, "Offline backend returns HTTP 503");
       const json = await res.json();
-      assert.ok(json.error.includes("unavailable"), "Error message clearly states service unavailable");
+      assert.ok(
+        json.error.includes("failed") || json.detail?.includes("unavailable"),
+        "Error message clearly states recognition failure or service unavailable"
+      );
       assert.strictEqual(json.transcript, undefined, "CRITICAL SAFETY: No fabricated transcript returned");
       console.log("  [PASS] Offline service returns HTTP 503 without fabricated symptoms\n");
     } finally {

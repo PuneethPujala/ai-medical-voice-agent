@@ -81,16 +81,17 @@ MedVoice achieves conversational fluency by separating deterministic safety eval
 | **Full End-to-End Voice Turnaround** | Full Pipeline (Mic $\rightarrow$ Speaker) | **2.5–5.0+ s** | Involves client audio recording, Whisper ASR transit, remote cloud LLM generation (Groq/NVIDIA), neural TTS synthesis, and audio buffering. **Sub-second turnaround applies STRICTLY to local pre-arbiter checks and pre-cached alerts, not full generative turns.** |
 
 ### 3.2. Speech-to-Text (STT) Infrastructure Status & Blockers
-- **Local Whisper Bridge (`/api/voice/stt`)**: Proxies audio multipart payloads to the external FastAPI Whisper service (`FASTAPI_URL`, default: `http://127.0.0.1:8000/api/v1/stt`).
-- **ASR Engine & Dependencies**: The Python ASR service (`backend/services/audio_service.py`) relies on **`openai-whisper`** (`whisper.load_model("base.en")`), **not** `faster-whisper`.
+- **Dual-Engine Speech-to-Text Routing (`/api/voice/stt`)**:
+  - **Primary Cloud Routing**: When `GROQ_API_KEY` is configured, audio multipart payloads are transmitted over TLS to Groq Cloud Whisper (`whisper-large-v3-turbo`) with a 10s request timeout. Under [Groq's documented developer policies](https://console.groq.com/docs/privacy-policy), inputs and outputs may be retained for up to 30 days for operational monitoring unless Zero Data Retention (ZDR) is verified and enabled; customer data is not used for model training without explicit consent.
+  - **Local Whisper Fallback**: If `GROQ_API_KEY` is absent or the cloud request fails, `/api/voice/stt` fails over to the external FastAPI Whisper service (`FASTAPI_URL`, default: `http://127.0.0.1:8000/api/v1/stt` and `http://localhost:8000/api/v1/stt`).
+- **ASR Engine & Dependencies**: The local Python ASR service (`backend/services/audio_service.py`) relies on **`openai-whisper`** (`whisper.load_model("base.en")`), **not** `faster-whisper`.
   - Python runtime: Python 3.10+, `torch`, `openai-whisper`, `fastapi`, `uvicorn`, `python-multipart`. It is **not bundled or self-contained within the Node.js / Next.js runtime**.
   - System runtime: `ffmpeg` binary installed in system `PATH` for decoding audio streams.
-- **Cloud Fallback Path**: If local Whisper encounters an error or out-of-memory failure on CPU, an optional cloud fallback to the OpenAI Audio API (`whisper-1`) executes if and only if `OPENAI_API_KEY` is provided. If both fail or no key is present, an explicit error is returned. The service **never** returns fabricated clinical symptoms or synthetic transcripts.
+- **Failover Guarantee**: If both cloud and local paths fail, an explicit error is returned. The service **never** returns fabricated clinical symptoms or synthetic transcripts.
 - **Service Requirement & Development Reality**:
-  - The FastAPI backend must be running (`uvicorn backend.main:app --port 8000`). If offline, `/api/voice/stt` returns `503 Service Unavailable`.
-  - In local development without the Python process running, browser clients rely on native Web Speech API or simulated transcript injection.
-  - Production release requires containerizing and deploying the Python Whisper ASR service as an independent microservice with GPU or multi-core CPU compute.
-  - **Active Blocker**: Live browser recording, stream chunking, and handling of empty transcript edge cases remain an active engineering blocker and work in progress. Full voice pipeline turnaround does not achieve sub-second latency.
+  - In local development without `GROQ_API_KEY` or the Python process running, browser clients rely on native Web Speech API or simulated transcript injection.
+  - Production release requires either provisioned cloud STT keys or containerizing and deploying the Python Whisper ASR service as an independent microservice with GPU or multi-core CPU compute.
+  - **Active Blocker**: Handling of empty transcript edge cases and live browser stream chunking remain active engineering work. Full voice pipeline turnaround does not achieve sub-second latency.
 
 ---
 
@@ -138,7 +139,7 @@ Before deploying any release candidate to a staging or production environment, t
    ```bash
    npm run test:coverage
    ```
-   - Must run all 41 canonical test suites.
+   - Must run all canonical test suites (54-suite regression battery).
    - Must generate valid `coverage/lcov.info` and `coverage/cobertura-coverage.xml`.
    - Must satisfy empirical thresholds:
      - Lines: $\ge 60.0\%$

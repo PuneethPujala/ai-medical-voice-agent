@@ -145,7 +145,85 @@ export async function POST(request: Request) {
     const fileName = (file as any).name || "utterance.webm";
     let sttResult: { ok: boolean; status: number; data?: any; errorDetail?: string } | null = null;
 
+    // Helper: Execute FastAPI Whisper STT with local fallback
+    const executeFastApiFallback = async (): Promise<{
+      ok: boolean;
+      status: number;
+      data?: any;
+      errorDetail?: string;
+    }> => {
+      const primaryUrl = getFastApiSttUrl();
+      const localFallbackUrl = "http://127.0.0.1:8000/api/v1/stt";
+      const candidateUrls = [primaryUrl];
+      if (primaryUrl !== localFallbackUrl) {
+        candidateUrls.push(localFallbackUrl);
+      }
+
+      for (let i = 0; i < candidateUrls.length; i++) {
+        const targetUrl = candidateUrls[i];
+        const isPrimary = i === 0;
+        const hasFallback = candidateUrls.length > 1 && isPrimary;
+        // 5s timeout on remote primary if local fallback is available; 15s otherwise
+        const timeoutMs = hasFallback ? 5000 : 15000;
+
+        const backendForm = new FormData();
+        backendForm.append("file", file, fileName);
+        if (prompt) {
+          backendForm.append("prompt", prompt);
+        }
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+        try {
+          const response = await fetch(targetUrl, {
+            method: "POST",
+            body: backendForm,
+            signal: controller.signal,
+          });
+          clearTimeout(timeoutId);
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}));
+            const detail = errorData.detail || `FastAPI STT returned status ${response.status}`;
+            console.warn(`FastAPI STT at ${targetUrl} returned status ${response.status}: ${detail}`);
+            if (hasFallback && response.status >= 500) {
+              console.warn(`Failing over to local FastAPI STT at ${localFallbackUrl}...`);
+              continue;
+            }
+            return { ok: false, status: response.status, errorDetail: detail };
+          }
+
+          const data = await response.json();
+          return { ok: true, status: 200, data };
+        } catch (fetchErr: any) {
+          clearTimeout(timeoutId);
+          const isAbort = fetchErr.name === "AbortError";
+          console.warn(`FastAPI STT attempt at ${targetUrl} failed: ${fetchErr?.message || (isAbort ? "Timed out" : "Unknown error")}`);
+          if (hasFallback) {
+            console.warn(`Failing over to local FastAPI STT at ${localFallbackUrl}...`);
+            continue;
+          }
+          return {
+            ok: false,
+            status: isAbort ? 504 : 503,
+            errorDetail: isAbort
+              ? "Transcription request timed out."
+              : (fetchErr?.message || "Local Whisper ASR service unavailable."),
+          };
+        }
+      }
+
+      return {
+        ok: false,
+        status: 503,
+        errorDetail: "Local Whisper ASR service unavailable.",
+      };
+    };
+
     const groqApiKey = process.env.GROQ_API_KEY;
+    let groqSucceededWithEmpty = false;
+
     if (groqApiKey && groqApiKey.trim()) {
       try {
         const groqForm = new FormData();
@@ -171,14 +249,23 @@ export async function POST(request: Request) {
 
         if (groqRes.ok) {
           const groqData = await groqRes.json();
-          sttResult = {
-            ok: true,
-            status: 200,
-            data: {
-              transcript: groqData.text || "",
-              engine: "groq_whisper_large_v3_turbo",
-            },
-          };
+          const groqText = typeof groqData.text === "string" ? groqData.text : "";
+          if (groqText.trim().length > 0) {
+            // Groq returned a usable, non-empty transcript
+            sttResult = {
+              ok: true,
+              status: 200,
+              data: {
+                transcript: groqText,
+                engine: "groq_whisper_large_v3_turbo",
+              },
+            };
+          } else {
+            // Groq HTTP 200 succeeded, but transcript is empty or whitespace-only.
+            // Attempt the existing FastAPI Whisper fallback before returning an empty result.
+            console.warn("[Groq Whisper STT] Received empty transcript; attempting local FastAPI fallback.");
+            groqSucceededWithEmpty = true;
+          }
         } else {
           const errText = await groqRes.text().catch(() => "");
           console.warn(`[Groq Whisper STT] Returned status ${groqRes.status}: ${errText}`);
@@ -188,69 +275,61 @@ export async function POST(request: Request) {
       }
     }
 
-    if (!sttResult || !sttResult.ok) {
-      const primaryUrl = getFastApiSttUrl();
-      const localFallbackUrl = "http://127.0.0.1:8000/api/v1/stt";
-      const candidateUrls = [primaryUrl];
-      if (primaryUrl !== localFallbackUrl) {
-        candidateUrls.push(localFallbackUrl);
-      }
-
-    for (let i = 0; i < candidateUrls.length; i++) {
-      const targetUrl = candidateUrls[i];
-      const isPrimary = i === 0;
-      const hasFallback = candidateUrls.length > 1 && isPrimary;
-      // 5s timeout on remote primary if local fallback is available; 15s otherwise
-      const timeoutMs = hasFallback ? 5000 : 15000;
-
-      const backendForm = new FormData();
-      backendForm.append("file", file, fileName);
-      if (prompt) {
-        backendForm.append("prompt", prompt);
-      }
-
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-
-      try {
-        const response = await fetch(targetUrl, {
-          method: "POST",
-          body: backendForm,
-          signal: controller.signal,
-        });
-        clearTimeout(timeoutId);
-
-        if (!response.ok) {
-          const errorData = await response.json().catch(() => ({}));
-          const detail = errorData.detail || `FastAPI STT returned status ${response.status}`;
-          console.warn(`FastAPI STT at ${targetUrl} returned status ${response.status}: ${detail}`);
-          if (hasFallback && response.status >= 500) {
-            console.warn(`Failing over to local FastAPI STT at ${localFallbackUrl}...`);
-            continue;
-          }
-          sttResult = { ok: false, status: response.status, errorDetail: detail };
-          break;
+    // Fallback path: Attempt FastAPI STT at most once if Groq was not used, Groq failed,
+    // or Groq returned an empty transcript.
+    if (!sttResult) {
+      const fastApiResult = await executeFastApiFallback();
+      if (fastApiResult.ok && fastApiResult.data) {
+        const localTranscript = typeof fastApiResult.data.transcript === "string" ? fastApiResult.data.transcript : "";
+        if (localTranscript.trim().length > 0) {
+          // Local fallback successfully produced speech text
+          sttResult = {
+            ok: true,
+            status: 200,
+            data: {
+              transcript: localTranscript,
+              engine: fastApiResult.data.engine || "whisper_base_en",
+            },
+          };
+        } else if (groqSucceededWithEmpty) {
+          // Both Groq and FastAPI processed the audio and neither found speech
+          sttResult = {
+            ok: true,
+            status: 200,
+            data: {
+              transcript: "",
+              engine: "whisper_base_en",
+            },
+          };
+        } else {
+          // FastAPI succeeded directly (or as failover from Groq error) with empty text
+          sttResult = {
+            ok: true,
+            status: 200,
+            data: {
+              transcript: "",
+              engine: fastApiResult.data.engine || "whisper_base_en",
+            },
+          };
         }
-
-        const data = await response.json();
-        sttResult = { ok: true, status: 200, data };
-        break;
-      } catch (fetchErr: any) {
-        clearTimeout(timeoutId);
-        const isAbort = fetchErr.name === "AbortError";
-        console.warn(`FastAPI STT attempt at ${targetUrl} failed: ${fetchErr?.message || (isAbort ? "Timed out" : "Unknown error")}`);
-        if (hasFallback) {
-          console.warn(`Failing over to local FastAPI STT at ${localFallbackUrl}...`);
-          continue;
+      } else {
+        // FastAPI fallback failed or was unavailable
+        if (groqSucceededWithEmpty) {
+          // Groq successfully analyzed the audio and returned HTTP 200 (no speech detected).
+          // An unavailable or failing local fallback does NOT convert an empty transcript into a provider outage.
+          sttResult = {
+            ok: true,
+            status: 200,
+            data: {
+              transcript: "",
+              engine: "groq_whisper_large_v3_turbo",
+            },
+          };
+        } else {
+          // Both providers failed (or Groq unconfigured and FastAPI failed)
+          sttResult = fastApiResult;
         }
-        sttResult = {
-          ok: false,
-          status: isAbort ? 504 : 503,
-          errorDetail: isAbort ? "Transcription request timed out." : (fetchErr?.message || "Local Whisper ASR service unavailable."),
-        };
-        break;
       }
-    }
     }
 
     if (!sttResult || !sttResult.ok) {

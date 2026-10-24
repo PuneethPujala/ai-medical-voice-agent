@@ -79,6 +79,7 @@ export const CANONICAL_TEST_BATTERY: TestSuiteDefinition[] = [
   { id: "test:safety-streaming", file: "tests/streaming/safety-gated-streaming-and-bargein.test.ts", description: "Safety-Gated Voice Streaming & Deterministic Barge-In Battery" },
   { id: "test:voice-intelligence", file: "tests/voice/conversation-intelligence.test.ts", description: "Multi-Clause Temporal Progression & Non-Destructive Ledger" },
   { id: "test:voice-intake", file: "tests/voice/voice-intake-review.test.ts", description: "Voice Intake State Machine & Transcript Review Safety" },
+  { id: "test:stt-recovery", file: "tests/stt/empty-transcript-recovery.test.ts", description: "Empty-Transcript STT Fallback & Patient Recovery" },
   { id: "test:multi-turn-concurrency", file: "tests/voice/multi-turn-concurrency.test.ts", description: "Multi-Turn Concurrency & Optimistic Version Synchronization" },
   { id: "test:whole-conversation-stress", file: "tests/voice/whole-conversation-stress.test.ts", description: "Whole-Conversation 4-Layer Context Behavioral Stress" },
 

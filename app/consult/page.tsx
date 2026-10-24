@@ -979,6 +979,13 @@ export default function ConsultPage() {
       silenceTimerRef.current = null;
     }
 
+    // Capture preview text BEFORE resetting interim state and refs
+    const capturedPreview = (
+      forceText ||
+      transcriptTextRef.current ||
+      accumulatedTranscriptRef.current
+    ).trim();
+
     accumulatedTranscriptRef.current = "";
     transcriptTextRef.current = "";
     setTranscriptText("");
@@ -1013,7 +1020,7 @@ export default function ConsultPage() {
     audioStateRef.current = "PROCESSING_TRANSCRIPTION";
     setAudioState("PROCESSING_TRANSCRIPTION");
 
-    // Primary Canonical Path: Transcribe recorded utterance using Local Whisper ASR
+    // Primary Canonical Path: Transcribe recorded utterance using Local / Cloud Whisper ASR
     if (audioBlob && audioBlob.size > 2000) {
       try {
         const formData = new FormData();
@@ -1024,7 +1031,7 @@ export default function ConsultPage() {
         // Clinical Context Priming: Pass doctor's active inquiry and live preview
         const priorContext = lastDoctorSpeechRef.current.trim() ||
           ([...messagesRef.current].reverse().find(m => m.role === "doctor")?.text || "");
-        const previewText = transcriptTextRef.current.trim() || accumulatedTranscriptRef.current.trim();
+        const previewText = capturedPreview;
         if (priorContext) {
           formData.append("context", priorContext);
         }
@@ -1039,7 +1046,7 @@ export default function ConsultPage() {
 
         if (!sttRes.ok) {
           console.warn(`[MedVoice STT] Whisper ASR returned HTTP ${sttRes.status}`);
-          const fallbackText = previewText;
+          const fallbackText = capturedPreview;
           if (fallbackText) {
             console.warn("[MedVoice Voice] Recovering with interim browser preview:", fallbackText);
             setClinicalToasts((prev) => [
@@ -1085,15 +1092,27 @@ export default function ConsultPage() {
         }
       } catch (err) {
         console.error("Whisper STT request exception:", err);
-        const fallbackText = transcriptTextRef.current.trim() || accumulatedTranscriptRef.current.trim();
+        const fallbackText = capturedPreview;
         if (fallbackText) {
           finalTranscript = fallbackText;
         } else {
+          setClinicalToasts((prev) => [
+            ...prev,
+            {
+              id: `stt-net-err-${Date.now()}`,
+              type: "warning",
+              title: "Transcription Network Error",
+              description: "Could not reach the transcription service. Please try speaking again or type your symptoms instead.",
+            },
+          ]);
           audioStateRef.current = "IDLE";
           setAudioState("IDLE");
           return;
         }
       }
+    } else if (capturedPreview) {
+      // Audio buffer was too short or unavailable, but browser interim recognition captured text
+      finalTranscript = capturedPreview;
     }
 
     // Check if the transcription session is still valid (not canceled or restarted while awaiting ASR)
@@ -1107,6 +1126,15 @@ export default function ConsultPage() {
 
     if (!finalTranscript) {
       console.log("No intelligible speech detected in utterance.");
+      setClinicalToasts((prev) => [
+        ...prev,
+        {
+          id: `stt-empty-${Date.now()}`,
+          type: "warning",
+          title: "Speech Not Detected",
+          description: "We couldn't hear enough to transcribe that. Please try speaking again, speak a little more clearly, or type your symptoms instead.",
+        },
+      ]);
       audioStateRef.current = "IDLE";
       setAudioState("IDLE");
       return;

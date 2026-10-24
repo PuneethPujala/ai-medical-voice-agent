@@ -418,7 +418,8 @@ export function generateFHIRBundle(record: ConsultationRecordFHIR): FHIRBundle {
     }
 
     // Component 5: Voice Fundamental Frequency Pitch Variability
-    if (audioMetrics?.pitchVariance !== undefined && audioMetrics.pitchVariance !== null && audioMetrics.pitchVariance > 0) {
+    // Emits only when legitimate pitch variability was established (non-null and non-undefined)
+    if (audioMetrics?.pitchVariance !== undefined && audioMetrics.pitchVariance !== null) {
       acousticComponents.push({
         code: {
           coding: [
@@ -440,6 +441,7 @@ export function generateFHIRBundle(record: ConsultationRecordFHIR): FHIRBundle {
     }
 
     // Component 6: Voice RMS Energy Variability
+    // Emits only when legitimate energy variability was established (non-null and non-undefined)
     if (audioMetrics?.energyVariance !== undefined && audioMetrics.energyVariance !== null) {
       acousticComponents.push({
         code: {
@@ -520,14 +522,14 @@ export function generateFHIRBundle(record: ConsultationRecordFHIR): FHIRBundle {
         coding: [
           {
             system: "https://medvoice.health/fhir/CodeSystem/measurement-methods",
-            code: "in-browser-dsp-autocorrelation",
-            display: "Web Audio DSP 25ms Frame Normalized Autocorrelation & RMS Telemetry",
+            code: "client-reported-dsp-telemetry",
+            display: "Client-Reported Web Audio DSP Telemetry (Unauthenticated Client Assertion)",
           },
         ],
-        text: "Client-side Web Audio DSP (25ms window, 10ms hop, -38 dBFS VAD)",
+        text: "Client-reported Web Audio DSP telemetry (25ms window, 10ms hop, -38 dBFS VAD; client assertion, not independently server-authenticated)",
       },
       device: {
-        display: "MedVoice In-Browser DSP Acoustic Telemetry Analyzer v3.1",
+        display: "MedVoice Web Audio Telemetry Ingest Module v3.1",
       },
       component: acousticComponents,
       note: [
