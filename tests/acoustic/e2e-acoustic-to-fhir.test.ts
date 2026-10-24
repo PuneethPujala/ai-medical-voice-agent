@@ -92,8 +92,8 @@ async function runE2EAcousticTests() {
     assert.ok(realAudioMetrics, "Metrics must be generated from audio");
     assert.ok(realAudioMetrics.durationMs > 2000, `Duration must exceed 2s, got ${realAudioMetrics.durationMs}ms`);
     assert.strictEqual(realAudioMetrics.sampleRate, sampleRate);
-    assert.ok(realAudioMetrics.totalFramesCount > 100, "Must process more than 100 frames");
-    assert.ok(realAudioMetrics.voicedFramesCount > 10, "Must detect voiced speech frames");
+    assert.ok(realAudioMetrics.totalFramesCount !== undefined && realAudioMetrics.totalFramesCount > 100, "Must process more than 100 frames");
+    assert.ok(realAudioMetrics.voicedFramesCount !== undefined && realAudioMetrics.voicedFramesCount > 10, "Must detect voiced speech frames");
     assert.ok(
       realAudioMetrics.meanF0Hz !== null &&
       realAudioMetrics.meanF0Hz !== undefined &&
@@ -149,8 +149,36 @@ async function runE2EAcousticTests() {
 
     // Out-of-bounds f0 must be rejected to null, preserving unvoiced state without fabricating 0 Hz
     const outOfBoundsF0 = validateAudioMetrics({ durationMs: 2000, meanF0Hz: 1200 }); // 1200 Hz is supra-human
-    assert.ok(outOfBoundsF0 !== null);
-    assert.strictEqual(outOfBoundsF0?.meanF0Hz, null, "Supra-human f0 must be set to null, not fabricated");
+    assert.strictEqual(outOfBoundsF0, null, "Supra-human f0 must be rejected as invalid telemetry");
+
+    // Partial payload must NOT invent energyVariance or pitchVariance or synthetic frame counts
+    const partialPayload = validateAudioMetrics({ durationMs: 3000 });
+    assert.ok(partialPayload !== null);
+    assert.strictEqual(partialPayload.energyVariance, null, "Missing energyVariance must remain null, never fabricated as 0.1");
+    assert.strictEqual(partialPayload.pitchVariance, null, "Missing pitchVariance must remain null, never fabricated as 0");
+    assert.strictEqual(partialPayload.voicedFramesCount, undefined, "Missing voicedFramesCount must not be synthesized");
+    assert.strictEqual(partialPayload.totalFramesCount, undefined, "Missing totalFramesCount must not be synthesized");
+    assert.strictEqual(partialPayload.isLiveDsp, false, "Absent isLiveDsp must default to false, never asserted as true");
+
+    // Crafted attack claiming isLiveDsp: true with invalid telemetry must still be rejected
+    const craftedAttack = validateAudioMetrics({
+      durationMs: 3000,
+      isLiveDsp: true,
+      meanF0Hz: 9999, // invalid pitch
+    });
+    assert.strictEqual(craftedAttack, null, "Claimed isLiveDsp: true must not bypass physiological bounds validation");
+
+    // Extract speech features without audio duration: punctuation must NOT fabricate measured acoustic values
+    const textOnlyFeatures = extractSpeechFeatures({
+      transcriptText: "Hello doctor, I have a headache... and fever? Yes!",
+      wordCount: 9,
+    });
+    assert.strictEqual(textOnlyFeatures.speech_rate_wpm, null, "Text-only input must have null measured speech_rate_wpm");
+    assert.strictEqual(textOnlyFeatures.speech_pause_ratio, null, "Punctuation must not synthesize measured speech_pause_ratio");
+    assert.strictEqual(textOnlyFeatures.mean_pause_duration_ms, null, "Punctuation must not synthesize measured mean_pause_duration_ms");
+    assert.strictEqual(textOnlyFeatures.voice_energy_variability, null, "Missing acoustic telemetry must leave voice_energy_variability null");
+    assert.strictEqual(textOnlyFeatures.pitch_variability, null, "Missing acoustic telemetry must leave pitch_variability null");
+    assert.strictEqual(textOnlyFeatures.dialogue_pacing_wpm, 130, "Provides nominal dialogue_pacing_wpm configuration for turn pacing, never claimed as measured speech rate");
   });
 
   // ---------------------------------------------------------------------------
@@ -344,9 +372,9 @@ async function runE2EAcousticTests() {
     assert.strictEqual(obs.code?.coding?.[0]?.system, "https://medvoice.health/fhir/CodeSystem/acoustic-metrics");
     assert.strictEqual(obs.code?.coding?.[0]?.code, "voice-paralinguistic-panel");
 
-    // Validate Provenance: Device & Method
-    assert.ok(obs.device?.display?.includes("MedVoice In-Browser DSP"), "Device must describe in-browser DSP analyzer");
-    assert.strictEqual(obs.method?.coding?.[0]?.code, "in-browser-dsp-autocorrelation");
+    // Validate Provenance: Device & Method accurately reflect client-reported telemetry ingest
+    assert.ok(obs.device?.display?.includes("MedVoice"), "Device must describe MedVoice telemetry ingest module");
+    assert.strictEqual(obs.method?.coding?.[0]?.code, "client-reported-dsp-telemetry");
 
     // Validate Components and UCUM units
     const components = obs.component;
@@ -417,7 +445,33 @@ async function runE2EAcousticTests() {
     if (unvoicedObs) {
       const f0Comp = unvoicedObs.component?.find((c: any) => c.code?.coding?.[0]?.code === "mean-f0");
       assert.strictEqual(f0Comp, undefined, "Unvoiced f0 must NOT be present as a component; must never fabricate 0 Hz");
+      const pitchVarComp = unvoicedObs.component?.find((c: any) => c.code?.coding?.[0]?.code === "pitch-variability");
+      assert.strictEqual(pitchVarComp, undefined, "Unvoiced recording must NOT emit pitch-variability component");
     }
+
+    // Partial telemetry without energy variability must omit energy-variability component in FHIR
+    const partialRecord = {
+      id: "ENC-PARTIAL-TEST",
+      patientName: "Partial Patient",
+      triageLevel: "routine" as const,
+      audioMetrics: {
+        durationMs: 4000,
+        pauseCount: 2,
+        totalPauseDurationMs: 800,
+        speechPauseRatio: 0.20,
+        meanPauseDurationMs: 400,
+        sampleRate: 16000,
+        energyVariance: null,
+        pitchVariance: null,
+      },
+    };
+    const partialBundle = generateFHIRBundle(partialRecord);
+    const partialObs = partialBundle.entry.find((e: any) => e.resource?.id?.startsWith("observation-acoustic-"))?.resource;
+    assert.ok(partialObs, "Partial telemetry still emits acoustic observation for available metrics");
+    const partialEnergyComp = partialObs.component?.find((c: any) => c.code?.coding?.[0]?.code === "energy-variability");
+    assert.strictEqual(partialEnergyComp, undefined, "Missing energyVariance must NOT produce FHIR component");
+    const partialPitchComp = partialObs.component?.find((c: any) => c.code?.coding?.[0]?.code === "pitch-variability");
+    assert.strictEqual(partialPitchComp, undefined, "Missing pitchVariance must NOT produce FHIR component");
 
     // Text-only intake without any microphone capture: Observation is cleanly omitted
     const textOnlyRecord = {

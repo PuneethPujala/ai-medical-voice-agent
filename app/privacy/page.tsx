@@ -39,8 +39,8 @@ const COMPLIANCE_FAQS = [
     a: "MedVoice implements prototype technical safeguards conforming to 45 CFR § 164.312 (access control, transmission security, data integrity, and audit controls). For full institutional deployment in covered healthcare entities, formal Business Associate Agreements (BAAs) and institutional governance policies are established.",
   },
   {
-    q: "What clinical context is transmitted to cloud LLM inference APIs?",
-    a: "Spoken patient voice audio NEVER leaves local server infrastructure. Speech-to-text conversion is performed entirely on-premise or within the local container via Whisper. Only de-identified, structured clinical text slots (symptoms, duration, emergency flags) are transmitted to inference providers (such as Groq or NVIDIA NIM), and requests are discarded post-turn without model training retention.",
+    q: "What clinical context is transmitted to cloud APIs, and when does voice audio leave local infrastructure?",
+    a: "Speech-to-text processing operates in a dual-path architecture: when GROQ_API_KEY is provisioned, /api/voice/stt sends recorded audio to Groq Cloud Whisper (whisper-large-v3-turbo) for high-speed transcription. When cloud transcription fails or the key is unset, processing falls back to the local FastAPI Whisper container. Consequently, spoken audio leaves local infrastructure when the cloud STT route is active. Under Groq's published developer documentation, inputs and outputs may be retained in logs for up to 30 days for reliability and security monitoring unless an organization has verified and configured Zero Data Retention (ZDR); customer data is not used for model training unless explicitly agreed. For LLM dialogue generation, only de-identified clinical text slots (symptoms, duration, triage indicators) are transmitted to cloud inference endpoints (Groq or NVIDIA NIM).",
   },
   {
     q: "Can patient audio waveforms ever be reconstructed from the database?",

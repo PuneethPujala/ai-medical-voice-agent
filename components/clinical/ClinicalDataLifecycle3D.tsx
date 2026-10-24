@@ -51,26 +51,26 @@ export const LIFECYCLE_STAGES: LifecycleStage[] = [
     dataIn: 'Microphone acoustic waveform (16kHz PCM chunks)',
     dataOut: 'In-memory multipart FormData stream',
     voiceIsolationDetail:
-      'Captured via standard MediaRecorder and streamed to /api/voice/stt over HTTPS. Audio is held strictly in volatile server RAM during transcription.',
+      'Captured via standard MediaRecorder and streamed to /api/voice/stt over HTTPS. Audio is held in volatile server memory during transcription pass.',
     retentionDetail:
-      'Ephemeral RAM allocation. Never committed to permanent server disk storage or relational database.',
+      'Ephemeral memory allocation. Audio waveforms are not committed to permanent consultation records or relational databases.',
   },
   {
     id: 'local_whisper',
     stepNum: '02',
     name: 'Local Speech Recognition',
     shortLabel: '02 Local ASR',
-    headline: 'Neural speech-to-text decoding executes locally on server container',
+    headline: 'Neural speech-to-text decoding via Groq Cloud Whisper with local container fallback',
     category: 'asr',
-    badge: 'LOCAL EXECUTION',
-    boundary: 'FastAPI Whisper base.en',
-    processingLocation: 'Local Server Container (74M-Param Neural Network)',
+    badge: 'DUAL-ENGINE ASR',
+    boundary: 'Groq Whisper / FastAPI Whisper',
+    processingLocation: 'Cloud Whisper (Primary) → Local FastAPI Container (Fallback)',
     dataIn: '16kHz temporary audio buffer',
     dataOut: 'Raw transcript text tokens',
     voiceIsolationDetail:
-      'Speech decoding executes 100% locally on the FastAPI container. Voice waveforms are converted to text without streaming audio to external cloud providers.',
+      'When GROQ_API_KEY is provisioned, audio is sent over TLS to Groq Cloud Whisper (whisper-large-v3-turbo). If cloud transcription is unavailable or unconfigured, speech decoding executes on the local FastAPI container.',
     retentionDetail:
-      'Temporary audio files are unlinked immediately inside audio_service.py in an explicit finally: os.remove() block.',
+      'Groq developer policy specifies log retention up to 30 days unless Zero Data Retention (ZDR) is configured. Local fallback unlinks temporary audio files immediately after decoding.',
   },
   {
     id: 'clinical_context',
@@ -102,7 +102,7 @@ export const LIFECYCLE_STAGES: LifecycleStage[] = [
     dataIn: 'De-identified clinical context prompt & conversation history',
     dataOut: 'Doctor bedside guidance text tokens',
     voiceIsolationDetail:
-      'STRICT BOUNDARY: Only structured text prompt is submitted to cloud LLM APIs. Spoken patient voice audio NEVER leaves local server infrastructure.',
+      'STRICT BOUNDARY: Only de-identified clinical text prompt slots are submitted to cloud LLM APIs. Dialogue requests do not transmit patient voice audio.',
     retentionDetail:
       'Ephemeral API request. Clinical prompt context is discarded post-inference.',
     vendorNotice:

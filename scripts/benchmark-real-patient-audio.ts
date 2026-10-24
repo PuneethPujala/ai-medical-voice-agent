@@ -189,18 +189,20 @@ async function main() {
     const avgProcMs = totalProcMs / 3;
     const rtf = (avgProcMs / 1000) / durationSec;
     const speedup = 1 / rtf;
-    const unvoicedRatio = 1 - (finalMetrics!.voicedFramesCount / finalMetrics!.totalFramesCount);
+    const totalFrames = finalMetrics!.totalFramesCount ?? 0;
+    const voicedFrames = finalMetrics!.voicedFramesCount ?? 0;
+    const unvoicedRatio = totalFrames > 0 ? 1 - (voicedFrames / totalFrames) : 0;
 
     const res: RealAudioBenchmarkResult = {
       fileId: filename.replace(".wav", ""),
       category: "Standardized Clinical Speech",
       durationSec,
       sampleRate,
-      totalFrames: finalMetrics!.totalFramesCount,
-      voicedFrames: finalMetrics!.voicedFramesCount,
+      totalFrames,
+      voicedFrames,
       unvoicedRatio,
       meanF0Hz: finalMetrics!.meanF0Hz ?? null,
-      pitchCvRatio: finalMetrics!.pitchVariance, // Dimensionless CV
+      pitchCvRatio: finalMetrics!.pitchVariance ?? 0, // Dimensionless CV
       pauseCount: finalMetrics!.pauseCount,
       speechPauseRatio: finalMetrics!.speechPauseRatio,
       procTimeMs: avgProcMs,
