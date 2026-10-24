@@ -29,6 +29,7 @@
 - [Verification, Test Suites & Coverage](#-verification-test-suites--coverage)
 - [Getting Started & Safe Demo Guidance](#-getting-started--safe-demo-guidance)
 - [Clinical & Regulatory Boundary Disclaimers](#-clinical--regulatory-boundary-disclaimers)
+- [License & Research Use](#-license--research-use)
 
 ---
 
@@ -42,7 +43,7 @@ For complete architecture, clinical safety specifications, persistence models, a
 | [**`docs/CLINICAL-SAFETY.md`**](docs/CLINICAL-SAFETY.md) | Deterministic emergency floors, non-downgrade invariant, universal red-flag catalog, and clinical boundaries. |
 | [**`docs/DATA-AND-PERSISTENCE.md`**](docs/DATA-AND-PERSISTENCE.md) | Consultation lifecycle, SHA-256 chained audit ledger, optimistic concurrency (`caseVersion`), and Drizzle ORM migrations. |
 | [**`docs/OPERATIONS.md`**](docs/OPERATIONS.md) | Deployment topology, environment configuration, empirical latency benchmarks, resilience, and release gates. |
-| [**`docs/TESTING.md`**](docs/TESTING.md) | 41-suite regression inventory, deterministic coverage generation (`c8`), LCOV/Cobertura artifacts, and CI gates. |
+| [**`docs/TESTING.md`**](docs/TESTING.md) | 54-suite regression inventory, deterministic coverage generation (`c8`), LCOV/Cobertura artifacts, and CI gates. |
 | [**`docs/PAPER.md`**](docs/PAPER.md) | Scientific manuscript, clinical triage concordance analysis, and 20-point audit specification. |
 
 ---
@@ -112,11 +113,11 @@ This specification documents the verified codebase implementation across clinica
 * **Adaptive First-Chunk Optimization**: To eliminate compound response lag, the audio engine adaptively partitions speech into an immediate introductory clause (4–8 words) synthesized ahead of subsequent paragraphs (TTFA: **1.1–1.6 s** with zero measured playback buffer starvation).
 * **Full End-to-End Voice Latency Reality**: In a live voice consultation (Microphone $\rightarrow$ STT $\rightarrow$ Remote LLM $\rightarrow$ TTS $\rightarrow$ Playback), full conversational turn turnaround is **2.5–5.0+ seconds**. Sub-second turnaround applies **strictly** to local deterministic safety pre-arbiter evaluations and pre-cached emergency alerts. The full voice pipeline does **not** meet sub-second targets.
 * **Speech-to-Text (STT) Infrastructure Status**:
-  - The Next.js `/api/voice/stt` bridge proxies audio multipart payloads to an external FastAPI service (`FASTAPI_URL`, default: `http://127.0.0.1:8000/api/v1/stt`).
-  - **ASR Engine & Dependencies**: Uses **`openai-whisper`** (`whisper.load_model("base.en")`), **not** `faster-whisper`. Requires Python 3.10+, `torch`, `openai-whisper`, `fastapi`, `uvicorn`, `python-multipart`, and system `ffmpeg`.
-  - **Cloud Fallback Path**: If local Whisper encounters a CPU error or out-of-memory failure, an optional cloud fallback via the OpenAI Audio API (`whisper-1`) executes if `OPENAI_API_KEY` is provided. If both fail or no key is configured, an explicit error is raised (zero hallucinated clinical transcripts).
-  - **Service Requirement**: The FastAPI service must be actively running (`uvicorn backend.main:app --port 8000`). If offline, `/api/voice/stt` returns `503 Service Unavailable`. In local development without the Python backend running, browser clients rely on native Web Speech API or simulated transcript injection.
-  - **Active Blocker**: Live browser streaming, audio chunk coordination, and empty transcript edge-cases remain an active engineering blocker and work in progress.
+  - The Next.js `/api/voice/stt` bridge implements dual-engine ASR routing:
+    - **Primary Engine**: When `GROQ_API_KEY` is configured and valid, incoming audio is dispatched to **Groq Cloud Whisper (`whisper-large-v3-turbo`)** for sub-second, highly accelerated transcription.
+    - **Fallback Engine**: If `GROQ_API_KEY` is absent, times out (10s abort), or returns an upstream error, the route automatically fails over to the local FastAPI Whisper microservice (`FASTAPI_URL`, default: `http://127.0.0.1:8000/api/v1/stt`) running **`openai-whisper` (`base.en`)** on CPU.
+  - **Explicit Error & Anti-Hallucination Invariant**: If both Groq and local FastAPI fail or are offline, `/api/voice/stt` returns `503 Service Unavailable` with an explicit prompt for the patient to repeat. It **never** returns fabricated clinical symptoms.
+  - **Active Blocker**: Live browser streaming chunk coordination and empty transcript edge-cases remain an active engineering blocker and work in progress.
 
 ### 5. Runtime Paralinguistic Acoustic DSP Analyzer
 * **Microphone DSP Pipeline**: The browser runtime extracts short-term acoustic features from live microphone PCM input via Web Audio API using **25 ms analysis windows** and **10 ms hop intervals**.
@@ -359,7 +360,7 @@ Test coverage is instrumented via `c8` targeting maintained application code (`l
 ### Quick Start
 1. **Clone the repository**:
    ```bash
-   git clone https://github.com/Srinivas-Manchinasetti/ai-medical-voice-agent.git
+   git clone https://github.com/PuneethPujala/ai-medical-voice-agent.git
    cd ai-medical-voice-agent
    ```
 2. **Install dependencies**:
@@ -409,6 +410,8 @@ When conducting product demonstrations or evaluating capabilities:
 
 ---
 
-## 📜 License
+## 📜 License & Research Use
 
-Distributed under the MIT License. See `LICENSE` for more information.
+No open-source license has currently been specified for this repository. No permission to redistribute or commercially use the code is granted by this README. For licensing or reuse inquiries, please contact the project maintainers.
+
+MedVoice is an academic capstone research prototype. It is not intended for clinical production use, and its outputs must not replace professional medical judgment.
