@@ -166,6 +166,12 @@ This specification documents the verified codebase implementation across clinica
 
 The following matrix documents the verified technical alignment across all 20 evaluated dimensions between prior claims, codebase reality, and adopted specifications (detailed in [docs/PAPER.md](docs/PAPER.md)):
 
+> [!NOTE]
+> **Status Legend & Concordance Governance**:
+> - 🟢 **Resolved / In Full Concordance**: Discrepancy between historical claims and codebase reality is resolved; the adopted specification formally reflects the verified implementation, and component behavior is backed by reproducible automated tests or benchmarks. Green indicates architectural alignment, not unmeasured universal performance or clinical clearance.
+> - 🟡 **Scoped / Operational Boundary**: Feature is implemented and verified under documented operational constraints (e.g., benchmark sensitivity bounds, local isolation, or decoupled routing).
+> - 🔴 **Unresolved Discrepancy**: Active contradiction between specification claims and codebase execution.
+
 | # | Topic | Status | Code Reality & Verification | Adopted Specification & Paper Language |
 |:---:|:---|:---:|:---|:---|
 | **1** | Multi-Agent Board | 🟢 | Software decision heuristics and prompt templates with bounded execution rounds; not autonomous physicians. | Bounded multi-specialist heuristic decision architecture comprising generalist and specialty modules with simulated deliberation. |
@@ -175,7 +181,7 @@ The following matrix documents the verified technical alignment across all 20 ev
 | **5** | Triage Concordance | 🟡 | 35-case benchmark harness (22 emergency, 13 controls). | Achieved 100% emergency sensitivity (22/22) on the evaluated 35-case benchmark; no claim of universal population accuracy. |
 | **6** | Arbiter Latency | 🟢 | Node.js v22 CPU benchmark measurements. | Mean safety-arbiter latency was 0.39 ms in the local Node.js benchmark; P50 was 0.14 ms. |
 | **7** | Kokoro-82M TTFA | 🟢 | CPU engine baseline is approximately 0.93–0.96 s P50 for short 5-word inputs. Adaptive first-chunk synthesis achieves 1.1–1.6 s TTFA for compound turns, with a reported 61.4% reduction in waiting time and no buffer starvation observed in the chunker test. | Replaced the unsupported 142 ms claim with the measured CPU latency profile and the validated adaptive chunking approach. |
-| **8** | Turn-Taking & Latency | 🟡 | Pre-arbiter is sub-millisecond (0.39 ms); full end-to-end voice turnaround is 2.5–5.0+ s in live network conditions. | Local interactive voice consultation with sub-second arbiter safety checks; compound end-to-end dialogue turnaround is 2.5–5.0+ s. |
+| **8** | Turn-Taking & Latency | 🟢 | Dual-path latency specification: emergency preemption dispatches cached directives in under 1 ms in the reported benchmark; adaptive local TTS achieves 1.1–1.6 s first-chunk latency in reported tests. Full network-mediated conversational turnaround is documented at 2.5–5.0+ s. | Replaced the universal sub-second turn-taking claim with an explicitly scoped dual-path specification. Component-level tests and benchmarks support the reported figures; end-to-end browser and network performance remain separately scoped. |
 | **9** | Paralinguistic DSP | 🟢 | AudioWorklet offloading (`acoustic-dsp-processor.js`) with zero-allocation buffers, 25 ms/10 ms framing, RMS/dBFS VAD, autocorrelation $f_0$, and ScriptProcessor fallback (50/50 parity tests). | Browser runtime extracts short-term acoustic features as observational telemetry only; not used as autonomous diagnostic biomarkers. |
 | **10** | MedlinePlus RAG | 🟢 | 2,112 processed passages + curated guidelines loaded locally. | Offline MedlinePlus XML-derived passages indexed locally alongside curated clinical practice guidelines. |
 | **11** | RAG Math | 🟢 | Deterministic multi-field lexical, domain, section, and authority formula verified by automated benchmark (100% MRR, 100% Hit@3; 5/5 cases). | Adopted and verified formula replaces legacy BM25/DPR: $S(d, q) = (L_{\text{multi-field}}(d, q) + \Delta_{\text{domain}}) \times \gamma_{\text{section}} + \alpha_{\text{auth}}$. |

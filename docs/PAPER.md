@@ -361,6 +361,12 @@ On the 5-domain clinical evaluation suite:
 
 The following table documents the audited alignment between prior paper claims, codebase reality, and finalized paper wording:
 
+> [!NOTE]
+> **Status Legend & Concordance Governance**:
+> - 🟢 **Resolved / In Full Concordance**: Discrepancy between historical claims and codebase reality is resolved; the adopted specification formally reflects the verified implementation, and component behavior is backed by reproducible automated tests or benchmarks. Green indicates architectural alignment, not unmeasured universal performance or clinical clearance.
+> - 🟡 **Scoped / Operational Boundary**: Feature is implemented and verified under documented operational constraints (e.g., benchmark sensitivity bounds, local isolation, or decoupled routing).
+> - 🔴 **Unresolved Discrepancy**: Active contradiction between specification claims and codebase execution.
+
 | # | Topic | Prior Paper Claim | Head Code Reality | Status | Adopted Paper Specification |
 |---|---|---|---|:---:|---|
 | **1** | Multi-Agent Board | Lead Internist, Cardiology, Neurology, Pediatrics | Software decision modules with bounded execution rounds; not autonomous physicians. | 🟢 | Bounded multi-specialist clinical decision architecture comprising generalist and specialty modules orchestrated within a constrained board. |
@@ -370,7 +376,7 @@ The following table documents the audited alignment between prior paper claims, 
 | **5** | Triage Concordance | 100% Triage Concordance & Recall | 35-case benchmark (22 emergency, 13 controls). Supports 22/22 emergency detection. | 🟡 | Achieved 100% emergency sensitivity (22/22) on the evaluated 35-case benchmark; no claim of universal population recall. |
 | **6** | Arbiter Latency | Mean Arbiter Latency: 0.39 ms | Benchmarks confirm 0.39 ms mean, P50 0.14 ms for pure rule/CPU arbiter. | 🟢 | Mean safety-arbiter latency was 0.39 ms in the local Node.js benchmark; P50 was 0.14 ms. |
 | **7** | Kokoro-82M TTFA | 142 / 210 ms (P50/P95; rejected) | CPU engine baseline is approximately 0.93–0.96 s P50 for short 5-word inputs. Adaptive first-chunk synthesis achieves 1.1–1.6 s TTFA for compound turns, with a reported 61.4% reduction in waiting time and no buffer starvation observed in the chunker test. | 🟢 | Replaced the unsupported 142 ms claim with the measured CPU latency profile and the validated adaptive chunking approach. |
-| **8** | Turn-Taking | Sub-second local turn-taking | Short responses are sub-second; compound responses are 1.1–1.6 s TTFA. | 🟡 | Low-latency local interactive voice consultation, with sub-second turnaround for short responses and ~1.1–1.6 s TTFA for compound turns. |
+| **8** | Turn-Taking | Sub-second local turn-taking (rejected as universal claim) | Dual-path latency specification: emergency preemption dispatches cached directives in under 1 ms in the reported benchmark; adaptive local TTS achieves 1.1–1.6 s first-chunk latency in reported tests. Full network-mediated conversational turnaround is documented at 2.5–5.0+ s. | 🟢 | Replaced the universal sub-second turn-taking claim with an explicitly scoped dual-path specification. Component-level tests and benchmarks support the reported figures; end-to-end browser and network performance remain separately scoped. |
 | **9** | Paralinguistic DSP | 25ms/10ms, f0, -38 dBFS VAD | Runtime browser MediaStream PCM analyzer; observational telemetry only; no runtime STFT. | 🟢 | Browser runtime extracts acoustic features (RMS, VAD, pause, f0) as observational telemetry; not diagnostic biomarkers. |
 | **10** | Clinical RAG | MedlinePlus XML RAG | 2,112 processed passages + curated guidelines loaded locally. | 🟢 | Offline MedlinePlus XML-derived passages indexed locally alongside curated clinical guidelines. |
 | **11** | RAG Math | BM25 + Dense DPR (Eq. 8) | No BM25/DPR. Deterministic multi-field lexical, domain, section, and authority formula. | 🟢 | Eq. 8 replaced with adopted, verified multi-field, domain-aware, section-weighted, authority-scaled formula: $S(d,q) = (L_{\text{multi-field}} + \Delta_{\text{domain}}) \times \gamma_{\text{section}} + \alpha_{\text{auth}}$ (100% MRR, 100% Hit@3). |
