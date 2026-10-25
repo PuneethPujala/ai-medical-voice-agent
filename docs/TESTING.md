@@ -67,7 +67,7 @@ flowchart TD
 
 ## 2. Test Suite Inventory & Categorization
 
-The repository contains **54 test scripts** defined in `package.json`, organized into the following functional domains:
+The repository contains **60 canonical test suites** defined in `package.json` and registered in `scripts/run-test-battery.ts`, organized into the following functional domains:
 
 ### A. Zero-Trust Security, Auth RBAC & Tenant Isolation
 | Script Command | Target Source File | Test Mechanism |
@@ -122,12 +122,15 @@ The repository contains **54 test scripts** defined in `package.json`, organized
 | `npm run test:voicestate` | `scripts/test-voice-state-lifecycle.ts` | Evaluates 6-state audio lifecycle, buffer discard, and session token invalidation. |
 | `npm run test:bargein` | `scripts/test-bargein.ts` | Tests cancellation of synthetic audio playback upon detected patient interruption. |
 | `npm run test:acceptance` | `scripts/test-bargein-acceptance.ts` | Validates monotonic playback token invalidation and case version increment on barge-in. |
+| `npm run test:worklet-parity` | `tests/acoustic/worklet-parity.test.ts` | Validates AudioWorklet DSP mathematical parity (50 tests in `node:vm`), framing, RMS/dBFS/VAD, autocorrelation pitch, and fallback. |
+| `npm run test:acoustic-e2e` | `tests/acoustic/e2e-acoustic-to-fhir.test.ts` | End-to-end paralinguistic DSP analysis to HL7 FHIR R4 Observation bundle generation. |
 
 ### G. Healthcare Interoperability & Emergency Dispatch
 | Script Command | Target Source File | Test Mechanism |
 |---|---|---|
 | `npm run test:fhir` | `tests/fhir-eval/fhir.test.ts` | Validates HL7 FHIR R4 Bundle structure, Composition LOINC codes, Condition, Observation. |
 | `npm run test:dispatch` | `tests/emergency-eval/dispatch.test.ts` | Validates pre-arrival emergency directive generation and cryptographic SHA-256 audit hash. |
+| `npm run test:fhir-paralinguistic` | `tests/fhir/paralinguistic-observation.test.ts` | Validates HL7 FHIR R4 structured paralinguistic acoustic observation serialization, LOINC/UCUM validation, and safety invariants. |
 
 ---
 
@@ -232,8 +235,8 @@ Real PostgreSQL verification is segregated from offline coverage:
     ```
   - The canonical test runner (`scripts/run-test-battery.ts`) explicitly marks these as `SKIPPED_DB` without spawning database queries, and excludes them from the passed suite count:
     ```text
-    Total Suites:                44
-    Fully Verified:              42
+    Total Suites:                60
+    Fully Verified:              58
     Skipped DB-required suites:  2
     Failed:                      0
     Database Status:             SKIPPED (DATABASE_URL unset or --with-db omitted; real PostgreSQL not verified)
@@ -256,7 +259,7 @@ flowchart LR
     G1["Gate 1\nType Check\n(tsc)"] --> G2["Gate 2\nLint\n(eslint)"]
     G2 --> G3["Gate 3\nZero-Trust\nSecurity"]
     G3 --> G4["Gate 4\nClinical Safety\n& FHIR"]
-    G4 --> G5["Gate 5\nCanonical 44-Suite\nBattery + Coverage (c8)"]
+    G4 --> G5["Gate 5\nCanonical 60-Suite\nBattery + Coverage (c8)"]
     G5 --> G6["Gate 6\nUpload Reports\n(Artifacts)"]
     G6 --> G7["Gate 7\nProduction Build\n(Webpack)"]
 ```
@@ -272,7 +275,7 @@ Gate 6 uploads the following artifacts for review and compliance auditing:
 ## 7. Known Test Gaps & Uncovered Paths
 
 1. **Browser Web Audio DSP Pipeline (`lib/audio/streaming-pipeline.ts`, `lib/audio/incremental-asr.ts`)**:
-   - Web Audio `AudioContext`, `AnalyserNode`, and live PCM microphone streaming require headless browser runtimes (Playwright/Puppeteer) or WebAudio mocks. Currently validated via standalone benchmark scripts (`scripts/test-acoustic-dsp.ts`) rather than automated CI units.
+   - The AudioWorklet DSP processor (`public/worklets/acoustic-dsp-processor.js`) and analyzer integration are validated for mathematical parity, framing, and fallback via `tests/acoustic/worklet-parity.test.ts` (50 automated tests in `node:vm`). End-to-end live microphone hardware streaming in headless browser runtimes (Playwright/Puppeteer) remains evaluated via standalone benchmark scripts (`scripts/test-acoustic-dsp.ts`).
 2. **Production Datastore 503 Fallback vs. Live Neon Failures**:
    - The offline suite tests synthetic demo segregation and missing DB errors, but simulated transient network partitions during active Neon transactions are tested in dedicated scripts (`scripts/verify-real-neon-concurrency.ts`).
 3. **Live Model Provider Parity**:

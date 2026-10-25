@@ -43,7 +43,7 @@ For complete architecture, clinical safety specifications, persistence models, a
 | [**`docs/CLINICAL-SAFETY.md`**](docs/CLINICAL-SAFETY.md) | Deterministic emergency floors, non-downgrade invariant, universal red-flag catalog, and clinical boundaries. |
 | [**`docs/DATA-AND-PERSISTENCE.md`**](docs/DATA-AND-PERSISTENCE.md) | Consultation lifecycle, SHA-256 chained audit ledger, optimistic concurrency (`caseVersion`), and Drizzle ORM migrations. |
 | [**`docs/OPERATIONS.md`**](docs/OPERATIONS.md) | Deployment topology, environment configuration, empirical latency benchmarks, resilience, and release gates. |
-| [**`docs/TESTING.md`**](docs/TESTING.md) | 54-suite regression inventory, deterministic coverage generation (`c8`), LCOV/Cobertura artifacts, and CI gates. |
+| [**`docs/TESTING.md`**](docs/TESTING.md) | 60-suite regression inventory, deterministic coverage generation (`c8`), LCOV/Cobertura artifacts, and CI gates. |
 | [**`docs/PAPER.md`**](docs/PAPER.md) | Scientific manuscript, clinical triage concordance analysis, and 20-point audit specification. |
 
 ---
@@ -120,7 +120,7 @@ This specification documents the verified codebase implementation across clinica
   - **Active Blocker**: Live browser streaming chunk coordination and empty transcript edge-cases remain an active engineering blocker and work in progress.
 
 ### 5. Runtime Paralinguistic Acoustic DSP Analyzer
-* **Microphone DSP Pipeline**: The browser runtime extracts short-term acoustic features from live microphone PCM input via Web Audio API using **25 ms analysis windows** and **10 ms hop intervals**.
+* **Microphone DSP Pipeline**: The browser runtime offloads short-term acoustic feature extraction to a dedicated `AudioWorkletNode` ([`public/worklets/acoustic-dsp-processor.js`](public/worklets/acoustic-dsp-processor.js)) running off the main UI thread with pre-allocated zero-allocation ring buffers, retaining a transparent `ScriptProcessorNode` fallback for legacy environments. Audio is framed using **25 ms analysis windows** and **10 ms hop intervals** at $16\text{ kHz}$.
 * **Measured Parameters**: Real-time Root-Mean-Square (RMS) energy, dBFS calculations, energy-based Voice Activity Detection (VAD threshold: −38 dBFS), conversational pause cadence, and autocorrelation fundamental frequency ($f_0$).
 * **Clinical Isolation Boundary**: Acoustic measurements serve strictly as observational telemetry in the UI and supportive evidence in clinical documentation. They are strictly isolated and are **never** used as autonomous diagnostic biomarkers or ESI triage escalators.
 
@@ -176,7 +176,7 @@ The following matrix documents the verified technical alignment across all 20 ev
 | **6** | Arbiter Latency | 🟢 | Node.js v22 CPU benchmark measurements. | Mean safety-arbiter latency was 0.39 ms in the local Node.js benchmark; P50 was 0.14 ms. |
 | **7** | Kokoro-82M TTFA | 🔴 | Engine-level 5-word is ~0.93–0.96 s P50. Adaptive first-chunk synthesis gives 1.1–1.6 s TTFA (61.4% drop) with 0 ms starvation. | Kokoro-82M q4 CPU engine-level synthesis latency was approximately 0.93–0.96 s P50 for short 5-word inputs. Adaptive first-chunk synthesis reduced compound-turn TTFA by 61.4% (1.1–1.6 s) with 0 ms starvation. |
 | **8** | Turn-Taking & Latency | 🟡 | Pre-arbiter is sub-millisecond (0.39 ms); full end-to-end voice turnaround is 2.5–5.0+ s in live network conditions. | Local interactive voice consultation with sub-second arbiter safety checks; compound end-to-end dialogue turnaround is 2.5–5.0+ s. |
-| **9** | Paralinguistic DSP | 🟢 | Live MediaStream PCM, 25 ms/10 ms framing, RMS/dBFS VAD, pause statistics, and autocorrelation $f_0$. | Browser runtime extracts short-term acoustic features as observational telemetry only; not used as autonomous diagnostic biomarkers. |
+| **9** | Paralinguistic DSP | 🟢 | AudioWorklet offloading (`acoustic-dsp-processor.js`) with zero-allocation buffers, 25 ms/10 ms framing, RMS/dBFS VAD, autocorrelation $f_0$, and ScriptProcessor fallback (50/50 parity tests). | Browser runtime extracts short-term acoustic features as observational telemetry only; not used as autonomous diagnostic biomarkers. |
 | **10** | MedlinePlus RAG | 🟢 | 2,112 processed passages + curated guidelines loaded locally. | Offline MedlinePlus XML-derived passages indexed locally alongside curated clinical practice guidelines. |
 | **11** | RAG Math | 🔴 | Replaced Eq. 8 (no BM25 or DPR). Deterministic lexical, domain, section, and authority formula. | Evaluated with implemented formula: $S(d, q) = (L_{\text{multi-field}}(d, q) + \Delta_{\text{domain}}) \times \gamma_{\text{section}} + \alpha_{\text{auth}}$. |
 | **12** | Medication Routing | 🟢 | Deterministic medication reconciliation, contraindication screening (DailyMed / openFDA rules), and allergy cross-checks (12/12 tests). | Task-aware retrieval routes queries over locally curated, pre-indexed source-tagged content corresponding to RxNorm, DailyMed, and openFDA categories. |
@@ -241,7 +241,7 @@ ai-medical-voice-agent/
 
 ## 📊 Acoustic DSP Performance & Validation
 
-MedVoice incorporates an in-memory, client-side paralinguistic acoustic DSP analyzer ([`lib/acoustic/acoustic-dsp-analyzer.ts`](lib/acoustic/acoustic-dsp-analyzer.ts)) designed to extract standardized physical voice characteristics without cloud egress, external API dependencies, or heavy neural networks.
+MedVoice incorporates an in-memory, client-side paralinguistic acoustic DSP analyzer ([`lib/acoustic/acoustic-dsp-analyzer.ts`](lib/acoustic/acoustic-dsp-analyzer.ts)) and dedicated AudioWorklet processor ([`public/worklets/acoustic-dsp-processor.js`](public/worklets/acoustic-dsp-processor.js)) designed to extract standardized physical voice characteristics off the main UI thread without cloud egress, external API dependencies, or heavy neural networks.
 
 > [!IMPORTANT]
 > **Strict Clinical Isolation**: Acoustic measurements serve strictly as descriptive observational telemetry in the clinical encounter record and HL7® FHIR® R4 export. They **never** make autonomous clinical diagnoses, calculate disease probabilities, or alter Emergency Severity Index (ESI) triage tiers.
@@ -258,7 +258,7 @@ The lightweight runtime processes short-term PCM frames (25 ms analysis window, 
 
 ### 2. Empirical Benchmark Suite & Commands
 
-MedVoice provides two dedicated CLI performance harnesses and an automated FHIR serialization verification battery:
+MedVoice provides two dedicated CLI performance harnesses, an AudioWorklet mathematical parity battery, and an automated FHIR serialization verification battery:
 
 ```bash
 # 1. Synthetic Calibrated DSP Benchmark (Male/Female pitch tones, variable pauses, 1s - 30s)
@@ -269,6 +269,9 @@ npm run benchmark:acoustic-real
 
 # 3. Dedicated HL7 FHIR R4 Paralinguistic Observation Serialization & Provenance Battery
 npm run test:fhir-paralinguistic
+
+# 4. AudioWorklet Mathematical Parity & Fallback Battery (50 automated unit & lifecycle tests)
+npm run test:worklet-parity
 ```
 
 #### Interpretation of Real-Time Factor ($RTF$)
@@ -315,10 +318,10 @@ For complete latency distributions, noise injection tables, and mathematical der
 
 ## 🧪 Verification, Test Suites & Coverage
 
-MedVoice includes an automated test battery with **54 canonical verification suites** (52 offline suites, 2 live database-gated) spanning clinical safety arbiters, security RBAC, durable audit ledgers, paralinguistic DSP, and audio pipelines. For detailed breakdowns, tier definitions, and CI gates, see [**`docs/TESTING.md`**](docs/TESTING.md).
+MedVoice includes an automated test battery with **60 canonical verification suites** (58 offline suites, 2 live database-gated) spanning clinical safety arbiters, security RBAC, durable audit ledgers, paralinguistic DSP, and audio pipelines. For detailed breakdowns, tier definitions, and CI gates, see [**`docs/TESTING.md`**](docs/TESTING.md).
 
 ```bash
-# 1. Run the Full 54-Suite Canonical Regression Battery (Isolated Offline Mode)
+# 1. Run the Full 60-Suite Canonical Regression Battery (Isolated Offline Mode)
 npm run test:battery
 
 # 2. Run Acoustic DSP Performance & Robustness Benchmarks
@@ -339,6 +342,7 @@ npm run test:durable-audit   # Cryptographic SHA-256 audit ledger & CAS concurre
 npm run test:goldendialogue  # 11-turn clinical dialogue & negation invariants
 npm run test:voicestate      # Voice lifecycle & buffer discard
 npm run test:fhir            # HL7 FHIR R4 Bundle serialization & provenance
+npm run test:worklet-parity  # AudioWorklet DSP mathematical parity & fallback battery
 ```
 
 ### Empirical Coverage Baseline & CI Thresholds

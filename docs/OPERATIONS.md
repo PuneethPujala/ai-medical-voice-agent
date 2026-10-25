@@ -139,7 +139,7 @@ Before deploying any release candidate to a staging or production environment, t
    ```bash
    npm run test:coverage
    ```
-   - Must run all canonical test suites (54-suite regression battery).
+   - Must run all canonical test suites (60-suite regression battery).
    - Must generate valid `coverage/lcov.info` and `coverage/cobertura-coverage.xml`.
    - Must satisfy empirical thresholds:
      - Lines: $\ge 60.0\%$
