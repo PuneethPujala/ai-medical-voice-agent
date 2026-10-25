@@ -327,6 +327,7 @@ async function runE2EAcousticTests() {
         triageTitle: "ESI LEVEL 3: URGENT — ACUTE CHEST TIGHTNESS EVALUATION",
         status: "completed_pending_review",
         durationSeconds: 180,
+        expectedVersion: consultationInterviewState.caseVersion || 2,
         interviewState: consultationInterviewState,
         audioMetrics: consultationInterviewState.audio_metrics,
         speechFeatures: consultationInterviewState.speech_features,
@@ -399,6 +400,16 @@ async function runE2EAcousticTests() {
     assert.ok(pitchComp, "Must have pitch-variability component");
     assert.strictEqual(pitchComp.valueQuantity?.unit, "{ratio}");
     assert.strictEqual(pitchComp.valueQuantity?.code, "1");
+
+    // Validate temporal provenance (Finding 8)
+    const turnTimestamp = consultationInterviewState.audio_metrics_history[0].timestamp;
+    assert.strictEqual(obs.effectiveDateTime, new Date(turnTimestamp).toISOString(), "Acoustic observation effectiveDateTime must match turn timestamp");
+    assert.strictEqual(obs.effectivePeriod, undefined, "Single-turn consultation must not emit effectivePeriod");
+
+    const encEntry = exportedFhirBundle.entry.find((e: any) => e.resource?.resourceType === "Encounter");
+    assert.ok(encEntry, "FHIR Bundle must contain Encounter resource");
+    assert.ok(encEntry.resource.period?.start, "Encounter must have period.start");
+    assert.ok(encEntry.resource.period?.end, "Encounter must have period.end");
 
     // Validate FHIR R4 structural schema validation
     const validation = validateFhirR4Bundle(exportedFhirBundle);

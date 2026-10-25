@@ -39,6 +39,7 @@ const baseRecord: ConsultationRecordFHIR = {
   soapObjective: "Remote acoustic telemetry captured via browser Web Audio DSP.",
   soapAssessment: "Acute dyspnea, ESI Level 3 priority triage.",
   soapPlan: "Urgent in-person clinical assessment, pulse oximetry, chest auscultation.",
+  status: "completed_pending_review",
   createdAt: "2026-10-22T10:00:00.000Z",
 };
 
@@ -373,6 +374,103 @@ runTest("FHIR-PARA-07-BUNDLE-INTEGRITY", "Enriched bundle passes validateFhirR4B
     objectiveSection.text?.div?.includes("Acoustic"),
     "Composition Objective section must summarize or reference acoustic telemetry"
   );
+});
+
+// -----------------------------------------------------------------------------
+// Test 8: Multi-Turn Acoustic Telemetry Emits effectivePeriod (Finding 8)
+// -----------------------------------------------------------------------------
+runTest("FHIR-PARA-08-MULTI-TURN-EFFECTIVE-PERIOD", "Multi-turn acoustic telemetry emits effectivePeriod spanning turns", () => {
+  const multiTurnRecord: ConsultationRecordFHIR = {
+    ...baseRecord,
+    audioMetrics: sampleAudioMetrics,
+    speechFeatures: sampleSpeechFeatures,
+    audioMetricsHistory: [
+      {
+        turnIndex: 1,
+        timestamp: "2026-10-22T10:01:15.000Z",
+        metrics: sampleAudioMetrics,
+      },
+      {
+        turnIndex: 2,
+        timestamp: "2026-10-22T10:04:45.000Z",
+        metrics: sampleAudioMetrics,
+      },
+    ],
+    deliveredTurnRecords: [
+      { turnId: 1, timestamp: "2026-10-22T10:01:15.000Z" } as any,
+      { turnId: 2, timestamp: "2026-10-22T10:04:45.000Z" } as any,
+    ],
+  };
+
+  const bundle = generateFHIRBundle(multiTurnRecord);
+  const obs = bundle.entry.find((e) => e.resource.id?.startsWith("observation-acoustic-"))?.resource;
+  assert.ok(obs, "Bundle must contain acoustic observation");
+
+  // Invariant: Multi-turn acoustic telemetry MUST emit effectivePeriod, NOT effectiveDateTime
+  assert.strictEqual(obs.effectiveDateTime, undefined, "Multi-turn acoustic telemetry must not emit effectiveDateTime");
+  assert.ok(obs.effectivePeriod, "Multi-turn acoustic telemetry must emit effectivePeriod");
+  assert.strictEqual(obs.effectivePeriod.start, "2026-10-22T10:01:15.000Z");
+  assert.strictEqual(obs.effectivePeriod.end, "2026-10-22T10:04:45.000Z");
+
+  // Issued timestamp should reflect completion
+  assert.ok(obs.issued);
+
+  // Encounter.period should also span the consultation
+  const enc = bundle.entry.find((e) => e.resource.resourceType === "Encounter")?.resource;
+  assert.ok(enc);
+  assert.strictEqual(enc.period.start, "2026-10-22T10:00:00.000Z");
+  assert.strictEqual(enc.period.end, "2026-10-22T10:04:45.000Z");
+});
+
+// -----------------------------------------------------------------------------
+// Test 9: Single-Turn Acoustic Telemetry Emits effectiveDateTime
+// -----------------------------------------------------------------------------
+runTest("FHIR-PARA-09-SINGLE-TURN-EFFECTIVE-DATETIME", "Single-turn acoustic telemetry emits effectiveDateTime matching turn timestamp", () => {
+  const singleTurnRecord: ConsultationRecordFHIR = {
+    ...baseRecord,
+    audioMetrics: sampleAudioMetrics,
+    speechFeatures: sampleSpeechFeatures,
+    audioMetricsHistory: [
+      {
+        turnIndex: 1,
+        timestamp: "2026-10-22T10:02:30.000Z",
+        metrics: sampleAudioMetrics,
+      },
+    ],
+    deliveredTurnRecords: [
+      { turnId: 1, timestamp: "2026-10-22T10:02:30.000Z" } as any,
+    ],
+  };
+
+  const bundle = generateFHIRBundle(singleTurnRecord);
+  const obs = bundle.entry.find((e) => e.resource.id?.startsWith("observation-acoustic-"))?.resource;
+  assert.ok(obs);
+
+  // Invariant: Single-turn acoustic telemetry MUST emit effectiveDateTime, NOT effectivePeriod
+  assert.strictEqual(obs.effectiveDateTime, "2026-10-22T10:02:30.000Z");
+  assert.strictEqual(obs.effectivePeriod, undefined);
+});
+
+// -----------------------------------------------------------------------------
+// Test 10: Encounter Period Does Not Equate Doctor Approval With Interaction End
+// -----------------------------------------------------------------------------
+runTest("FHIR-PARA-10-ENCOUNTER-PERIOD-APPROVAL-SEPARATION", "Encounter.period.end reflects last clinical turn, not approvedAt", () => {
+  const recordWithLateApproval: ConsultationRecordFHIR = {
+    ...baseRecord,
+    createdAt: "2026-10-22T10:00:00.000Z",
+    approvedAt: "2026-10-22T11:30:00.000Z", // Physician signed off 90 minutes later
+    deliveredTurnRecords: [
+      { turnId: 1, timestamp: "2026-10-22T10:01:00.000Z" } as any,
+      { turnId: 2, timestamp: "2026-10-22T10:05:00.000Z" } as any,
+    ],
+  };
+
+  const bundle = generateFHIRBundle(recordWithLateApproval);
+  const enc = bundle.entry.find((e) => e.resource.resourceType === "Encounter")?.resource;
+  assert.ok(enc);
+  assert.strictEqual(enc.period.start, "2026-10-22T10:00:00.000Z");
+  // Refinement 1: clinical encounter ended at 10:05:00, NOT at 11:30:00 (approvedAt)
+  assert.strictEqual(enc.period.end, "2026-10-22T10:05:00.000Z");
 });
 
 console.log("\n================================================================================");

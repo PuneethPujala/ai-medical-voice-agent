@@ -193,7 +193,13 @@ export async function GET(
     const consultationRecord: ConsultationRecordFHIR = {
       ...record,
       audioMetrics: record.interviewState?.audio_metrics || record.audioMetrics,
+      audioMetricsHistory: record.interviewState?.audio_metrics_history,
       speechFeatures: record.interviewState?.speech_features || record.speechFeatures,
+      deliveredTurnRecords: record.deliveredTurnRecords || record.interviewState?.deliveredTurnRecords,
+      attributedFacts: record.attributedFacts || record.interviewState?.attributedFacts,
+      unmappedObservations: record.unmappedObservations || record.interviewState?.unmappedObservations,
+      approvedAt: record.approvedAt,
+      status: record.status,
     };
     const bundle = generateFHIRBundle(consultationRecord);
 
