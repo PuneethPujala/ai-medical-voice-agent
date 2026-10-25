@@ -157,6 +157,7 @@ This specification documents the verified codebase implementation across clinica
 * **Strict Query Gating**: Zero hospital discovery queries fire on initial mount. Queries require verified non-null coordinates or explicit user region selection.
 * **Backend Validation**: `/api/hospitals` rejects missing or out-of-range coordinates with `400 Bad Request`.
 * **Routing Telemetry**: Computes driving distance, estimated road transit times, and verified Emergency Department capabilities (decoupled from direct municipal 911 dispatch).
+* **Jurisdiction-Aware Emergency Guidance**: Directs callers to validated region-specific emergency numbers (e.g., India: unified national emergency `112`, ambulance `108`, maternal transport `102`, Tele-MANAS `14416`; US: `911`), avoiding conflation across jurisdictions.
 
 ### 10. Monotonic Barge-in Interruption
 * **Session Invalidation**: Interactive speech playback utilizes monotonic playback-session token counters.
@@ -169,7 +170,7 @@ The following matrix documents the verified technical alignment across all 20 ev
 > [!NOTE]
 > **Status Legend & Concordance Governance**:
 > - 🟢 **Resolved / In Full Concordance**: Discrepancy between historical claims and codebase reality is resolved; the adopted specification formally reflects the verified implementation, and component behavior is backed by reproducible automated tests or benchmarks. Green indicates architectural alignment, not unmeasured universal performance or clinical clearance.
-> - 🟡 **Scoped / Operational Boundary**: Feature is implemented and verified under documented operational constraints (e.g., benchmark sensitivity bounds, local isolation, or decoupled routing).
+> - 🟡 **Scoped / Operational Boundary**: Feature is implemented and verified under documented operational constraints (e.g., benchmark sensitivity bounds or offline sandbox isolation).
 > - 🔴 **Unresolved Discrepancy**: Active contradiction between specification claims and codebase execution.
 
 | # | Topic | Status | Code Reality & Verification | Adopted Specification & Paper Language |
@@ -190,7 +191,7 @@ The following matrix documents the verified technical alignment across all 20 ev
 | **14** | Reasoning Logging | 🟢 | Raw generative Chain-of-Thought (CoT) is intentionally excluded from permanent clinical records. Structured clinical facts, provenance, safety-arbiter decisions, and triage dispositions are recorded through the audit system, with SHA-256 hash-chain integrity verified by automated tests. | Replaced the claim of logging every internal reasoning state with a documented auditability specification based on structured clinical state transitions and cryptographic audit integrity. |
 | **15** | HL7 FHIR Export | 🟢 | FHIR R4 document bundle generation validated by automated tests (43/43 passed). | Generates FHIR R4 bundles validated by automated serialization, provenance, and structural tests. |
 | **16** | Paralinguistic FHIR | 🟢 | Enriched HL7 FHIR R4 export with structured acoustic Observation resources (7 physical metrics, UCUM units, provenance, safety boundaries; 7/7 tests). | FHIR bundles include structured clinical observations (e.g., ESI acuity) and dedicated paralinguistic acoustic telemetry observations with validated units. |
-| **17** | Emergency Dispatch | 🟡 | Care Network provides facility discovery & road routing; gated 5-state location FSM. | Geospatial Emergency Facility Discovery & Road Routing; decoupled from public 911 dispatch. |
+| **17** | Emergency Dispatch | 🟢 | Geospatial emergency facility discovery and road routing, gated by a 5-state location FSM. Provides facility capability information and pre-arrival guidance; false ambulance-dispatch claims are prohibited by tested safety controls. MedVoice does not directly dispatch emergency vehicles or integrate with municipal 911 CAD systems. | Replaced the autonomous emergency dispatch claim with an explicit facility discovery, routing, and pre-arrival guidance specification, decoupled from public emergency dispatch infrastructure. |
 | **18** | Barge-in Latency | 🟢 | Monotonic playback token invalidation, safety-gated SSE streaming, and cross-chunk false reassurance interception (7/7 tests). | Low-latency barge-in cancellation using monotonic playback-session invalidation, verified by automated acceptance tests. |
 | **19** | Anti-Leakage | 🟢 | Sanitizers strip internal prompt tokens and unverified diagnostic labels. | Clinical output sanitization prevents selected internal/unsupported details from leaking into patient-facing responses. |
 | **20** | Diagnostic Scope | 🟢 | Framed as clinical decision support/triage intake prototype. | The system is designed for AI-assisted intake, triage, and clinical decision support and does not autonomously diagnose patients. |

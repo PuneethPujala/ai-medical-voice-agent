@@ -317,7 +317,7 @@ To eliminate hardcoded location defaults (previously defaulting to Vijayawada co
 ### 8.2 Road Transit Telemetry
 - Facility queries require verified latitude/longitude coordinates or explicit city selection; `/api/hospitals` rejects missing or out-of-range coordinates with `400 Bad Request`.
 - Transit times and driving routes are calculated via OpenStreetMap and OSRM road network routing engines.
-- **Boundary Distinction**: This system functions strictly as a facility locator and road route visualizer. It is explicitly separated from municipal 911 computer-aided dispatch (CAD) infrastructure.
+- **Boundary Distinction**: This system functions strictly as a facility locator and road route visualizer. It is explicitly separated from municipal 911 / 112 computer-aided dispatch (CAD) infrastructure. Emergency pre-arrival directives direct callers to regional emergency services (e.g., India's unified `112` or ambulance `108`; US `911`) based on user deployment jurisdiction.
 
 ---
 
@@ -364,7 +364,7 @@ The following table documents the audited alignment between prior paper claims, 
 > [!NOTE]
 > **Status Legend & Concordance Governance**:
 > - 🟢 **Resolved / In Full Concordance**: Discrepancy between historical claims and codebase reality is resolved; the adopted specification formally reflects the verified implementation, and component behavior is backed by reproducible automated tests or benchmarks. Green indicates architectural alignment, not unmeasured universal performance or clinical clearance.
-> - 🟡 **Scoped / Operational Boundary**: Feature is implemented and verified under documented operational constraints (e.g., benchmark sensitivity bounds, local isolation, or decoupled routing).
+> - 🟡 **Scoped / Operational Boundary**: Feature is implemented and verified under documented operational constraints (e.g., benchmark sensitivity bounds or offline sandbox isolation).
 > - 🔴 **Unresolved Discrepancy**: Active contradiction between specification claims and codebase execution.
 
 | # | Topic | Prior Paper Claim | Head Code Reality | Status | Adopted Paper Specification |
@@ -385,7 +385,7 @@ The following table documents the audited alignment between prior paper claims, 
 | **14** | Reasoning Logging | Logs every reasoning state (rejected: raw CoT excluded) | Raw generative Chain-of-Thought (CoT) is intentionally excluded from permanent clinical records. Structured clinical facts, provenance, safety-arbiter decisions, and triage dispositions are recorded through the audit system, with SHA-256 hash-chain integrity verified by automated tests. | 🟢 | Replaced the claim of logging every internal reasoning state with a documented auditability specification based on structured clinical state transitions and cryptographic audit integrity. |
 | **15** | FHIR Export | HL7 FHIR R4 Export | FHIR R4 bundle generation validated by automated tests (43/43 passed). | 🟢 | Generates FHIR R4 bundles validated by automated serialization, provenance, and structural tests. |
 | **16** | Paralinguistic FHIR | FHIR Observation of DSP | Acoustic features documented in SOAP/Composition, not as standalone FHIR observations. | 🟡 | FHIR bundles include structured clinical observations (e.g. ESI); acoustic features documented as intake metadata. |
-| **17** | Emergency Dispatch | Real-Time Geospatial Dispatch | Care Network provides facility discovery & road routing; gated 5-state location FSM. | 🟡 | Geospatial Emergency Facility Discovery & Road Routing; decoupled from public 911 dispatch. |
+| **17** | Emergency Dispatch | Real-Time Geospatial Dispatch (rejected: municipal CAD decoupled) | Geospatial emergency facility discovery and road routing, gated by a 5-state location FSM. Provides facility capability information and pre-arrival guidance; false ambulance-dispatch claims are prohibited by tested safety controls. MedVoice does not directly dispatch emergency vehicles or integrate with municipal 911 CAD systems. | 🟢 | Replaced the autonomous emergency dispatch claim with an explicit facility discovery, routing, and pre-arrival guidance specification, decoupled from public emergency dispatch infrastructure. |
 | **18** | Barge-in Latency | Barge-in Interruption (<12 ms) | Monotonic playback token invalidation tested and passing browser acceptance. | 🟡 | Low-latency barge-in cancellation using monotonic playback-session invalidation, verified by automated acceptance tests. |
 | **19** | Anti-Leakage | Output Sanitization | Output sanitization and prompt-leakage filters covered by dedicated regression tests. | 🟢 | Clinical output sanitization prevents selected internal/unsupported details from leaking into patient-facing responses. |
 | **20** | Diagnostic Scope | Autonomous Diagnosis Exclusion | Explicitly framed as clinical decision support/triage; does not autonomously diagnose. | 🟢 | The system is designed for AI-assisted intake, triage, and clinical decision support and does not autonomously diagnose patients. |
