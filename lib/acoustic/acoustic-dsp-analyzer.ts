@@ -581,6 +581,7 @@ export async function analyzeAudioBufferAsync(
 
 export interface TurnAudioMetricRecord {
   turnIndex: number;
+  turnId?: string;
   caseVersion?: number;
   timestamp: string;
   metrics: LiveAudioMetrics;

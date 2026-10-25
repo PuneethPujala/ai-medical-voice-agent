@@ -74,6 +74,7 @@
     "test:acoustic-e2e": "tsx tests/acoustic/e2e-acoustic-to-fhir.test.ts",
     "test:voice-stt": "tsx tests/stt/voice-stt.test.ts",
     "test:stt-recovery": "tsx tests/stt/empty-transcript-recovery.test.ts",
+    "test:turn-idempotency": "tsx tests/security-eval/turn-idempotency-defense.test.ts",
     "benchmark:acoustic": "tsx scripts/benchmark-acoustic-dsp.ts",
     "benchmark:acoustic-real": "tsx scripts/benchmark-real-patient-audio.ts"
   },

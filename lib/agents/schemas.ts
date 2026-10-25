@@ -441,6 +441,7 @@ export type ConversationalActionType =
  */
 export interface DeliveredTurnRecord {
   turnId: number;
+  clientTurnId?: string;
   deliveredText: string;
   conversationalAction: ConversationalActionType;
   intendedTargets: string[];
@@ -450,4 +451,5 @@ export interface DeliveredTurnRecord {
   timestamp: string;
   audioDeliveryStatus?: "pending" | "synthesizing" | "delivered" | "interrupted" | "failed";
   audioDeliveryResult?: { playedDurationMs?: number; confirmedAt?: string };
+  cachedResponsePayload?: any;
 }

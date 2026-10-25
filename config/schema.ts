@@ -112,6 +112,29 @@ export const consultationsTable = pgTable("consultations", {
 ]);
 
 /**
+ * Turn Idempotency Keys & Lease Reservation Ledger
+ * Coordinates multi-worker concurrency, request fingerprinting, fencing tokens,
+ * and deterministic cached replay across voice consultation dialogue turns.
+ */
+export const turnIdempotencyKeysTable = pgTable("turn_idempotency_keys", {
+  id: varchar("id", { length: 128 }).primaryKey(),
+  userId: varchar("user_id", { length: 128 }).notNull(),
+  encounterId: varchar("encounter_id", { length: 128 }).notNull(),
+  turnId: varchar("turn_id", { length: 128 }).notNull(),
+  requestFingerprint: varchar("request_fingerprint", { length: 64 }).notNull(),
+  status: varchar("status", { length: 32 }).notNull().default("pending"), // pending | completed | conflict | failed
+  leaseExpiresAt: timestamp("lease_expires_at").notNull(),
+  claimGeneration: integer("claim_generation").notNull().default(1),
+  caseVersion: integer("case_version"),
+  responsePayload: jsonb("response_payload").$type<any>(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("idx_turn_idempotency_scope_unique")
+    .on(table.userId, table.encounterId, table.turnId),
+]);
+
+/**
  * Tamper-Evident Cryptographic SHA-256 Audit Chain Ledger
  */
 export const auditEventsTable = pgTable("audit_events", {

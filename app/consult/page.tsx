@@ -88,6 +88,7 @@ interface ChatMessage {
   doctorId?: string;
   wasInterrupted?: boolean;
   isBargeIn?: boolean;
+  turnId?: string;
 }
 
 interface BoardMessage {
@@ -2427,13 +2428,18 @@ export default function ConsultPage() {
     transcriptTextRef.current = "";
     accumulatedTranscriptRef.current = "";
 
+    const clientTurnId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+      ? crypto.randomUUID()
+      : `turn_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
+
     // Exact patient words — no "URGENT BARGE-IN" text injection!
     const userMessage: ChatMessage = {
       id: `msg-${Date.now()}`,
       role: "patient",
       text: cleanUserText,
       timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      isBargeIn
+      isBargeIn,
+      turnId: clientTurnId
     };
 
     setMessages((prev) => [...prev, userMessage]);
@@ -2446,6 +2452,8 @@ export default function ConsultPage() {
     try {
       const chatPayload = {
         encounterId: stableEncounterIdRef.current,
+        turnId: clientTurnId,
+        clientTurnId: clientTurnId,
         doctorId: selectedDoctor.id,
         message: cleanUserText,
         conversationHistory: [...messages, userMessage],
@@ -2474,6 +2482,7 @@ export default function ConsultPage() {
         headers: {
           "Content-Type": "application/json",
           "Accept": "text/event-stream, application/json",
+          "x-turn-id": clientTurnId,
         },
         body: JSON.stringify({ ...chatPayload, stream: true }),
         signal: abortCtrl.signal,
@@ -2490,20 +2499,17 @@ export default function ConsultPage() {
           body: JSON.stringify(chatPayload),
         });
       } else if (res.status === 409 && stableEncounterIdRef.current) {
-        console.warn("[MedVoice] Encounter 409 concurrency conflict detected; synchronizing case version and retrying...");
+        console.warn("[MedVoice] Encounter 409 concurrency conflict detected; checking for cached turn replay...");
         const conflictJson = await res.json().catch(() => ({}));
-        if (conflictJson.expectedVersion) {
-          currentCaseVersionRef.current = conflictJson.expectedVersion;
-        }
         res = await fetch("/api/voice/chat", {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             "Accept": "text/event-stream, application/json",
+            "x-turn-id": clientTurnId,
           },
           body: JSON.stringify({
             ...chatPayload,
-            caseVersion: conflictJson.expectedVersion || undefined,
             stream: true,
           }),
         });
