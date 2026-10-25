@@ -256,7 +256,7 @@ With Adaptive First-Chunk Chunker:
 
 **Measured Latency Profile**:
 - **Compound Turn TTFA**: Reduced from ~4.2 s to **1.1–1.6 s** on compound clinical responses, representing an average **61.4% reduction in waiting time**.
-- **Buffer Starvation**: Measured at **0 ms** across all evaluated test scenarios.
+- **Buffer Starvation**: Measured at **0 ms** across evaluated test scenarios (not a universal runtime guarantee under unconstrained host CPU load).
 - **Short Confirmations**: Sub-second turnaround for brief status updates and acknowledgments.
 
 ### 6.3 Monotonic Barge-in Interruption
@@ -369,7 +369,7 @@ The following table documents the audited alignment between prior paper claims, 
 | **4** | Dual-Arbiter Shield | Pre-Arbiter + Post-Arbiter | Deterministic engine enforces emergency floor, missing-vs-denied semantics, non-downgrade. | 🟢 | Retained as primary safety guarantee. |
 | **5** | Triage Concordance | 100% Triage Concordance & Recall | 35-case benchmark (22 emergency, 13 controls). Supports 22/22 emergency detection. | 🟡 | Achieved 100% emergency sensitivity (22/22) on the evaluated 35-case benchmark; no claim of universal population recall. |
 | **6** | Arbiter Latency | Mean Arbiter Latency: 0.39 ms | Benchmarks confirm 0.39 ms mean, P50 0.14 ms for pure rule/CPU arbiter. | 🟢 | Mean safety-arbiter latency was 0.39 ms in the local Node.js benchmark; P50 was 0.14 ms. |
-| **7** | Kokoro-82M TTFA | 142 / 210 ms (P50/P95) | Engine-level 5-word is ~0.93–0.96 s. Adaptive first chunk gives 1.1–1.6 s TTFA (61.4% drop). | 🔴 | Replaced with verified profile: 0.93–0.96 s P50 engine baseline; 1.1–1.6 s TTFA with adaptive chunking; 0 ms starvation. |
+| **7** | Kokoro-82M TTFA | 142 / 210 ms (P50/P95; rejected) | CPU engine baseline is approximately 0.93–0.96 s P50 for short 5-word inputs. Adaptive first-chunk synthesis achieves 1.1–1.6 s TTFA for compound turns, with a reported 61.4% reduction in waiting time and no buffer starvation observed in the chunker test. | 🟢 | Replaced the unsupported 142 ms claim with the measured CPU latency profile and the validated adaptive chunking approach. |
 | **8** | Turn-Taking | Sub-second local turn-taking | Short responses are sub-second; compound responses are 1.1–1.6 s TTFA. | 🟡 | Low-latency local interactive voice consultation, with sub-second turnaround for short responses and ~1.1–1.6 s TTFA for compound turns. |
 | **9** | Paralinguistic DSP | 25ms/10ms, f0, -38 dBFS VAD | Runtime browser MediaStream PCM analyzer; observational telemetry only; no runtime STFT. | 🟢 | Browser runtime extracts acoustic features (RMS, VAD, pause, f0) as observational telemetry; not diagnostic biomarkers. |
 | **10** | Clinical RAG | MedlinePlus XML RAG | 2,112 processed passages + curated guidelines loaded locally. | 🟢 | Offline MedlinePlus XML-derived passages indexed locally alongside curated clinical guidelines. |
