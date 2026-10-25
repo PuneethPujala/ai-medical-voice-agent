@@ -11,8 +11,16 @@
  * - ICD-10-CM Diagnosis Coding
  */
 
-import { LiveAudioMetrics } from "../acoustic/acoustic-dsp-analyzer";
-import { SpeechFeatures } from "../agents/schemas";
+import { LiveAudioMetrics, TurnAudioMetricRecord } from "../acoustic/acoustic-dsp-analyzer";
+import { SpeechFeatures, DeliveredTurnRecord, AttributedClinicalFactV3, UnmappedObservation } from "../agents/schemas";
+import {
+  calculateEncounterPeriod,
+  resolveAcousticTemporalSpan,
+  normalizeIsoTimestamp,
+  resolveConditionTemporal,
+  resolveTriageAssessmentTimestamp,
+  mapEncounterStatus,
+} from "./temporal-utils";
 
 export interface ConsultationRecordFHIR {
   id: string;
@@ -23,6 +31,7 @@ export interface ConsultationRecordFHIR {
   doctorName?: string;
   specialty?: string;
   chiefComplaint?: string;
+  status?: string;
   triageLevel?: "emergency" | "priority" | "routine";
   triageTitle?: string;
   esiScore?: number;
@@ -34,9 +43,15 @@ export interface ConsultationRecordFHIR {
   soapPlan?: string;
   recommendedAction?: string;
   createdAt?: string | Date;
+  approvedAt?: string | Date;
+  bundleTimestamp?: string | Date;
   transcript?: Array<{ role: string; text: string; timestamp: string }>;
   audioMetrics?: LiveAudioMetrics | Partial<LiveAudioMetrics>;
+  audioMetricsHistory?: TurnAudioMetricRecord[];
   speechFeatures?: SpeechFeatures | Partial<SpeechFeatures>;
+  deliveredTurnRecords?: DeliveredTurnRecord[];
+  attributedFacts?: AttributedClinicalFactV3[];
+  unmappedObservations?: UnmappedObservation[];
 }
 
 export interface FHIRResource {
@@ -101,7 +116,40 @@ export function getICD10Display(code: string): string {
 export function generateFHIRBundle(record: ConsultationRecordFHIR): FHIRBundle {
   const cleanId = record.id.replace(/[^a-zA-Z0-9-]/g, "-");
   const bundleId = `urn:uuid:bundle-${cleanId}`;
-  const timestamp = record.createdAt ? new Date(record.createdAt).toISOString() : new Date().toISOString();
+  const timestamp = normalizeIsoTimestamp(record.createdAt, new Date().toISOString());
+
+  // Bundle Assembly Time (F8-05): captures when the bundle was compiled/exported
+  const bundleAssemblyTime = record.bundleTimestamp
+    ? normalizeIsoTimestamp(record.bundleTimestamp)
+    : new Date().toISOString();
+
+  // Composition Authoring / Sign-Off Time (F8-02):
+  // When a consultation was formally reviewed and signed off by a physician, approvedAt represents that document sign-off.
+  // When unapproved and generated on demand at export time, the Composition document is authored at documentGenerationTime.
+  // Encounter createdAt is NOT substituted as document authorship.
+  const documentGenerationTime = bundleAssemblyTime;
+  const compositionAuthorDate = record.approvedAt
+    ? normalizeIsoTimestamp(record.approvedAt)
+    : documentGenerationTime;
+
+  // Triage Assessment Timing (F8-03):
+  // Anchored to the escalation / evaluation turn, never an unrelated closing turn
+  const triageAssessmentTime = resolveTriageAssessmentTimestamp({
+    deliveredTurnRecords: record.deliveredTurnRecords,
+    createdAt: record.createdAt,
+    triageLevel: record.triageLevel,
+    esiScore: record.esiScore,
+  });
+
+  const encounterPeriod = calculateEncounterPeriod({
+    createdAt: record.createdAt,
+    approvedAt: record.approvedAt,
+    status: record.status,
+    deliveredTurnRecords: record.deliveredTurnRecords,
+    audioMetricsHistory: record.audioMetricsHistory,
+  });
+
+  const encounterStatus = mapEncounterStatus(record.status, record.approvedAt);
 
   const patientId = `patient-${cleanId}`;
   const practitionerId = record.doctorId ? record.doctorId.replace(/[^a-zA-Z0-9-]/g, "-") : "dr-sarah-chen";
@@ -171,7 +219,7 @@ export function generateFHIRBundle(record: ConsultationRecordFHIR): FHIRBundle {
   const encounterResource: FHIRResource = {
     resourceType: "Encounter",
     id: encounterId,
-    status: "finished",
+    status: encounterStatus,
     class: {
       system: "http://terminology.hl7.org/CodeSystem/v3-ActCode",
       code: isEmergency ? "EMER" : "AMB",
@@ -210,10 +258,7 @@ export function generateFHIRBundle(record: ConsultationRecordFHIR): FHIRBundle {
         },
       },
     ],
-    period: {
-      start: timestamp,
-      end: timestamp,
-    },
+    period: encounterPeriod,
     reasonCode: [
       {
         text: record.chiefComplaint || "Clinical evaluation and symptom assessment",
@@ -253,7 +298,7 @@ export function generateFHIRBundle(record: ConsultationRecordFHIR): FHIRBundle {
     encounter: {
       reference: `Encounter/${encounterId}`,
     },
-    effectiveDateTime: timestamp,
+    ...(triageAssessmentTime ? { effectiveDateTime: triageAssessmentTime } : {}),
     valueInteger: esiScore,
     interpretation: [
       {
@@ -271,45 +316,56 @@ export function generateFHIRBundle(record: ConsultationRecordFHIR): FHIRBundle {
 
   // 5. Condition Resources for Diagnostic ICD-10 codes
   const conditions: FHIRResource[] = (record.icd10Codes && record.icd10Codes.length > 0 ? record.icd10Codes : ["Z76.0"]).map(
-    (code, idx) => ({
-      resourceType: "Condition",
-      id: `condition-${cleanId}-${idx + 1}`,
-      clinicalStatus: {
-        coding: [
-          {
-            system: "http://terminology.hl7.org/CodeSystem/condition-clinical",
-            code: "active",
-            display: "Active",
-          },
-        ],
-      },
-      verificationStatus: {
-        coding: [
-          {
-            system: "http://terminology.hl7.org/CodeSystem/condition-ver-status",
-            code: "provisional",
-            display: "Provisional / Preliminary Triage Assessment",
-          },
-        ],
-      },
-      code: {
-        coding: [
-          {
-            system: "http://hl7.org/fhir/sid/icd-10",
-            code: code,
-            display: getICD10Display(code),
-          },
-        ],
-        text: getICD10Display(code),
-      },
-      subject: {
-        reference: `Patient/${patientId}`,
-      },
-      encounter: {
-        reference: `Encounter/${encounterId}`,
-      },
-      recordedDate: timestamp,
-    })
+    (code, idx) => {
+      const condTemporal = resolveConditionTemporal({
+        code,
+        display: getICD10Display(code),
+        attributedFacts: record.attributedFacts,
+        deliveredTurnRecords: record.deliveredTurnRecords,
+        fallbackTimestamp: timestamp,
+      });
+
+      return {
+        resourceType: "Condition",
+        id: `condition-${cleanId}-${idx + 1}`,
+        clinicalStatus: {
+          coding: [
+            {
+              system: "http://terminology.hl7.org/CodeSystem/condition-clinical",
+              code: "active",
+              display: "Active",
+            },
+          ],
+        },
+        verificationStatus: {
+          coding: [
+            {
+              system: "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+              code: "provisional",
+              display: "Provisional / Preliminary Triage Assessment",
+            },
+          ],
+        },
+        code: {
+          coding: [
+            {
+              system: "http://hl7.org/fhir/sid/icd-10",
+              code: code,
+              display: getICD10Display(code),
+            },
+          ],
+          text: getICD10Display(code),
+        },
+        subject: {
+          reference: `Patient/${patientId}`,
+        },
+        encounter: {
+          reference: `Encounter/${encounterId}`,
+        },
+        recordedDate: condTemporal.recordedDate,
+        ...(condTemporal.onsetString ? { onsetString: condTemporal.onsetString } : {}),
+      };
+    }
   );
 
   // 5b. Paralinguistic Acoustic Telemetry Observation (Optional, only if audio metrics present)
@@ -485,6 +541,8 @@ export function generateFHIRBundle(record: ConsultationRecordFHIR): FHIRBundle {
       });
     }
 
+    const acousticSpan = resolveAcousticTemporalSpan(record.audioMetricsHistory, record.createdAt);
+
     acousticObservation = {
       resourceType: "Observation",
       id: `observation-acoustic-${cleanId}`,
@@ -516,8 +574,10 @@ export function generateFHIRBundle(record: ConsultationRecordFHIR): FHIRBundle {
       encounter: {
         reference: `Encounter/${encounterId}`,
       },
-      effectiveDateTime: timestamp,
-      issued: timestamp,
+      ...(acousticSpan.isMultiTurn && acousticSpan.effectivePeriod
+        ? { effectivePeriod: acousticSpan.effectivePeriod }
+        : { effectiveDateTime: acousticSpan.effectiveDateTime || timestamp }),
+      issued: encounterPeriod.end || encounterPeriod.start || timestamp,
       method: {
         coding: [
           {
@@ -573,7 +633,7 @@ export function generateFHIRBundle(record: ConsultationRecordFHIR): FHIRBundle {
     encounter: {
       reference: `Encounter/${encounterId}`,
     },
-    date: timestamp,
+    date: compositionAuthorDate,
     author: [
       {
         reference: `Practitioner/${practitionerId}`,
@@ -668,7 +728,7 @@ export function generateFHIRBundle(record: ConsultationRecordFHIR): FHIRBundle {
     resourceType: "Bundle",
     id: bundleId,
     meta: {
-      lastUpdated: timestamp,
+      lastUpdated: bundleAssemblyTime,
       profile: ["http://hl7.org/fhir/StructureDefinition/document"],
     },
     identifier: {
@@ -676,7 +736,7 @@ export function generateFHIRBundle(record: ConsultationRecordFHIR): FHIRBundle {
       value: cleanId,
     },
     type: "document",
-    timestamp,
+    timestamp: bundleAssemblyTime,
     entry: entries,
   };
 }

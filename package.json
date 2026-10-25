@@ -71,6 +71,7 @@
     "test:safety-streaming": "tsx tests/streaming/safety-gated-streaming-and-bargein.test.ts",
     "test:medication-safety": "tsx tests/triage/medication-safety-engine.test.ts",
     "test:fhir-paralinguistic": "tsx tests/fhir/paralinguistic-observation.test.ts",
+    "test:fhir-temporal": "tsx tests/fhir/temporal-utils.test.ts && tsx tests/fhir/condition-temporal-provenance.test.ts",
     "test:acoustic-e2e": "tsx tests/acoustic/e2e-acoustic-to-fhir.test.ts",
     "test:voice-stt": "tsx tests/stt/voice-stt.test.ts",
     "test:stt-recovery": "tsx tests/stt/empty-transcript-recovery.test.ts",
