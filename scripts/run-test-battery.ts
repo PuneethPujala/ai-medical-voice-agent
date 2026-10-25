@@ -83,6 +83,8 @@ export const CANONICAL_TEST_BATTERY: TestSuiteDefinition[] = [
   { id: "test:stt-recovery", file: "tests/stt/empty-transcript-recovery.test.ts", description: "Empty-Transcript STT Fallback & Patient Recovery" },
   { id: "test:multi-turn-concurrency", file: "tests/voice/multi-turn-concurrency.test.ts", description: "Multi-Turn Concurrency & Optimistic Version Synchronization" },
   { id: "test:whole-conversation-stress", file: "tests/voice/whole-conversation-stress.test.ts", description: "Whole-Conversation 4-Layer Context Behavioral Stress" },
+  { id: "test:worklet-parity", file: "tests/acoustic/worklet-parity.test.ts", description: "AudioWorklet DSP Mathematical Parity & Fallback Battery" },
+  { id: "test:acoustic-e2e", file: "tests/acoustic/e2e-acoustic-to-fhir.test.ts", description: "End-to-End Acoustic DSP to HL7 FHIR Integration" },
 
   // 9. Healthcare Standards & Emergency Dispatch
   { id: "test:fhir", file: "tests/fhir-eval/fhir.test.ts", description: "HL7 FHIR R4 Bundle Validation & Conformance" },

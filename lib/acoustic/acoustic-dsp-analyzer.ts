@@ -345,21 +345,42 @@ export function aggregateAcousticMetrics(
 }
 
 /**
+ * Resolves the static URL for the Acoustic DSP AudioWorkletProcessor,
+ * respecting the application's configured basePath in production or custom deployments.
+ */
+export function getAcousticWorkletUrl(): string {
+  const basePath = typeof process !== "undefined" && process.env?.NEXT_PUBLIC_BASE_PATH
+    ? process.env.NEXT_PUBLIC_BASE_PATH.replace(/\/$/, "")
+    : "";
+  return `${basePath}/worklets/acoustic-dsp-processor.js`;
+}
+
+// Track audio contexts that have already loaded the worklet module to prevent redundant loads
+const loadedWorkletContexts = new WeakSet<AudioContext>();
+
+/**
  * Stateful browser runtime audio analyzer.
  * Consumes raw MediaStream, buffers samples into rolling FIFO, and extracts 25ms/10ms frames.
+ * Offloads DSP to an AudioWorkletProcessor on the audio rendering thread when available,
+ * falling back transparently to ScriptProcessorNode when AudioWorklet is unsupported.
  */
 export class AcousticDSPAnalyzer {
   private audioContext: AudioContext | null = null;
+  private isOwnedAudioContext: boolean = true;
   private sourceNode: MediaStreamAudioSourceNode | null = null;
+  private workletNode: AudioWorkletNode | null = null;
   private processorNode: ScriptProcessorNode | null = null;
   private silentGainNode: GainNode | null = null;
+  private isUsingWorklet: boolean = false;
+  private lastFinalMetrics: LiveAudioMetrics | null = null;
+  private finalizePromise: Promise<LiveAudioMetrics> | null = null;
 
   private sampleRate: number = 16000;
   private windowSamples: number = 400; // 25ms at 16kHz
   private hopSamples: number = 160;    // 10ms at 16kHz
   private vadThresholdDbfs: number = -38;
 
-  // Rolling PCM FIFO ring buffer
+  // Rolling PCM FIFO ring buffer (used for offline analysis and ScriptProcessor fallback)
   private pcmBuffer: Float32Array = new Float32Array(0);
   private frameResults: AcousticFrameResult[] = [];
   private isRunning: boolean = false;
@@ -368,22 +389,45 @@ export class AcousticDSPAnalyzer {
     this.vadThresholdDbfs = vadThresholdDbfs;
   }
 
+  public isWorkletActive(): boolean {
+    return this.isUsingWorklet;
+  }
+
+  public getFrameResults(): AcousticFrameResult[] {
+    return this.frameResults;
+  }
+
+  public getSampleRate(): number {
+    return this.sampleRate;
+  }
+
   /**
    * Initializes Web Audio node pipeline and begins live frame accumulation from the MediaStream.
+   * Prefers AudioWorkletNode running on the audio rendering thread; falls back to ScriptProcessorNode.
    */
-  public start(stream: MediaStream): boolean {
+  public async start(stream: MediaStream, externalAudioContext?: AudioContext): Promise<boolean> {
     if (typeof window === "undefined" || !stream || !stream.active) {
       return false;
     }
 
+    if (this.isRunning) {
+      this.dispose();
+    }
+
     try {
-      const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-      if (!AudioCtx) {
-        console.warn("[Acoustic DSP] Web Audio API is unavailable in this environment.");
-        return false;
+      if (externalAudioContext) {
+        this.audioContext = externalAudioContext;
+        this.isOwnedAudioContext = false;
+      } else {
+        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+        if (!AudioCtx) {
+          console.warn("[Acoustic DSP] Web Audio API is unavailable in this environment.");
+          return false;
+        }
+        this.audioContext = new AudioCtx();
+        this.isOwnedAudioContext = true;
       }
 
-      this.audioContext = new AudioCtx();
       this.sampleRate = this.audioContext.sampleRate || 16000;
 
       // Exact framing parameters for dynamic sample rate (25ms window, 10ms hop)
@@ -392,40 +436,121 @@ export class AcousticDSPAnalyzer {
 
       this.pcmBuffer = new Float32Array(0);
       this.frameResults = [];
+      this.lastFinalMetrics = null;
       this.isRunning = true;
 
       // Tap raw live microphone audio from the existing MediaStream
       this.sourceNode = this.audioContext.createMediaStreamSource(stream);
 
-      // Lightweight processing node (4096 samples buffer, 1 input channel, 1 output)
-      // Note: ScriptProcessor is used here for deterministic cross-browser Float32 sample acquisition
-      // without requiring external static .worklet.js network assets.
-      this.processorNode = this.audioContext.createScriptProcessor(4096, 1, 1);
-
-      this.processorNode.onaudioprocess = (e: AudioProcessingEvent) => {
-        if (!this.isRunning) return;
-        const inputData = e.inputBuffer.getChannelData(0);
-        this.appendSamples(inputData);
-      };
-
       // Mute the processor output so it does not loop back to speakers
       this.silentGainNode = this.audioContext.createGain();
       this.silentGainNode.gain.value = 0;
 
-      this.sourceNode.connect(this.processorNode);
-      this.processorNode.connect(this.silentGainNode);
-      this.silentGainNode.connect(this.audioContext.destination);
-
-      console.log(
-        `%c[Acoustic DSP] Initialized live analyzer (SampleRate: ${this.sampleRate} Hz | Window: ${this.windowSamples} smp | Hop: ${this.hopSamples} smp | VAD: ${this.vadThresholdDbfs} dBFS)`,
-        "color: #06b6d4; font-family: monospace; font-size: 11px;"
+      // Primary path: Try AudioWorklet offloading
+      const hasAudioWorklet = Boolean(
+        typeof AudioWorkletNode !== "undefined" &&
+        this.audioContext.audioWorklet &&
+        typeof this.audioContext.audioWorklet.addModule === "function"
       );
-      return true;
+
+      if (hasAudioWorklet) {
+        try {
+          const workletStarted = await this.startWorkletPipeline();
+          if (workletStarted) {
+            return true;
+          }
+        } catch (workletErr: any) {
+          console.warn(
+            "[Acoustic DSP] AudioWorklet initialization failed; falling back to ScriptProcessorNode:",
+            workletErr?.message || workletErr
+          );
+        }
+      }
+
+      // Fallback path: ScriptProcessorNode
+      return this.startScriptProcessorPipeline();
     } catch (err: any) {
       console.warn("[Acoustic DSP] Failed to initialize live audio analyzer:", err?.message || err);
       this.dispose();
       return false;
     }
+  }
+
+  private async startWorkletPipeline(): Promise<boolean> {
+    if (!this.audioContext || !this.sourceNode || !this.silentGainNode || !this.isRunning) {
+      return false;
+    }
+
+    const workletUrl = getAcousticWorkletUrl();
+    if (!loadedWorkletContexts.has(this.audioContext)) {
+      await this.audioContext.audioWorklet.addModule(workletUrl);
+      loadedWorkletContexts.add(this.audioContext);
+    }
+
+    // Guard against race condition if disposed while fetching module
+    if (!this.isRunning || !this.audioContext) {
+      return false;
+    }
+
+    this.workletNode = new AudioWorkletNode(this.audioContext, "acoustic-dsp-processor");
+
+    // Receive streaming frame batches and final telemetry over MessagePort
+    this.workletNode.port.onmessage = (event: MessageEvent) => {
+      const data = event.data;
+      if (!data || !this.isRunning) return;
+
+      if (data.type === "FRAME_BATCH" && Array.isArray(data.frames)) {
+        this.frameResults.push(...data.frames);
+      } else if (data.type === "FINAL_METRICS" && data.metrics) {
+        this.lastFinalMetrics = data.metrics;
+      }
+    };
+
+    // Configure framing parameters in the worklet
+    this.workletNode.port.postMessage({
+      type: "INIT",
+      sampleRate: this.sampleRate,
+      vadThresholdDbfs: this.vadThresholdDbfs,
+    });
+
+    this.sourceNode.connect(this.workletNode);
+    this.workletNode.connect(this.silentGainNode);
+    this.silentGainNode.connect(this.audioContext.destination);
+
+    this.isUsingWorklet = true;
+
+    console.log(
+      `%c[Acoustic DSP] AudioWorklet pipeline initialized (Rendering Thread | SampleRate: ${this.sampleRate} Hz | Window: ${this.windowSamples} smp | Hop: ${this.hopSamples} smp | VAD: ${this.vadThresholdDbfs} dBFS)`,
+      "color: #06b6d4; font-family: monospace; font-size: 11px;"
+    );
+    return true;
+  }
+
+  private startScriptProcessorPipeline(): boolean {
+    if (!this.audioContext || !this.sourceNode || !this.silentGainNode || !this.isRunning) {
+      return false;
+    }
+
+    // Lightweight processing node (4096 samples buffer, 1 input channel, 1 output)
+    this.processorNode = this.audioContext.createScriptProcessor(4096, 1, 1);
+
+    this.processorNode.onaudioprocess = (e: AudioProcessingEvent) => {
+      if (!this.isRunning) return;
+      const inputData = e.inputBuffer.getChannelData(0);
+      this.appendSamples(inputData);
+    };
+
+    this.sourceNode.connect(this.processorNode);
+    this.processorNode.connect(this.silentGainNode);
+    this.silentGainNode.connect(this.audioContext.destination);
+
+    this.isUsingWorklet = false;
+
+    console.log(
+      `%c[Acoustic DSP] ScriptProcessor fallback pipeline initialized (Main Thread | SampleRate: ${this.sampleRate} Hz | Window: ${this.windowSamples} smp | Hop: ${this.hopSamples} smp | VAD: ${this.vadThresholdDbfs} dBFS)`,
+      "color: #f59e0b; font-family: monospace; font-size: 11px;"
+    );
+    return true;
   }
 
   /**
@@ -495,10 +620,22 @@ export class AcousticDSPAnalyzer {
 
   /**
    * Finalizes the current recording session and computes aggregate acoustic metrics.
+   *
+   * NOTE: When running under AudioWorklet, synchronous finalize() aggregates frames that have
+   * already crossed the MessagePort thread boundary into this.frameResults. It does NOT wait
+   * for frames currently buffered in the worklet's pending sub-batch.
+   * Callers requiring guaranteed delivery of the worklet's final unbatched frames must call
+   * await finalizeAsync() before calling dispose().
    */
   public finalize(): LiveAudioMetrics {
+    if (this.isUsingWorklet && this.workletNode) {
+      try {
+        this.workletNode.port.postMessage({ type: "FINALIZE" });
+      } catch {}
+    }
+
     const hopMs = 10;
-    const metrics = aggregateAcousticMetrics(this.frameResults, this.sampleRate, hopMs);
+    const metrics = this.lastFinalMetrics || aggregateAcousticMetrics(this.frameResults, this.sampleRate, hopMs);
     console.log(
       `%c[Acoustic DSP] Finalized session metrics (${metrics.totalFramesCount} frames, ${metrics.voicedFramesCount} voiced | Pause ratio: ${(metrics.speechPauseRatio * 100).toFixed(0)}% | f0: ${metrics.meanF0Hz !== null ? `${metrics.meanF0Hz} Hz` : "unvoiced"} | Var: ${metrics.energyVariance} E / ${metrics.pitchVariance} P)`,
       "color: #10b981; font-family: monospace; font-size: 11px;"
@@ -507,10 +644,98 @@ export class AcousticDSPAnalyzer {
   }
 
   /**
-   * Cleanly disposes of all Web Audio nodes and closes the AudioContext.
+   * Asynchronously finalizes the session, awaiting the AudioWorklet's flushed frame batch
+   * and exact aggregated metrics. Idempotent: repeated or concurrent calls reuse the active promise.
+   *
+   * SAFETY GUARANTEE: If the worklet fails to respond or times out within timeoutMs, this method
+   * REJECTS with an Error rather than silently resolving with partial or incomplete telemetry.
+   * Callers catching this rejection should safely omit acoustic telemetry from downstream payloads.
+   */
+  public async finalizeAsync(timeoutMs: number = 250): Promise<LiveAudioMetrics> {
+    if (!this.isUsingWorklet || !this.workletNode) {
+      return this.finalize();
+    }
+
+    if (this.lastFinalMetrics) {
+      return this.lastFinalMetrics;
+    }
+
+    if (this.finalizePromise) {
+      return this.finalizePromise;
+    }
+
+    const worklet = this.workletNode;
+    this.finalizePromise = new Promise<LiveAudioMetrics>((resolve, reject) => {
+      let settled = false;
+      const originalOnMessage = worklet.port.onmessage;
+
+      const cleanup = () => {
+        if (this.workletNode) {
+          this.workletNode.port.onmessage = originalOnMessage;
+        }
+        this.finalizePromise = null;
+      };
+
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        cleanup();
+        reject(
+          new Error(
+            `[Acoustic DSP] AudioWorklet finalization timed out after ${timeoutMs}ms without receiving complete telemetry.`
+          )
+        );
+      }, timeoutMs);
+
+      worklet.port.onmessage = (event: MessageEvent) => {
+        const data = event.data;
+        if (!data) return;
+
+        if (data.type === "FRAME_BATCH" && Array.isArray(data.frames)) {
+          this.frameResults.push(...data.frames);
+        } else if (data.type === "FINAL_METRICS" && data.metrics) {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          cleanup();
+          this.lastFinalMetrics = data.metrics;
+          resolve(data.metrics);
+        }
+      };
+
+      try {
+        worklet.port.postMessage({ type: "FINALIZE" });
+      } catch (err: any) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        cleanup();
+        reject(
+          new Error(
+            `[Acoustic DSP] Failed to post FINALIZE command to AudioWorklet: ${err?.message || err}`
+          )
+        );
+      }
+    });
+
+    return this.finalizePromise;
+  }
+
+  /**
+   * Cleanly disposes of all Web Audio nodes and closes the AudioContext if owned.
    */
   public dispose(): void {
     this.isRunning = false;
+    this.finalizePromise = null;
+
+    if (this.workletNode) {
+      try {
+        this.workletNode.port.postMessage({ type: "DISPOSE" });
+        this.workletNode.port.onmessage = null;
+        this.workletNode.disconnect();
+      } catch {}
+      this.workletNode = null;
+    }
 
     if (this.sourceNode) {
       try { this.sourceNode.disconnect(); } catch {}
@@ -528,13 +753,18 @@ export class AcousticDSPAnalyzer {
       this.silentGainNode = null;
     }
 
-    if (this.audioContext && this.audioContext.state !== "closed") {
+    // Only close AudioContext if this instance created and owns it
+    if (this.isOwnedAudioContext && this.audioContext && this.audioContext.state !== "closed") {
       try { this.audioContext.close().catch(() => {}); } catch {}
+      this.audioContext = null;
+    } else if (!this.isOwnedAudioContext) {
       this.audioContext = null;
     }
 
     this.pcmBuffer = new Float32Array(0);
     this.frameResults = [];
+    this.isUsingWorklet = false;
+    this.lastFinalMetrics = null;
   }
 }
 
