@@ -1000,7 +1000,7 @@ export default function ConsultPage() {
     let liveAudioMetrics: LiveAudioMetrics | undefined;
     if (acousticAnalyzerRef.current) {
       try {
-        liveAudioMetrics = acousticAnalyzerRef.current.finalize();
+        liveAudioMetrics = await acousticAnalyzerRef.current.finalizeAsync();
       } catch (dspErr) {
         console.warn("Acoustic DSP finalization notice:", dspErr);
       }
