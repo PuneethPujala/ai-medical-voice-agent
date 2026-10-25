@@ -29,6 +29,13 @@ import {
   buildRateLimitResponse,
   RESOURCE_LIMITS,
 } from "@/lib/security/rate-limiter";
+import {
+  computeTurnFingerprint,
+  acquireTurnReservation,
+  commitTurnWithFencing,
+  generateEmergencyTurnId,
+  ReservationOutcome,
+} from "@/lib/security/idempotency";
 
 export async function POST(request: Request) {
   const startTime = performance.now();
@@ -64,6 +71,8 @@ export async function POST(request: Request) {
       patientRelationship,
       encounterId: rawEncounterId,
       consultationId,
+      turnId: rawTurnId,
+      clientTurnId: rawClientTurnId,
       caseVersion: clientCaseVersion,
       // body.patientProfile and body.userId are intentionally discarded to enforce tenant isolation
       audioMetrics,
@@ -74,6 +83,8 @@ export async function POST(request: Request) {
       stream: clientWantsStream = false,
     } = body;
     const encounterId = rawEncounterId || consultationId;
+    const clientTurnId = (rawClientTurnId || rawTurnId || request.headers.get("x-turn-id") || "").trim() || undefined;
+    let activeClaimGeneration: number | undefined = undefined;
     const isStreamRequested = Boolean(
       clientWantsStream ||
       request.headers.get("accept")?.includes("text/event-stream")
@@ -119,17 +130,20 @@ export async function POST(request: Request) {
         }))
       : [];
 
-    const buildJsonResponse = (payload: any, status = 200) => {
+    const buildJsonResponse = (payload: any, status = 200, isReplay = false) => {
       const headers = new Headers();
       headers.set("x-fast-loop-latency-ms", String(Math.round(performance.now() - startTime)));
       headers.set("x-phi-redactions", String(redactionCount));
+      if (isReplay) {
+        headers.set("x-idempotent-replay", "true");
+      }
       if (payload && payload.doctorReply) {
         payload.doctorReply = PhiScrubber.rehydrate(payload.doctorReply, phiVault);
       }
       return NextResponse.json(payload, { status, headers });
     };
 
-    const buildSseResponse = (payload: any) => {
+    const buildSseResponse = (payload: any, isReplay = false) => {
       const encoder = new TextEncoder();
       const rehydratedReply = payload && payload.doctorReply
         ? PhiScrubber.rehydrate(payload.doctorReply, phiVault)
@@ -199,15 +213,16 @@ export async function POST(request: Request) {
           "X-Accel-Buffering": "no",
           "x-fast-loop-latency-ms": String(Math.round(performance.now() - startTime)),
           "x-phi-redactions": String(redactionCount),
+          ...(isReplay ? { "x-idempotent-replay": "true" } : {}),
         },
       });
     };
 
-    const buildResponse = (payload: any, status = 200) => {
+    const buildResponse = (payload: any, status = 200, isReplay = false) => {
       if (isStreamRequested && status === 200) {
-        return buildSseResponse(payload);
+        return buildSseResponse(payload, isReplay);
       }
-      return buildJsonResponse(payload, status);
+      return buildJsonResponse(payload, status, isReplay);
     };
 
     const doctor = getDoctorById(doctorId);
@@ -352,60 +367,197 @@ export async function POST(request: Request) {
       expectedCaseVersion = 1;
     }
 
-    const persistTurnStateAsync = async (stateToPersist: any) => {
+    // 2c. Self-Healing Reconciliation & Turn Idempotency Reservation
+    if (clientTurnId && encounterId) {
+      const committedRecord = authoritativeInterviewState?.deliveredTurnRecords?.find(
+        (r: any) => r.clientTurnId && r.clientTurnId === clientTurnId
+      );
+      if (committedRecord && committedRecord.cachedResponsePayload) {
+        const replayedResponse = {
+          ...committedRecord.cachedResponsePayload,
+          interviewState: authoritativeInterviewState,
+        };
+        return buildResponse(replayedResponse, 200, true);
+      }
+
+      const requestFingerprint = computeTurnFingerprint({
+        message: cleanMsg,
+        doctorId,
+        patientId: requestedPatientId,
+        patientRelationship,
+        patientAge,
+        isInterruption,
+        interruptedAgent,
+        userLocation,
+        audioMetrics: audioMetrics ? validateAudioMetrics(audioMetrics) : null,
+      });
+
+      const turnReservation = await acquireTurnReservation({
+        userId: effectiveUserId,
+        encounterId,
+        turnId: clientTurnId,
+        requestFingerprint,
+      });
+
+      if (turnReservation.outcome === "REPLAY") {
+        return buildResponse(turnReservation.responsePayload, 200, true);
+      }
+
+      if (turnReservation.outcome === "FINGERPRINT_MISMATCH") {
+        const mismatchPreCheck = evaluatePreArbiter({
+          transcript: cleanMsg,
+          speech_features: body.speechFeatures,
+        });
+
+        if (mismatchPreCheck.immediate_danger || (mismatchPreCheck.pre_safety_flags && mismatchPreCheck.pre_safety_flags.length > 0)) {
+          const isAcuteAirway = mismatchPreCheck.pre_safety_flags.includes("PRE_FLAG_IMMEDIATE_AIRWAY_FAILURE");
+          const isDeepNeckPTA = mismatchPreCheck.pre_safety_flags.includes("PRE_FLAG_DEEP_NECK_INFECTION_OR_PTA");
+          const isStroke = mismatchPreCheck.pre_safety_flags.includes("PRE_FLAG_ACUTE_NEUROLOGIC_DEFICIT");
+          const isCardiac = mismatchPreCheck.pre_safety_flags.includes("PRE_FLAG_ACUTE_CHEST_PAIN");
+
+          let emergencyTitle = "EMERGENCY CLINICAL CRISIS DETECTED";
+          let esiLevel = 2;
+          let emergencyDirective = "This is a life-threatening medical emergency. Please call 112 or 108 immediately or proceed to the nearest emergency department right now.";
+
+          if (isAcuteAirway || isDeepNeckPTA) {
+            emergencyTitle = "ESI LEVEL 1: CRITICAL AIRWAY COMPROMISE / RESPIRATORY CRISIS";
+            esiLevel = 1;
+            emergencyDirective = "Critical airway compromise detected. Maintain an upright seated position, do not attempt to swallow solid food or liquids, and call 112 or 108 immediately for urgent paramedic support.";
+          } else if (isStroke) {
+            emergencyTitle = "ESI LEVEL 2: EMERGENT — ACUTE NEUROLOGICAL DEFICIT (BE-FAST)";
+            esiLevel = 2;
+            emergencyDirective = "Acute neurological deficit (facial droop, speech difficulty, or weakness) detected. Immediate emergency ambulance transport to a certified Primary Stroke Center is critical within the acute treatment window.";
+          } else if (isCardiac) {
+            emergencyTitle = "ESI LEVEL 2: EMERGENT — SUSPECTED ACUTE CORONARY SYNDROME";
+            esiLevel = 2;
+            emergencyDirective = "Acute chest discomfort with high-risk features detected. Remain completely still, sit upright, avoid physical exertion, and have someone call 112 or 108 immediately for emergency medical transport.";
+          }
+
+          const emergencyTurnId = generateEmergencyTurnId(effectiveUserId, encounterId, clientTurnId, requestFingerprint);
+          const emgReservation = await acquireTurnReservation({
+            userId: effectiveUserId,
+            encounterId,
+            turnId: emergencyTurnId,
+            requestFingerprint,
+          });
+
+          if (emgReservation.outcome === "REPLAY") {
+            return buildResponse(emgReservation.responsePayload, 200, true);
+          }
+
+          const emergencyResponsePayload = {
+            doctorReply: emergencyDirective,
+            doctor: {
+              id: doctor.id,
+              name: doctor.name,
+              specialty: doctor.specialty,
+              avatarUrl: doctor.avatarUrl,
+              voiceGender: doctor.voiceGender,
+              voiceId: doctor.voiceId,
+            },
+            phase: "board_decision",
+            triage: {
+              triageLevel: "emergency",
+              triageTitle: emergencyTitle,
+              esiScore: esiLevel,
+              isEmergency: true,
+              redFlagsTriggered: mismatchPreCheck.pre_safety_flags,
+              recommendedAction: emergencyDirective,
+            },
+            idempotencyWarning: "IDEMPOTENCY_KEY_REUSE_EMERGENCY_OVERRIDE",
+          };
+
+          if (emgReservation.outcome === "ACQUIRED") {
+            const emgState = {
+              ...(authoritativeInterviewState || conversationManager.createInitialState()),
+              phase: "board_decision",
+              deliveredTurnRecords: [
+                ...(authoritativeInterviewState?.deliveredTurnRecords || []),
+                {
+                  turnId: (authoritativeInterviewState?.deliveredTurnRecords?.length || 0) + 1,
+                  clientTurnId: emergencyTurnId,
+                  deliveredText: emergencyDirective,
+                  conversationalAction: "EMERGENCY_DIRECTIVE",
+                  intendedTargets: [],
+                  targetResolutionStatuses: {},
+                  relevantEvidenceRefs: [],
+                  caseVersion: expectedCaseVersion + 1,
+                  timestamp: new Date().toISOString(),
+                  audioDeliveryStatus: "delivered",
+                  cachedResponsePayload: emergencyResponsePayload,
+                },
+              ],
+            };
+
+            await commitTurnWithFencing({
+              userId: effectiveUserId,
+              encounterId,
+              turnId: emergencyTurnId,
+              claimGeneration: emgReservation.claimGeneration,
+              expectedCaseVersion,
+              nextCaseVersion: expectedCaseVersion + 1,
+              stateToPersist: emgState,
+              responsePayload: emergencyResponsePayload,
+            }).catch((err) => console.error("[VoiceChat] Emergency override commit failed:", err));
+          }
+
+          return buildResponse(emergencyResponsePayload, 200);
+        }
+
+        return NextResponse.json({
+          error: "Idempotency key reused with materially different request payload.",
+          code: "IDEMPOTENCY_FINGERPRINT_MISMATCH",
+        }, { status: 422 });
+      }
+
+      if (turnReservation.outcome === "IN_FLIGHT") {
+        return NextResponse.json({
+          error: "A dialogue turn with this idempotency key is currently being processed. Please await response or retry shortly.",
+          code: "TURN_IN_FLIGHT",
+          leaseExpiresAt: turnReservation.leaseExpiresAt.toISOString(),
+        }, { status: 425 });
+      }
+
+      if (turnReservation.outcome === "ACQUIRED") {
+        activeClaimGeneration = turnReservation.claimGeneration;
+      }
+    }
+
+    const persistTurnStateAsync = async (stateToPersist: any, responsePayload?: any) => {
       if (!encounterId || effectiveUserId === "unauthenticated") return;
       const dbClient = getDb();
       const nextVersion = expectedCaseVersion + 1;
       stateToPersist.caseVersion = nextVersion;
 
-      if (dbClient) {
-        if (encounterExistsOnServer) {
-          const conditions = [
-            eq(consultationsTable.id, encounterId),
-            eq(consultationsTable.caseVersion, expectedCaseVersion),
-          ];
-          if (auth.role !== "admin" && auth.role !== "clinician") {
-            conditions.push(eq(consultationsTable.userId, effectiveUserId));
-          }
-
-          const updatedRows = await dbClient
-            .update(consultationsTable)
-            .set({
-              interviewState: stateToPersist,
-              deliveredTurnRecords: stateToPersist.deliveredTurnRecords,
-              attributedFacts: stateToPersist.attributedFacts,
-              unmappedObservations: stateToPersist.unmappedObservations,
-              caseVersion: nextVersion,
-            })
-            .where(and(...conditions))
-            .returning({ id: consultationsTable.id });
-
-          if (!updatedRows || updatedRows.length === 0) {
-            throw new ConcurrencyConflictError(
-              `Concurrent modification detected for encounter ${encounterId}. Expected version ${expectedCaseVersion}.`
-            );
-          }
-          expectedCaseVersion = nextVersion;
-        }
-      } else {
-        if (encounterExistsOnServer) {
-          const mem = memoryConsultations.find(c => c.id === encounterId);
-          if (!mem) {
-            throw new ConcurrencyConflictError(
-              `Concurrent modification detected for encounter ${encounterId}. Encounter not found.`
-            );
-          }
-          const currentMemVersion = typeof mem.caseVersion === "number" ? mem.caseVersion : expectedCaseVersion;
-          const targetNextVersion = currentMemVersion + 1;
-          stateToPersist.caseVersion = targetNextVersion;
-          mem.interviewState = stateToPersist;
-          mem.deliveredTurnRecords = stateToPersist.deliveredTurnRecords;
-          mem.attributedFacts = stateToPersist.attributedFacts;
-          mem.unmappedObservations = stateToPersist.unmappedObservations;
-          mem.caseVersion = targetNextVersion;
-          expectedCaseVersion = targetNextVersion;
-        }
+      let cachedPayloadForLedger: any = null;
+      if (responsePayload) {
+        const { interviewState: _state, ...rest } = responsePayload;
+        cachedPayloadForLedger = rest;
       }
+
+      if (Array.isArray(stateToPersist.deliveredTurnRecords) && stateToPersist.deliveredTurnRecords.length > 0) {
+        const lastIdx = stateToPersist.deliveredTurnRecords.length - 1;
+        stateToPersist.deliveredTurnRecords[lastIdx].cachedResponsePayload = cachedPayloadForLedger;
+      }
+
+      const commitRes = await commitTurnWithFencing({
+        userId: effectiveUserId,
+        encounterId,
+        turnId: clientTurnId,
+        claimGeneration: activeClaimGeneration,
+        expectedCaseVersion,
+        nextCaseVersion: nextVersion,
+        stateToPersist,
+        responsePayload: responsePayload || null,
+      });
+
+      if (!commitRes.success) {
+        throw new ConcurrencyConflictError(
+          commitRes.message || `Concurrent modification detected for encounter ${encounterId}. Expected version ${expectedCaseVersion}.`
+        );
+      }
+
+      expectedCaseVersion = nextVersion;
     };
 
     // P0 SAFETY CHECK: Red-flag scan on incoming utterance MUST execute BEFORE greeting or acknowledgment shortcuts!
@@ -569,7 +721,8 @@ export async function POST(request: Request) {
     if (validatedTurnAudioMetrics) {
       // Prevent double aggregation if the exact same turn / version was already recorded (idempotent retry)
       const isAlreadyRecorded = audioMetricsHistory.some(
-        (h) => h.caseVersion !== undefined && h.caseVersion === expectedCaseVersion
+        (h) => (clientTurnId && h.turnId === clientTurnId) ||
+               (h.caseVersion !== undefined && h.caseVersion === expectedCaseVersion)
       );
 
       if (!isAlreadyRecorded) {
@@ -577,6 +730,7 @@ export async function POST(request: Request) {
         const currentTurnNumber = audioMetricsHistory.length + 1;
         audioMetricsHistory.push({
           turnIndex: currentTurnNumber,
+          turnId: clientTurnId,
           caseVersion: expectedCaseVersion,
           timestamp: new Date().toISOString(),
           metrics: validatedTurnAudioMetrics,
@@ -994,6 +1148,7 @@ export async function POST(request: Request) {
     // Record DeliveredTurnRecord (tracks generated vs delivered vs heard)
     const deliveredRecord: DeliveredTurnRecord = {
       turnId: turnCount,
+      clientTurnId,
       deliveredText: activeDoctorReply,
       conversationalAction: (llmResult.conversationalAction as any) || (turnResult.action === "CLARIFY" ? "CLARIFY_AMBIGUITY" : "INQUIRE"),
       intendedTargets: targets,
@@ -1165,29 +1320,7 @@ export async function POST(request: Request) {
         }
       }
 
-      try {
-        await persistTurnStateAsync(turnResult.state);
-      } catch (persistErr: any) {
-        if (persistErr instanceof ConcurrencyConflictError) {
-          return NextResponse.json(
-            {
-              error: "The consultation state was modified by a concurrent request. Please retry.",
-              code: "CONCURRENT_MODIFICATION_CONFLICT",
-            },
-            { status: 409 }
-          );
-        }
-        console.error("[VoiceChat] Server turn state persistence failure:", persistErr);
-        return NextResponse.json(
-          {
-            error: "Failed to persist dialogue state to database.",
-            code: "PERSISTENCE_FAILURE",
-          },
-          { status: 503 }
-        );
-      }
-
-      return buildResponse({
+      const askResponsePayload = {
         doctorReply: activeDoctorReply,
         doctor: {
           id: doctor.id,
@@ -1199,7 +1332,7 @@ export async function POST(request: Request) {
         },
         phase: turnResult.state.phase,
         interviewState: turnResult.state,
-        caseVersion: encounterId ? expectedCaseVersion : 1,
+        caseVersion: encounterId ? expectedCaseVersion + 1 : 1,
         nearbyHospitals: nearbyHospitals.length > 0 ? nearbyHospitals : undefined,
         careOptions: careOptions.length > 0 ? careOptions : undefined,
         llmMeta: {
@@ -1265,7 +1398,31 @@ export async function POST(request: Request) {
           drugAllergies: activeProfile.drugAllergies,
         } : null,
         targetSubject: inferredSubject,
-      });
+      };
+
+      try {
+        await persistTurnStateAsync(turnResult.state, askResponsePayload);
+      } catch (persistErr: any) {
+        if (persistErr instanceof ConcurrencyConflictError) {
+          return NextResponse.json(
+            {
+              error: "The consultation state was modified by a concurrent request. Please retry.",
+              code: "CONCURRENT_MODIFICATION_CONFLICT",
+            },
+            { status: 409 }
+          );
+        }
+        console.error("[VoiceChat] Server turn state persistence failure:", persistErr);
+        return NextResponse.json(
+          {
+            error: "Failed to persist dialogue state to database.",
+            code: "PERSISTENCE_FAILURE",
+          },
+          { status: 503 }
+        );
+      }
+
+      return buildResponse(askResponsePayload);
     }
 
     // 3. Assemble Normalized Patient Case for Full Board Deliberation (Convene Board or Emergency Preemption)
@@ -1396,29 +1553,7 @@ export async function POST(request: Request) {
       informationState: "sufficient_for_decision" as const,
     };
 
-    try {
-      await persistTurnStateAsync(decidedInterviewState);
-    } catch (persistErr: any) {
-      if (persistErr instanceof ConcurrencyConflictError) {
-        return NextResponse.json(
-          {
-            error: "The consultation state was modified by a concurrent request. Please retry.",
-            code: "CONCURRENT_MODIFICATION_CONFLICT",
-          },
-          { status: 409 }
-        );
-      }
-      console.error("[VoiceChat] Server turn state persistence failure:", persistErr);
-      return NextResponse.json(
-        {
-          error: "Failed to persist dialogue state to database.",
-          code: "PERSISTENCE_FAILURE",
-        },
-        { status: 503 }
-      );
-    }
-
-    return buildResponse({
+    const boardResponsePayload = {
       doctorReply: finalDoctorReply,
       doctor: {
         id: doctor.id,
@@ -1430,7 +1565,7 @@ export async function POST(request: Request) {
       },
       phase: "board_decision",
       interviewState: decidedInterviewState,
-      caseVersion: encounterId ? expectedCaseVersion : 1,
+      caseVersion: encounterId ? expectedCaseVersion + 1 : 1,
       nearbyHospitals: nearbyHospitals.length > 0 ? nearbyHospitals : undefined,
       careOptions: careOptions.length > 0 ? careOptions : undefined,
       llmMeta: {
@@ -1503,7 +1638,31 @@ export async function POST(request: Request) {
         drugAllergies: activeProfile.drugAllergies,
       } : null,
       targetSubject: inferredSubject,
-    });
+    };
+
+    try {
+      await persistTurnStateAsync(decidedInterviewState, boardResponsePayload);
+    } catch (persistErr: any) {
+      if (persistErr instanceof ConcurrencyConflictError) {
+        return NextResponse.json(
+          {
+            error: "The consultation state was modified by a concurrent request. Please retry.",
+            code: "CONCURRENT_MODIFICATION_CONFLICT",
+          },
+          { status: 409 }
+        );
+      }
+      console.error("[VoiceChat] Server turn state persistence failure:", persistErr);
+      return NextResponse.json(
+        {
+          error: "Failed to persist dialogue state to database.",
+          code: "PERSISTENCE_FAILURE",
+        },
+        { status: 503 }
+      );
+    }
+
+    return buildResponse(boardResponsePayload);
   } catch (error: any) {
     console.error("[VoiceChatError]", error);
     return NextResponse.json(

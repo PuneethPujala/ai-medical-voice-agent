@@ -28,6 +28,7 @@ export const CANONICAL_TEST_BATTERY: TestSuiteDefinition[] = [
     { id: "test:persistence-audit", file: "tests/verification/persistence-and-audit-integrity.test.ts", description: "Clinical Evidence Ledger, Audit Chaining & Failure-Path Safety" },
   { id: "test:atomic-concurrency", file: "tests/security-eval/atomic-concurrency-idempotency.test.ts", description: "Atomic CAS & Unique Idempotency", requiresDatabase: true },
   { id: "test:durable-audit", file: "tests/security-eval/durable-audit.test.ts", description: "Durable SHA-256 Chained Audit Ledger", requiresDatabase: true },
+  { id: "test:turn-idempotency", file: "tests/security-eval/turn-idempotency-defense.test.ts", description: "Finding 7: Turn Idempotency Defense & Atomic Fencing Battery" },
 
   // 3. Clinical Safety, Arbiters & Red Flags
   { id: "test:safetyarbiter", file: "scripts/test-safety-arbiter-decision.ts", description: "Deterministic Safety Arbiter & Urgency Invariants" },
