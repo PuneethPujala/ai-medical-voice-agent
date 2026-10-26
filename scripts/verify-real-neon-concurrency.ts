@@ -1,4 +1,4 @@
-import { neon } from "@neondatabase/serverless";
+import { createSqlHelper, assertSafeTestDatabase } from "../lib/security/test-db-guard";
 import * as dotenv from "dotenv";
 import assert from "assert";
 
@@ -13,7 +13,7 @@ if (!DATABASE_URL) {
   process.exit(1);
 }
 
-const sql = neon(DATABASE_URL);
+const sql = createSqlHelper(assertSafeTestDatabase(DATABASE_URL));
 
 import { POST as postConsultation } from "../app/api/consultations/route";
 import { GET as getConsultationById, PATCH as patchConsultationById } from "../app/api/consultations/[id]/route";

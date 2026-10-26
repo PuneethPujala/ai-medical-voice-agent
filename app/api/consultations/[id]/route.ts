@@ -39,7 +39,6 @@ export async function GET(
     // 2. Lookup record in Neon database
     let record: any = null;
     const dbClient = getDb();
-    let dbError: any = null;
 
     if (dbClient) {
       try {
@@ -53,14 +52,21 @@ export async function GET(
           record = records[0];
         }
       } catch (err) {
-        dbError = err;
         console.error("DB lookup error:", err);
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Clinical records service unavailable. Database connection could not be established.",
+            code: "SERVICE_UNAVAILABLE",
+          },
+          { status: 503 }
+        );
       }
     }
 
     // In production, database failure must never fall back to synthetic clinical records
     if (process.env.NODE_ENV === "production") {
-      if (dbError || !dbClient) {
+      if (!dbClient) {
         return NextResponse.json(
           {
             success: false,
@@ -178,6 +184,7 @@ export async function PATCH(
 
     // 2. Fetch existing consultation
     let record: any = null;
+    let isDbRecord = false;
     const dbClient = getDb();
     if (dbClient) {
       try {
@@ -189,6 +196,7 @@ export async function PATCH(
 
         if (records.length > 0) {
           record = records[0];
+          isDbRecord = true;
         }
       } catch (err) {
         console.error("DB lookup error on PATCH:", err);
@@ -197,7 +205,26 @@ export async function PATCH(
           { status: 503 }
         );
       }
-    } else {
+    }
+
+    // In production, database failure or missing row must never fall back to synthetic memory records
+    if (process.env.NODE_ENV === "production") {
+      if (!dbClient) {
+        return NextResponse.json(
+          { success: false, error: "Clinical datastore unavailable", code: "SERVICE_UNAVAILABLE" },
+          { status: 503 }
+        );
+      }
+      if (!record) {
+        return NextResponse.json(
+          { success: false, message: "Consultation report not found" },
+          { status: 404 }
+        );
+      }
+    }
+
+    // Fallback to memory store strictly for development and test environments
+    if (!record) {
       record = memoryConsultations.find((c) => c.id === id);
     }
 
@@ -405,7 +432,7 @@ export async function PATCH(
     if (body.soapAssessment !== undefined) updateFields.soapAssessment = body.soapAssessment;
     if (body.soapPlan !== undefined) updateFields.soapPlan = body.soapPlan;
 
-    if (dbClient) {
+    if (dbClient && isDbRecord) {
       try {
         const updated = await dbClient
           .update(consultationsTable)
@@ -484,7 +511,7 @@ export async function PATCH(
         idempotencyKey: previousSnapshot.idempotencyKey,
       };
 
-      if (dbClient) {
+      if (dbClient && isDbRecord) {
         try {
           const rollbackUpdated = await dbClient
             .update(consultationsTable)
@@ -596,8 +623,31 @@ export async function DELETE(
         if (records.length > 0) record = records[0];
       } catch (err) {
         console.error("DB lookup error on DELETE:", err);
+        return NextResponse.json(
+          { success: false, error: "Clinical datastore unavailable", code: "SERVICE_UNAVAILABLE" },
+          { status: 503 }
+        );
       }
-    } else {
+    }
+
+    // In production, database failure or missing row must never fall back to synthetic memory records
+    if (process.env.NODE_ENV === "production") {
+      if (!dbClient) {
+        return NextResponse.json(
+          { success: false, error: "Clinical datastore unavailable", code: "SERVICE_UNAVAILABLE" },
+          { status: 503 }
+        );
+      }
+      if (!record) {
+        return NextResponse.json(
+          { success: false, message: "Consultation report not found" },
+          { status: 404 }
+        );
+      }
+    }
+
+    // Fallback to memory store strictly for development and test environments
+    if (!record) {
       record = memoryConsultations.find((c) => c.id === id);
     }
 
