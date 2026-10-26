@@ -1,4 +1,6 @@
-import { createHash, createHmac } from "crypto";
+import { createHash, createHmac, createSign, createVerify, timingSafeEqual, randomUUID } from "crypto";
+import * as fs from "fs";
+import * as path from "path";
 import { AuditEvent, verifyAuditChain, GENESIS_HASH } from "./audit-logger";
 
 export const AUDIT_CHECKPOINT_SCHEMA_VERSION = "medvoice-audit-checkpoint-v1";
@@ -10,7 +12,7 @@ export interface AuditCheckpoint {
   eventCount: number;
   genesisHash: string;
   headHash: string;
-  /** HMAC-SHA256 signature over canonical payload using dedicated checkpoint signing secret */
+  /** HMAC-SHA256 or RSA/ECDSA signature over canonical payload using dedicated checkpoint signing secret/key */
   signature: string;
 }
 
@@ -45,13 +47,23 @@ export interface AuditCheckpointStore {
 }
 
 /**
- * Compute canonical HMAC signature for checkpoint authenticity.
+ * Timing-safe string comparison to prevent timing attacks during verification.
  */
-export function computeCheckpointSignature(
-  payload: Omit<AuditCheckpoint, "signature">,
-  signingKey: string
+function safeEqual(a: string, b: string): boolean {
+  if (typeof a !== "string" || typeof b !== "string") return false;
+  const bufA = Buffer.from(a, "utf8");
+  const bufB = Buffer.from(b, "utf8");
+  if (bufA.length !== bufB.length) return false;
+  return timingSafeEqual(bufA, bufB);
+}
+
+/**
+ * Build canonical string representation for checkpoint payload.
+ */
+export function buildCanonicalCheckpointString(
+  payload: Omit<AuditCheckpoint, "signature">
 ): string {
-  const canonicalString = [
+  return [
     payload.schemaVersion,
     payload.checkpointId,
     payload.timestamp,
@@ -59,23 +71,54 @@ export function computeCheckpointSignature(
     payload.genesisHash,
     payload.headHash,
   ].join("|");
+}
+
+/**
+ * Compute canonical signature for checkpoint authenticity.
+ * Supports symmetric HMAC-SHA256 or asymmetric private key (PEM format).
+ */
+export function computeCheckpointSignature(
+  payload: Omit<AuditCheckpoint, "signature">,
+  signingKey: string
+): string {
+  const canonicalString = buildCanonicalCheckpointString(payload);
+
+  if (signingKey.includes("-----BEGIN") && (signingKey.includes("PRIVATE KEY") || signingKey.includes("RSA PRIVATE KEY"))) {
+    const signer = createSign("SHA256");
+    signer.update(canonicalString, "utf8");
+    signer.end();
+    return signer.sign(signingKey, "hex");
+  }
 
   return createHmac("sha256", signingKey).update(canonicalString, "utf8").digest("hex");
 }
 
 /**
- * Verifies that a checkpoint's signature matches the canonical signing key.
+ * Verifies that a checkpoint's signature matches the canonical signing key or public key.
  */
 export function verifyCheckpointSignature(
   checkpoint: AuditCheckpoint,
-  signingKey: string
+  verificationKey: string
 ): boolean {
   if (checkpoint.schemaVersion !== AUDIT_CHECKPOINT_SCHEMA_VERSION) {
     return false;
   }
   const { signature, ...rest } = checkpoint;
-  const expectedSig = computeCheckpointSignature(rest, signingKey);
-  return expectedSig === signature;
+  const canonicalString = buildCanonicalCheckpointString(rest);
+
+  if (verificationKey.includes("-----BEGIN") && (verificationKey.includes("PUBLIC KEY") || verificationKey.includes("RSA PUBLIC KEY"))) {
+    try {
+      const verifier = createVerify("SHA256");
+      verifier.update(canonicalString, "utf8");
+      verifier.end();
+      return verifier.verify(verificationKey, signature, "hex");
+    } catch {
+      return false;
+    }
+  }
+
+  const expectedSig = computeCheckpointSignature(rest, verificationKey);
+  return safeEqual(expectedSig, signature);
 }
 
 /**
@@ -225,6 +268,7 @@ export function verifyLedgerAgainstCheckpoint(
 
 /**
  * In-memory external checkpoint store for testing and ephemeral execution.
+ * STRICTLY PROHIBITED in production environments.
  */
 export class InMemoryCheckpointStore implements AuditCheckpointStore {
   private checkpoints: AuditCheckpoint[] = [];
@@ -246,5 +290,317 @@ export class InMemoryCheckpointStore implements AuditCheckpointStore {
 
   clear(): void {
     this.checkpoints = [];
+  }
+}
+
+/**
+ * File-based detached vault checkpoint store.
+ * Stores checkpoints in a dedicated directory isolated from the primary database filesystem.
+ * Implements atomic writes via temporary files and rename, monotonic event count enforcement,
+ * and durability across process restarts.
+ */
+export class DetachedVaultCheckpointStore implements AuditCheckpointStore {
+  readonly vaultDir: string;
+
+  constructor(vaultDir?: string) {
+    this.vaultDir = path.resolve(vaultDir || process.env.AUDIT_CHECKPOINT_VAULT_PATH || "./vault/checkpoints");
+  }
+
+  private async ensureDir(): Promise<void> {
+    await fs.promises.mkdir(this.vaultDir, { recursive: true });
+  }
+
+  async writeCheckpoint(checkpoint: AuditCheckpoint): Promise<void> {
+    await this.ensureDir();
+
+    // Enforce monotonic advancement
+    const latest = await this.readLatestCheckpoint();
+    if (latest) {
+      if (checkpoint.eventCount < latest.eventCount) {
+        throw new Error(
+          `Rollback rejected: cannot write checkpoint with eventCount ${checkpoint.eventCount} when latest is ${latest.eventCount}.`
+        );
+      }
+      if (checkpoint.eventCount === latest.eventCount && checkpoint.headHash !== latest.headHash) {
+        throw new Error(
+          `Fork rejected: checkpoint at eventCount ${checkpoint.eventCount} already exists with different headHash.`
+        );
+      }
+    }
+
+    const payload = JSON.stringify(checkpoint, null, 2);
+    const paddedCount = String(checkpoint.eventCount).padStart(12, "0");
+    const targetFileName = `checkpoint-${paddedCount}-${checkpoint.checkpointId}.json`;
+    const targetFilePath = path.join(this.vaultDir, targetFileName);
+    const latestFilePath = path.join(this.vaultDir, "latest.json");
+
+    // 1. Write immutable discrete checkpoint atomically via unique tmp file
+    const tmpFileCheckpoint = path.join(this.vaultDir, `.tmp-${process.pid}-${Date.now()}-${randomUUID()}.json`);
+    await fs.promises.writeFile(tmpFileCheckpoint, payload, "utf8");
+    await fs.promises.rename(tmpFileCheckpoint, targetFilePath);
+
+    // 2. Update latest pointer file atomically
+    const tmpFileLatest = path.join(this.vaultDir, `.tmp-latest-${process.pid}-${Date.now()}-${randomUUID()}.json`);
+    await fs.promises.writeFile(tmpFileLatest, payload, "utf8");
+    await fs.promises.rename(tmpFileLatest, latestFilePath);
+  }
+
+  async readLatestCheckpoint(): Promise<AuditCheckpoint | null> {
+    try {
+      await this.ensureDir();
+
+      // Fast-path: read latest.json
+      const latestFilePath = path.join(this.vaultDir, "latest.json");
+      if (fs.existsSync(latestFilePath)) {
+        try {
+          const raw = await fs.promises.readFile(latestFilePath, "utf8");
+          const parsed = JSON.parse(raw);
+          if (parsed && parsed.schemaVersion === AUDIT_CHECKPOINT_SCHEMA_VERSION && typeof parsed.eventCount === "number") {
+            return parsed as AuditCheckpoint;
+          }
+        } catch {
+          // If latest.json is corrupted or being replaced, fall back to directory scan
+        }
+      }
+
+      // Fallback/Recovery: scan directory for discrete checkpoint files
+      const files = await fs.promises.readdir(this.vaultDir);
+      const checkpointFiles = files
+        .filter((f) => f.startsWith("checkpoint-") && f.endsWith(".json"))
+        .sort((a, b) => b.localeCompare(a)); // Descending order by padded count
+
+      for (const file of checkpointFiles) {
+        try {
+          const raw = await fs.promises.readFile(path.join(this.vaultDir, file), "utf8");
+          const parsed = JSON.parse(raw);
+          if (parsed && parsed.schemaVersion === AUDIT_CHECKPOINT_SCHEMA_VERSION && typeof parsed.eventCount === "number") {
+            return parsed as AuditCheckpoint;
+          }
+        } catch {
+          continue;
+        }
+      }
+
+      return null;
+    } catch (err: any) {
+      if (err.code === "ENOENT") return null;
+      throw err;
+    }
+  }
+}
+
+export interface S3CheckpointConfig {
+  bucket: string;
+  region?: string;
+  endpoint?: string;
+  accessKeyId?: string;
+  secretAccessKey?: string;
+  prefix?: string;
+  objectLockCompliance?: boolean;
+  objectLockRetainUntilDays?: number;
+  customFetch?: typeof fetch;
+}
+
+/**
+ * S3-compatible cloud external checkpoint store.
+ * Supports AWS S3, MinIO, Cloudflare R2 with Object Lock headers for immutable WORM compliance.
+ */
+export class S3AuditCheckpointStore implements AuditCheckpointStore {
+  readonly config: S3CheckpointConfig;
+  private readonly baseUrl: string;
+
+  constructor(config: S3CheckpointConfig) {
+    if (!config.bucket) {
+      throw new Error("S3AuditCheckpointStore requires a bucket name.");
+    }
+    this.config = config;
+    const endpoint = config.endpoint || `https://${config.bucket}.s3.${config.region || "us-east-1"}.amazonaws.com`;
+    this.baseUrl = endpoint.replace(/\/$/, "");
+  }
+
+  private getKey(fileName: string): string {
+    const prefix = this.config.prefix ? this.config.prefix.replace(/^\/+|\/+$/g, "") + "/" : "";
+    return `${prefix}${fileName}`;
+  }
+
+  async writeCheckpoint(checkpoint: AuditCheckpoint): Promise<void> {
+    const latest = await this.readLatestCheckpoint();
+    if (latest && checkpoint.eventCount < latest.eventCount) {
+      throw new Error(
+        `Rollback rejected: cannot write checkpoint with eventCount ${checkpoint.eventCount} when latest is ${latest.eventCount}.`
+      );
+    }
+
+    const payload = JSON.stringify(checkpoint, null, 2);
+    const paddedCount = String(checkpoint.eventCount).padStart(12, "0");
+    const discreteKey = this.getKey(`checkpoint-${paddedCount}-${checkpoint.checkpointId}.json`);
+    const latestKey = this.getKey("latest.json");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+    };
+
+    if (this.config.objectLockCompliance) {
+      headers["x-amz-object-lock-mode"] = "COMPLIANCE";
+      if (this.config.objectLockRetainUntilDays) {
+        const retainDate = new Date(Date.now() + this.config.objectLockRetainUntilDays * 86400 * 1000).toISOString();
+        headers["x-amz-object-lock-retain-until-date"] = retainDate;
+      }
+    }
+
+    const fetchFn = this.config.customFetch || fetch;
+
+    // 1. Put discrete object
+    const discreteUrl = `${this.baseUrl}/${discreteKey}`;
+    const resDiscrete = await fetchFn(discreteUrl, {
+      method: "PUT",
+      headers,
+      body: payload,
+    });
+
+    if (!resDiscrete.ok) {
+      const errText = await resDiscrete.text().catch(() => "");
+      throw new Error(`S3 write failed for ${discreteKey}: HTTP ${resDiscrete.status} ${errText}`);
+    }
+
+    // 2. Put latest pointer object
+    const latestUrl = `${this.baseUrl}/${latestKey}`;
+    const resLatest = await fetchFn(latestUrl, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: payload,
+    });
+
+    if (!resLatest.ok) {
+      const errText = await resLatest.text().catch(() => "");
+      throw new Error(`S3 write failed for ${latestKey}: HTTP ${resLatest.status} ${errText}`);
+    }
+  }
+
+  async readLatestCheckpoint(): Promise<AuditCheckpoint | null> {
+    const latestKey = this.getKey("latest.json");
+    const url = `${this.baseUrl}/${latestKey}`;
+    const fetchFn = this.config.customFetch || fetch;
+
+    const res = await fetchFn(url, { method: "GET" });
+    if (res.status === 404 || res.status === 403) {
+      return null;
+    }
+
+    if (!res.ok) {
+      const errText = await res.text().catch(() => "");
+      throw new Error(`S3 read failed for ${latestKey}: HTTP ${res.status} ${errText}`);
+    }
+
+    const data = await res.json();
+    if (data && data.schemaVersion === AUDIT_CHECKPOINT_SCHEMA_VERSION && typeof data.eventCount === "number") {
+      return data as AuditCheckpoint;
+    }
+
+    return null;
+  }
+}
+
+/**
+ * Factory for creating the configured external checkpoint store.
+ * Strictly enforces a fail-closed policy: in production environments (NODE_ENV === "production"),
+ * InMemoryCheckpointStore is PROHIBITED. A durable detached vault or S3 store MUST be configured.
+ */
+export function createConfiguredCheckpointStore(env: NodeJS.ProcessEnv = process.env): AuditCheckpointStore {
+  const isProduction = env.NODE_ENV === "production";
+  const storeType = (env.AUDIT_CHECKPOINT_STORE_TYPE || "").toLowerCase();
+
+  if (isProduction) {
+    if (storeType === "memory") {
+      throw new Error(
+        "Production security violation: InMemoryCheckpointStore is strictly prohibited in production. Configure AUDIT_CHECKPOINT_STORE_TYPE=vault or AUDIT_CHECKPOINT_STORE_TYPE=s3."
+      );
+    }
+
+    if (storeType === "vault" || (!storeType && env.AUDIT_CHECKPOINT_VAULT_PATH)) {
+      return new DetachedVaultCheckpointStore(env.AUDIT_CHECKPOINT_VAULT_PATH);
+    }
+
+    if (storeType === "s3" || (!storeType && env.AUDIT_CHECKPOINT_S3_BUCKET)) {
+      return new S3AuditCheckpointStore({
+        bucket: env.AUDIT_CHECKPOINT_S3_BUCKET || "",
+        region: env.AUDIT_CHECKPOINT_S3_REGION || "us-east-1",
+        endpoint: env.AUDIT_CHECKPOINT_S3_ENDPOINT,
+        accessKeyId: env.AUDIT_CHECKPOINT_S3_KEY_ID,
+        secretAccessKey: env.AUDIT_CHECKPOINT_S3_SECRET_KEY,
+        prefix: env.AUDIT_CHECKPOINT_S3_PREFIX,
+        objectLockCompliance: env.AUDIT_CHECKPOINT_S3_OBJECT_LOCK === "true",
+      });
+    }
+
+    throw new Error(
+      "Production security violation: External audit checkpoint store must be configured in production (AUDIT_CHECKPOINT_STORE_TYPE='vault' or 's3')."
+    );
+  }
+
+  // Development / Test fallbacks
+  if (storeType === "vault" || env.AUDIT_CHECKPOINT_VAULT_PATH) {
+    return new DetachedVaultCheckpointStore(env.AUDIT_CHECKPOINT_VAULT_PATH);
+  }
+
+  if (storeType === "s3" || env.AUDIT_CHECKPOINT_S3_BUCKET) {
+    return new S3AuditCheckpointStore({
+      bucket: env.AUDIT_CHECKPOINT_S3_BUCKET || "dev-audit-bucket",
+      region: env.AUDIT_CHECKPOINT_S3_REGION,
+      endpoint: env.AUDIT_CHECKPOINT_S3_ENDPOINT,
+      prefix: env.AUDIT_CHECKPOINT_S3_PREFIX,
+    });
+  }
+
+  // Permitted ONLY in non-production
+  return new InMemoryCheckpointStore();
+}
+
+/**
+ * High-level verification helper using configured external store.
+ * Catches store outages/exceptions and returns fail-closed CHECKPOINT_STORE_ERROR.
+ */
+export async function verifyAuditWithConfiguredStore(
+  events: AuditEvent[],
+  store?: AuditCheckpointStore,
+  signingKey?: string
+): Promise<CheckpointVerificationResult> {
+  const key = signingKey || process.env.AUDIT_CHECKPOINT_SIGNING_KEY;
+  if (!key) {
+    return {
+      valid: false,
+      status: "TAMPERED_CHECKPOINT_SIGNATURE",
+      reason: "Missing checkpoint signing key: AUDIT_CHECKPOINT_SIGNING_KEY is required.",
+      ledgerEventCount: events.length,
+      ledgerHeadHash: events.length > 0 ? events[events.length - 1].eventHash : null,
+    };
+  }
+
+  let activeStore = store;
+  if (!activeStore) {
+    try {
+      activeStore = createConfiguredCheckpointStore();
+    } catch (err: any) {
+      return {
+        valid: false,
+        status: "CHECKPOINT_STORE_ERROR",
+        reason: `Checkpoint store initialization failure: ${err.message}`,
+        ledgerEventCount: events.length,
+        ledgerHeadHash: events.length > 0 ? events[events.length - 1].eventHash : null,
+      };
+    }
+  }
+
+  try {
+    const checkpoint = await activeStore.readLatestCheckpoint();
+    return verifyLedgerAgainstCheckpoint(events, checkpoint, key);
+  } catch (err: any) {
+    return {
+      valid: false,
+      status: "CHECKPOINT_STORE_ERROR",
+      reason: `External checkpoint store failure: ${err.message}`,
+      ledgerEventCount: events.length,
+      ledgerHeadHash: events.length > 0 ? events[events.length - 1].eventHash : null,
+    };
   }
 }
