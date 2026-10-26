@@ -1,19 +1,29 @@
 import assert from "assert";
 import { GET as getAudit } from "../../app/api/audit/route";
 import { GET as getConsultations } from "../../app/api/consultations/route";
-import { GET as getConsultationById } from "../../app/api/consultations/[id]/route";
+import {
+  GET as getConsultationById,
+  PATCH as patchConsultationById,
+  DELETE as deleteConsultationById,
+} from "../../app/api/consultations/[id]/route";
 import { GET as getConsultationFhir } from "../../app/api/consultations/[id]/fhir/route";
 import { GET as getPatientProfiles } from "../../app/api/patient/profile/route";
-import { GET as getPatientProfileById } from "../../app/api/patient/profile/[id]/route";
+import {
+  GET as getPatientProfileById,
+  PUT as putPatientProfileById,
+  DELETE as deletePatientProfileById,
+} from "../../app/api/patient/profile/[id]/route";
 import { Role, DEFAULT_INTERNAL_TEST_SECRET, INTERNAL_TEST_SECRET_HEADER } from "../../lib/auth/rbac";
 import { memoryConsultations } from "../../app/api/consultations/route";
 import { PatientProfileService } from "../../lib/patient/patient-profile-service";
+import { PatientProfile } from "../../lib/clinical-knowledge/types";
 
 function createTestHeaders(role: Role, userId: string, extra: Record<string, string> = {}) {
   return {
     "x-mock-role": role,
     "x-mock-user-id": userId,
     [INTERNAL_TEST_SECRET_HEADER]: DEFAULT_INTERNAL_TEST_SECRET,
+    "Content-Type": "application/json",
     ...extra,
   };
 }
@@ -94,6 +104,7 @@ async function runProductionAuthorizationSuite() {
     patientName: "Alice Tenant",
     doctorId: "dr-sarah-chen",
     status: "approved",
+    caseVersion: 1,
     createdAt: new Date().toISOString(),
     chiefComplaint: "Alice confidential health data",
     triageLevel: "routine",
@@ -105,6 +116,7 @@ async function runProductionAuthorizationSuite() {
     patientName: "Bob Tenant",
     doctorId: "dr-sarah-chen",
     status: "approved",
+    caseVersion: 1,
     createdAt: new Date().toISOString(),
     chiefComplaint: "Bob confidential heart condition",
     triageLevel: "emergency",
@@ -162,28 +174,241 @@ async function runProductionAuthorizationSuite() {
   assert.strictEqual(aliceSpoofQueryRes.status, 403, "Query parameter userId spoofing rejected with 403");
   console.log("  ✓ Test 6 Passed: Server derives user scope strictly from authenticated session, rejecting spoofed query param.");
 
-  // 7. Patient Profile Cross-Tenant Isolation
-  console.log("\n[Test 7] Patient Profile Multi-Tenant Isolation (/api/patient/profile/[id])");
+  // Profile Fixtures for Tests 7, 12, 13, 14, 15
+  let mockProfiles: Record<string, PatientProfile> = {
+    "prof-bob-999": {
+      id: "prof-bob-999",
+      userId: "patient-bob-456",
+      name: "Bob Original",
+      knownConditions: ["Hypertension"],
+      isDeleted: false,
+    } as any,
+  };
+
   const originalGetProfile = PatientProfileService.getProfileById;
+  const originalUpsertProfile = PatientProfileService.upsertProfile;
+  const originalDeleteProfile = PatientProfileService.deleteProfile;
+
   PatientProfileService.getProfileById = async (id: string, userId: string) => {
-    // Only return data if caller's authenticated userId matches the profile owner
-    if (id === "prof-bob-999" && userId === "patient-bob-456") {
-      return { id: "prof-bob-999", userId: "patient-bob-456", name: "Bob", conditions: ["Hypertension"] } as any;
-    }
+    const p = mockProfiles[id];
+    if (p && p.userId === userId && !p.isDeleted) return { ...p };
     return null;
   };
 
-  const aliceCrossProfileRes = await getPatientProfileById(
-    new Request("https://medvoice.org/api/patient/profile/prof-bob-999", {
-      headers: createTestHeaders("patient", "patient-alice-123"),
-    }),
-    { params: Promise.resolve({ id: "prof-bob-999" }) }
-  );
-  assert.strictEqual(aliceCrossProfileRes.status, 404, "Alice requesting Bob's profile returns 404 NOT_FOUND");
-  const crossProfJson = await aliceCrossProfileRes.json();
-  assert.strictEqual(crossProfJson.profile, undefined, "Zero profile data leaked");
-  PatientProfileService.getProfileById = originalGetProfile;
-  console.log("  ✓ Test 7 Passed: Cross-tenant profile lookup safely non-discloses and returns 404.");
+  PatientProfileService.upsertProfile = async (userId: string, data: any) => {
+    const existing = mockProfiles[data.id];
+    if (existing && existing.userId !== userId) {
+      throw new Error("Tenant violation in upsert");
+    }
+    const updated = {
+      ...(existing || {}),
+      ...data,
+      userId,
+      isDeleted: false,
+    };
+    mockProfiles[data.id] = updated;
+    return updated;
+  };
+
+  PatientProfileService.deleteProfile = async (id: string, userId: string) => {
+    const p = mockProfiles[id];
+    if (!p || p.userId !== userId || p.isDeleted) return false;
+    p.isDeleted = true;
+    return true;
+  };
+
+  try {
+    // 7. Patient Profile Cross-Tenant Read
+    console.log("\n[Test 7] Patient Profile Multi-Tenant Isolation Read (/api/patient/profile/[id])");
+    const aliceCrossProfileRes = await getPatientProfileById(
+      new Request("https://medvoice.org/api/patient/profile/prof-bob-999", {
+        headers: createTestHeaders("patient", "patient-alice-123"),
+      }),
+      { params: Promise.resolve({ id: "prof-bob-999" }) }
+    );
+    assert.strictEqual(aliceCrossProfileRes.status, 404, "Alice requesting Bob's profile returns 404 NOT_FOUND");
+    const crossProfJson = await aliceCrossProfileRes.json();
+    assert.strictEqual(crossProfJson.profile, undefined, "Zero profile data leaked");
+    console.log("  ✓ Test 7 Passed: Cross-tenant profile lookup safely non-discloses and returns 404.");
+
+    // -------------------------------------------------------------------------
+    // PART C: CROSS-TENANT MUTATION & DELETION REJECTION (P0 REQUIREMENTS)
+    // -------------------------------------------------------------------------
+    console.log("\n--- PART C: CROSS-TENANT MUTATION & DELETION REJECTION (STATE VERIFIED) ---");
+
+    // 10. Cross-Tenant PATCH Consultation: Alice attempts to mutate Bob's consultation
+    console.log("\n[Test 10] Cross-Tenant PATCH: Alice attempts to mutate Bob's consultation");
+    const initialBobSoapSubjective = "Initial Bob subjective findings";
+    testRecordB.soapSubjective = initialBobSoapSubjective;
+    const initialBobVersion = testRecordB.caseVersion;
+
+    const alicePatchBobRes = await patchConsultationById(
+      new Request(`https://medvoice.org/api/consultations/${testRecordB.id}`, {
+        method: "PATCH",
+        headers: createTestHeaders("patient", "patient-alice-123"),
+        body: JSON.stringify({
+          soapSubjective: "MALICIOUS OVERWRITE BY ALICE",
+          expectedVersion: initialBobVersion,
+        }),
+      }),
+      { params: Promise.resolve({ id: testRecordB.id }) }
+    );
+
+    assert.strictEqual(alicePatchBobRes.status, 403, "Alice mutating Bob's consultation returns 403 Forbidden");
+    const patchBobJson = await alicePatchBobRes.json();
+    assert.strictEqual(patchBobJson.code, "FORBIDDEN", "Expected code FORBIDDEN");
+
+    // STATE VERIFICATION: Bob's consultation MUST remain untouched in datastore
+    const bobRecordInStore = memoryConsultations.find((c) => c.id === testRecordB.id);
+    assert.strictEqual(bobRecordInStore?.soapSubjective, initialBobSoapSubjective, "Bob's subjective notes remain 100% untouched");
+    assert.strictEqual(bobRecordInStore?.status, "approved", "Bob's status remains approved");
+    assert.strictEqual(bobRecordInStore?.caseVersion, initialBobVersion, "Bob's version remains unchanged");
+    console.log("  ✓ Test 10 Passed: Cross-tenant PATCH strictly denied (403) and Bob's clinical record remains unmodified.");
+
+    // 11. Cross-Tenant DELETE Consultation: Alice attempts to delete Bob's consultation
+    console.log("\n[Test 11] Cross-Tenant DELETE: Alice attempts to delete Bob's consultation");
+    const aliceDeleteBobConsultRes = await deleteConsultationById(
+      new Request(`https://medvoice.org/api/consultations/${testRecordB.id}`, {
+        method: "DELETE",
+        headers: createTestHeaders("patient", "patient-alice-123"),
+      }),
+      { params: Promise.resolve({ id: testRecordB.id }) }
+    );
+
+    assert.strictEqual(aliceDeleteBobConsultRes.status, 403, "Deleting consultation returns 403 Forbidden");
+    // STATE VERIFICATION: Record MUST remain present
+    const bobRecordStillPresent = memoryConsultations.find((c) => c.id === testRecordB.id);
+    assert(Boolean(bobRecordStillPresent), "Bob's consultation record remains completely present in datastore");
+    console.log("  ✓ Test 11 Passed: Cross-tenant DELETE strictly denied (403) and clinical encounter remains preserved.");
+
+    // 12. Cross-Tenant PUT Patient Profile: Alice attempts to update Bob's profile
+    console.log("\n[Test 12] Cross-Tenant PUT: Alice attempts to update Bob's patient profile");
+    const alicePutBobProfileRes = await putPatientProfileById(
+      new Request(`https://medvoice.org/api/patient/profile/prof-bob-999`, {
+        method: "PUT",
+        headers: createTestHeaders("patient", "patient-alice-123"),
+        body: JSON.stringify({
+          name: "Alice Malicious Update",
+          knownConditions: ["Tampered Condition"],
+        }),
+      }),
+      { params: Promise.resolve({ id: "prof-bob-999" }) }
+    );
+
+    assert.strictEqual(alicePutBobProfileRes.status, 404, "Alice updating Bob's profile returns 404 Non-disclosure");
+    // STATE VERIFICATION: Bob's profile in datastore MUST be unchanged
+    assert.strictEqual(mockProfiles["prof-bob-999"].name, "Bob Original", "Bob's name remains original");
+    assert.deepStrictEqual(mockProfiles["prof-bob-999"].knownConditions, ["Hypertension"], "Bob's conditions remain intact");
+    console.log("  ✓ Test 12 Passed: Cross-tenant profile update rejected (404) and Bob's profile state is unaltered.");
+
+    // 13. Cross-Tenant DELETE Patient Profile: Alice attempts to delete Bob's profile
+    console.log("\n[Test 13] Cross-Tenant DELETE: Alice attempts to delete Bob's patient profile");
+    const aliceDeleteBobProfileRes = await deletePatientProfileById(
+      new Request(`https://medvoice.org/api/patient/profile/prof-bob-999`, {
+        method: "DELETE",
+        headers: createTestHeaders("patient", "patient-alice-123"),
+      }),
+      { params: Promise.resolve({ id: "prof-bob-999" }) }
+    );
+
+    assert.strictEqual(aliceDeleteBobProfileRes.status, 404, "Alice deleting Bob's profile returns 404 Non-disclosure");
+    // STATE VERIFICATION: Bob's profile MUST NOT be soft-deleted
+    assert.strictEqual(mockProfiles["prof-bob-999"].isDeleted, false, "Bob's profile is NOT deleted");
+    console.log("  ✓ Test 13 Passed: Cross-tenant profile deletion rejected (404) and Bob's profile remains active.");
+
+    // 14. Unauthenticated Mutation Probing: Verify all mutation routes reject anonymous callers
+    console.log("\n[Test 14] Unauthenticated Mutation Probing (401 across mutation endpoints)");
+    const unauthPatchRes = await patchConsultationById(
+      new Request(`https://medvoice.org/api/consultations/${testRecordB.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chiefComplaint: "Anon hack" }),
+      }),
+      { params: Promise.resolve({ id: testRecordB.id }) }
+    );
+    assert.strictEqual(unauthPatchRes.status, 401, "Unauthenticated PATCH returns 401");
+
+    const unauthDeleteConsultRes = await deleteConsultationById(
+      new Request(`https://medvoice.org/api/consultations/${testRecordB.id}`, {
+        method: "DELETE",
+      }),
+      { params: Promise.resolve({ id: testRecordB.id }) }
+    );
+    assert.strictEqual(unauthDeleteConsultRes.status, 401, "Unauthenticated DELETE consultation returns 401");
+
+    const unauthPutProfileRes = await putPatientProfileById(
+      new Request(`https://medvoice.org/api/patient/profile/prof-bob-999`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: "Anon update" }),
+      }),
+      { params: Promise.resolve({ id: "prof-bob-999" }) }
+    );
+    assert.strictEqual(unauthPutProfileRes.status, 401, "Unauthenticated PUT profile returns 401");
+
+    const unauthDeleteProfileRes = await deletePatientProfileById(
+      new Request(`https://medvoice.org/api/patient/profile/prof-bob-999`, {
+        method: "DELETE",
+      }),
+      { params: Promise.resolve({ id: "prof-bob-999" }) }
+    );
+    assert.strictEqual(unauthDeleteProfileRes.status, 401, "Unauthenticated DELETE profile returns 401");
+    console.log("  ✓ Test 14 Passed: All mutation routes strictly enforce 401 Unauthorized for unauthenticated requests.");
+
+    // 15. Authorized Owner Valid Mutations (Expected Positive Path)
+    console.log("\n[Test 15] Authorized Owner Valid Mutations (200 OK + Verified State Mutation)");
+    // 15a. Bob updates his own consultation
+    const bobValidPatchRes = await patchConsultationById(
+      new Request(`https://medvoice.org/api/consultations/${testRecordB.id}`, {
+        method: "PATCH",
+        headers: createTestHeaders("patient", "patient-bob-456"),
+        body: JSON.stringify({
+          soapSubjective: "Bob updated subjective report: acute pain now fully resolved with medication.",
+          expectedVersion: testRecordB.caseVersion,
+        }),
+      }),
+      { params: Promise.resolve({ id: testRecordB.id }) }
+    );
+    assert.strictEqual(bobValidPatchRes.status, 200, "Bob patching his own consultation returns 200");
+    const bobPatchedJson = await bobValidPatchRes.json();
+    assert.strictEqual(bobPatchedJson.consultation.soapSubjective, "Bob updated subjective report: acute pain now fully resolved with medication.");
+    assert.strictEqual(testRecordB.soapSubjective, "Bob updated subjective report: acute pain now fully resolved with medication.");
+    console.log("  ✓ Test 15a Passed: Authorized owner successfully patches consultation with verified state transition.");
+
+    // 15b. Bob updates his own profile
+    const bobValidPutProfileRes = await putPatientProfileById(
+      new Request(`https://medvoice.org/api/patient/profile/prof-bob-999`, {
+        method: "PUT",
+        headers: createTestHeaders("patient", "patient-bob-456"),
+        body: JSON.stringify({
+          name: "Bob Valid Update",
+          knownConditions: ["Hypertension", "Type 2 Diabetes"],
+        }),
+      }),
+      { params: Promise.resolve({ id: "prof-bob-999" }) }
+    );
+    assert.strictEqual(bobValidPutProfileRes.status, 200, "Bob updating his own profile returns 200");
+    assert.strictEqual(mockProfiles["prof-bob-999"].name, "Bob Valid Update");
+    assert.deepStrictEqual(mockProfiles["prof-bob-999"].knownConditions, ["Hypertension", "Type 2 Diabetes"]);
+    console.log("  ✓ Test 15b Passed: Authorized owner successfully updates own profile with verified state change.");
+
+    // 15c. Bob soft-deletes his own profile
+    const bobValidDeleteProfileRes = await deletePatientProfileById(
+      new Request(`https://medvoice.org/api/patient/profile/prof-bob-999`, {
+        method: "DELETE",
+        headers: createTestHeaders("patient", "patient-bob-456"),
+      }),
+      { params: Promise.resolve({ id: "prof-bob-999" }) }
+    );
+    assert.strictEqual(bobValidDeleteProfileRes.status, 200, "Bob deleting his own profile returns 200");
+    assert.strictEqual(mockProfiles["prof-bob-999"].isDeleted, true, "Bob's profile is marked isDeleted: true");
+    console.log("  ✓ Test 15c Passed: Authorized owner successfully soft-deletes own profile.");
+
+  } finally {
+    PatientProfileService.getProfileById = originalGetProfile;
+    PatientProfileService.upsertProfile = originalUpsertProfile;
+    PatientProfileService.deleteProfile = originalDeleteProfile;
+  }
 
   // 8. Role Authorization: Patient rejected from Audit Ledger (403 Forbidden)
   console.log("\n[Test 8] Role Boundary: Authenticated Patient rejected from /api/audit (403 Forbidden)");

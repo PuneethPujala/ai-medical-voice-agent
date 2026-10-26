@@ -16,6 +16,7 @@ import {
 } from "../../lib/audit/audit-logger";
 import { getDb } from "../../config/db";
 import { auditEventsTable } from "../../config/schema";
+import { assertSafeTestDatabase } from "../../lib/security/test-db-guard";
 
 function assert(condition: boolean, message: string) {
   if (!condition) {
@@ -43,6 +44,7 @@ async function runDurableAuditTest() {
   clearAuditLedger();
 
   // 2. Sync from database to get current head
+  assertSafeTestDatabase(process.env.DATABASE_URL);
   console.log("[Step 1] Hydrating audit ledger from Neon DB...");
   const initialEvents = await syncAuditLedgerFromDb();
   console.log(`  ✓ Initial events in DB: ${initialEvents.length}`);

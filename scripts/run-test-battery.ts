@@ -1,6 +1,7 @@
 import { spawnSync } from "child_process";
 import * as path from "path";
 import * as dotenv from "dotenv";
+import { resolveTestDatabaseUrl, validateTestDatabaseTarget } from "../lib/security/test-db-guard";
 
 dotenv.config({ path: ".env.local" });
 if (!process.env.DATABASE_URL) {
@@ -101,16 +102,30 @@ export async function runTestBattery() {
   console.log("             MEDVOICE DETERMINISTIC TEST BATTERY EXECUTION                      ");
   console.log("================================================================================");
 
-  const enableLiveDb = process.argv.includes("--with-db") && Boolean(process.env.DATABASE_URL);
+  const wantsDb = process.argv.includes("--with-db");
+  const rawDbUrl = resolveTestDatabaseUrl();
+  let enableLiveDb = false;
   const enableLiveLlm = process.argv.includes("--with-live-llm");
 
-  if (!enableLiveDb) {
+  if (wantsDb) {
+    if (!rawDbUrl) {
+      console.error("\n❌ ERROR: --with-db was passed, but neither TEST_DATABASE_URL nor DATABASE_URL is configured.\n");
+      process.exit(1);
+    }
+    const guard = validateTestDatabaseTarget(rawDbUrl);
+    if (!guard.safe) {
+      console.error("\n❌ [DATABASE TARGET SAFETY GUARD] Live database battery aborted.");
+      console.error(guard.reason);
+      console.error("================================================================================\n");
+      process.exit(1);
+    }
+    enableLiveDb = true;
+    console.log(`✅ LIVE DATABASE MODE: Isolated database target verified -> ${guard.maskedUrl} (${guard.dbName})`);
+  } else {
     console.log("ℹ️  OFFLINE DETERMINISTIC MODE: Isolated from external network & live datastore.");
     console.log("   Suites requiring real PostgreSQL are SKIPPED (not verified in offline mode).");
     console.log("   ⚠️  Live PostgreSQL integration coverage is NOT claimed in this run.");
-    console.log("   (Run 'npm run test:all -- --with-db' or 'npm run test:db' with DATABASE_URL configured to verify live database)");
-  } else {
-    console.log("✅ LIVE DATABASE MODE: Real PostgreSQL integration verification active.");
+    console.log("   (Run 'npm run test:battery -- --with-db' with TEST_DATABASE_URL configured to verify isolated database)");
   }
 
   if (!enableLiveLlm) {
@@ -147,7 +162,10 @@ export async function runTestBattery() {
 
     if (!enableLiveDb) {
       delete env.DATABASE_URL;
+      delete env.TEST_DATABASE_URL;
       env.MEDVOICE_OFFLINE_TESTS = "1";
+    } else {
+      env.DATABASE_URL = rawDbUrl;
     }
     if (!enableLiveLlm) {
       delete env.GROQ_API_KEY;

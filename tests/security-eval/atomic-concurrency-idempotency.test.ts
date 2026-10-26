@@ -4,6 +4,7 @@ import { PATCH as patchConsultationById, GET as getConsultationById } from "../.
 import { DEFAULT_INTERNAL_TEST_SECRET, INTERNAL_TEST_SECRET_HEADER, Role } from "../../lib/auth/rbac";
 import { neon } from "@neondatabase/serverless";
 import * as dotenv from "dotenv";
+import { assertSafeTestDatabase } from "../../lib/security/test-db-guard";
 
 if (process.env.MEDVOICE_OFFLINE_TESTS === "1") {
   delete process.env.DATABASE_URL;
@@ -43,6 +44,7 @@ async function runAtomicConcurrencyTests() {
     return;
   }
 
+  assertSafeTestDatabase(dbUrl);
   const sql = neon(dbUrl);
   const cleanupIds: string[] = [];
   const cleanupKeys: string[] = [];

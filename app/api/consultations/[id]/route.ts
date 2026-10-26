@@ -557,3 +557,85 @@ export async function PATCH(
     );
   }
 }
+
+/**
+ * DELETE /api/consultations/[id]
+ * Enforces medical-legal record immutability.
+ * Consultation records are permanent clinical documents that cannot be deleted.
+ */
+export async function DELETE(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  try {
+    const auth = await getAuthContext(request);
+    const { id } = await params;
+
+    // 1. Enforce Authentication
+    if (auth.userId === "unauthenticated" && !auth.isDemoMode) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Unauthorized: Authentication required.",
+          code: "UNAUTHORIZED",
+        },
+        { status: 401 }
+      );
+    }
+
+    // 2. Fetch existing consultation
+    let record: any = null;
+    const dbClient = getDb();
+    if (dbClient) {
+      try {
+        const records = await dbClient
+          .select()
+          .from(consultationsTable)
+          .where(eq(consultationsTable.id, id))
+          .limit(1);
+        if (records.length > 0) record = records[0];
+      } catch (err) {
+        console.error("DB lookup error on DELETE:", err);
+      }
+    } else {
+      record = memoryConsultations.find((c) => c.id === id);
+    }
+
+    if (!record) {
+      return NextResponse.json(
+        { success: false, message: "Consultation report not found" },
+        { status: 404 }
+      );
+    }
+
+    // 3. Clinical & Legal Invariant: Consultations are non-deletable records
+    await logAuditEventAsync({
+      actorId: auth.userId,
+      actorRole: auth.role,
+      action: "ACCESS_DENIED",
+      resourceType: "consultation",
+      resourceId: id,
+      status: "DENIED",
+      metadata: {
+        reason: "Clinical encounters are permanent medical-legal records and cannot be deleted by any role.",
+        attemptedBy: auth.userId,
+        attemptedRole: auth.role,
+      },
+    });
+
+    return NextResponse.json(
+      {
+        success: false,
+        error: "Forbidden: Clinical consultation records are permanent medical-legal documents and cannot be deleted.",
+        code: "FORBIDDEN",
+      },
+      { status: 403 }
+    );
+  } catch (error: any) {
+    console.error("[ConsultationDeleteError]", error);
+    return NextResponse.json(
+      { success: false, error: "Internal server error" },
+      { status: 500 }
+    );
+  }
+}

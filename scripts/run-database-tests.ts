@@ -1,11 +1,13 @@
 import { spawnSync } from "child_process";
 import * as dotenv from "dotenv";
+import { resolveTestDatabaseUrl, validateTestDatabaseTarget } from "../lib/security/test-db-guard";
 
 if (process.env.MEDVOICE_OFFLINE_TESTS === "1") {
   delete process.env.DATABASE_URL;
+  delete process.env.TEST_DATABASE_URL;
 } else {
   dotenv.config({ path: ".env.local" });
-  if (!process.env.DATABASE_URL) {
+  if (!process.env.DATABASE_URL && !process.env.TEST_DATABASE_URL) {
     dotenv.config({ path: ".env" });
   }
 }
@@ -22,21 +24,28 @@ export async function runDatabaseTests() {
   console.log("       MEDVOICE REAL POSTGRESQL INTEGRATION VERIFICATION HARNESS                 ");
   console.log("================================================================================");
 
-  const dbUrl = process.env.DATABASE_URL;
-  if (!dbUrl) {
-    console.warn("\n⚠️  SKIPPED: DATABASE_URL environment variable is not configured.");
+  const rawUrl = resolveTestDatabaseUrl();
+  if (!rawUrl) {
+    console.warn("\n⚠️  SKIPPED: TEST_DATABASE_URL / DATABASE_URL environment variable is not configured.");
     console.warn("   A live PostgreSQL instance (e.g., Neon serverless) is required for real database verification.");
     console.warn("   Offline test execution cannot and must not be counted as verified database coverage.");
-    console.warn("   To run real database verification, set DATABASE_URL in .env.local or the environment.\n");
+    console.warn("   To run real database verification, set TEST_DATABASE_URL in .env.local or the environment.\n");
     console.log("================================================================================");
     console.log("  DATABASE STATUS: UNCONFIGURED (Live verification explicitly skipped)          ");
     console.log("================================================================================\n");
     return;
   }
 
-  // Mask database credentials in console output
-  const maskedUrl = dbUrl.replace(/\/\/([^:]+):([^@]+)@/, "//$1:****@");
-  console.log(`Connected Datastore: ${maskedUrl}`);
+  // Enforce test target isolation guard
+  const targetCheck = validateTestDatabaseTarget(rawUrl);
+  if (!targetCheck.safe) {
+    console.error(`\n❌ [DATABASE TARGET SAFETY GUARD] Integration test aborted.`);
+    console.error(targetCheck.reason);
+    console.error("================================================================================\n");
+    process.exit(1);
+  }
+
+  console.log(`Connected Datastore: ${targetCheck.maskedUrl} (Database: ${targetCheck.dbName})`);
   console.log(`Executing ${DB_TEST_SUITES.length} live-database verification suites...\n`);
 
   for (let i = 0; i < DB_TEST_SUITES.length; i++) {
@@ -48,7 +57,11 @@ export async function runDatabaseTests() {
     const child = spawnSync("npx", ["tsx", suite.file], {
       stdio: "inherit",
       shell: true,
-      env: { ...process.env, NODE_ENV: "test" },
+      env: {
+        ...process.env,
+        DATABASE_URL: rawUrl,
+        NODE_ENV: "test",
+      },
     });
 
     const elapsed = Date.now() - startTime;
@@ -62,7 +75,7 @@ export async function runDatabaseTests() {
 
   console.log("================================================================================");
   console.log("  ALL REAL POSTGRESQL INTEGRATION SUITES PASSED & VERIFIED (100%)              ");
-  console.log("================================================================================\n");
+  console.log("================================================================================");
 }
 
 if (require.main === module || process.argv[1]?.endsWith("run-database-tests.ts")) {

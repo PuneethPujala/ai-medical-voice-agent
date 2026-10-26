@@ -1,9 +1,8 @@
 # MedVoice — Release Manifest & Pilot Readiness Sign-Off Framework
 
 > **Document Status**: Authoritative Engineering Release Manifest & Governance Gate Review  
-> **Release Target**: Controlled Clinical Pilot Candidate (v0.1.0-pilot-candidate)  
-> **Baseline Commit**: `b2942a191e40e82558c51d852432ba8a73142537`  
-> **Repository**: `https://github.com/PunGrumpy/Capstone` (`main` branch)  
+> **Release Target**: Controlled Clinical Pilot Candidate (`v0.1.0-pilot-candidate`)  
+> **Repository**: `https://github.com/PuneethPujala/ai-medical-voice-agent` (`main` branch)  
 > **Classification**: Investigational Clinical Decision-Support & Ambient Voice Documentation System  
 
 ---
@@ -24,7 +23,6 @@ MedVoice is designed to perform low-latency clinical voice intake, deterministic
 | Parameter | Authoritative Value / Manifest State | Verification Method |
 | :--- | :--- | :--- |
 | **Release Candidate Tag** | `v0.1.0-pilot-candidate` | Git Release Tag / Branch manifest |
-| **Commit SHA (Baseline)** | `b2942a191e40e82558c51d852432ba8a73142537` | `git rev-parse HEAD` |
 | **Branch Lineage** | `main` (fully consolidated; all prior redesign branches integrated) | `git branch --contains` |
 | **Public Landing Page** | **LOCKED & FROZEN** (Responsive 375px–1440px, 0px overflow, 0 console errors) | Headless Chrome CDP cross-viewport visual audit |
 | **Protected Product Routes** | `/consult`, `/care`, `/profile`, `/history` (Preserved intact; protected by Clerk Auth & RBAC) | Route integrity & integration verification |
@@ -45,21 +43,19 @@ The platform defines 62 canonical test suites in `scripts/run-test-battery.ts`:
 ================================================================================
                     CANONICAL TEST BATTERY RUNTIME RESULTS                      
 ================================================================================
-1. Live Database Mode (`npm run test:battery -- --with-db`):
-   - Total Registered Suites:     62
-   - Fully Executed & Passed:     62
-   - Skipped Suites:              0
-   - Failed Suites:               0
-   - Exit Status:                 Code 0 (Clean Pass)
-   - Verified Datastore:          Neon PostgreSQL Serverless Connection Pool
-
-2. Offline Deterministic Mode (`npm run test:battery`):
+1. Offline Deterministic Mode (`npm run test:battery`):
    - Total Registered Suites:     62
    - Fully Executed & Passed:     60
    - Cleanly Skipped DB Suites:   2 (test:atomic-concurrency, test:durable-audit)
    - Failed Suites:               0
    - Exit Status:                 Code 0 (Clean Pass)
-   - Isolation Guarantee:         Zero network or live DB calls; isolated environment
+   - Isolation Guarantee:         Zero network or live DB calls; isolated deterministic environment
+
+2. Live Database Mode (`npm run test:battery -- --with-db`):
+   - Target Guard:                Enforced by `lib/security/test-db-guard.ts`
+   - Safety Invariant:            Strictly rejects primary shared database ('Ai-Medical-Voice-Agent')
+                                  to prevent permanent accumulation of test audit events.
+   - Execution Requirement:       Requires dedicated isolated test branch (`TEST_DATABASE_URL`).
 ================================================================================
 ```
 
@@ -67,12 +63,12 @@ The platform defines 62 canonical test suites in `scripts/run-test-battery.ts`:
 
 | Verification Target | Command | Test Invariants & Behaviors Verified | Status |
 | :--- | :--- | :--- | :---: |
-| **Live Neon DB Integration** | `npx tsx scripts/run-database-tests.ts` | 4/4 suites passing: Cold boot recovery, 1,158+ durable events, 5-thread concurrent write serialization, atomic CAS update mutual exclusion ($v_1 \to v_2$), 422 payload mismatch guards, unique idempotency deduplication. | 🟢 PASS |
 | **Audit Checkpoint Adversarial** | `npm run test:audit-checkpoint` | 10/10 adversarial tests passing: Detects payload corruption, detects middle-event deletion, detects tail truncation, and **exposes full downstream recalculation rewrites** via signed external checkpoints (`REWRITTEN_LEDGER_DETECTED`). Rejects replay attacks and forged HMAC signatures. | 🟢 PASS |
-| **Production Auth & Cross-Tenant RBAC** | `npm run test:production-auth` | 9/9 tests passing: All protected routes enforce 401 when unauthenticated in production; forged `x-mock-role: admin` headers are strictly rejected; cross-tenant consultation reads and FHIR exports return 403 Forbidden with zero data leakage; `?userId` query param tampering is rejected. | 🟢 PASS |
+| **Production Auth & Cross-Tenant RBAC** | `npm run test:production-auth` | 15/15 tests passing: All protected routes enforce 401 when unauthenticated in production; forged `x-mock-role: admin` headers are strictly rejected; cross-tenant reads, writes (`PATCH`), profile updates (`PUT`), and deletion attempts return 403/404 with zero data leakage and verified datastore state immutability. | 🟢 PASS |
 | **Turn Idempotency Defense** | `npm run test:turn-idempotency` | 16/16 tests passing: Single-flight turn locking, rapid double-submission deduplication, atomic CAS turn fencing, and duplicate audio chunk rejection. | 🟢 PASS |
-| **102-Case Adversarial Red-Flags** | `npm run test:adversarial-red-flags` | 102/102 clinical red flag cases passing: 100% recall on emergent presentations (ACS, acute stroke, respiratory distress, anaphylaxis, severe sepsis). | 🟢 PASS |
+| **102-Case Adversarial Red-Flags** | `npm run test:adversarial-red-flags` | 102/102 clinical red flag cases passing: 100% recall on emergent presentations (ACS, acute stroke, respiratory distress, anaphylaxis, severe sepsis) within the automated regression set. | 🟢 PASS |
 | **Acoustic Paralinguistic DSP** | `npm run test:acoustic-e2e` | End-to-end DSP analysis verifying SNR, zero-crossing rate, pitch perturbation (jitter), amplitude perturbation (shimmer), and LOINC-coded FHIR Observation mapping. | 🟢 PASS |
+| **Database Target Safety Guard** | `npm run test:db` | Aborts execution when configured against primary shared database; enforces `TEST_DATABASE_URL` isolation to protect the authoritative audit ledger. | 🟢 PASS |
 
 ---
 
@@ -82,23 +78,26 @@ To transition MedVoice from experimental code to controlled clinical pilot deplo
 
 ```mermaid
 flowchart LR
-    A["Gate A: Technical & Security"] -->|"Passed (Automated Evidence)"| B["Gate B: Clinical & Safety"]
-    B -->|"Attending Physician Sign-Off"| C["Gate C: Pilot Authorization"]
-    C -->|"Controlled Rollout"| D["Monitored Clinical Pilot"]
+    A["Gate A: Technical & Security (Provisional)"] --> B["Gate B: Clinical & Safety (In Progress)"]
+    B --> C["Gate C: Pilot Authorization (Pending)"]
+    C --> D["Monitored Clinical Pilot"]
 ```
 
 ### Gate A: Technical, Architectural & Security Verification
 *Scope: Automated software guarantees, security controls, cryptographic integrity, and database consistency.*
 
-- [x] **A1. Zero Untested Code Paths**: Canonical test battery passes with 0 errors across 62 suites.
-- [x] **A2. Live Datastore Concurrency & Idempotency**: Atomic CAS optimistic concurrency and turn deduplication verified against live PostgreSQL.
-- [x] **A3. Cryptographic Non-Repudiation**: SHA-256 hash-chained audit ledger verified. Full recalculation rewrites detected via external checkpoint signatures.
-- [x] **A4. Multi-Tenant IDOR Protection**: Server-side session verification enforces strict tenant boundaries. Zero clinical cross-tenant leaks.
-- [x] **A5. Zero-Trust Header Sanitization**: In `NODE_ENV === "production"`, test harness role headers (`x-mock-role`) and synthetic demo bypasses are completely discarded.
-- [x] **A6. Fail-Closed Error Handling**: Database disconnects return sanitized HTTP 503 Service Unavailable without exposing internal server paths or falling back to unauthenticated mock data.
-- [x] **A7. Responsive UI Stability**: Landing page is frozen; zero console errors, zero layout shifts, full keyboard navigation and reduced-motion compliance.
+- [x] **A1. Canonical Test Battery Coverage**: 62 registered suites execute deterministically; 60 offline suites pass cleanly with 0 failures, and 2 database suites are cleanly decoupled.
+- [x] **A2. Multi-Tenant IDOR Protection**: Server-side session verification enforces strict tenant boundaries across read (`GET`, `GET /fhir`), mutation (`PATCH`, `PUT`), and deletion (`DELETE`) routes. State immutability verified under adversarial attempts.
+- [x] **A3. Cryptographic Tamper-Detection Logic**: SHA-256 hash-chained audit ledger verified. Full recalculation rewrites and truncations detected via HMAC-signed checkpoint verification logic.
+- [x] **A4. Zero-Trust Header Sanitization**: In `NODE_ENV === "production"`, test harness role headers (`x-mock-role`) and synthetic demo bypasses are completely discarded.
+- [x] **A5. Fail-Closed Error Handling**: Database disconnects return sanitized HTTP 503 Service Unavailable without exposing internal server paths or falling back to unauthenticated mock data.
+- [x] **A6. Responsive UI Stability**: Landing page is frozen; zero console errors, zero layout shifts, full keyboard navigation and reduced-motion compliance.
+- [ ] **A7. Isolated Test Database Deployment**: Integration tests are protected by safety guards, but a permanent, dedicated CI/CD test branch (`TEST_DATABASE_URL`) must be formally provisioned so that live database suites can run continuously without touching the primary ledger.
+- [ ] **A8. External Checkpoint Store Adapter**: Checkpoint verification logic is complete and tested, but relies on an in-memory test store (`InMemoryCheckpointStore`). An independent cloud storage adapter (e.g. AWS S3 Object Lock in Compliance Mode) and KMS key management must be deployed.
+- [ ] **A9. Distributed Rate Limiting**: The current sliding-window rate limiter is process-local (`Map<string, WindowBucket>`). Multi-node or serverless scaling requires a distributed store (e.g. Upstash Redis).
+- [ ] **A10. Disaster Recovery & PITR Drills**: While cold-boot cache hydration from PostgreSQL is verified, formal database snapshot, backup verification, and Point-in-Time Recovery (PITR) procedures must be tested.
 
-> **Gate A Status: 🟢 SIGNED OFF (Technical & Security Requirements Met)**
+> **Gate A Status: 🟡 PROVISIONAL / IN PROGRESS (Core security & authorization logic verified; isolated test database, external checkpoint storage, and distributed rate limiting pending)**
 
 ---
 
@@ -109,10 +108,10 @@ flowchart LR
 - [x] **B2. Symptom Negation Integrity**: Clinical arbiter correctly distinguishes positive findings from negated findings (e.g. "no chest pain" vs "chest pain").
 - [x] **B3. Clinician Persona Invariants**: Persona voices, clinical specialties, and prosody parameters remain immutable and server-authoritative; client overrides are rejected.
 - [x] **B4. Attributed Clinical Provenance**: All generated SOAP notes and FHIR R4 diagnostic resources are bound to specific timestamped dialogue turns with verifiable transcript attribution.
-- [ ] **B5. Prospective Clinical Cohort Review**: Formal sign-off on 50 prospective clinical test encounters by the Chief Medical Officer / Lead Supervising Physician prior to live patient interaction.
+- [ ] **B5. Prospective Clinical Cohort Review**: Formal sign-off on 50 prospective clinical test encounters by the Chief Medical Officer / Lead Supervising Physician prior to live patient interaction. *(Note: This review is a defined evaluation milestone, not real-world sensitivity proof).*
 - [ ] **B6. Human Factors Usability Trial**: Verification that triage recommendations and emergency warnings are perceived unambiguously by non-technical patients under acute distress.
 
-> **Gate B Status: 🟡 IN PROGRESS (Algorithmic safety verified; prospective clinical cohort review required prior to patient contact)**
+> **Gate B Status: 🟡 IN PROGRESS (Algorithmic safety verified in automated regression; prospective clinical cohort review and human factors trials required prior to patient contact)**
 
 ---
 
@@ -129,14 +128,15 @@ flowchart LR
 
 ---
 
-## 5. Known Operational Boundaries & Engineering Hardening
+## 5. Known Operational Boundaries & Engineering Hardening Roadmap
 
 To maintain transparency with technical auditors and clinical partners, the following operational boundaries and their planned hardening paths are documented:
 
 | Subsystem | Current State | Planned Production Hardening |
 | :--- | :--- | :--- |
+| **Database Test Isolation** | Protected by `lib/security/test-db-guard.ts` which rejects the primary database. | Provision dedicated Neon ephemeral database branch per CI run. |
 | **Rate Limiting** | In-memory token bucket sliding window (`lib/security/rate-limiter.ts`). Effective for single-instance or sticky deployments. | Multi-node deployment requires Redis/Upstash distributed sliding window rate limiting. |
-| **Audit Checkpoint Anchoring** | In-database HMAC-SHA256 checkpoint ledger (`lib/audit/checkpoint.ts`) with monotonic index validation. | Multi-cloud deployment will stream signed checkpoint hashes to an external immutable ledger (e.g., AWS S3 Object Lock in Compliance Mode or Sigstore Rekor). |
+| **Audit Checkpoint Anchoring** | Algorithmic HMAC-SHA256 checkpoint verifier with monotonic index validation (`lib/audit/checkpoint.ts`) tested against `InMemoryCheckpointStore`. | Deploy S3 Object Lock adapter with separate IAM credentials and AWS KMS key protection. |
 | **Audio DSP Processing** | Dual-tier architecture: In-browser Web Audio Worklet for real-time SNR/ZCR feature extraction; Node.js server fallback for batch analysis. | Complete server-side C++/WASM DSP pipeline for low-end mobile devices unable to execute real-time Web Audio Worklets. |
 | **Cloud ASR Dependency** | Dual-fallback pipeline: Direct AssemblyAI streaming WebSocket with automatic fallback to local Whisper/STT HTTP handler. | On-premises Whisper TensorRT-LLM container for zero-outbound-network air-gapped hospital deployments. |
 
@@ -148,9 +148,9 @@ To maintain transparency with technical auditors and clinical partners, the foll
 ================================================================================
                     MEDVOICE PILOT READINESS SIGN-OFF                           
 ================================================================================
-Engineering & Architecture Lead:   APPROVED  [Gate A Complete - 62/62 Suites Verified]
-Security & Infrastructure Lead:     APPROVED  [Zero-Trust RBAC & Checkpoints Verified]
-Lead Clinical Arbiter Reviewer:     PROVISIONAL [Algorithm Verified; Awaiting Cohort]
-Institutional Review Board (IRB):   PENDING   [Gate C Scheduled with Partner Health]
+Engineering & Architecture Lead:   PROVISIONAL  [Core Logic Verified; Test DB & Checkpoint Store Pending]
+Security & Infrastructure Lead:     PROVISIONAL  [RBAC & Guards Verified; Distributed Limits Pending]
+Lead Clinical Arbiter Reviewer:     IN PROGRESS  [Algorithm Verified; Awaiting Prospective Cohort]
+Institutional Review Board (IRB):   PENDING      [Gate C Scheduled with Partner Health]
 ================================================================================
 ```

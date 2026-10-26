@@ -78,6 +78,81 @@ export async function GET(request: Request, context: RouteParams) {
   }
 }
 
+
+/**
+ * PUT /api/patient/profile/[id]
+ * Enforces strict multi-tenant isolation. Users can only update their own profiles.
+ */
+export async function PUT(request: Request, context: RouteParams) {
+  const requestId = request.headers.get("x-request-id") || crypto.randomUUID();
+  try {
+    const auth = await getAuthContext(request);
+    if (auth.userId === "unauthenticated") {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized", code: "UNAUTHORIZED", requestId },
+        { status: 401, headers: { "x-request-id": requestId } }
+      );
+    }
+
+    const { id } = await context.params;
+    const existing = await PatientProfileService.getProfileById(id, auth.userId);
+    if (!existing) {
+      await logAuditEventAsync({
+        actorId: auth.userId,
+        actorRole: auth.role,
+        action: "ACCESS_DENIED",
+        resourceType: "patient",
+        resourceId: id,
+        status: "DENIED",
+        metadata: { reason: "User attempted to mutate a profile not owned by their account", requestId },
+      });
+
+      return NextResponse.json(
+        { success: false, error: "Profile not found or unauthorized to update.", code: "NOT_FOUND", requestId },
+        { status: 404, headers: { "x-request-id": requestId } }
+      );
+    }
+
+    const body = await request.json();
+    const updated = await PatientProfileService.upsertProfile(auth.userId, {
+      ...body,
+      id,
+    });
+
+    await logAuditEventAsync({
+      actorId: auth.userId,
+      actorRole: auth.role,
+      action: "PATIENT_PROFILE_SAVED",
+      resourceType: "patient",
+      resourceId: id,
+      status: "SUCCESS",
+      metadata: { profileId: id, requestId },
+    });
+
+    return NextResponse.json(
+      { success: true, profile: updated, requestId },
+      { headers: { ...PHI_RESPONSE_HEADERS, "x-request-id": requestId } }
+    );
+  } catch (error: any) {
+    console.error("[PUT /api/patient/profile/[id]] Error:", error);
+    if (error instanceof PatientProfileDatabaseError) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Patient profile datastore is temporarily offline. Please retry shortly.",
+          code: "DATASTORE_OFFLINE",
+          requestId,
+        },
+        { status: 503, headers: { "Retry-After": "10", "x-request-id": requestId } }
+      );
+    }
+    return NextResponse.json(
+      { success: false, error: sanitizeErrorMessage(error, "Internal server error"), requestId },
+      { status: 500, headers: { "x-request-id": requestId } }
+    );
+  }
+}
+
 /**
  * DELETE /api/patient/profile/[id]
  * Soft-deletes a patient profile in compliance with privacy regulations.
