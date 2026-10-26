@@ -2,9 +2,9 @@ import assert from "assert";
 import { POST as postConsultation } from "../../app/api/consultations/route";
 import { PATCH as patchConsultationById, GET as getConsultationById } from "../../app/api/consultations/[id]/route";
 import { DEFAULT_INTERNAL_TEST_SECRET, INTERNAL_TEST_SECRET_HEADER, Role } from "../../lib/auth/rbac";
-import { neon } from "@neondatabase/serverless";
+
 import * as dotenv from "dotenv";
-import { assertSafeTestDatabase } from "../../lib/security/test-db-guard";
+import { assertSafeTestDatabase, createSqlHelper, resolveTestDatabaseUrl } from "../../lib/security/test-db-guard";
 
 if (process.env.MEDVOICE_OFFLINE_TESTS === "1") {
   delete process.env.DATABASE_URL;
@@ -31,7 +31,7 @@ async function runAtomicConcurrencyTests() {
   console.log("  REAL POSTGRESQL ATOMIC CAS & UNIQUE IDEMPOTENCY HARNESS                     ");
   console.log("================================================================================");
 
-  const dbUrl = process.env.DATABASE_URL;
+  const dbUrl = resolveTestDatabaseUrl();
   if (!dbUrl) {
     if (process.env.REQUIRE_LIVE_DB === "true") {
       throw new Error("FATAL: REQUIRE_LIVE_DB is set to true, but DATABASE_URL is missing from environment!");
@@ -45,7 +45,7 @@ async function runAtomicConcurrencyTests() {
   }
 
   assertSafeTestDatabase(dbUrl);
-  const sql = neon(dbUrl);
+  const sql = createSqlHelper(dbUrl);
   const cleanupIds: string[] = [];
   const cleanupKeys: string[] = [];
 
@@ -393,6 +393,9 @@ async function runAtomicConcurrencyTests() {
       for (const key of cleanupKeys) {
         await sql`DELETE FROM consultations WHERE idempotency_key = ${key};`;
       }
+    }
+    if (sql.end) {
+      await sql.end();
     }
     console.log("Cleanup complete. Zero test rows leaked.");
   }

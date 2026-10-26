@@ -17,6 +17,7 @@ import { Role, DEFAULT_INTERNAL_TEST_SECRET, INTERNAL_TEST_SECRET_HEADER } from 
 import { memoryConsultations } from "../../app/api/consultations/route";
 import { PatientProfileService } from "../../lib/patient/patient-profile-service";
 import { PatientProfile } from "../../lib/clinical-knowledge/types";
+import { setCustomDbClient } from "../../config/db";
 
 function createTestHeaders(role: Role, userId: string, extra: Record<string, string> = {}) {
   return {
@@ -32,6 +33,9 @@ async function runProductionAuthorizationSuite() {
   console.log("================================================================================");
   console.log("   PRODUCTION-MODE RBAC & CROSS-TENANT ADVERSARIAL AUTHORIZATION BATTERY        ");
   console.log("================================================================================");
+
+  // Enforce suite-level in-memory isolation for pure mock evaluation
+  setCustomDbClient(false);
 
   // ---------------------------------------------------------------------------
   // PART A: PRODUCTION-MODE ENFORCEMENT (NODE_ENV === "production")
@@ -443,6 +447,7 @@ async function runProductionAuthorizationSuite() {
   console.log("\n================================================================================");
   console.log("  ALL PRODUCTION AUTHORIZATION & CROSS-TENANT TESTS PASSED (100% VERIFIED)      ");
   console.log("================================================================================\n");
+  setCustomDbClient(null);
 }
 
 runProductionAuthorizationSuite().catch((err) => {

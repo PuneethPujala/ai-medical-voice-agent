@@ -32,6 +32,7 @@ export interface AuditEvent {
   metadata?: Record<string, any>;
   previousHash: string;
   eventHash: string;
+  hashVersion?: "v1" | "v2";
 }
 
 export interface ChainVerificationResult {
@@ -45,9 +46,20 @@ export interface ChainVerificationResult {
 
 export const GENESIS_HASH = "0000000000000000000000000000000000000000000000000000000000000000";
 
-// Deterministic canonical hash computation
-export function computeEventHash(event: Omit<AuditEvent, "eventHash">): string {
-  // Sort metadata keys deterministically to guarantee reproducible hashing
+export function canonicalizeJson(value: any): any {
+  if (value === null || typeof value !== 'object') return value;
+  if (Array.isArray(value)) return value.map(canonicalizeJson);
+  return Object.keys(value).sort().reduce((acc, key) => {
+    acc[key] = canonicalizeJson(value[key]);
+    return acc;
+  }, {} as Record<string, any>);
+}
+
+/**
+ * Legacy v1 hash computation (shallow metadata key sort).
+ * Preserved for full backward compatibility when verifying historical audit records.
+ */
+export function computeEventHashV1(event: Omit<AuditEvent, "eventHash">): string {
   const sortedMetadata = event.metadata
     ? Object.keys(event.metadata)
         .sort()
@@ -72,6 +84,40 @@ export function computeEventHash(event: Omit<AuditEvent, "eventHash">): string {
   ].join("|");
 
   return createHash("sha256").update(payload, "utf8").digest("hex");
+}
+
+/**
+ * Canonical v2 hash computation (recursive JSON key sort).
+ * Enforces reproducible SHA-256 calculation across database jsonb round-trips.
+ */
+export function computeEventHashV2(event: Omit<AuditEvent, "eventHash">): string {
+  const sortedMetadata = event.metadata ? canonicalizeJson(event.metadata) : {};
+
+  const payload = [
+    event.index,
+    event.id,
+    event.timestamp,
+    event.actorId,
+    event.actorRole,
+    event.action,
+    event.resourceType,
+    event.resourceId,
+    event.status,
+    event.previousHash,
+    JSON.stringify(sortedMetadata),
+  ].join("|");
+
+  return createHash("sha256").update(payload, "utf8").digest("hex");
+}
+
+/**
+ * Deterministic hash computation. Default for all newly generated events is V2.
+ */
+export function computeEventHash(
+  event: Omit<AuditEvent, "eventHash">,
+  version: "v1" | "v2" = "v2"
+): string {
+  return version === "v1" ? computeEventHashV1(event) : computeEventHashV2(event);
 }
 
 import { getDb } from "@/config/db";
@@ -334,6 +380,273 @@ export async function logAuditEventAsync(params: {
 
 
 
+export const MAX_HISTORICAL_PERMUTATION_BUDGET = 1000;
+
+export type EventVerificationStatus =
+  | "VERIFIED_V2"
+  | "VERIFIED_V1_DIRECT"
+  | "VERIFIED_V1_RECOVERED"
+  | "TAMPERED"
+  | "UNVERIFIABLE_BUDGET_EXCEEDED";
+
+export interface EventVerificationDetail {
+  valid: boolean;
+  status: EventVerificationStatus;
+  reason?: string;
+  permutationsEvaluated?: number;
+  totalCandidatePermutations?: number;
+}
+
+function computePayloadHashWithMetadataJson(
+  event: Omit<AuditEvent, "eventHash">,
+  metadataJson: string
+): string {
+  const payload = [
+    event.index,
+    event.id,
+    event.timestamp,
+    event.actorId,
+    event.actorRole,
+    event.action,
+    event.resourceType,
+    event.resourceId,
+    event.status,
+    event.previousHash,
+    metadataJson,
+  ].join("|");
+
+  return createHash("sha256").update(payload, "utf8").digest("hex");
+}
+
+function factorial(n: number): number {
+  if (n <= 1) return 1;
+  if (n > 8) return Infinity; // Safe guard: 9! = 362,880 > 1,000 budget
+  let res = 1;
+  for (let i = 2; i <= n; i++) res *= i;
+  return res;
+}
+
+/**
+ * Calculates the exact total number of candidate key orderings across all nested objects.
+ * In legacy V1, top-level keys were ALWAYS sorted alphabetically, so top-level keys contribute 1.
+ * Any nested plain object with K keys contributes K! permutations.
+ */
+export function countCandidatePermutations(value: any, isTopLevel: boolean = true): number {
+  if (!value || typeof value !== "object") return 1;
+
+  if (Array.isArray(value)) {
+    let count = 1;
+    for (const item of value) {
+      count *= countCandidatePermutations(item, false);
+      if (count > 1_000_000) return Infinity;
+    }
+    return count;
+  }
+
+  const keys = Object.keys(value);
+  if (isTopLevel) {
+    let count = 1;
+    for (const k of keys) {
+      count *= countCandidatePermutations(value[k], false);
+      if (count > 1_000_000) return Infinity;
+    }
+    return count;
+  }
+
+  let count = factorial(keys.length);
+  if (count > 1_000_000) return Infinity;
+
+  for (const k of keys) {
+    count *= countCandidatePermutations(value[k], false);
+    if (count > 1_000_000) return Infinity;
+  }
+
+  return count;
+}
+
+function* getPermutationsGen<T>(arr: T[]): Generator<T[]> {
+  if (arr.length <= 1) {
+    yield arr;
+    return;
+  }
+  for (let i = 0; i < arr.length; i++) {
+    const current = arr[i];
+    const remaining = arr.slice(0, i).concat(arr.slice(i + 1));
+    for (const p of getPermutationsGen(remaining)) {
+      yield [current, ...p];
+    }
+  }
+}
+
+function* generatePermutedValues(value: any, isTopLevel: boolean = false): Generator<any> {
+  if (value === null || typeof value !== "object") {
+    yield value;
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    if (value.length === 0) {
+      yield [];
+      return;
+    }
+    function* permuteArray(arr: any[], index: number): Generator<any[]> {
+      if (index === arr.length) {
+        yield [];
+        return;
+      }
+      for (const head of generatePermutedValues(arr[index], false)) {
+        for (const tail of permuteArray(arr, index + 1)) {
+          yield [head, ...tail];
+        }
+      }
+    }
+    yield* permuteArray(value, 0);
+    return;
+  }
+
+  // Plain object
+  if (isTopLevel) {
+    const sortedKeys = Object.keys(value).sort();
+    function* permuteTopChildren(keys: string[], index: number): Generator<Record<string, any>> {
+      if (index === keys.length) {
+        yield {};
+        return;
+      }
+      const key = keys[index];
+      for (const childVal of generatePermutedValues(value[key], false)) {
+        for (const rest of permuteTopChildren(keys, index + 1)) {
+          yield { [key]: childVal, ...rest };
+        }
+      }
+    }
+    yield* permuteTopChildren(sortedKeys, 0);
+    return;
+  }
+
+  // Nested object: test all permutations of key insertion order
+  const rawKeys = Object.keys(value);
+  for (const keyOrder of getPermutationsGen(rawKeys)) {
+    function* permuteNestedChildren(keys: string[], index: number): Generator<Record<string, any>> {
+      if (index === keys.length) {
+        yield {};
+        return;
+      }
+      const key = keys[index];
+      for (const childVal of generatePermutedValues(value[key], false)) {
+        for (const rest of permuteNestedChildren(keys, index + 1)) {
+          yield { [key]: childVal, ...rest };
+        }
+      }
+    }
+    yield* permuteNestedChildren(keyOrder, 0);
+  }
+}
+
+/**
+ * Validates cryptographic eventHash integrity with comprehensive status inspection:
+ * 1. Modern Canonical V2 check (for new events and post-change writes)
+ * 2. Legacy Direct V1 check (for historical events with pre-sorted nested keys or flat metadata)
+ * 3. Bounded permutation recovery check (for legacy V1 records altered by PostgreSQL jsonb key sorting)
+ *
+ * Accurately distinguishes:
+ * - VERIFIED_V2 / VERIFIED_V1_DIRECT / VERIFIED_V1_RECOVERED (Genuine historical records)
+ * - TAMPERED (Values, actors, pointers, or payloads genuinely altered)
+ * - UNVERIFIABLE_BUDGET_EXCEEDED (Valid historical records exceeding permutation search budget)
+ */
+export function verifyEventIntegrity(event: AuditEvent): EventVerificationDetail {
+  // 1. Explicit hashVersion enforcement if specified
+  if (event.hashVersion === "v2") {
+    const valid = event.eventHash === computeEventHashV2(event);
+    return valid
+      ? { valid: true, status: "VERIFIED_V2", permutationsEvaluated: 0 }
+      : {
+          valid: false,
+          status: "TAMPERED",
+          reason: "Canonical V2 SHA-256 hash mismatch: record payload or metadata was altered",
+          permutationsEvaluated: 0,
+        };
+  }
+
+  // 2. Try Canonical V2 first (matches all new events)
+  if (event.eventHash === computeEventHashV2(event)) {
+    return { valid: true, status: "VERIFIED_V2", permutationsEvaluated: 0 };
+  }
+
+  // 3. Try Legacy V1 Direct (matches flat or pre-sorted historical metadata)
+  if (event.eventHash === computeEventHashV1(event)) {
+    return { valid: true, status: "VERIFIED_V1_DIRECT", permutationsEvaluated: 0 };
+  }
+
+  // If explicit v1 requested and direct failed, or unversioned and both failed:
+  // Check if permutation recovery is applicable (i.e. metadata exists and contains nested objects)
+  if (!event.metadata || typeof event.metadata !== "object" || Array.isArray(event.metadata)) {
+    return {
+      valid: false,
+      status: "TAMPERED",
+      reason: "Payload hash tampering detected: metadata is missing or non-object and hash does not match computed SHA-256",
+      permutationsEvaluated: 0,
+    };
+  }
+
+  const totalCandidates = countCandidatePermutations(event.metadata, true);
+
+  // If there are no nested permutations to try (e.g. metadata is completely flat),
+  // then V1 direct was already exhaustive. The payload is definitely tampered.
+  if (totalCandidates <= 1) {
+    return {
+      valid: false,
+      status: "TAMPERED",
+      reason: "Payload hash tampering detected: flat metadata SHA-256 does not match stored hash",
+      permutationsEvaluated: 0,
+      totalCandidatePermutations: 1,
+    };
+  }
+
+  // If total candidate combinations exceed the computational safety budget:
+  if (totalCandidates > MAX_HISTORICAL_PERMUTATION_BUDGET) {
+    return {
+      valid: false,
+      status: "UNVERIFIABLE_BUDGET_EXCEEDED",
+      reason: `Historical V1 verification search budget exceeded: ${totalCandidates} candidate permutations exceeds safety limit of ${MAX_HISTORICAL_PERMUTATION_BUDGET}`,
+      permutationsEvaluated: 0,
+      totalCandidatePermutations: totalCandidates,
+    };
+  }
+
+  // Within budget: evaluate permutations lazily with early-exit on first match
+  let evaluated = 0;
+  for (const candidateMetadata of generatePermutedValues(event.metadata, true)) {
+    evaluated++;
+    const candidateJson = JSON.stringify(candidateMetadata);
+    const candidateHash = computePayloadHashWithMetadataJson(event, candidateJson);
+    if (candidateHash === event.eventHash) {
+      return {
+        valid: true,
+        status: "VERIFIED_V1_RECOVERED",
+        permutationsEvaluated: evaluated,
+        totalCandidatePermutations: totalCandidates,
+      };
+    }
+  }
+
+  // All permutations evaluated without a match: payload or stored hash was genuinely tampered
+  return {
+    valid: false,
+    status: "TAMPERED",
+    reason: `Payload hash tampering detected: stored hash does not match any valid historical permutation (evaluated ${evaluated} permutations)`,
+    permutationsEvaluated: evaluated,
+    totalCandidatePermutations: totalCandidates,
+  };
+}
+
+export function verifyHistoricalV1WithPermutations(event: AuditEvent): boolean {
+  return verifyEventIntegrity(event).status === "VERIFIED_V1_RECOVERED";
+}
+
+export function verifyEventHash(event: AuditEvent): boolean {
+  return verifyEventIntegrity(event).valid;
+}
+
 /**
  * Verify cryptographic integrity of an audit event sequence.
  * Detects any data mutation, record insertion, deletion, or reordering.
@@ -376,16 +689,21 @@ export function verifyAuditChain(events: AuditEvent[] = auditLedger): ChainVerif
       };
     }
 
-    // 3. Verify eventHash integrity
-    const computedHash = computeEventHash(current);
-    if (computedHash !== current.eventHash) {
+    // 3. Verify eventHash integrity with versioned backward compatibility and jsonb round-trip recovery
+    const integrity = verifyEventIntegrity(current);
+    if (!integrity.valid) {
+      const reason =
+        integrity.status === "UNVERIFIABLE_BUDGET_EXCEEDED"
+          ? `Audit verification incomplete at index ${i}: ${integrity.reason}`
+          : `Payload hash tampering detected at index ${i}: stored hash does not match computed SHA-256`;
+
       return {
         valid: false,
         totalEvents: events.length,
         genesisHash: GENESIS_HASH,
         headHash: events[events.length - 1]?.eventHash || null,
         corruptedIndex: i,
-        reason: `Payload hash tampering detected at index ${i}: stored hash does not match computed SHA-256`,
+        reason,
       };
     }
   }
