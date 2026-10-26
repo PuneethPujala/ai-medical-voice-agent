@@ -22,6 +22,8 @@ export const CANONICAL_TEST_BATTERY: TestSuiteDefinition[] = [
   { id: "test:context-chat", file: "tests/patient-profile/context-aware-chat.test.ts", description: "Context-Aware Chat & Profile Ingestion" },
   { id: "test:consultation-lifecycle", file: "tests/security-eval/consultation-lifecycle.test.ts", description: "Consultation Lifecycle & Signing Invariants" },
   { id: "test:voice-telemetry", file: "tests/security-eval/voice-telemetry-lifecycle.test.ts", description: "Voice Telemetry Isolation & RBAC Lifecycle" },
+  { id: "test:audit-checkpoint", file: "tests/security-eval/audit-checkpoint-adversarial.test.ts", description: "Audit Checkpoint Verification and Adversarial Defense" },
+  { id: "test:production-auth", file: "tests/security-eval/production-auth-and-cross-tenant.test.ts", description: "Production Auth Wall and Cross-Tenant IDOR Matrix" },
 
   // 2. Concurrency, Durability, and Persistence
   { id: "test:concurrency-durable", file: "tests/security-eval/optimistic-concurrency-durable-state.test.ts", description: "Optimistic Concurrency & Case Versioning" },

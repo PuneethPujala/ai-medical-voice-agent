@@ -78,7 +78,9 @@
     "test:stt-recovery": "tsx tests/stt/empty-transcript-recovery.test.ts",
     "test:turn-idempotency": "tsx tests/security-eval/turn-idempotency-defense.test.ts",
     "benchmark:acoustic": "tsx scripts/benchmark-acoustic-dsp.ts",
-    "benchmark:acoustic-real": "tsx scripts/benchmark-real-patient-audio.ts"
+    "benchmark:acoustic-real": "tsx scripts/benchmark-real-patient-audio.ts",
+    "test:audit-checkpoint": "tsx tests/security-eval/audit-checkpoint-adversarial.test.ts",
+    "test:production-auth": "tsx tests/security-eval/production-auth-and-cross-tenant.test.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

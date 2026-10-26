@@ -27,6 +27,7 @@ import { POST as postVoiceChat } from "../../app/api/voice/chat/route";
 import { POST as postVoiceTTS } from "../../app/api/voice/tts/route";
 import { POST as postVoiceSTT } from "../../app/api/voice/stt/route";
 import { checkRateLimit, resetRateLimitStore } from "../../lib/security/rate-limiter";
+import { setCustomDbClient } from "../../config/db";
 import nextConfig from "../../next.config";
 
 // Ensure test environment is explicitly set for test runner
@@ -539,6 +540,7 @@ async function runSecurityAndAuditTestSuite() {
     const prevEnv = process.env.NODE_ENV;
     try {
       (process.env as Record<string, string | undefined>).NODE_ENV = "production";
+      setCustomDbClient(false);
 
       // 1. In production, GET /api/consultations returns 503 when DB is absent (never returns synthetic records)
       const prodListReq = new Request("https://medvoice.org/api/consultations");
@@ -561,6 +563,7 @@ async function runSecurityAndAuditTestSuite() {
       });
       assert(prodFhirRes.status === 401, "Production FHIR export enforces 401 authentication wall (no demo leakage)");
     } finally {
+      setCustomDbClient(null);
       (process.env as Record<string, string | undefined>).NODE_ENV = prevEnv;
     }
   }
