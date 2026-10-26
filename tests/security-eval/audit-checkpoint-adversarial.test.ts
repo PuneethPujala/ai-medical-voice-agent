@@ -199,7 +199,7 @@ async function runCheckpointAdversarialSuite() {
   console.log("  ✓ Test 10 Passed: createAuditCheckpoint refuses to sign invalid chains.");
 
   // ===========================================================================
-  // P1.1 EXTERNAL ADAPTER & DURABILITY TEST SUITE (Tests 11 - 18)
+  // P1.1 EXTERNAL ADAPTER & DURABILITY TEST SUITE (Tests 11 - 25)
   // ===========================================================================
 
   const testVaultDir = path.join(os.tmpdir(), `medvoice-vault-test-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -230,7 +230,7 @@ async function runCheckpointAdversarialSuite() {
     console.log("  ✓ Test 11 Passed: DetachedVaultCheckpointStore survives process restarts with full cryptographic validity.");
 
     // -------------------------------------------------------------------------
-    // Test 12: DetachedVaultCheckpointStore directory recovery when latest.json is corrupted
+    // Test 12: DetachedVaultCheckpointStore directory recovery when latest.json is damaged
     // -------------------------------------------------------------------------
     console.log("\n[Test 12] DetachedVaultCheckpointStore recovers highest checkpoint even if latest.json is damaged");
     const latestFile = path.join(testVaultDir, "latest.json");
@@ -244,7 +244,7 @@ async function runCheckpointAdversarialSuite() {
     console.log("  ✓ Test 12 Passed: Directory scan successfully recovers checkpoint when pointer file is corrupted.");
 
     // -------------------------------------------------------------------------
-    // Test 13: DetachedVaultCheckpointStore blocks rollback and fork attempts
+    // Test 13: DetachedVaultCheckpointStore blocks rollback and forks
     // -------------------------------------------------------------------------
     console.log("\n[Test 13] DetachedVaultCheckpointStore strictly blocks rollback and forks");
     const smallerCp = createAuditCheckpoint(generateCleanLedger(3), SIGNING_SECRET);
@@ -274,11 +274,9 @@ async function runCheckpointAdversarialSuite() {
     // Test 14: Valid ledger extension after anchored checkpoint
     // -------------------------------------------------------------------------
     console.log("\n[Test 14] Valid ledger extensions after checkpoint anchor verify cleanly");
-    // Start with 5 events checkpointed
     const baseEvents = generateCleanLedger(5);
     const cp14 = createAuditCheckpoint(baseEvents, SIGNING_SECRET);
 
-    // Append 3 more valid events to the ledger
     const extendedLedger = [...baseEvents];
     for (let i = 5; i < 8; i++) {
       const prevHash = extendedLedger[i - 1].eventHash;
@@ -331,7 +329,6 @@ async function runCheckpointAdversarialSuite() {
     // Test 16: Production security policy forbids InMemoryCheckpointStore
     // -------------------------------------------------------------------------
     console.log("\n[Test 16] Production factory strictly forbids InMemoryCheckpointStore");
-    // 16a: Explicit memory requested in production
     let prodMemoryRejected = false;
     try {
       createConfiguredCheckpointStore({
@@ -344,7 +341,6 @@ async function runCheckpointAdversarialSuite() {
     }
     assert.strictEqual(prodMemoryRejected, true, "In-memory store must be rejected in production");
 
-    // 16b: Missing configuration in production
     let prodUnconfiguredRejected = false;
     try {
       createConfiguredCheckpointStore({
@@ -356,7 +352,6 @@ async function runCheckpointAdversarialSuite() {
     }
     assert.strictEqual(prodUnconfiguredRejected, true, "Unconfigured store must throw in production");
 
-    // 16c: Configured vault in production succeeds
     const prodVaultStore = createConfiguredCheckpointStore({
       NODE_ENV: "production",
       AUDIT_CHECKPOINT_STORE_TYPE: "vault",
@@ -368,9 +363,9 @@ async function runCheckpointAdversarialSuite() {
     // -------------------------------------------------------------------------
     // Test 17: S3AuditCheckpointStore Object-Lock & WORM compliance verification
     // -------------------------------------------------------------------------
-    console.log("\n[Test 17] S3AuditCheckpointStore dispatches Object-Lock headers & enforces immutability");
+    console.log("\n[Test 17] S3AuditCheckpointStore dispatches Object-Lock headers & Content-MD5");
+    const s3ObjectStore = new Map<string, string>();
     const s3RecordedRequests: Array<{ url: string; method: string; headers: Record<string, string>; body?: string }> = [];
-    let s3StoredObject: string | null = null;
 
     const mockFetch: typeof fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       const url = input.toString();
@@ -378,18 +373,31 @@ async function runCheckpointAdversarialSuite() {
       const headers = (init?.headers || {}) as Record<string, string>;
       s3RecordedRequests.push({ url, method, headers, body: init?.body as string });
 
+      if (url.includes("?list-type=2")) {
+        const prefixMatch = url.match(/prefix=([^&]+)/);
+        const prefix = prefixMatch ? decodeURIComponent(prefixMatch[1]) : "";
+        const keys = [...s3ObjectStore.keys()].filter((k) => k.includes(prefix));
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+  <Name>medvoice-audit-worm-vault</Name>
+  <Prefix>${prefix}</Prefix>
+  ${keys.map((k) => `<Contents><Key>${k.split("/").pop()}</Key></Contents>`).join("\n")}
+</ListBucketResult>`;
+        return new Response(xml, { status: 200, headers: { "Content-Type": "application/xml" } });
+      }
+
       if (method === "GET") {
-        if (!s3StoredObject) {
+        if (!s3ObjectStore.has(url)) {
           return new Response("Not Found", { status: 404 });
         }
-        return new Response(s3StoredObject, {
+        return new Response(s3ObjectStore.get(url)!, {
           status: 200,
           headers: { "Content-Type": "application/json" },
         });
       }
 
       if (method === "PUT") {
-        s3StoredObject = init?.body as string;
+        s3ObjectStore.set(url, init?.body as string);
         return new Response(null, { status: 200 });
       }
 
@@ -398,6 +406,7 @@ async function runCheckpointAdversarialSuite() {
 
     const s3Store = new S3AuditCheckpointStore({
       bucket: "medvoice-audit-worm-vault",
+      provider: "aws",
       region: "us-east-1",
       objectLockCompliance: true,
       objectLockRetainUntilDays: 2555, // 7-year medical compliance hold
@@ -407,22 +416,22 @@ async function runCheckpointAdversarialSuite() {
     const s3Checkpoint = createAuditCheckpoint(generateCleanLedger(4), SIGNING_SECRET, "CHK-S3-WORM-01");
     await s3Store.writeCheckpoint(s3Checkpoint);
 
-    // Verify S3 request headers contain Object Lock compliance
     const discretePutReq = s3RecordedRequests.find((r) => r.method === "PUT" && r.url.includes("checkpoint-000000000004"));
     assert.ok(discretePutReq, "Discrete S3 checkpoint PUT request must be dispatched");
     assert.strictEqual(discretePutReq.headers["x-amz-object-lock-mode"], "COMPLIANCE");
     assert.ok(discretePutReq.headers["x-amz-object-lock-retain-until-date"], "Retain date header must be present");
+    assert.ok(discretePutReq.headers["Content-MD5"], "AWS S3 Object Lock mandates Content-MD5 header on PUT Object");
 
     const s3Read = await s3Store.readLatestCheckpoint();
     assert.ok(s3Read, "S3 readLatestCheckpoint must retrieve saved checkpoint");
     assert.strictEqual(s3Read.checkpointId, "CHK-S3-WORM-01");
     assert.strictEqual(s3Read.eventCount, 4);
-    console.log("  ✓ Test 17 Passed: S3AuditCheckpointStore dispatches compliant WORM Object-Lock headers.");
+    console.log("  ✓ Test 17 Passed: S3AuditCheckpointStore dispatches compliant WORM headers and required Content-MD5.");
 
     // -------------------------------------------------------------------------
-    // Test 18: Asymmetric RSA Key Pair Checkpoint Signing & Verification (HSM/KMS)
+    // Test 18: PEM-based Asymmetric RSA-SHA256 Key Signing & Verification
     // -------------------------------------------------------------------------
-    console.log("\n[Test 18] Asymmetric RSA key pair signing and verification for HSM/KMS trust boundary");
+    console.log("\n[Test 18] PEM-based asymmetric RSA-SHA256 key pair signing and verification");
     const { privateKey, publicKey } = generateKeyPairSync("rsa", {
       modulusLength: 2048,
       publicKeyEncoding: { type: "spki", format: "pem" },
@@ -430,24 +439,511 @@ async function runCheckpointAdversarialSuite() {
     });
 
     const rsaLedger = generateCleanLedger(6);
-    const rsaCheckpoint = createAuditCheckpoint(rsaLedger, privateKey, "CHK-RSA-HSM-001");
+    const rsaCheckpoint = createAuditCheckpoint(rsaLedger, privateKey, "CHK-RSA-PEM-001");
 
     assert.ok(rsaCheckpoint.signature.length > 64, "RSA signature must be a valid hex signature");
-
-    // Public key must verify the signature
     const rsaValid = verifyCheckpointSignature(rsaCheckpoint, publicKey);
     assert.strictEqual(rsaValid, true, "Public key must verify RSA checkpoint signature");
 
-    // Verification against full ledger using public key
     const rsaLedgerRes = verifyLedgerAgainstCheckpoint(rsaLedger, rsaCheckpoint, publicKey);
     assert.strictEqual(rsaLedgerRes.valid, true);
     assert.strictEqual(rsaLedgerRes.status, "VERIFIED");
 
-    // Tampered checkpoint payload must fail verification with public key
     const tamperedRsaCp = { ...rsaCheckpoint, eventCount: 99 };
     const rsaTamperedValid = verifyCheckpointSignature(tamperedRsaCp, publicKey);
     assert.strictEqual(rsaTamperedValid, false, "Tampered payload must fail RSA verification");
-    console.log("  ✓ Test 18 Passed: Asymmetric RSA-SHA256 signature verification functions correctly for KMS/HSM integration.");
+    console.log("  ✓ Test 18 Passed: PEM-based asymmetric RSA-SHA256 signature verification functions correctly.");
+
+    // -------------------------------------------------------------------------
+    // Test 19: Cloudflare R2 Provider Capability Guard (Refuses False WORM Claims)
+    // -------------------------------------------------------------------------
+    console.log("\n[Test 19] S3AuditCheckpointStore rejects objectLockCompliance with provider 'r2'");
+    let r2ObjectLockRejected = false;
+    try {
+      new S3AuditCheckpointStore({
+        bucket: "medvoice-r2-bucket",
+        provider: "r2",
+        objectLockCompliance: true,
+      });
+    } catch (err: any) {
+      r2ObjectLockRejected = true;
+      assert(err.message.includes("Cloudflare R2 does not implement S3 Object Lock"));
+    }
+    assert.strictEqual(r2ObjectLockRejected, true, "R2 with objectLockCompliance must throw");
+
+    const validR2Store = new S3AuditCheckpointStore({
+      bucket: "medvoice-r2-bucket",
+      provider: "r2",
+      objectLockCompliance: false,
+      customFetch: mockFetch,
+    });
+    assert.strictEqual(validR2Store.config.provider, "r2");
+    console.log("  ✓ Test 19 Passed: Provider capability guard blocks false WORM assurances on Cloudflare R2.");
+
+    // -------------------------------------------------------------------------
+    // Test 20: Vault Filesystem Permission / I/O Outage Fails Closed
+    // -------------------------------------------------------------------------
+    console.log("\n[Test 20] Detached vault I/O error fails closed with CHECKPOINT_STORE_ERROR");
+    const faultyVaultStore = new DetachedVaultCheckpointStore(testVaultDir);
+    faultyVaultStore.readLatestCheckpoint = async () => {
+      throw new Error("EACCES: permission denied, open 'vault/checkpoints/latest.json'");
+    };
+
+    const res20 = await verifyAuditWithConfiguredStore(extendedLedger, faultyVaultStore, SIGNING_SECRET);
+    assert.strictEqual(res20.valid, false, "Filesystem fault must never return valid");
+    assert.strictEqual(res20.status, "CHECKPOINT_STORE_ERROR");
+    assert.ok(res20.reason.includes("EACCES: permission denied"));
+    console.log("  ✓ Test 20 Passed: Vault filesystem errors fail closed with explicit CHECKPOINT_STORE_ERROR.");
+
+    // -------------------------------------------------------------------------
+    // Test 21: S3 Retention Configuration Strict Parameter Validation
+    // -------------------------------------------------------------------------
+    console.log("\n[Test 21] S3AuditCheckpointStore validates retention parameters strictly");
+    const invalidRetentionCases = [
+      { name: "missing retention days", conf: { objectLockCompliance: true } },
+      { name: "zero retention days", conf: { objectLockCompliance: true, objectLockRetainUntilDays: 0 } },
+      { name: "negative retention days", conf: { objectLockCompliance: true, objectLockRetainUntilDays: -5 } },
+      { name: "fractional retention days", conf: { objectLockCompliance: true, objectLockRetainUntilDays: 3.5 } },
+      { name: "excessive retention days (> 100 years)", conf: { objectLockCompliance: true, objectLockRetainUntilDays: 50000 } },
+    ];
+
+    for (const testCase of invalidRetentionCases) {
+      let rejected = false;
+      try {
+        new S3AuditCheckpointStore({
+          bucket: "test-bucket",
+          provider: "aws",
+          ...(testCase.conf as any),
+        });
+      } catch (err: any) {
+        rejected = true;
+        assert(err.message.includes("Object Lock Compliance"));
+      }
+      assert.strictEqual(rejected, true, `Case '${testCase.name}' must be rejected`);
+    }
+    console.log("  ✓ Test 21 Passed: S3 Object Lock configuration rejects missing, non-positive, or unreasonable retention periods.");
+
+    // -------------------------------------------------------------------------
+    // Test 22: S3 Delete-Marker Resilience on latest.json Pointer
+    // -------------------------------------------------------------------------
+    console.log("\n[Test 22] S3AuditCheckpointStore recovers locked discrete checkpoint when latest.json has delete marker");
+    const deleteMarkerStore = new Map<string, string>();
+    const discreteKey = "https://delete-marker-test.s3.us-east-1.amazonaws.com/checkpoint-000000000005-CHK-IMMUTABLE-01.json";
+    const latestKey = "https://delete-marker-test.s3.us-east-1.amazonaws.com/latest.json";
+
+    const ledger22 = generateCleanLedger(5);
+    const cp22 = createAuditCheckpoint(ledger22, SIGNING_SECRET, "CHK-IMMUTABLE-01");
+    deleteMarkerStore.set(discreteKey, JSON.stringify(cp22));
+    // Simulate S3 delete marker: latest.json does NOT exist in deleteMarkerStore (404)
+
+    const deleteMarkerFetch: typeof fetch = async (input: RequestInfo | URL): Promise<Response> => {
+      const url = input.toString();
+      if (url.includes("?list-type=2")) {
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+  <Name>delete-marker-test</Name>
+  <Prefix>checkpoint-</Prefix>
+  <Contents>
+    <Key>checkpoint-000000000005-CHK-IMMUTABLE-01.json</Key>
+  </Contents>
+</ListBucketResult>`;
+        return new Response(xml, { status: 200, headers: { "Content-Type": "application/xml" } });
+      }
+
+      if (deleteMarkerStore.has(url)) {
+        return new Response(deleteMarkerStore.get(url)!, { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response("NoSuchKey: Delete marker placed", { status: 404 });
+    };
+
+    const s3DeleteMarkerStore = new S3AuditCheckpointStore({
+      bucket: "delete-marker-test",
+      customFetch: deleteMarkerFetch,
+    });
+
+    const recoveredFromList = await s3DeleteMarkerStore.readLatestCheckpoint();
+    assert.ok(recoveredFromList, "Must recover checkpoint even when latest.json returns 404");
+    assert.strictEqual(recoveredFromList.checkpointId, "CHK-IMMUTABLE-01");
+    assert.strictEqual(recoveredFromList.eventCount, 5);
+
+    const verifyDeleteMarkerLedger = verifyLedgerAgainstCheckpoint(ledger22, recoveredFromList, SIGNING_SECRET);
+    assert.strictEqual(verifyDeleteMarkerLedger.valid, true);
+    console.log("  ✓ Test 22 Passed: S3 store queries discrete locked objects and recovers when latest.json has delete marker.");
+
+    // -------------------------------------------------------------------------
+    // Test 23: S3 Untrusted Mutable Pointer Tamper Defense
+    // -------------------------------------------------------------------------
+    console.log("\n[Test 23] S3AuditCheckpointStore detects tampered latest.json pointer and falls back to genuine locked object");
+    // Attacker altered latest.json to point to an unverified / rolled-back hash
+    const fakeCheckpoint = {
+      ...cp22,
+      checkpointId: "CHK-FAKE-UNBACKED",
+      headHash: "0000000000000000000000000000000000000000000000000000000000000000",
+    };
+    deleteMarkerStore.set(latestKey, JSON.stringify(fakeCheckpoint));
+
+    const s3TamperedPointerStore = new S3AuditCheckpointStore({
+      bucket: "delete-marker-test",
+      customFetch: deleteMarkerFetch,
+    });
+
+    // Cross-verification against discrete object must fail for fakeCheckpoint, causing fallback to listDiscreteCheckpointKeys
+    const genuineRecovered = await s3TamperedPointerStore.readLatestCheckpoint();
+    assert.ok(genuineRecovered, "Must recover genuine discrete checkpoint");
+    assert.strictEqual(genuineRecovered.checkpointId, "CHK-IMMUTABLE-01", "Must return genuine checkpoint, not fake pointer");
+    assert.strictEqual(genuineRecovered.headHash, cp22.headHash);
+    console.log("  ✓ Test 23 Passed: Tampered latest.json without matching discrete object is strictly rejected in favor of verified locked object.");
+
+    // -------------------------------------------------------------------------
+    // Test 24: S3 Discrete Object Precondition / Fork Rejection
+    // -------------------------------------------------------------------------
+    console.log("\n[Test 24] S3AuditCheckpointStore enforces conditional writes and blocks discrete key overwrites");
+    const conditionalMockFetch: typeof fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+      const url = input.toString();
+      const method = init?.method || "GET";
+      if (method === "PUT" && url.includes("checkpoint-000000000005")) {
+        // Simulate S3 If-None-Match: * precondition failure (object already exists)
+        return new Response("Precondition Failed", { status: 412 });
+      }
+      return new Response(null, { status: 200 });
+    };
+
+    const s3ConditionalStore = new S3AuditCheckpointStore({
+      bucket: "conditional-test",
+      customFetch: conditionalMockFetch,
+    });
+
+    let s3ForkBlocked = false;
+    try {
+      await s3ConditionalStore.writeCheckpoint(cp22);
+    } catch (err: any) {
+      s3ForkBlocked = true;
+      assert(err.message.includes("Fork rejected"));
+    }
+    assert.strictEqual(s3ForkBlocked, true, "Store must block overwriting discrete checkpoint key");
+    console.log("  ✓ Test 24 Passed: Discrete checkpoint objects cannot be overwritten, preventing branch forks.");
+
+    // -------------------------------------------------------------------------
+    // Test 25: Detached Vault Discrete Cross-Verification
+    // -------------------------------------------------------------------------
+    console.log("\n[Test 25] DetachedVault cross-verifies latest.json against discrete file before trusting");
+    const vaultCrossStore = new DetachedVaultCheckpointStore(testVaultDir);
+    // Write a genuine checkpoint
+    const cp25 = createAuditCheckpoint(generateCleanLedger(8), SIGNING_SECRET, "CHK-VAULT-GENUINE-25");
+    await vaultCrossStore.writeCheckpoint(cp25);
+
+    // Tamper with latest.json by inserting a fake checkpointId that has no discrete file
+    const vaultLatestFile = path.join(testVaultDir, "latest.json");
+    const tamperedLatest = { ...cp25, checkpointId: "CHK-FAKE-UNBACKED-VAULT" };
+    fs.writeFileSync(vaultLatestFile, JSON.stringify(tamperedLatest), "utf8");
+
+    // readLatestCheckpoint must detect that checkpoint-000000000008-CHK-FAKE-UNBACKED-VAULT.json doesn't exist,
+    // and fall back to scanning discrete files, returning the genuine checkpoint!
+    const recoveredCp25 = await vaultCrossStore.readLatestCheckpoint();
+    assert.ok(recoveredCp25, "Must recover genuine discrete checkpoint");
+    assert.strictEqual(recoveredCp25.checkpointId, "CHK-VAULT-GENUINE-25");
+    console.log("  ✓ Test 25 Passed: Vault cross-verifies latest.json and falls back to authentic discrete file.");
+
+    // -------------------------------------------------------------------------
+    // Test 26: S3 Scenario B - Discrete Object Delete-Marker Resilience via ListObjectVersions
+    // -------------------------------------------------------------------------
+    console.log("\n[Test 26] S3 Scenario B: Recovers locked discrete object when key itself has delete marker");
+    const scenarioBStore = new Map<string, string>();
+    const discreteKey26 = "checkpoint-000000000007-CHK-SCENARIO-B.json";
+    const discreteUrl26 = `https://scenario-b-test.s3.us-east-1.amazonaws.com/${discreteKey26}`;
+    const versionedUrl26 = `${discreteUrl26}?versionId=v-retained-locked-007`;
+
+    const ledger26 = generateCleanLedger(7);
+    const cp26 = createAuditCheckpoint(ledger26, SIGNING_SECRET, "CHK-SCENARIO-B");
+    scenarioBStore.set(versionedUrl26, JSON.stringify(cp26));
+
+    const scenarioBFetch: typeof fetch = async (input: RequestInfo | URL): Promise<Response> => {
+      const url = input.toString();
+
+      // In Scenario B: latest.json is deleted or uninitialized
+      if (url.includes("/latest.json")) {
+        return new Response("NoSuchKey", { status: 404 });
+      }
+
+      // Ordinary ListObjectsV2: omits the key because current version is a delete marker!
+      if (url.includes("?list-type=2")) {
+        const emptyXml = `<?xml version="1.0" encoding="UTF-8"?>
+<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+  <Name>scenario-b-test</Name>
+  <Prefix>checkpoint-</Prefix>
+</ListBucketResult>`;
+        return new Response(emptyXml, { status: 200, headers: { "Content-Type": "application/xml" } });
+      }
+
+      // ListObjectVersions (?versions): exposes the underlying locked Version and the DeleteMarker!
+      if (url.includes("?versions")) {
+        const versionsXml = `<?xml version="1.0" encoding="UTF-8"?>
+<ListVersionsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+  <Name>scenario-b-test</Name>
+  <Prefix>checkpoint-</Prefix>
+  <DeleteMarker>
+    <Key>${discreteKey26}</Key>
+    <VersionId>v-delete-marker-current-999</VersionId>
+    <IsLatest>true</IsLatest>
+  </DeleteMarker>
+  <Version>
+    <Key>${discreteKey26}</Key>
+    <VersionId>v-retained-locked-007</VersionId>
+    <IsLatest>false</IsLatest>
+  </Version>
+</ListVersionsResult>`;
+        return new Response(versionsXml, { status: 200, headers: { "Content-Type": "application/xml" } });
+      }
+
+      // Reading the bare URL without versionId returns 404 (due to delete marker)
+      if (url === discreteUrl26) {
+        return new Response("NoSuchKey: Delete marker is current", { status: 404 });
+      }
+
+      // Reading with ?versionId returns the retained locked object!
+      if (scenarioBStore.has(url)) {
+        return new Response(scenarioBStore.get(url)!, { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+
+      return new Response("NoSuchKey", { status: 404 });
+    };
+
+    const s3ScenarioBStore = new S3AuditCheckpointStore({
+      bucket: "scenario-b-test",
+      customFetch: scenarioBFetch,
+    });
+
+    const recoveredScenarioB = await s3ScenarioBStore.readLatestCheckpoint();
+    assert.ok(recoveredScenarioB, "Must recover locked discrete checkpoint using version-aware discovery");
+    assert.strictEqual(recoveredScenarioB.checkpointId, "CHK-SCENARIO-B");
+    assert.strictEqual(recoveredScenarioB.eventCount, 7);
+
+    const verifyScenarioBLedger = verifyLedgerAgainstCheckpoint(ledger26, recoveredScenarioB, SIGNING_SECRET);
+    assert.strictEqual(verifyScenarioBLedger.valid, true);
+    assert.strictEqual(verifyScenarioBLedger.status, "VERIFIED");
+    console.log("  ✓ Test 26 Passed: ListObjectVersions successfully recovers retained locked version despite active delete marker on discrete key.");
+
+    // -------------------------------------------------------------------------
+    // Test 27: Conflicting Multi-Version Checkpoint Fork Detection
+    // -------------------------------------------------------------------------
+    console.log("\n[Test 27] S3AuditCheckpointStore detects and fails closed on conflicting checkpoint forks");
+    const forkStore = new Map<string, string>();
+    const forkLedgerA = generateCleanLedger(8);
+    const cpForkA = createAuditCheckpoint(forkLedgerA, SIGNING_SECRET, "CHK-FORK-A");
+
+    const forkLedgerB = generateCleanLedger(8);
+    // Alter index 7 so headHash differs
+    forkLedgerB[7].metadata = { altered: true };
+    forkLedgerB[7].eventHash = computeEventHash(forkLedgerB[7]);
+    const cpForkB = createAuditCheckpoint(forkLedgerB, SIGNING_SECRET, "CHK-FORK-B");
+
+    const forkKeyA = "checkpoint-000000000008-CHK-FORK-A.json";
+    const forkKeyB = "checkpoint-000000000008-CHK-FORK-B.json";
+    forkStore.set(`https://fork-test.s3.us-east-1.amazonaws.com/${forkKeyA}`, JSON.stringify(cpForkA));
+    forkStore.set(`https://fork-test.s3.us-east-1.amazonaws.com/${forkKeyB}`, JSON.stringify(cpForkB));
+
+    const forkFetch: typeof fetch = async (input: RequestInfo | URL): Promise<Response> => {
+      const url = input.toString();
+      if (url.includes("/latest.json")) return new Response("NoSuchKey", { status: 404 });
+      if (url.includes("?versions")) {
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<ListVersionsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+  <Name>fork-test</Name>
+  <Prefix>checkpoint-</Prefix>
+  <Version><Key>${forkKeyA}</Key><VersionId>v1</VersionId></Version>
+  <Version><Key>${forkKeyB}</Key><VersionId>v2</VersionId></Version>
+</ListVersionsResult>`;
+        return new Response(xml, { status: 200, headers: { "Content-Type": "application/xml" } });
+      }
+      if (forkStore.has(url.split("?")[0])) {
+        return new Response(forkStore.get(url.split("?")[0])!, { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response("NoSuchKey", { status: 404 });
+    };
+
+    const s3ForkStore = new S3AuditCheckpointStore({
+      bucket: "fork-test",
+      customFetch: forkFetch,
+    });
+
+    let forkDetected = false;
+    try {
+      await s3ForkStore.readLatestCheckpoint();
+    } catch (err: any) {
+      forkDetected = true;
+      assert(err.message.includes("Fork detected at eventCount 8"));
+    }
+    assert.strictEqual(forkDetected, true, "Store must throw on conflicting checkpoints at same eventCount");
+
+    // Higher level verifier must fail closed with CHECKPOINT_STORE_ERROR
+    const res27 = await verifyAuditWithConfiguredStore(forkLedgerA, s3ForkStore, SIGNING_SECRET);
+    assert.strictEqual(res27.valid, false, "Conflicting fork must never return valid");
+    assert.strictEqual(res27.status, "CHECKPOINT_STORE_ERROR");
+    assert.ok(res27.reason.includes("Fork detected"));
+    console.log("  ✓ Test 27 Passed: Conflicting multi-version checkpoint forks fail closed with CHECKPOINT_STORE_ERROR.");
+
+    // -------------------------------------------------------------------------
+    // Test 28: S3 ListObjectVersions Multi-Page Pagination with Key & Version Markers
+    // -------------------------------------------------------------------------
+    console.log("\n[Test 28] S3 ListObjectVersions handles multi-page pagination across >1,000 versions");
+    const paginationStore = new Map<string, string>();
+    const newestLedger = generateCleanLedger(15);
+    const newestCheckpoint = createAuditCheckpoint(newestLedger, SIGNING_SECRET, "CHK-NEWEST-PAGE-2");
+    const newestKey = "checkpoint-000000000015-CHK-NEWEST-PAGE-2.json";
+    paginationStore.set(`https://pagination-test.s3.us-east-1.amazonaws.com/${newestKey}`, JSON.stringify(newestCheckpoint));
+
+    const paginationRequests: string[] = [];
+
+    const paginationFetch: typeof fetch = async (input: RequestInfo | URL): Promise<Response> => {
+      const url = input.toString();
+      paginationRequests.push(url);
+
+      if (url.includes("/latest.json")) {
+        return new Response("NoSuchKey", { status: 404 });
+      }
+
+      if (url.includes("?versions")) {
+        if (!url.includes("key-marker=")) {
+          // Page 1: Returns 1,000 simulated legacy versions, truncated!
+          const page1Xml = `<?xml version="1.0" encoding="UTF-8"?>
+<ListVersionsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+  <Name>pagination-test</Name>
+  <Prefix>checkpoint-</Prefix>
+  <IsTruncated>true</IsTruncated>
+  <NextKeyMarker>checkpoint-000000000001-CHK-PAGE1-TAIL.json</NextKeyMarker>
+  <NextVersionIdMarker>v-tail-1000</NextVersionIdMarker>
+  <Version>
+    <Key>checkpoint-000000000001-CHK-PAGE1-TAIL.json</Key>
+    <VersionId>v-tail-1000</VersionId>
+  </Version>
+</ListVersionsResult>`;
+          return new Response(page1Xml, { status: 200, headers: { "Content-Type": "application/xml" } });
+        } else {
+          // Page 2: Contains the newest checkpoint (eventCount 15), is not truncated
+          const page2Xml = `<?xml version="1.0" encoding="UTF-8"?>
+<ListVersionsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+  <Name>pagination-test</Name>
+  <Prefix>checkpoint-</Prefix>
+  <IsTruncated>false</IsTruncated>
+  <Version>
+    <Key>${newestKey}</Key>
+    <VersionId>v-newest-page2</VersionId>
+  </Version>
+</ListVersionsResult>`;
+          return new Response(page2Xml, { status: 200, headers: { "Content-Type": "application/xml" } });
+        }
+      }
+
+      if (paginationStore.has(url.split("?")[0])) {
+        return new Response(paginationStore.get(url.split("?")[0])!, { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+
+      return new Response("NoSuchKey", { status: 404 });
+    };
+
+    const s3PaginationStore = new S3AuditCheckpointStore({
+      bucket: "pagination-test",
+      customFetch: paginationFetch,
+    });
+
+    const recoveredFromPage2 = await s3PaginationStore.readLatestCheckpoint();
+    assert.ok(recoveredFromPage2, "Must recover newest checkpoint located on Page 2");
+    assert.strictEqual(recoveredFromPage2.checkpointId, "CHK-NEWEST-PAGE-2");
+    assert.strictEqual(recoveredFromPage2.eventCount, 15);
+
+    // Verify pagination requests were correctly issued with markers
+    const secondPageReq = paginationRequests.find((u) => u.includes("key-marker=checkpoint-000000000001-CHK-PAGE1-TAIL.json"));
+    assert.ok(secondPageReq, "Must request second page with key-marker from first page");
+    assert.ok(secondPageReq.includes("version-id-marker=v-tail-1000"), "Must include version-id-marker");
+
+    // Test malformed truncation (IsTruncated=true without NextKeyMarker fails closed)
+    const brokenPaginationFetch: typeof fetch = async (input: RequestInfo | URL): Promise<Response> => {
+      const url = input.toString();
+      if (url.includes("/latest.json")) return new Response("NoSuchKey", { status: 404 });
+      if (url.includes("?versions")) {
+        const brokenXml = `<?xml version="1.0" encoding="UTF-8"?>
+<ListVersionsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+  <IsTruncated>true</IsTruncated>
+</ListVersionsResult>`;
+        return new Response(brokenXml, { status: 200, headers: { "Content-Type": "application/xml" } });
+      }
+      return new Response("NoSuchKey", { status: 404 });
+    };
+
+    const brokenPagStore = new S3AuditCheckpointStore({
+      bucket: "broken-pagination-test",
+      customFetch: brokenPaginationFetch,
+    });
+
+    let brokenPagFailedClosed = false;
+    try {
+      await brokenPagStore.readLatestCheckpoint();
+    } catch (err: any) {
+      brokenPagFailedClosed = true;
+      assert(err.message.includes("without NextKeyMarker"));
+    }
+    assert.strictEqual(brokenPagFailedClosed, true, "Truncated page missing NextKeyMarker must fail closed");
+    console.log("  ✓ Test 28 Passed: ListObjectVersions pagination traverses across pages with markers and fails closed on malformed markers.");
+
+    // -------------------------------------------------------------------------
+    // Test 29: Complete Highest-Count Fork Detection (First Two Agree, Third Conflicts)
+    // -------------------------------------------------------------------------
+    console.log("\n[Test 29] Complete fork detection catches conflicting 3rd candidate even when first 2 agree");
+    const multiCandStore = new Map<string, string>();
+    const ledgerTenA = generateCleanLedger(10);
+    const cpTenA = createAuditCheckpoint(ledgerTenA, SIGNING_SECRET, "CHK-10-A");
+
+    // Candidate 1 is an identical duplicate or version of Candidate 0
+    const cpTenADup = { ...cpTenA };
+
+    // Candidate 2 has same eventCount (10) but a conflicting headHash
+    const ledgerTenB = generateCleanLedger(10);
+    ledgerTenB[9].metadata = { forked: true };
+    ledgerTenB[9].eventHash = computeEventHash(ledgerTenB[9]);
+    const cpTenConflict = createAuditCheckpoint(ledgerTenB, SIGNING_SECRET, "CHK-10-CONFLICTING-3RD");
+
+    const key10A = "checkpoint-000000000010-CHK-10-A.json";
+    const key10B = "checkpoint-000000000010-CHK-10-CONFLICTING-3RD.json";
+    multiCandStore.set(`https://multicand-test.s3.us-east-1.amazonaws.com/${key10A}?versionId=v-agree-1`, JSON.stringify(cpTenA));
+    multiCandStore.set(`https://multicand-test.s3.us-east-1.amazonaws.com/${key10A}?versionId=v-agree-2`, JSON.stringify(cpTenADup));
+    multiCandStore.set(`https://multicand-test.s3.us-east-1.amazonaws.com/${key10B}?versionId=v-conflict-3`, JSON.stringify(cpTenConflict));
+
+    const multiCandFetch: typeof fetch = async (input: RequestInfo | URL): Promise<Response> => {
+      const url = input.toString();
+      if (url.includes("/latest.json")) return new Response("NoSuchKey", { status: 404 });
+      if (url.includes("?versions")) {
+        // Return 3 candidates: first two agree, third conflicts
+        const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<ListVersionsResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/">
+  <Name>multicand-test</Name>
+  <Prefix>checkpoint-</Prefix>
+  <Version><Key>${key10A}</Key><VersionId>v-agree-1</VersionId></Version>
+  <Version><Key>${key10A}</Key><VersionId>v-agree-2</VersionId></Version>
+  <Version><Key>${key10B}</Key><VersionId>v-conflict-3</VersionId></Version>
+</ListVersionsResult>`;
+        return new Response(xml, { status: 200, headers: { "Content-Type": "application/xml" } });
+      }
+      if (multiCandStore.has(url)) {
+        return new Response(multiCandStore.get(url)!, { status: 200, headers: { "Content-Type": "application/json" } });
+      }
+      return new Response("NoSuchKey", { status: 404 });
+    };
+
+    const s3MultiCandStore = new S3AuditCheckpointStore({
+      bucket: "multicand-test",
+      customFetch: multiCandFetch,
+    });
+
+    let multiCandForkCaught = false;
+    try {
+      await s3MultiCandStore.readLatestCheckpoint();
+    } catch (err: any) {
+      multiCandForkCaught = true;
+      assert(err.message.includes("Fork detected at eventCount 10"));
+      assert(err.message.includes("CHK-10-CONFLICTING-3RD"));
+    }
+    assert.strictEqual(multiCandForkCaught, true, "Store must check all candidates at highest count, catching 3rd conflicting candidate");
+    console.log("  ✓ Test 29 Passed: Exhaustive candidate scan verifies all candidates at max count and catches conflicting 3rd candidate.");
 
   } finally {
     // Clean up temporary test vault directory
@@ -457,7 +953,7 @@ async function runCheckpointAdversarialSuite() {
   }
 
   console.log("\n================================================================================");
-  console.log("  ALL 18 ADVERSARIAL & EXTERNAL CHECKPOINT TESTS PASSED (100% VERIFIED)        ");
+  console.log("  ALL 29 ADVERSARIAL & EXTERNAL CHECKPOINT TESTS PASSED (100% VERIFIED)        ");
   console.log("================================================================================\n");
 }
 
