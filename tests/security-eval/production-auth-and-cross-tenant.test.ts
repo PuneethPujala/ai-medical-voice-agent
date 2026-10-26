@@ -98,7 +98,7 @@ async function runProductionAuthorizationSuite() {
   (process.env as any).INTERNAL_TEST_SECRET = DEFAULT_INTERNAL_TEST_SECRET;
 
   // Set up dedicated test fixtures in memoryConsultations
-  const testRecordA = {
+  const testRecordA: any = {
     id: `ENC-ALICE-${Date.now()}`,
     userId: "patient-alice-123",
     patientName: "Alice Tenant",
@@ -110,7 +110,7 @@ async function runProductionAuthorizationSuite() {
     triageLevel: "routine",
     transcript: [],
   };
-  const testRecordB = {
+  const testRecordB: any = {
     id: `ENC-BOB-${Date.now()}`,
     userId: "patient-bob-456",
     patientName: "Bob Tenant",
