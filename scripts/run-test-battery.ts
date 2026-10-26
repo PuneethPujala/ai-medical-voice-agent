@@ -160,12 +160,13 @@ export async function runTestBattery() {
       NODE_ENV: "test",
     };
 
-    if (!enableLiveDb) {
+    if (!enableLiveDb || !suite.requiresDatabase) {
       delete env.DATABASE_URL;
       delete env.TEST_DATABASE_URL;
       env.MEDVOICE_OFFLINE_TESTS = "1";
     } else {
       env.DATABASE_URL = rawDbUrl;
+      delete env.MEDVOICE_OFFLINE_TESTS;
     }
     if (!enableLiveLlm) {
       delete env.GROQ_API_KEY;

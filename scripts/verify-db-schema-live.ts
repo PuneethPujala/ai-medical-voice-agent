@@ -1,5 +1,5 @@
 import "../config/db";
-import { neon } from "@neondatabase/serverless";
+import { createSqlHelper, assertSafeTestDatabase } from "../lib/security/test-db-guard";
 import * as dotenv from "dotenv";
 
 dotenv.config({ path: ".env.local" });
@@ -13,7 +13,7 @@ async function checkLiveDatabase() {
     throw new Error("DATABASE_URL not found in environment");
   }
 
-  const sql = neon(process.env.DATABASE_URL);
+  const sql = createSqlHelper(assertSafeTestDatabase(process.env.DATABASE_URL));
 
   const tables = await sql`
     SELECT table_name 
@@ -58,6 +58,9 @@ async function checkLiveDatabase() {
 
   console.log("\n=== LIVE ROWS IN 'consultations' ===");
   console.table(rows);
+  if (sql.end) {
+    await sql.end();
+  }
 }
 
 checkLiveDatabase().catch((err) => {

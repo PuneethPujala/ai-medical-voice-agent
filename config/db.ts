@@ -1,4 +1,6 @@
-import { drizzle } from 'drizzle-orm/neon-http';
+import { drizzle as drizzleNeon } from 'drizzle-orm/neon-http';
+import { drizzle as drizzleNodePg } from 'drizzle-orm/node-postgres';
+import { Pool } from 'pg';
 import * as schema from './schema';
 import dns from 'dns';
 import net from 'net';
@@ -47,9 +49,12 @@ if (typeof process !== 'undefined' && process.versions?.node) {
   }
 }
 
-type DbClient = ReturnType<typeof drizzle>;
+export type DbClient = ReturnType<typeof drizzleNeon>;
 
 let customDbClient: any = null;
+let currentDrizzleInstance: any = null;
+let currentPoolInstance: Pool | null = null;
+let cachedDbUrl: string | null = null;
 
 export function setCustomDbClient(client: any) {
   customDbClient = client;
@@ -59,16 +64,38 @@ export function getDb(): DbClient | null {
   if (customDbClient !== null) {
     return customDbClient ? (customDbClient as DbClient) : null;
   }
-  if (!process.env.DATABASE_URL) {
+  const dbUrl = process.env.TEST_DATABASE_URL || process.env.DATABASE_URL;
+  if (!dbUrl) {
     return null;
   }
-  return drizzle(process.env.DATABASE_URL);
+
+  if (currentDrizzleInstance && cachedDbUrl === dbUrl) {
+    return currentDrizzleInstance;
+  }
+
+  cachedDbUrl = dbUrl;
+  const isNeonCloud = dbUrl.includes('.neon.tech') || dbUrl.startsWith('https://');
+
+  if (isNeonCloud) {
+    currentDrizzleInstance = drizzleNeon(dbUrl) as DbClient;
+  } else {
+    currentDrizzleInstance = drizzleNodePg(dbUrl) as unknown as DbClient;
+  }
+
+  return currentDrizzleInstance;
 }
 
-export const db = process.env.DATABASE_URL
-  ? drizzle(process.env.DATABASE_URL)
+export async function closeDbPool(): Promise<void> {
+  if (currentPoolInstance) {
+    await currentPoolInstance.end().catch(() => {});
+    currentPoolInstance = null;
+    currentDrizzleInstance = null;
+    cachedDbUrl = null;
+  }
+}
+
+export const db = (process.env.TEST_DATABASE_URL || process.env.DATABASE_URL)
+  ? getDb()
   : (null as any);
 
 export { schema };
-
-
