@@ -41,19 +41,36 @@ function cleanupStaleBuckets(windowMs: number) {
   }
 }
 
+import { resolveTrustedClientIp } from "./rate-limit-policy";
+
+export {
+  RATE_LIMIT_POLICIES,
+  resolveTrustedClientIp,
+  deriveRateLimitKey,
+} from "./rate-limit-policy";
+export type {
+  RouteRateLimitPolicy,
+} from "./rate-limit-policy";
+
+export {
+  MemoryRateLimitStore,
+  UpstashRedisRateLimitStore,
+  RateLimitStoreError,
+  evaluateRateLimit,
+  buildRateLimit429Response,
+  getActiveRateLimitStore,
+  setRateLimitStoreForTesting,
+} from "./distributed-rate-limiter";
+export type {
+  DistributedRateLimitStore,
+  RateLimitStatus,
+} from "./distributed-rate-limiter";
+
 /**
- * Extract client IP address from standard proxy/CDN headers.
+ * Extract client IP address from standard proxy/CDN headers with spoofing protections.
  */
 export function getClientIp(request: Request): string {
-  const forwarded = request.headers.get("x-forwarded-for");
-  if (forwarded) {
-    return forwarded.split(",")[0].trim();
-  }
-  const realIp = request.headers.get("x-real-ip");
-  if (realIp) {
-    return realIp.trim();
-  }
-  return "127.0.0.1";
+  return resolveTrustedClientIp(request);
 }
 
 /**

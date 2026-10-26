@@ -5,6 +5,11 @@ import { and, eq, ne } from "drizzle-orm";
 import { memoryConsultations } from "../route";
 import { getAuthContext, hasPermission } from "@/lib/auth/rbac";
 import { logAuditEventAsync } from "@/lib/audit/audit-logger";
+import {
+  evaluateRateLimit,
+  buildRateLimit429Response,
+  RATE_LIMIT_POLICIES,
+} from "@/lib/security/rate-limiter";
 
 export async function GET(
   request: Request,
@@ -168,6 +173,16 @@ export async function PATCH(
 ) {
   try {
     const auth = await getAuthContext(request);
+
+    // Rate Limit: Consultation Mutation policy
+    const rateLimit = await evaluateRateLimit({
+      policy: RATE_LIMIT_POLICIES.CONSULTATION_MUTATION,
+      userId: auth.userId,
+      request,
+    });
+    if (!rateLimit.allowed) {
+      return buildRateLimit429Response(rateLimit);
+    }
     const { id } = await params;
 
     // 1. Enforce Authentication

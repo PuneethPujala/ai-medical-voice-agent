@@ -28,6 +28,9 @@ import {
   getClientIp,
   buildRateLimitResponse,
   RESOURCE_LIMITS,
+  evaluateRateLimit,
+  buildRateLimit429Response,
+  RATE_LIMIT_POLICIES,
 } from "@/lib/security/rate-limiter";
 import {
   computeTurnFingerprint,
@@ -43,24 +46,42 @@ export async function POST(request: Request) {
   let phiVault = new Map<string, string>();
 
   try {
-    // 1. Abuse Protection: Rate limit per client IP
-    const clientIp = getClientIp(request);
-    const rateLimit = checkRateLimit(
-      `voice_chat:${clientIp}`,
-      RESOURCE_LIMITS.VOICE_CHAT_RATE_LIMIT_PER_MINUTE,
-      60000
-    );
-    if (!rateLimit.allowed) {
-      return buildRateLimitResponse(rateLimit, "/api/voice/chat");
-    }
-
-    // 2. Authoritative Session Identity: Server-side resolution only (never trust body.userId)
+    // 1. Authoritative Session Identity: Server-side resolution only (never trust body.userId)
     const auth = await getAuthContext(request);
     const effectiveUserId = auth.userId === "unauthenticated" && auth.isDemoMode
       ? "anon-user"
       : auth.userId;
 
     const body = await request.json();
+
+    // 2. Abuse Protection: Distributed Rate Limiting with Deterministic Emergency Preemption
+    const chatRateLimit = await evaluateRateLimit({
+      policy: RATE_LIMIT_POLICIES.VOICE_CHAT,
+      userId: effectiveUserId,
+      request,
+      preflightUtterance: typeof body?.message === "string" ? body.message : undefined,
+    });
+
+    if (!chatRateLimit.allowed) {
+      return buildRateLimit429Response(chatRateLimit);
+    }
+
+    if (chatRateLimit.emergencyPreempted) {
+      return NextResponse.json({
+        success: true,
+        isEmergency: true,
+        directive: chatRateLimit.emergencyDirective,
+        redFlagsTriggered: chatRateLimit.emergencyFlags || [],
+        doctorReply: chatRateLimit.emergencyDirective,
+        triage: {
+          isEmergency: true,
+          triageLevel: "emergency",
+          esiScore: 1,
+          redFlagsTriggered: chatRateLimit.emergencyFlags || [],
+        },
+        preempted: true,
+      });
+    }
     const {
       doctorId = "dr-sarah-chen",
       message = "",
