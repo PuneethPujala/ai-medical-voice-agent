@@ -50,6 +50,7 @@
     "test:system-voice": "tsx tests/verification/system_voice_benchmark.ts",
     "test:profile-persistence": "tsx tests/patient-profile/profile-persistence.test.ts",
     "test:context-chat": "tsx tests/patient-profile/context-aware-chat.test.ts",
+    "test:longitudinal-facts": "tsx tests/patient-profile/longitudinal-fact-service.test.ts",
     "test:consultation-lifecycle": "tsx tests/security-eval/consultation-lifecycle.test.ts",
     "test:chat-isolation": "tsx tests/security-eval/chat-identity-isolation.test.ts",
     "test:unknown-age": "tsx tests/triage/unknown-age-pediatric.test.ts",

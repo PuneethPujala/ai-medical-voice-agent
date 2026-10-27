@@ -1,4 +1,4 @@
-import { integer, serial, pgTable, varchar, text, doublePrecision, boolean, timestamp, jsonb, json, uniqueIndex } from "drizzle-orm/pg-core";
+import { integer, serial, pgTable, varchar, text, doublePrecision, boolean, timestamp, jsonb, json, uniqueIndex, index } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type { AttributedClinicalFactV3, UnmappedObservation, DeliveredTurnRecord } from "@/lib/agents/schemas";
 import type { ClinicalInterviewState } from "@/lib/triage/conversation-manager";
@@ -68,6 +68,7 @@ export const doctorProfilesTable = pgTable("doctor_profiles", {
 export const consultationsTable = pgTable("consultations", {
   id: varchar("id", { length: 128 }).primaryKey(),
   userId: varchar("user_id", { length: 128 }), // Clerk user ID or anonymous session
+  patientProfileId: varchar("patient_profile_id", { length: 128 }), // Bound Patient Profile ID
   patientName: varchar("patient_name", { length: 128 }).default("Anonymous Patient"),
   patientAge: varchar("patient_age", { length: 32 }),
   patientGender: varchar("patient_gender", { length: 32 }),
@@ -216,3 +217,36 @@ export const clinicalKnowledgePassagesTable = pgTable("clinical_knowledge_passag
   embedding: json("embedding").$type<number[]>(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
+
+/**
+ * Longitudinal Patient Facts Table
+ * Stores structured, time-aware patient observations recorded across clinical encounters.
+ * Governs life-cycle state transitions, provenance, verification, and baseline superseding.
+ */
+export const patientLongitudinalFactsTable = pgTable("patient_longitudinal_facts", {
+  id: varchar("id", { length: 128 }).primaryKey(),
+  userId: varchar("user_id", { length: 128 }).notNull(),
+  patientProfileId: varchar("patient_profile_id", { length: 128 }).notNull(),
+  category: varchar("category", { length: 64 }).notNull(), // lifestyle_sleep | functional_mobility | vital_reading | symptom_baseline
+  concept: varchar("concept", { length: 128 }).notNull(), // normalized clinical concept key
+  reportedValue: text("reported_value").notNull(),
+  numericValue: doublePrecision("numeric_value"),
+  unit: varchar("unit", { length: 32 }),
+  temporalScope: varchar("temporal_scope", { length: 32 }).notNull().default("baseline"), // baseline | episodic
+  lifecycle: varchar("lifecycle", { length: 32 }).notNull().default("active"), // active | superseded | retracted | entered_in_error
+  verification: varchar("verification", { length: 32 }).notNull().default("unverified"), // unverified | patient_confirmed | clinician_confirmed
+  sourceType: varchar("source_type", { length: 32 }).notNull().default("patient"), // patient | caregiver | clinician | device
+  sourceConsultationId: varchar("source_consultation_id", { length: 128 }).notNull(),
+  sourceTurnId: varchar("source_turn_id", { length: 128 }).notNull(),
+  reportedAt: timestamp("reported_at").notNull(),
+  recordedAt: timestamp("recorded_at").defaultNow().notNull(),
+  lastReviewedAt: timestamp("last_reviewed_at"),
+  supersedesFactId: varchar("supersedes_fact_id", { length: 128 }),
+  supersededByFactId: varchar("superseded_by_fact_id", { length: 128 }),
+  supersededAt: timestamp("superseded_at"),
+}, (table) => [
+  index("idx_longitudinal_facts_lookup")
+    .on(table.userId, table.patientProfileId, table.concept, table.lifecycle),
+  uniqueIndex("idx_longitudinal_facts_idempotency_unique")
+    .on(table.patientProfileId, table.sourceConsultationId, table.sourceTurnId, table.concept),
+]);

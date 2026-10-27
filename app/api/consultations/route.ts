@@ -5,6 +5,7 @@ import { and, desc, eq, ne, or } from "drizzle-orm";
 import { getAuthContext, hasPermission } from "@/lib/auth/rbac";
 import { logAuditEventAsync } from "@/lib/audit/audit-logger";
 import { validateAudioMetrics } from "@/lib/acoustic/acoustic-dsp-analyzer";
+import { PatientProfileService } from "@/lib/patient/patient-profile-service";
 import {
   evaluateRateLimit,
   buildRateLimit429Response,
@@ -363,6 +364,7 @@ export async function POST(request: Request) {
 
     const {
       id,
+      patientProfileId,
       patientName = "Anonymous Patient",
       patientAge,
       patientGender,
@@ -384,6 +386,20 @@ export async function POST(request: Request) {
       durationSeconds = 0,
       status: requestedStatus,
     } = body;
+
+    if (patientProfileId && typeof patientProfileId === "string") {
+      const profile = await PatientProfileService.getProfileById(patientProfileId, effectiveUserId);
+      if (!profile && auth.role !== "admin") {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Forbidden: Target patient profile not found or does not belong to authorized user.",
+            code: "PROFILE_NOT_FOUND",
+          },
+          { status: 403 }
+        );
+      }
+    }
 
     if (!id || typeof id !== "string") {
       return NextResponse.json(
@@ -613,6 +629,7 @@ export async function POST(request: Request) {
       }
 
       const updateData: any = {
+        patientProfileId: patientProfileId !== undefined ? patientProfileId : existingRecord.patientProfileId,
         patientName,
         patientAge: patientAge ? String(patientAge) : existingRecord.patientAge,
         patientGender: patientGender ?? existingRecord.patientGender,
@@ -769,6 +786,7 @@ export async function POST(request: Request) {
 
     const newRecord = {
       id,
+      patientProfileId,
       userId: effectiveUserId,
       patientName,
       patientAge: patientAge ? String(patientAge) : undefined,
