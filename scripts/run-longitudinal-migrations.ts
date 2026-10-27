@@ -78,6 +78,21 @@ export async function runLongitudinalMigrations(dbUrl?: string): Promise<void> {
       `,
     },
     {
+      name: "2b. Ensure TIMESTAMP WITH TIME ZONE on patient_longitudinal_facts timestamp columns",
+      sql: `
+        DO $$
+        BEGIN
+          ALTER TABLE patient_longitudinal_facts
+            ALTER COLUMN reported_at TYPE TIMESTAMP WITH TIME ZONE USING reported_at AT TIME ZONE 'UTC',
+            ALTER COLUMN recorded_at TYPE TIMESTAMP WITH TIME ZONE USING recorded_at AT TIME ZONE 'UTC',
+            ALTER COLUMN last_reviewed_at TYPE TIMESTAMP WITH TIME ZONE USING last_reviewed_at AT TIME ZONE 'UTC',
+            ALTER COLUMN superseded_at TYPE TIMESTAMP WITH TIME ZONE USING superseded_at AT TIME ZONE 'UTC';
+        EXCEPTION WHEN OTHERS THEN
+          NULL;
+        END $$;
+      `,
+    },
+    {
       name: "3. Create indexes on patient_longitudinal_facts",
       sql: `
         CREATE INDEX IF NOT EXISTS idx_longitudinal_facts_lookup
@@ -173,8 +188,12 @@ export async function runLongitudinalMigrations(dbUrl?: string): Promise<void> {
             SELECT plf.id, plf.user_id, plf.patient_profile_id, plf.category, plf.concept,
                    plf.reported_value, plf.numeric_value, plf.unit, plf.temporal_scope,
                    plf.lifecycle, plf.verification, plf.source_type, plf.source_consultation_id,
-                   plf.source_turn_id, plf.reported_at, plf.recorded_at, plf.last_reviewed_at,
-                   plf.supersedes_fact_id, plf.superseded_by_fact_id, plf.superseded_at
+                   plf.source_turn_id,
+                   plf.reported_at::TIMESTAMP WITH TIME ZONE,
+                   plf.recorded_at::TIMESTAMP WITH TIME ZONE,
+                   plf.last_reviewed_at::TIMESTAMP WITH TIME ZONE,
+                   plf.supersedes_fact_id, plf.superseded_by_fact_id,
+                   plf.superseded_at::TIMESTAMP WITH TIME ZONE
             FROM patient_longitudinal_facts plf
             WHERE plf.id = v_existing_id;
             RETURN;
@@ -218,8 +237,12 @@ export async function runLongitudinalMigrations(dbUrl?: string): Promise<void> {
           SELECT plf.id, plf.user_id, plf.patient_profile_id, plf.category, plf.concept,
                  plf.reported_value, plf.numeric_value, plf.unit, plf.temporal_scope,
                  plf.lifecycle, plf.verification, plf.source_type, plf.source_consultation_id,
-                 plf.source_turn_id, plf.reported_at, plf.recorded_at, plf.last_reviewed_at,
-                 plf.supersedes_fact_id, plf.superseded_by_fact_id, plf.superseded_at
+                 plf.source_turn_id,
+                 plf.reported_at::TIMESTAMP WITH TIME ZONE,
+                 plf.recorded_at::TIMESTAMP WITH TIME ZONE,
+                 plf.last_reviewed_at::TIMESTAMP WITH TIME ZONE,
+                 plf.supersedes_fact_id, plf.superseded_by_fact_id,
+                 plf.superseded_at::TIMESTAMP WITH TIME ZONE
           FROM patient_longitudinal_facts plf
           WHERE plf.id = p_id;
         END;

@@ -238,12 +238,12 @@ export const patientLongitudinalFactsTable = pgTable("patient_longitudinal_facts
   sourceType: varchar("source_type", { length: 32 }).notNull().default("patient"), // patient | caregiver | clinician | device
   sourceConsultationId: varchar("source_consultation_id", { length: 128 }).notNull(),
   sourceTurnId: varchar("source_turn_id", { length: 128 }).notNull(),
-  reportedAt: timestamp("reported_at").notNull(),
-  recordedAt: timestamp("recorded_at").defaultNow().notNull(),
-  lastReviewedAt: timestamp("last_reviewed_at"),
+  reportedAt: timestamp("reported_at", { withTimezone: true }).notNull(),
+  recordedAt: timestamp("recorded_at", { withTimezone: true }).defaultNow().notNull(),
+  lastReviewedAt: timestamp("last_reviewed_at", { withTimezone: true }),
   supersedesFactId: varchar("supersedes_fact_id", { length: 128 }),
   supersededByFactId: varchar("superseded_by_fact_id", { length: 128 }),
-  supersededAt: timestamp("superseded_at"),
+  supersededAt: timestamp("superseded_at", { withTimezone: true }),
 }, (table) => [
   index("idx_longitudinal_facts_lookup")
     .on(table.userId, table.patientProfileId, table.concept, table.lifecycle),
