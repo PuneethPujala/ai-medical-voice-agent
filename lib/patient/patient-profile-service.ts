@@ -22,6 +22,13 @@ export class PatientProfileDatabaseError extends Error {
   }
 }
 
+export class CannotReclassifyDependentProfileError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'CannotReclassifyDependentProfileError';
+  }
+}
+
 function shouldEnforceDatabase(): boolean {
   return process.env.NODE_ENV === "production" || (Boolean(process.env.DATABASE_URL) && process.env.NODE_ENV !== "test");
 }
@@ -236,6 +243,13 @@ export class PatientProfileService {
       existing = await this.getProfileById(data.id, userId);
     } else {
       existing = await this.getProfileByRelationship(userId, relationship);
+    }
+
+    // Invariant: Never convert or overwrite a legacy dependent profile into a self-profile
+    if (existing && existing.relationshipToUser !== "self" && relationship === "self") {
+      throw new CannotReclassifyDependentProfileError(
+        `Cannot reclassify legacy dependent profile '${existing.id}' (${existing.relationshipToUser}) into a self-profile. Legacy dependent records must remain preserved.`
+      );
     }
 
     const profileId = existing?.id || data.id || crypto.randomUUID();

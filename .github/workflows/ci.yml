@@ -79,6 +79,7 @@ jobs:
           DATABASE_URL: postgresql://postgres:testpassword123@localhost:5432/medvoice_test
         run: |
           npx drizzle-kit push --force
+          npx tsx scripts/run-longitudinal-migrations.ts
 
       - name: Gate 3d — Isolated PostgreSQL Concurrency, Idempotency & Audit Durability
         env:
@@ -91,10 +92,12 @@ jobs:
           npx tsx tests/security-eval/consultation-route-regression.test.ts
           npx tsx tests/security-eval/atomic-concurrency-idempotency.test.ts
           npx tsx tests/security-eval/durable-audit.test.ts
+          npx tsx tests/patient-profile/longitudinal-database-persistence.test.ts
           npm run test:battery -- --with-db
 
       - name: Gate 3e — Patient Profile & Longitudinal Context Batteries
         run: |
+          npm run test:hardening
           npm run test:profile-persistence
           npm run test:context-chat
           npm run test:longitudinal-facts
