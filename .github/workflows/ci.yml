@@ -114,5 +114,8 @@ jobs:
             coverage/lcov-report/
           retention-days: 14
 
+      - name: Synthetic Stakeholder Demonstration
+        run: npm run demo:stakeholder
+
       - name: Gate 7 — Next.js 16.3 Production Build (Webpack)
         run: npm run build
