@@ -51,30 +51,40 @@ export function resetLongitudinalFactStore(): void {
 }
 
 /**
- * Maps a database row to the typed LongitudinalPatientFact interface.
+ * Maps a database row (from either Drizzle ORM camelCase or PostgreSQL raw SQL snake_case)
+ * to the typed LongitudinalPatientFact interface.
  */
 function mapRowToFact(row: any): LongitudinalPatientFact {
+  const reportedAtRaw = row.reportedAt || row.reported_at;
+  const recordedAtRaw = row.recordedAt || row.recorded_at;
+  const lastReviewedAtRaw = row.lastReviewedAt || row.last_reviewed_at;
+  const supersededAtRaw = row.supersededAt || row.superseded_at;
+  const numValRaw =
+    row.numericValue !== undefined && row.numericValue !== null
+      ? row.numericValue
+      : (row.numeric_value !== undefined && row.numeric_value !== null ? row.numeric_value : null);
+
   return {
     id: row.id,
-    userId: row.userId,
-    patientProfileId: row.patientProfileId,
+    userId: row.userId || row.user_id,
+    patientProfileId: row.patientProfileId || row.patient_profile_id,
     category: row.category,
     concept: row.concept,
-    reportedValue: row.reportedValue,
-    numericValue: row.numericValue !== null && row.numericValue !== undefined ? Number(row.numericValue) : null,
+    reportedValue: row.reportedValue || row.reported_value,
+    numericValue: numValRaw !== null && numValRaw !== undefined ? Number(numValRaw) : null,
     unit: row.unit || null,
-    temporalScope: row.temporalScope,
+    temporalScope: row.temporalScope || row.temporal_scope,
     lifecycle: row.lifecycle,
     verification: row.verification,
-    sourceType: row.sourceType,
-    sourceConsultationId: row.sourceConsultationId,
-    sourceTurnId: row.sourceTurnId,
-    reportedAt: row.reportedAt instanceof Date ? row.reportedAt.toISOString() : new Date(row.reportedAt).toISOString(),
-    recordedAt: row.recordedAt instanceof Date ? row.recordedAt.toISOString() : new Date(row.recordedAt).toISOString(),
-    lastReviewedAt: row.lastReviewedAt ? (row.lastReviewedAt instanceof Date ? row.lastReviewedAt.toISOString() : new Date(row.lastReviewedAt).toISOString()) : null,
-    supersedesFactId: row.supersedesFactId || null,
-    supersededByFactId: row.supersededByFactId || null,
-    supersededAt: row.supersededAt ? (row.supersededAt instanceof Date ? row.supersededAt.toISOString() : new Date(row.supersededAt).toISOString()) : null,
+    sourceType: row.sourceType || row.source_type,
+    sourceConsultationId: row.sourceConsultationId || row.source_consultation_id,
+    sourceTurnId: row.sourceTurnId || row.source_turn_id,
+    reportedAt: reportedAtRaw instanceof Date ? reportedAtRaw.toISOString() : new Date(reportedAtRaw).toISOString(),
+    recordedAt: recordedAtRaw instanceof Date ? recordedAtRaw.toISOString() : new Date(recordedAtRaw).toISOString(),
+    lastReviewedAt: lastReviewedAtRaw ? (lastReviewedAtRaw instanceof Date ? lastReviewedAtRaw.toISOString() : new Date(lastReviewedAtRaw).toISOString()) : null,
+    supersedesFactId: row.supersedesFactId || row.supersedes_fact_id || null,
+    supersededByFactId: row.supersededByFactId || row.superseded_by_fact_id || null,
+    supersededAt: supersededAtRaw ? (supersededAtRaw instanceof Date ? supersededAtRaw.toISOString() : new Date(supersededAtRaw).toISOString()) : null,
   };
 }
 
@@ -214,7 +224,8 @@ export class LongitudinalFactService {
 
   /**
    * Atomically records a new fact or returns the existing record if the exact source event was already processed (Idempotency).
-   * If the fact is a baseline and a previous active baseline exists for the same concept, atomically supersedes it within a serial transaction.
+   * In Neon HTTP and PostgreSQL, executes via the atomic PL/pgSQL function record_or_supersede_patient_longitudinal_fact()
+   * as a single statement, avoiding interactive transaction driver limitations while preserving advisory locks and atomicity.
    */
   public static async recordFact(
     userId: string,
@@ -228,101 +239,38 @@ export class LongitudinalFactService {
     const dbClient = getDb();
     if (dbClient) {
       try {
-        // Execute inside an atomic transaction with advisory lock to serialize baseline mutations per (profile, concept)
-        const result = await dbClient.transaction(async (tx: any) => {
-          // 1. Advisory transaction lock serializes baseline creation/superseding
-          await tx.execute(
-            sql`SELECT pg_advisory_xact_lock(hashtext(${params.patientProfileId} || ':' || ${params.concept}))`
-          );
+        const newId = `fact_${Date.now()}_${randomUUID().slice(0, 8)}`;
 
-          // 2. Idempotency check: check if this turn already recorded this concept
-          const existing = await tx
-            .select()
-            .from(patientLongitudinalFactsTable)
-            .where(
-              and(
-                eq(patientLongitudinalFactsTable.patientProfileId, params.patientProfileId),
-                eq(patientLongitudinalFactsTable.sourceConsultationId, params.sourceConsultationId),
-                eq(patientLongitudinalFactsTable.sourceTurnId, params.sourceTurnId),
-                eq(patientLongitudinalFactsTable.concept, params.concept)
-              )
-            )
-            .limit(1);
+        // Execute single atomic statement compatible with Neon HTTP driver
+        const execResult: any = await dbClient.execute(sql`
+          SELECT * FROM record_or_supersede_patient_longitudinal_fact(
+            ${newId},
+            ${userId},
+            ${params.patientProfileId},
+            ${params.category},
+            ${params.concept},
+            ${params.reportedValue},
+            ${params.numericValue !== undefined && params.numericValue !== null ? params.numericValue : null},
+            ${params.unit || null},
+            ${params.temporalScope},
+            ${params.verification || "unverified"},
+            ${params.sourceType || "patient"},
+            ${params.sourceConsultationId},
+            ${params.sourceTurnId},
+            ${new Date(reportedAt)}::timestamp with time zone
+          )
+        `);
 
-          if (existing && existing.length > 0) {
-            return mapRowToFact(existing[0]);
-          }
-
-          const newId = `fact_${Date.now()}_${randomUUID().slice(0, 8)}`;
-
-          // 3. If baseline: find existing active baseline to supersede
-          let supersededFactId: string | null = null;
-          if (params.temporalScope === "baseline") {
-            const activeBaselines = await tx
-              .select()
-              .from(patientLongitudinalFactsTable)
-              .where(
-                and(
-                  eq(patientLongitudinalFactsTable.userId, userId),
-                  eq(patientLongitudinalFactsTable.patientProfileId, params.patientProfileId),
-                  eq(patientLongitudinalFactsTable.concept, params.concept),
-                  eq(patientLongitudinalFactsTable.temporalScope, "baseline"),
-                  eq(patientLongitudinalFactsTable.lifecycle, "active")
-                )
-              )
-              .limit(1);
-
-            if (activeBaselines && activeBaselines.length > 0) {
-              const targetOldId = activeBaselines[0].id;
-              supersededFactId = targetOldId;
-              await tx
-                .update(patientLongitudinalFactsTable)
-                .set({
-                  lifecycle: "superseded",
-                  supersededByFactId: newId,
-                  supersededAt: new Date(recordedAt),
-                })
-                .where(eq(patientLongitudinalFactsTable.id, targetOldId));
-            }
-          }
-
-          // 4. Insert new fact
-          const insertValues: any = {
-            id: newId,
-            userId,
-            patientProfileId: params.patientProfileId,
-            category: params.category,
-            concept: params.concept,
-            reportedValue: params.reportedValue,
-            numericValue: params.numericValue !== undefined ? params.numericValue : null,
-            unit: params.unit || null,
-            temporalScope: params.temporalScope,
-            lifecycle: "active",
-            verification: params.verification || "unverified",
-            sourceType: params.sourceType || "patient",
-            sourceConsultationId: params.sourceConsultationId,
-            sourceTurnId: params.sourceTurnId,
-            reportedAt: new Date(reportedAt),
-            recordedAt: new Date(recordedAt),
-            supersedesFactId: supersededFactId,
-            supersededByFactId: null,
-            supersededAt: null,
-          };
-
-          const insertedRows = await tx
-            .insert(patientLongitudinalFactsTable)
-            .values(insertValues)
-            .returning();
-
-          return mapRowToFact(insertedRows[0]);
-        });
-
-        return result;
+        const rows = execResult?.rows || (Array.isArray(execResult) ? execResult : []);
+        if (rows && rows.length > 0) {
+          return mapRowToFact(rows[0]);
+        }
+        throw new LongitudinalDatabaseError("record_or_supersede_patient_longitudinal_fact returned 0 rows");
       } catch (err: any) {
         if (shouldEnforceDatabase()) {
-          throw new LongitudinalDatabaseError("Transactional fact persistence failed. In-memory fallback is disabled in production/configured DB mode.", err);
+          throw new LongitudinalDatabaseError("Atomic database fact persistence failed. In-memory fallback is disabled in production/configured DB mode.", err);
         }
-        console.warn("[LongitudinalFactService] DB insert failed, falling back to in-memory:", err);
+        console.warn("[LongitudinalFactService] DB function execution failed, falling back to in-memory:", err);
       }
     } else if (shouldEnforceDatabase()) {
       throw new LongitudinalDatabaseError("Database client unavailable in production/configured database mode.");

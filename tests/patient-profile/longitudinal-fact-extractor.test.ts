@@ -9,10 +9,13 @@
  * 5. Rejection of unsupported clinical concepts (acute symptoms, chest pain)
  * 6. Rejection of denied/absent symptoms (assertionStatus === 'absent')
  * 7. Rejection of uncertain/hypothetical assertions (assertionStatus === 'uncertain')
- * 8. Rejection of third-party statements (mother's fact when target is self)
+ * 8. Rejection of third-party relative statements (mother's fact when target is self)
  * 9. Rejection of clinician / AI-inferred speaker sources
  * 10. Numeric parsing precision & minute-to-hour conversion
  * 11. Strict verification status guarantee (always 'unverified')
+ * 12. Rejection of ambiguous temporality (statement lacking explicit episodic or habitual marker)
+ * 13. Rejection of ungrounded numeric range expressions (preventing lossy scalar reduction)
+ * 14. Rejection of explicit third_party attribution (even without relative keywords)
  *
  * Execution:
  *   npx tsx tests/patient-profile/longitudinal-fact-extractor.test.ts
@@ -296,7 +299,7 @@ async function runLongitudinalExtractorTests() {
   try {
     const fact = createMockFact({
       concept: "sleep_duration",
-      sourceUtterance: "I sleep 7 hours.",
+      sourceUtterance: "I typically sleep 7 hours a night.",
     });
 
     const result = extractLongitudinalCandidate(fact, defaultContext);
@@ -308,6 +311,67 @@ async function runLongitudinalExtractorTests() {
     testPass("Guarantee 11: Verification status strictly initialized to 'unverified'");
   } catch (err) {
     testFail("Guarantee 11: Verification status strictly initialized to 'unverified'", err);
+  }
+
+  // ---------------------------------------------------------------------------
+  // 12. Rejection of Ambiguous Temporality (Lacks acute or routine marker)
+  // ---------------------------------------------------------------------------
+  try {
+    const fact = createMockFact({
+      concept: "sleep_duration",
+      sourceUtterance: "I slept 5 hours.",
+    });
+
+    const result = extractLongitudinalCandidate(fact, defaultContext);
+    assert.strictEqual(result.eligible, false);
+    if (!result.eligible) {
+      assert.ok(result.rejectionReason.includes("Temporal scope is ambiguous"));
+    }
+
+    testPass("Safeguard 12: Temporally ambiguous statement ('I slept 5 hours') rejected until clarified");
+  } catch (err) {
+    testFail("Safeguard 12: Temporally ambiguous statement ('I slept 5 hours') rejected until clarified", err);
+  }
+
+  // ---------------------------------------------------------------------------
+  // 13. Rejection of Ungrounded Numeric Range Expressions
+  // ---------------------------------------------------------------------------
+  try {
+    const fact = createMockFact({
+      concept: "sleep_duration",
+      sourceUtterance: "I usually sleep 5 to 6 hours every night.",
+    });
+
+    const result = extractLongitudinalCandidate(fact, defaultContext);
+    assert.strictEqual(result.eligible, false);
+    if (!result.eligible) {
+      assert.ok(result.rejectionReason.includes("contains a numeric range"));
+    }
+
+    testPass("Safeguard 13: Numeric range ('5 to 6 hours') rejected to avoid lossy scalar reduction");
+  } catch (err) {
+    testFail("Safeguard 13: Numeric range ('5 to 6 hours') rejected to avoid lossy scalar reduction", err);
+  }
+
+  // ---------------------------------------------------------------------------
+  // 14. Rejection of Explicit Third-Party Attribution (Regardless of Utterance Text)
+  // ---------------------------------------------------------------------------
+  try {
+    const fact = createMockFact({
+      concept: "sleep_duration",
+      attribution: "third_party",
+      sourceUtterance: "Sleeps approximately 7 hours per night.",
+    });
+
+    const result = extractLongitudinalCandidate(fact, defaultContext);
+    assert.strictEqual(result.eligible, false);
+    if (!result.eligible) {
+      assert.ok(result.rejectionReason.includes("Fact attribution is 'third_party'"));
+    }
+
+    testPass("Safeguard 14: Reconciled fact with attribution: 'third_party' strictly disqualified");
+  } catch (err) {
+    testFail("Safeguard 14: Reconciled fact with attribution: 'third_party' strictly disqualified", err);
   }
 
   // ---------------------------------------------------------------------------
