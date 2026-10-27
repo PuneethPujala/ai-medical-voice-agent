@@ -16,6 +16,9 @@ import { buildProvenanceEvidenceFromClinicalState } from "@/lib/agents/provenanc
 import { extractSubfieldState, detectQuestionTargetSlot, controlledFactReconciliationEngine } from "@/lib/triage/clinical-state";
 import { evaluatePreArbiter } from "@/lib/triage/pre-arbiter";
 import { PatientProfileService } from "@/lib/patient/patient-profile-service";
+import { LongitudinalFactService } from "@/lib/patient/longitudinal-fact-service";
+import { extractLongitudinalCandidate } from "@/lib/patient/longitudinal-fact-extractor";
+import { LongitudinalPatientFact } from "@/lib/patient/longitudinal-fact-types";
 import { CallerProfile, PatientProfile, AttributedClinicalFact } from "@/lib/clinical-knowledge/types";
 import { getAuthContext } from "@/lib/auth/rbac";
 import { getDb } from "@/config/db";
@@ -792,6 +795,19 @@ export async function POST(request: Request) {
       inferredSubject = resolved.inferredSubject;
     }
 
+    let longitudinalFacts: LongitudinalPatientFact[] = [];
+    if (effectiveUserId !== "unauthenticated" && activeProfile?.id) {
+      try {
+        longitudinalFacts = await LongitudinalFactService.getActiveFacts(
+          effectiveUserId,
+          activeProfile.id,
+          { temporalScope: "baseline" }
+        );
+      } catch (err) {
+        console.warn("[LongitudinalFactService] Failed to load baseline facts:", err);
+      }
+    }
+
     let ageNum: number | null = null;
     let ageSource: "patient_reported" | "profile" | "unknown" = "unknown";
     let ageGroup: "infant" | "pediatric" | "adult" | "geriatric" | "unknown" = "unknown";
@@ -1063,6 +1079,7 @@ export async function POST(request: Request) {
       targetSubject: inferredSubject,
       isClarificationRequest: turnResult.action === "CLARIFY",
       clarificationGuidance: turnResult.action === "CLARIFY" ? turnResult.doctorReply : undefined,
+      longitudinalFacts,
     });
 
     // LLM-First Dialogue Resolution:
@@ -1140,6 +1157,47 @@ export async function POST(request: Request) {
         }
         if (turnResult.state.conversationMemory && !turnResult.state.conversationMemory.confirmedFacts.includes(factText)) {
           turnResult.state.conversationMemory.confirmedFacts.push(factText);
+        }
+      }
+
+      // Ingest longitudinal candidates into durable longitudinal fact store (M4)
+      if (
+        effectiveUserId !== "unauthenticated" &&
+        activeProfile?.id &&
+        turnResult.state.attributedFacts &&
+        turnResult.state.attributedFacts.length > 0
+      ) {
+        const extractionContext = {
+          targetPatientProfileId: activeProfile.id,
+          targetSubjectRelation: (callerProfile.relationshipToPatient as any) || "self",
+          sourceConsultationId: (encounterId as string) || "session-consultation",
+          sourceTurnId: String(clientTurnId || turnResult.state.structuredHistory?.turnCount || 1),
+        };
+
+        for (const attrFact of turnResult.state.attributedFacts) {
+          const extraction = extractLongitudinalCandidate(attrFact, extractionContext);
+          if (extraction.eligible) {
+            try {
+              await LongitudinalFactService.recordFact(effectiveUserId, extraction.factParams);
+              // Dialogue deduplication: add concept to askedTopics and doNotRepeat
+              if (turnResult.state.conversationMemory) {
+                if (!turnResult.state.conversationMemory.askedTopics) {
+                  turnResult.state.conversationMemory.askedTopics = [];
+                }
+                if (!turnResult.state.conversationMemory.askedTopics.includes(extraction.factParams.concept)) {
+                  turnResult.state.conversationMemory.askedTopics.push(extraction.factParams.concept);
+                }
+                if (!turnResult.state.conversationMemory.doNotRepeat) {
+                  turnResult.state.conversationMemory.doNotRepeat = [];
+                }
+                if (!turnResult.state.conversationMemory.doNotRepeat.includes(extraction.factParams.concept)) {
+                  turnResult.state.conversationMemory.doNotRepeat.push(extraction.factParams.concept);
+                }
+              }
+            } catch (recordErr) {
+              console.warn("[LongitudinalFactService] Failed to record extracted candidate:", recordErr);
+            }
+          }
         }
       }
     }

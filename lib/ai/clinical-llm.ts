@@ -19,6 +19,7 @@ import {
   ClinicalPassage,
 } from "../clinical-knowledge/types";
 import { clinicalKnowledgeRetriever } from "../clinical-knowledge/retriever";
+import { LongitudinalPatientFact } from "../patient/longitudinal-fact-types";
 
 export { validateDoctorReplyTarget };
 
@@ -40,6 +41,7 @@ export interface GenerateTurnOptions {
   onCandidateSafetyConcern?: (concern: string) => void;
   isClarificationRequest?: boolean;
   clarificationGuidance?: string;
+  longitudinalFacts?: LongitudinalPatientFact[];
 }
 
 export interface GeneratedTurnResult {
@@ -451,6 +453,7 @@ export interface SystemPromptConfig {
   advisoryInquiryTopic?: string;
   isClarificationRequest?: boolean;
   clarificationGuidance?: string;
+  longitudinalFacts?: LongitudinalPatientFact[];
 }
 
 export function buildDoctorSystemPrompt(
@@ -467,7 +470,9 @@ export function buildDoctorSystemPrompt(
     ("inferredSubject" in doctorOrConfig ||
       "patientProfile" in doctorOrConfig ||
       "ageDisplay" in doctorOrConfig ||
-      "evidenceAnalysis" in doctorOrConfig)
+      "evidenceAnalysis" in doctorOrConfig ||
+      "longitudinalFacts" in doctorOrConfig ||
+      "doctor" in doctorOrConfig)
   ) {
     cfg = doctorOrConfig as Partial<SystemPromptConfig>;
   } else {
@@ -534,6 +539,25 @@ export function buildDoctorSystemPrompt(
   };
   const retrievedPassagesSummary = cfg.retrievedPassagesSummary || "";
 
+  const longitudinalFacts = cfg.longitudinalFacts || [];
+  const longitudinalSection =
+    longitudinalFacts.length > 0
+      ? `4. LONGITUDINAL PATIENT CONTEXT (HISTORICAL BASELINES ACROSS PRIOR VISITS):
+${longitudinalFacts
+  .map(
+    (f) =>
+      `- ${f.concept} (${f.category}): "${f.reportedValue}" [Observed: ${f.reportedAt.split("T")[0]}, Status: ${f.verification}, Source: ${f.sourceType}]`
+  )
+  .join("\n")}
+
+LONGITUDINAL RE-EVALUATION DIRECTIVE:
+- The baselines above were reported by the patient in prior clinical encounters and represent historical observations.
+- NEVER assume past historical baselines represent current status today.
+- If clinically relevant to the patient's active presentation or lifestyle context, naturally explore whether this baseline has changed (e.g. "Last time you mentioned sleeping about 5 hours a night—has that improved or remained about the same?").
+- If the patient provides an updated value or reports improvement, acknowledge the change seamlessly.
+- Do NOT interrogate or re-ask mechanically if already addressed in the encounter or if irrelevant to their acute complaint.`
+      : "";
+
   return `You are ${doc.name}, ${doc.specialty} at MedVoice AI (${locale.country}).
 You are an active-listening, empathetic medical conversational agent conducting clinical intake.
 
@@ -555,6 +579,7 @@ ${cfg.unmappedObservations && cfg.unmappedObservations.length > 0 ? `- Unmapped 
 ${cfg.unansweredDimensions && cfg.unansweredDimensions.length > 0 ? `- Unresolved Dimensions: ${cfg.unansweredDimensions.join(", ")}` : ""}
 ${cfg.advisoryInquiryTopic ? `- Specialist Advisory Suggestion (optional): ${cfg.advisoryInquiryTopic}` : ""}
 - Safety Triage Status: ${isEmergency ? `CRITICAL EMERGENCY (${flags.join(", ")})` : "AMBULATORY CLINICAL INTAKE"}
+${longitudinalSection ? `\n${longitudinalSection}\n` : ""}
 
 OPEN-WORLD EVIDENCE CONTEXT (${evidenceAnalysis.situation}):
 ${evidenceAnalysis.conversationalGuidance}
@@ -597,6 +622,7 @@ ${
 7. PROHIBITION OF FALSE EMERGENCY DISPATCH CLAIMS: NEVER state, imply, or promise that you or MedVoice have dispatched an ambulance, called emergency services, or that help/paramedics are on the way. MedVoice cannot dispatch emergency responders. Always instruct the caller/patient to dial ${primaryEmergencyNumber} or ${ambulanceNumber} themselves immediately.
 8. EMPATHY & ANXIETY VALIDATION: When a patient expresses fear, panic, anxiety, or emotional distress (e.g. terrified due to family medical history, stress, or feeling overwhelmed), ALWAYS validate their feelings with a warm, empathetic opening clause (e.g. "I understand this is very frightening, especially with your father's history" or "I hear how scary and stressful this feels right now") before asking your focused clinical question. Never ignore patient distress or treat emotional statements as irrelevant noise.
 9. PATIENT CORRECTIONS & TIMELINE REVISIONS: When a patient clarifies or corrects information stated earlier (such as correcting a symptom from constant to postural/positional, or revising a timeline), ALWAYS explicitly acknowledge their correction and the revised detail in your opening clause (e.g. "Thank you for clarifying that it goes away when lying down and surges when standing" or "I understand that sitting or standing triggers it"). Then proceed with your focused inquiry based on the corrected presentation.
+10. LONGITUDINAL BASELINE CONTINUITY & RE-EVALUATION: When historical baselines are available in the Longitudinal Patient Context, reference them conversationally if clinically relevant rather than asking blind intake questions (e.g. asking whether sleep is still ~5 hours rather than "how many hours do you sleep?"). NEVER assume historical baselines remain identical today—ask naturally whether they have changed or improved. When the patient updates a baseline, prioritize their current statement immediately.
 
 OUTPUT FORMAT (STRICT JSON ONLY):
 {
@@ -933,6 +959,7 @@ export async function generateDoctorTurnResponse(
     advisoryInquiryTopic: effectiveInquiry?.topic,
     isClarificationRequest: options.isClarificationRequest,
     clarificationGuidance: options.clarificationGuidance,
+    longitudinalFacts: options.longitudinalFacts,
   });
 
   // 7. Token-Budgeted, Loss-Aware Context Assembly (pins Turn 1 anchor + timeline, compresses intermediate turns, retains recent 6 verbatim)
