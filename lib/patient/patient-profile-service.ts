@@ -152,13 +152,15 @@ export class PatientProfileService {
 
   /**
    * Retrieve the user's primary self profile (Single-Patient MVP Model).
+   * Invariant: Never fall back to an arbitrary dependent profile (e.g. parent/child).
+   * If no self-profile exists, returns null so a dedicated self-profile can be created.
    */
   public static async getSelfProfile(userId: string): Promise<PatientProfile | null> {
     if (!userId || userId === "unauthenticated") return null;
     const profile = await this.getProfileByRelationship(userId, "self");
     if (profile) return profile;
     const profiles = await this.listProfiles(userId);
-    return profiles.find((p) => p.relationshipToUser === "self") || profiles[0] || null;
+    return profiles.find((p) => p.relationshipToUser === "self") || null;
   }
 
   /**
@@ -438,13 +440,14 @@ export class PatientProfileService {
     let thirdPartyDetected = false;
     let thirdPartyRelation: "mother" | "child" | "third_party" | undefined = undefined;
 
-    if (/\b(?:my\s+(?:mother|mom|mum)|her\s+chest|she\s+has|she\s+is\s+having)\b/i.test(text)) {
+    // Comprehensive detection of third-party mentions (parents, grandparents, children, siblings, extended family, partners, third persons)
+    if (/\b(?:my\s+(?:mother|mom|mum|mama)|her\s+(?:chest|blood\s*sugar|temperature|symptoms|arm|head|throat)|she\s+(?:has|is\s+having|feels|fell|complained|is\s+complaining))\b/i.test(text)) {
       thirdPartyDetected = true;
       thirdPartyRelation = "mother";
-    } else if (/\b(?:my\s+(?:child|baby|son|daughter)|he\s+is\s+having\s+fever|she\s+fell)\b/i.test(text)) {
+    } else if (/\b(?:my\s+(?:child|baby|infant|toddler|son|daughter|kid|grandchild|grandson|granddaughter)|he\s+is\s+having\s+fever|she\s+fell)\b/i.test(text)) {
       thirdPartyDetected = true;
       thirdPartyRelation = "child";
-    } else if (/\b(?:my\s+(?:father|dad|husband|wife|friend|partner|brother|sister))\b/i.test(text)) {
+    } else if (/\b(?:my\s+(?:father|dad|papa|parent|parents|grandmother|grandma|granny|nana|grandfather|grandpa|granddad|grandparent|grandparents|brother|sister|sibling|siblings|uncle|aunt|auntie|aunty|cousin|nephew|niece|husband|wife|spouse|partner|fianc[eé]e?|boyfriend|girlfriend|roommate|flatmate|colleague|coworker|neighbor|friend|patient|client)|(?:his|their)\s+(?:chest|blood\s*sugar|temperature|symptoms|arm|head|throat)|(?:he|they)\s+(?:has|is\s+having|feels|fell|complained|is\s+complaining)|(?:someone\s+else|another\s+person))\b/i.test(text)) {
       thirdPartyDetected = true;
       thirdPartyRelation = "third_party";
     }

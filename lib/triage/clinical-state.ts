@@ -352,7 +352,7 @@ export class ControlledFactReconciliationEngine {
                         /\b(pain|nausea|fatigue)\b/i.test(conceptKey) ? "subjective_symptom" : "observed_behavior",
         },
         value: cand.value,
-        normalizedText: cand.normalizedText || `${cand.concept}: ${assertionStatus}`,
+        normalizedText: cand.normalizedText || (cand as any).evidenceSpan || (cand as any).sourceUtterance || `${cand.concept}: ${assertionStatus}`,
         confidence: isUncertain ? 0.6 : 0.95,
         requiresReconfirmation: isUncertain,
         notes: cand.notes,

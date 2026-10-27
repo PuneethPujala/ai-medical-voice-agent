@@ -387,6 +387,7 @@ export async function POST(request: Request) {
       status: requestedStatus,
     } = body;
 
+    let boundProfileId: string | undefined = undefined;
     if (patientProfileId && typeof patientProfileId === "string") {
       const profile = await PatientProfileService.getProfileById(patientProfileId, effectiveUserId);
       if (!profile && auth.role !== "admin") {
@@ -398,6 +399,22 @@ export async function POST(request: Request) {
           },
           { status: 403 }
         );
+      }
+      if (profile && profile.relationshipToUser !== "self" && auth.role !== "admin") {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Invalid profile binding: In single-patient MVP, consultations must reference the user's authorized self profile.",
+            code: "NON_SELF_PROFILE_FORBIDDEN",
+          },
+          { status: 400 }
+        );
+      }
+      boundProfileId = profile?.id || patientProfileId;
+    } else if (effectiveUserId && effectiveUserId !== "unauthenticated") {
+      const selfProfile = await PatientProfileService.getSelfProfile(effectiveUserId);
+      if (selfProfile) {
+        boundProfileId = selfProfile.id;
       }
     }
 
@@ -629,7 +646,7 @@ export async function POST(request: Request) {
       }
 
       const updateData: any = {
-        patientProfileId: patientProfileId !== undefined ? patientProfileId : existingRecord.patientProfileId,
+        patientProfileId: boundProfileId !== undefined ? boundProfileId : existingRecord.patientProfileId,
         patientName,
         patientAge: patientAge ? String(patientAge) : existingRecord.patientAge,
         patientGender: patientGender ?? existingRecord.patientGender,
@@ -786,7 +803,7 @@ export async function POST(request: Request) {
 
     const newRecord = {
       id,
-      patientProfileId,
+      patientProfileId: boundProfileId,
       userId: effectiveUserId,
       patientName,
       patientAge: patientAge ? String(patientAge) : undefined,
