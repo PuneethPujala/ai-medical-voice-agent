@@ -151,6 +151,17 @@ export class PatientProfileService {
   }
 
   /**
+   * Retrieve the user's primary self profile (Single-Patient MVP Model).
+   */
+  public static async getSelfProfile(userId: string): Promise<PatientProfile | null> {
+    if (!userId || userId === "unauthenticated") return null;
+    const profile = await this.getProfileByRelationship(userId, "self");
+    if (profile) return profile;
+    const profiles = await this.listProfiles(userId);
+    return profiles.find((p) => p.relationshipToUser === "self") || profiles[0] || null;
+  }
+
+  /**
    * Retrieve a profile for a user by relationship (e.g. "self", "mother", "child").
    */
   public static async getProfileByRelationship(
@@ -404,68 +415,58 @@ export class PatientProfileService {
   }
 
   /**
-   * Resolves the target patient profile based on caller utterance and optional explicit inputs.
-   * Ensures caller vs patient identity separation (e.g. son discussing mother).
+   * Resolves the target patient profile for clinical consultation.
+   * Single-Patient MVP Model:
+   * - One account = one patient profile ("self").
+   * - The consultation is strictly locked to the authenticated user's self profile.
+   * - Utterances mentioning third parties (e.g. "my mother", "my child") do NOT switch
+   *   the consultation profile or contaminate the user's longitudinal history.
    */
   public static async resolveTargetPatientProfile(
     userId?: string,
     callerUtterance: string = "",
-    requestedPatientId?: string,
-    requestedRelationship?: string
+    _requestedPatientId?: string,
+    _requestedRelationship?: string
   ): Promise<{
     profile: PatientProfile | null;
     inferredSubject: "self" | "mother" | "child" | "third_party";
+    thirdPartyDetected?: boolean;
+    thirdPartyRelation?: "mother" | "child" | "third_party";
   }> {
-    // 1. Determine inferred subject from explicit request or acoustic speech cues
-    let inferredSubject: "self" | "mother" | "child" | "third_party" = "self";
+    // Detect if utterance discusses someone other than the account holder
+    const text = callerUtterance.toLowerCase();
+    let thirdPartyDetected = false;
+    let thirdPartyRelation: "mother" | "child" | "third_party" | undefined = undefined;
 
-    if (requestedRelationship) {
-      const rel = requestedRelationship.toLowerCase();
-      if (rel === "mother" || rel === "parent") inferredSubject = "mother";
-      else if (rel === "child" || rel === "son" || rel === "daughter" || rel === "baby") inferredSubject = "child";
-      else if (rel === "other" || rel === "spouse") inferredSubject = "third_party";
-      else inferredSubject = "self";
-    } else {
-      const text = callerUtterance.toLowerCase();
-      if (/\b(?:my\s+mother|my\s+mom|her\s+chest|she\s+has|she\s+is\s+having|my\s+mum)\b/i.test(text)) {
-        inferredSubject = "mother";
-      } else if (/\b(?:my\s+child|my\s+baby|my\s+son|my\s+daughter|he\s+is\s+having\s+fever|she\s+fell)\b/i.test(text)) {
-        inferredSubject = "child";
-      } else if (/\b(?:my\s+father|my\s+dad|my\s+husband|my\s+wife|my\s+friend|he\s+has)\b/i.test(text)) {
-        inferredSubject = "third_party";
-      }
+    if (/\b(?:my\s+(?:mother|mom|mum)|her\s+chest|she\s+has|she\s+is\s+having)\b/i.test(text)) {
+      thirdPartyDetected = true;
+      thirdPartyRelation = "mother";
+    } else if (/\b(?:my\s+(?:child|baby|son|daughter)|he\s+is\s+having\s+fever|she\s+fell)\b/i.test(text)) {
+      thirdPartyDetected = true;
+      thirdPartyRelation = "child";
+    } else if (/\b(?:my\s+(?:father|dad|husband|wife|friend|partner|brother|sister))\b/i.test(text)) {
+      thirdPartyDetected = true;
+      thirdPartyRelation = "third_party";
     }
 
     if (!userId || userId === "unauthenticated") {
-      return { profile: null, inferredSubject };
+      return {
+        profile: null,
+        inferredSubject: "self",
+        thirdPartyDetected,
+        thirdPartyRelation,
+      };
     }
 
-    // 2. Fetch specific profile if requested
-    if (requestedPatientId) {
-      const profile = await this.getProfileById(requestedPatientId, userId);
-      if (profile) {
-        return { profile, inferredSubject };
-      }
-    }
+    // Single-Patient Model: Always resolve the user's primary self profile
+    const selfProfile = await this.getSelfProfile(userId);
 
-    // 3. Resolve by subject relationship
-    if (inferredSubject === "mother") {
-      const motherProfile =
-        (await this.getProfileByRelationship(userId, "mother")) ||
-        (await this.getProfileByRelationship(userId, "parent"));
-      if (motherProfile) {
-        return { profile: motherProfile, inferredSubject };
-      }
-    } else if (inferredSubject === "child") {
-      const childProfile = await this.getProfileByRelationship(userId, "child");
-      if (childProfile) {
-        return { profile: childProfile, inferredSubject };
-      }
-    }
-
-    // Default to self profile
-    const selfProfile = await this.getProfileByRelationship(userId, "self");
-    return { profile: selfProfile, inferredSubject };
+    return {
+      profile: selfProfile,
+      inferredSubject: "self", // Consultation is locked to self
+      thirdPartyDetected,
+      thirdPartyRelation,
+    };
   }
 }
 

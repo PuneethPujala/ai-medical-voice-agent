@@ -12,11 +12,7 @@ const PHI_RESPONSE_HEADERS = {
 
 /**
  * GET /api/patient/profile
- * Retrieves saved profile(s) for the authenticated user.
- * Supports:
- * - ?all=true -> returns all profiles (self, mother, child, etc.)
- * - ?relationship=mother -> returns profile for specific family member
- * - default -> returns "self" profile
+ * Retrieves the single self-profile for the authenticated user (Single-Patient Model).
  */
 export async function GET(request: Request) {
   const requestId = request.headers.get("x-request-id") || crypto.randomUUID();
@@ -35,23 +31,7 @@ export async function GET(request: Request) {
       );
     }
 
-    const { searchParams } = new URL(request.url);
-    const getAll = searchParams.get("all") === "true";
-    const relationship = searchParams.get("relationship") || "self";
-    const profileId = searchParams.get("id");
-
-    let profile = null;
-    let profiles: any[] = [];
-
-    if (getAll) {
-      profiles = await PatientProfileService.listProfiles(auth.userId);
-      profile = profiles.find((p) => p.relationshipToUser === "self") || profiles[0] || null;
-    } else if (profileId) {
-      profile = await PatientProfileService.getProfileById(profileId, auth.userId);
-    } else {
-      profile = await PatientProfileService.getProfileByRelationship(auth.userId, relationship);
-      profiles = await PatientProfileService.listProfiles(auth.userId);
-    }
+    const profile = await PatientProfileService.getSelfProfile(auth.userId);
 
     await logAuditEventAsync({
       actorId: auth.userId,
@@ -60,14 +40,14 @@ export async function GET(request: Request) {
       resourceType: "patient",
       resourceId: profile?.id || auth.userId,
       status: "SUCCESS",
-      metadata: { relationship, getAll, found: Boolean(profile), requestId },
+      metadata: { found: Boolean(profile), requestId },
     });
 
     return NextResponse.json(
       {
         success: true,
         profile,
-        profiles,
+        profiles: profile ? [profile] : [],
         requestId,
       },
       { headers: { ...PHI_RESPONSE_HEADERS, "x-request-id": requestId } }
@@ -138,6 +118,9 @@ export async function POST(request: Request) {
         { status: 400, headers: { "x-request-id": requestId } }
       );
     }
+
+    // In single-patient MVP, profile always represents the authenticated patient ("self")
+    body.relationshipToUser = "self";
 
     // Save profile via service layer
     const savedProfile = await PatientProfileService.upsertProfile(auth.userId, body);

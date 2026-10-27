@@ -40,14 +40,6 @@ import { ArchitecturalBrandLedgerFooter } from "../_components/ArchitecturalBran
 import { PatientProfile, PatientMedication, DrugAllergy } from "@/lib/clinical-knowledge/types";
 import { clientProfileCache, isProfileFormDirty } from "@/lib/patient/profile-cache";
 
-const RELATIONSHIPS = [
-  { value: "self", label: "Myself", description: "Personal primary record" },
-  { value: "parent", label: "Parent", description: "Mother / Father / Dependent" },
-  { value: "child", label: "Child", description: "Son / Daughter / Pediatric" },
-  { value: "spouse", label: "Spouse", description: "Partner / Next of kin" },
-  { value: "other", label: "Other", description: "Dependent / Extended family" }
-];
-
 const COMMON_CONDITIONS = [
   "Hypertension",
   "Type 2 Diabetes",
@@ -179,17 +171,13 @@ export default function PatientProfilePage() {
 
   // Data Lifecycle States
   const [loading, setLoading] = useState<boolean>(true);
-  const [selectedRelationship, setSelectedRelationship] = useState<string>("self");
   const [saveStatus, setSaveStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState<string>("");
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
 
-  // Baselines and Form state
-  const [baselineProfiles, setBaselineProfiles] = useState<Record<string, PatientProfile | null>>({});
+  // Baselines and Form state (Single-Patient Model)
+  const [baselineProfile, setBaselineProfile] = useState<PatientProfile | null>(null);
   const [formData, setFormData] = useState<Partial<PatientProfile>>(EMPTY_PROFILE_TEMPLATE);
-
-  // Unsaved changes confirmation modal
-  const [pendingSwitchRelationship, setPendingSwitchRelationship] = useState<string | null>(null);
 
   // Collapsible section toggles
   const [sectionsOpen, setSectionsOpen] = useState({
@@ -210,22 +198,21 @@ export default function PatientProfilePage() {
     setSectionsOpen((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  // Determine if form is dirty relative to baseline for currently active relationship
+  // Determine if form is dirty relative to baseline for self-profile
   const isDirty = useMemo(() => {
-    const currentBaseline = baselineProfiles[selectedRelationship] || null;
-    return isProfileFormDirty(currentBaseline, formData);
-  }, [baselineProfiles, selectedRelationship, formData]);
+    return isProfileFormDirty(baselineProfile, formData);
+  }, [baselineProfile, formData]);
 
-  // Load profile data on mount / user change
+  // Load single self-profile data on mount / user change
   useEffect(() => {
     let isMounted = true;
 
-    async function loadAllProfiles() {
+    async function loadSelfProfile() {
       // Check in-memory cache first
       const cachedSelf = clientProfileCache.get(userId, "self");
       if (cachedSelf && isMounted) {
         setFormData({ ...cachedSelf });
-        setBaselineProfiles((prev) => ({ ...prev, self: cachedSelf }));
+        setBaselineProfile(cachedSelf);
         if (cachedSelf.updatedAt) {
           setLastSavedAt(new Date(cachedSelf.updatedAt).toLocaleTimeString());
         }
@@ -235,107 +222,48 @@ export default function PatientProfilePage() {
       }
 
       try {
-        const res = await fetch("/api/patient/profile?all=true");
+        const res = await fetch("/api/patient/profile");
         if (!res.ok) {
           throw new Error(`Failed to load profile (${res.status})`);
         }
         const data = await res.json();
 
-        if (isMounted && data.success && Array.isArray(data.profiles)) {
-          const newBaselines: Record<string, PatientProfile | null> = {};
+        if (isMounted && data.success && data.profile) {
+          const profile: PatientProfile = data.profile;
+          setBaselineProfile(profile);
+          clientProfileCache.set(userId, "self", profile);
 
-          data.profiles.forEach((p: PatientProfile) => {
-            const relKey = (p.relationshipToUser || "self").toLowerCase();
-            newBaselines[relKey] = p;
-            clientProfileCache.set(userId, relKey, p);
-          });
-
-          setBaselineProfiles(newBaselines);
-
-          // If user hasn't edited anything yet, populate form with active relationship
-          const activeRecord = newBaselines[selectedRelationship];
-          if (activeRecord) {
-            setFormData({ ...activeRecord });
-            if (activeRecord.updatedAt) {
-              setLastSavedAt(new Date(activeRecord.updatedAt).toLocaleTimeString());
-            }
+          // If no local pending draft, update form data
+          const localDraft = clientProfileCache.getDraft(userId, "self");
+          if (localDraft) {
+            setFormData({ ...localDraft });
           } else {
-            // Setup fresh draft
-            setFormData({
-              ...EMPTY_PROFILE_TEMPLATE,
-              name: selectedRelationship === "self" ? (user?.fullName || user?.firstName || "") : "",
-              relationshipToUser: selectedRelationship as any
-            });
+            setFormData({ ...profile });
           }
+
+          if (profile.updatedAt) {
+            setLastSavedAt(new Date(profile.updatedAt).toLocaleTimeString());
+          }
+        } else if (isMounted) {
+          setFormData({
+            ...EMPTY_PROFILE_TEMPLATE,
+            name: user?.fullName || user?.firstName || "",
+            relationshipToUser: "self",
+          });
         }
       } catch (err: any) {
         console.warn("[Profile] Server load exception (using local baseline):", err);
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     }
 
-    loadAllProfiles();
+    loadSelfProfile();
 
     return () => {
       isMounted = false;
     };
-  }, [isUserLoaded, userId]);
-
-  // Switch between patient relationships safely
-  const performRelationshipSwitch = useCallback((targetRel: string) => {
-    setSelectedRelationship(targetRel);
-    setSaveStatus("idle");
-    setErrorMessage("");
-
-    // Check if there is a pending in-memory draft first
-    const draft = clientProfileCache.getDraft(userId, targetRel);
-    if (draft) {
-      setFormData({ ...draft });
-      return;
-    }
-
-    // Check baseline profile for target relationship
-    const record = baselineProfiles[targetRel] || clientProfileCache.get(userId, targetRel);
-    if (record) {
-      setFormData({ ...record });
-      if (record.updatedAt) {
-        setLastSavedAt(new Date(record.updatedAt).toLocaleTimeString());
-      }
-    } else {
-      // New profile for this relationship
-      setFormData({
-        ...EMPTY_PROFILE_TEMPLATE,
-        name: targetRel === "self" ? (user?.fullName || user?.firstName || "") : "",
-        relationshipToUser: targetRel as any
-      });
-      setLastSavedAt(null);
-    }
-  }, [userId, baselineProfiles, user]);
-
-  const handleRelationshipClick = (targetRel: string) => {
-    if (targetRel === selectedRelationship) return;
-
-    if (isDirty) {
-      // Guard against silent loss of unsaved changes
-      setPendingSwitchRelationship(targetRel);
-    } else {
-      performRelationshipSwitch(targetRel);
-    }
-  };
-
-  const confirmDiscardAndSwitch = () => {
-    if (pendingSwitchRelationship) {
-      // Clear draft for the abandoned relationship
-      clientProfileCache.clearDraft(userId, selectedRelationship);
-      performRelationshipSwitch(pendingSwitchRelationship);
-      setPendingSwitchRelationship(null);
-    }
-  };
-
-  const cancelSwitch = () => {
-    setPendingSwitchRelationship(null);
-  };
+  }, [isUserLoaded, userId, user]);
 
   // DOB and Age handling
   const handleDobChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -431,19 +359,19 @@ export default function PatientProfilePage() {
     });
   };
 
-  // Save profile with fault-tolerant draft preservation & retry
+  // Save profile with fault-tolerant draft preservation & retry (Single-Patient Model)
   const handleSave = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setSaveStatus("saving");
     setErrorMessage("");
 
     // Cache current form as draft so user work is never lost if network drops
-    clientProfileCache.setDraft(userId, selectedRelationship, formData);
+    clientProfileCache.setDraft(userId, "self", formData);
 
     try {
       const payload = {
         ...formData,
-        relationshipToUser: selectedRelationship
+        relationshipToUser: "self"
       };
 
       const res = await fetch("/api/patient/profile", {
@@ -459,13 +387,10 @@ export default function PatientProfilePage() {
 
       // Success: update cache & baseline
       const saved: PatientProfile = data.profile;
-      clientProfileCache.set(userId, selectedRelationship, saved);
-      clientProfileCache.clearDraft(userId, selectedRelationship);
+      clientProfileCache.set(userId, "self", saved);
+      clientProfileCache.clearDraft(userId, "self");
 
-      setBaselineProfiles((prev) => ({
-        ...prev,
-        [selectedRelationship]: saved
-      }));
+      setBaselineProfile(saved);
       setFormData({ ...saved });
 
       setSaveStatus("saved");
@@ -483,9 +408,9 @@ export default function PatientProfilePage() {
   };
 
   const handleResetToBaseline = () => {
-    const baseline = baselineProfiles[selectedRelationship] || EMPTY_PROFILE_TEMPLATE;
+    const baseline = baselineProfile || EMPTY_PROFILE_TEMPLATE;
     setFormData({ ...baseline });
-    clientProfileCache.clearDraft(userId, selectedRelationship);
+    clientProfileCache.clearDraft(userId, "self");
     setSaveStatus("idle");
     setErrorMessage("");
   };
@@ -546,29 +471,9 @@ export default function PatientProfilePage() {
                   )}
                 </div>
 
-                <div className="flex flex-wrap items-center gap-1.5 p-1 bg-[#F3F4F6] border border-[#E5E7EB] rounded-2xl w-fit">
-                  {RELATIONSHIPS.map((rel) => {
-                    const isActive = selectedRelationship === rel.value;
-                    const hasPending = clientProfileCache.hasPendingEdits(userId, rel.value);
-
-                    return (
-                      <button
-                        key={rel.value}
-                        type="button"
-                        onClick={() => handleRelationshipClick(rel.value)}
-                        className={`relative px-3.5 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex items-center gap-1.5 ${
-                          isActive
-                            ? "bg-[#05070F] text-white shadow-xs"
-                            : "text-[#475569] hover:text-[#05070F] hover:bg-white/60"
-                        }`}
-                      >
-                        <span>{rel.label}</span>
-                        {hasPending && !isActive && (
-                          <span className="w-1.5 h-1.5 rounded-full bg-amber-500" title="Unsaved changes in this profile" />
-                        )}
-                      </button>
-                    );
-                  })}
+                <div className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-[#F3F4F6] border border-[#E5E7EB] rounded-xl w-fit text-xs font-semibold text-[#05070F]">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981]" />
+                  <span>Personal Account Holder (Self)</span>
                 </div>
               </div>
             </div>
@@ -1311,7 +1216,7 @@ export default function PatientProfilePage() {
                           Unsaved Changes
                         </span>
                         <span className="px-2 py-0.5 rounded-md bg-white/10 text-[10px] font-mono uppercase tracking-wide text-white/80">
-                          {selectedRelationship === "self" ? "Myself" : selectedRelationship}
+                          Self (Personal)
                         </span>
                       </div>
                       <span className="text-[11px] text-[#94A3B8]">
@@ -1363,50 +1268,6 @@ export default function PatientProfilePage() {
         )}
 
       </main>
-
-      {/* ========================================================================= */}
-      {/* UNSAVED CHANGES CONFIRMATION MODAL                                        */}
-      {/* ========================================================================= */}
-      {pendingSwitchRelationship && (
-        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border border-[#E5E7EB] rounded-3xl p-6 max-w-md w-full shadow-2xl flex flex-col gap-4">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-700">
-                <AlertTriangle className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-[#05070F]">
-                  Unsaved Changes in Draft
-                </h3>
-                <p className="text-xs text-[#64748B]">
-                  Switching to another patient profile
-                </p>
-              </div>
-            </div>
-
-            <p className="text-sm text-[#475569] leading-relaxed">
-              You have uncommitted edits in your <strong className="text-[#05070F] capitalize">{selectedRelationship}</strong> profile. Would you like to discard them and switch to <strong className="text-[#05070F] capitalize">{pendingSwitchRelationship}</strong>, or keep editing?
-            </p>
-
-            <div className="flex items-center justify-end gap-2.5 pt-2">
-              <button
-                type="button"
-                onClick={cancelSwitch}
-                className="px-4 py-2 rounded-xl text-xs font-semibold text-[#475569] hover:bg-[#F1F5F9] transition-colors"
-              >
-                Keep Editing
-              </button>
-              <button
-                type="button"
-                onClick={confirmDiscardAndSwitch}
-                className="px-4 py-2 rounded-xl text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white transition-colors"
-              >
-                Discard & Switch
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       <ArchitecturalBrandLedgerFooter />
     </div>

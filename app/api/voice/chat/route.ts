@@ -777,9 +777,11 @@ export async function POST(request: Request) {
       isLiveDsp: effectiveAcoustics?.isLiveDsp,
     });
 
-    // Resolve target patient profile strictly scoped to authenticated user
+    // Resolve target patient profile strictly scoped to authenticated user (Single-Patient Model)
     let activeProfile: PatientProfile | null = null;
     inferredSubject = "self";
+    let isThirdPartyMention = false;
+    let thirdPartyRelation: string | undefined = undefined;
 
     if (effectiveUserId !== "unauthenticated") {
       const resolved = await PatientProfileService.resolveTargetPatientProfile(
@@ -792,7 +794,9 @@ export async function POST(request: Request) {
       if (resolved.profile && resolved.profile.userId === effectiveUserId) {
         activeProfile = resolved.profile;
       }
-      inferredSubject = resolved.inferredSubject;
+      inferredSubject = "self"; // Locked to self in single-patient model
+      isThirdPartyMention = Boolean(resolved.thirdPartyDetected);
+      thirdPartyRelation = resolved.thirdPartyRelation;
     }
 
     let longitudinalFacts: LongitudinalPatientFact[] = [];
@@ -1061,7 +1065,7 @@ export async function POST(request: Request) {
     const callerProfile: CallerProfile = {
       id: effectiveUserId || "caller-session",
       name: patientName,
-      relationshipToPatient: inferredSubject === "mother" ? "child" : inferredSubject === "child" ? "parent" : "self",
+      relationshipToPatient: "self",
     };
 
     const llmResult = await generateDoctorTurnResponse({
@@ -1076,10 +1080,11 @@ export async function POST(request: Request) {
       careNetworkSummary,
       callerProfile,
       patientProfile: activeProfile || undefined,
-      targetSubject: inferredSubject,
+      targetSubject: "self",
       isClarificationRequest: turnResult.action === "CLARIFY",
       clarificationGuidance: turnResult.action === "CLARIFY" ? turnResult.doctorReply : undefined,
       longitudinalFacts,
+      thirdPartyMention: isThirdPartyMention ? thirdPartyRelation || "family member" : undefined,
     });
 
     // LLM-First Dialogue Resolution:
@@ -1141,7 +1146,7 @@ export async function POST(request: Request) {
         concept: fact.concept,
         assertionStatus: fact.assertionStatus,
         temporality: fact.temporalScope === "historical" ? "historical" : "current",
-        attribution: fact.source === "caregiver_reported" ? "caregiver_report" : (callerForRecon.relationshipToPatient === "child" ? "third_party" : "patient"),
+        attribution: isThirdPartyMention ? "third_party" : (fact.source === "caregiver_reported" ? "caregiver_report" : "patient"),
         coverage: "assessed",
         sourceUtterance: fact.normalizedText || `${fact.concept}: ${fact.assertionStatus}`,
         sourceSpeaker: fact.source === "caregiver_reported" ? "caregiver" : "patient",
@@ -1151,6 +1156,9 @@ export async function POST(request: Request) {
       }));
 
       for (const fact of recon.acceptedFacts) {
+        // Prevent third-party symptoms from contaminating the account holder's personal history slots
+        if (isThirdPartyMention) continue;
+
         const factText = `${fact.concept}: ${fact.assertionStatus}`;
         if (!turnResult.state.slots.known_facts.includes(factText)) {
           turnResult.state.slots.known_facts.push(factText);

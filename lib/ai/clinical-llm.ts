@@ -42,6 +42,7 @@ export interface GenerateTurnOptions {
   isClarificationRequest?: boolean;
   clarificationGuidance?: string;
   longitudinalFacts?: LongitudinalPatientFact[];
+  thirdPartyMention?: string;
 }
 
 export interface GeneratedTurnResult {
@@ -454,6 +455,7 @@ export interface SystemPromptConfig {
   isClarificationRequest?: boolean;
   clarificationGuidance?: string;
   longitudinalFacts?: LongitudinalPatientFact[];
+  thirdPartyMention?: string;
 }
 
 export function buildDoctorSystemPrompt(
@@ -472,6 +474,7 @@ export function buildDoctorSystemPrompt(
       "ageDisplay" in doctorOrConfig ||
       "evidenceAnalysis" in doctorOrConfig ||
       "longitudinalFacts" in doctorOrConfig ||
+      "thirdPartyMention" in doctorOrConfig ||
       "doctor" in doctorOrConfig)
   ) {
     cfg = doctorOrConfig as Partial<SystemPromptConfig>;
@@ -579,7 +582,17 @@ ${cfg.unmappedObservations && cfg.unmappedObservations.length > 0 ? `- Unmapped 
 ${cfg.unansweredDimensions && cfg.unansweredDimensions.length > 0 ? `- Unresolved Dimensions: ${cfg.unansweredDimensions.join(", ")}` : ""}
 ${cfg.advisoryInquiryTopic ? `- Specialist Advisory Suggestion (optional): ${cfg.advisoryInquiryTopic}` : ""}
 - Safety Triage Status: ${isEmergency ? `CRITICAL EMERGENCY (${flags.join(", ")})` : "AMBULATORY CLINICAL INTAKE"}
-${longitudinalSection ? `\n${longitudinalSection}\n` : ""}
+${longitudinalSection ? `\n${longitudinalSection}\n` : ""}${
+  cfg.thirdPartyMention
+    ? `
+THIRD-PARTY CLINICAL CONTEXT & PATIENT RECORD BOUNDARY:
+The patient's current statement raises concerns about someone else (${cfg.thirdPartyMention}).
+- DO NOT record or attribute these symptoms to the account holder's personal health record.
+- If acute or dangerous symptoms are reported, provide clear emergency directions immediately without hesitation.
+- Briefly clarify that this visit is bound to the account holder's personal chart, while answering their urgent concern empathetically.
+`
+    : ""
+}
 
 OPEN-WORLD EVIDENCE CONTEXT (${evidenceAnalysis.situation}):
 ${evidenceAnalysis.conversationalGuidance}
@@ -960,6 +973,7 @@ export async function generateDoctorTurnResponse(
     isClarificationRequest: options.isClarificationRequest,
     clarificationGuidance: options.clarificationGuidance,
     longitudinalFacts: options.longitudinalFacts,
+    thirdPartyMention: options.thirdPartyMention,
   });
 
   // 7. Token-Budgeted, Loss-Aware Context Assembly (pins Turn 1 anchor + timeline, compresses intermediate turns, retains recent 6 verbatim)

@@ -304,11 +304,35 @@ async function runMultiVisitLongitudinalAcceptanceBattery() {
   }
 
   // ---------------------------------------------------------------------------
-  // SCENARIO 6: Multi-Subject Separation (Mother vs Self)
+  // SCENARIO 6: Multi-Subject Separation & Third-Party Record Protection
   // ---------------------------------------------------------------------------
-  console.log("\n[Scenario 6] Multi-Subject Separation: Caregiver vs Family Member Data Isolation");
+  console.log("\n[Scenario 6] Multi-Subject Separation: Third-Party Mentions Blocked & Vitals Isolated");
   try {
-    // Record resting heart rate for Alice's mother
+    // 1. Patient mentions a relative's vitals during self consultation (tagged attribution: "third_party")
+    const thirdPartyFact = createAttributedFact({
+      concept: "resting_heart_rate",
+      sourceUtterance: "My mother's resting heart rate is normally 74 bpm.",
+      sourceSpeaker: "patient",
+      attribution: "third_party",
+      turnId: 4,
+    });
+
+    const thirdPartyExtraction = extractLongitudinalCandidate(thirdPartyFact, {
+      targetPatientProfileId: aliceProfile.id,
+      targetSubjectRelation: "self",
+      sourceConsultationId: "consultation_alice_visit2",
+      sourceTurnId: "turn_4",
+    });
+
+    // In Single-Patient MVP, third-party facts are disqualified from promoting to personal history
+    assert.strictEqual(thirdPartyExtraction.eligible, false, "Third-party vitals must be ineligible for personal profile storage");
+    assert.ok(
+      thirdPartyExtraction.rejectionReason?.includes("third_party"),
+      "Rejection reason must clearly cite third_party attribution"
+    );
+
+    // 2. Legacy / historical profile isolation: Even if caregiver record exists under another ID,
+    // ensure facts recorded to that ID never cross-contaminate Alice's self profile.
     const motherFact = createAttributedFact({
       concept: "resting_heart_rate",
       sourceUtterance: "Her resting heart rate is normally 74 bpm.",
@@ -331,7 +355,7 @@ async function runMultiVisitLongitudinalAcceptanceBattery() {
 
     // Check Alice Self active facts: Must have only sleep, NO heart rate
     const aliceActive = await LongitudinalFactService.getActiveFacts(userIdAlice, aliceProfile.id);
-    assert.ok(!aliceActive.some((f) => f.concept === "resting_heart_rate"));
+    assert.ok(!aliceActive.some((f) => f.concept === "resting_heart_rate"), "Alice self active facts must not contain mother's heart rate");
 
     // Check Mother active facts: Must have heart rate, NO sleep
     const motherActive = await LongitudinalFactService.getActiveFacts(userIdAlice, aliceMotherProfile.id);
@@ -339,7 +363,7 @@ async function runMultiVisitLongitudinalAcceptanceBattery() {
     assert.strictEqual(motherActive[0].concept, "resting_heart_rate");
     assert.strictEqual(motherActive[0].reportedValue, "74 bpm");
 
-    testPass("Multi-Subject Separation: Mother's longitudinal vitals strictly isolated from Self profile");
+    testPass("Multi-Subject Separation: Third-party mentions rejected and mother's vitals strictly isolated from Self profile");
   } catch (err) {
     testFail("Multi-Subject Separation", err);
   }
