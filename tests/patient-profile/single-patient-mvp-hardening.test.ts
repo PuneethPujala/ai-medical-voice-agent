@@ -57,7 +57,7 @@ async function runHardeningBattery() {
   setCustomDbClient(false);
   memoryProfiles.clear();
   memoryConsultations.length = 0;
-  memoryLongitudinalFacts.length = 0;
+  memoryLongitudinalFacts.clear();
 
   // ---------------------------------------------------------------------------
   // TEST 1: Finding B — Legacy Dependent Profile Protection
@@ -438,14 +438,7 @@ async function runHardeningBattery() {
     // Visit 3: Patient opens new consultation. Doctor prompt must format longitudinal context
     const doctorPrompt = buildDoctorSystemPrompt({
       patientProfile: selfProfile,
-      longitudinalFacts: activeV2.map(f => ({
-        category: f.category,
-        concept: f.concept,
-        reportedValue: f.reportedValue,
-        temporalScope: f.temporalScope,
-        reportedAt: f.reportedAt,
-        sourceType: f.sourceType,
-      })),
+      longitudinalFacts: activeV2,
       inferredSubject: "self",
     });
 
