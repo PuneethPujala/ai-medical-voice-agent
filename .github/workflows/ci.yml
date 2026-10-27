@@ -93,6 +93,14 @@ jobs:
           npx tsx tests/security-eval/durable-audit.test.ts
           npm run test:battery -- --with-db
 
+      - name: Gate 3e — Patient Profile & Longitudinal Context Batteries
+        run: |
+          npm run test:profile-persistence
+          npm run test:context-chat
+          npm run test:longitudinal-facts
+          npm run test:longitudinal-extractor
+          npm run test:longitudinal-e2e
+
       - name: Gate 4 — Clinical Safety, Red-Flag Pre-Arbiter & HL7 FHIR R4 Conformance
         run: |
           npx tsx tests/fhir-eval/fhir.test.ts
