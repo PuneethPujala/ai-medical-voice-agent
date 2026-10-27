@@ -15,7 +15,12 @@
 import assert from "assert";
 import { POST as postVoiceChat } from "../../app/api/voice/chat/route";
 import { POST as postConsultation, memoryConsultations } from "../../app/api/consultations/route";
-import { PatientProfileService, memoryProfiles } from "../../lib/patient/patient-profile-service";
+import { POST as postPatientProfile } from "../../app/api/patient/profile/route";
+import {
+  PatientProfileService,
+  memoryProfiles,
+  CannotReclassifyDependentProfileError,
+} from "../../lib/patient/patient-profile-service";
 import { LongitudinalFactService, memoryLongitudinalFacts } from "../../lib/patient/longitudinal-fact-service";
 import { extractLongitudinalCandidate } from "../../lib/patient/longitudinal-fact-extractor";
 import { buildDoctorSystemPrompt } from "../../lib/ai/clinical-llm";
@@ -109,6 +114,49 @@ async function runHardeningBattery() {
     // 1d. List profiles returns exactly 2 distinct profiles
     const allProfiles = await PatientProfileService.listProfiles(legacyUserId);
     assert.strictEqual(allProfiles.length, 2, "Both self and legacy parent profiles coexist without overwrite");
+
+    // 1e. Regression test: Submitting a legacy dependent profile's ID to POST /api/patient/profile must fail
+    const reclassifyReq = new Request("http://localhost:3000/api/patient/profile", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        ...createTestHeaders("patient", legacyUserId),
+      },
+      body: JSON.stringify({
+        id: legacyParent.id, // Attempt to reclassify Eleanor
+        name: "Marcus Vance Reclassified",
+        age: 42,
+      }),
+    });
+
+    const reclassifyRes = await postPatientProfile(reclassifyReq);
+    assert.strictEqual(reclassifyRes.status, 400, "Attempting to reclassify dependent profile via API must return 400");
+    const reclassifyJson = await reclassifyRes.json();
+    assert.strictEqual(
+      reclassifyJson.code,
+      "CANNOT_RECLASSIFY_DEPENDENT_PROFILE",
+      "API must return CANNOT_RECLASSIFY_DEPENDENT_PROFILE error code"
+    );
+
+    // 1f. Service-layer regression test: Calling upsertProfile directly with dependent ID must throw
+    let directServiceBlocked = false;
+    try {
+      await PatientProfileService.upsertProfile(legacyUserId, {
+        id: legacyParent.id,
+        relationshipToUser: "self",
+        name: "Illegal Overwrite",
+      });
+    } catch (serviceErr: any) {
+      if (serviceErr instanceof CannotReclassifyDependentProfileError) {
+        directServiceBlocked = true;
+      }
+    }
+    assert.strictEqual(directServiceBlocked, true, "upsertProfile must throw CannotReclassifyDependentProfileError");
+
+    // Verify Eleanor's profile is still strictly 'parent' and has original name
+    const finalParentCheck = await PatientProfileService.getProfileById(legacyParent.id, legacyUserId);
+    assert.strictEqual(finalParentCheck?.relationshipToUser, "parent");
+    assert.strictEqual(finalParentCheck?.name, "Eleanor Vance (Mother)");
 
     testPass("A self-profile is never created by converting a legacy dependent profile");
   } catch (err) {

@@ -24,6 +24,7 @@ export const CANONICAL_TEST_BATTERY: TestSuiteDefinition[] = [
   { id: "test:longitudinal-facts", file: "tests/patient-profile/longitudinal-fact-service.test.ts", description: "Longitudinal Fact Store & Atomic Lineage" },
   { id: "test:longitudinal-extractor", file: "tests/patient-profile/longitudinal-fact-extractor.test.ts", description: "Deterministic Longitudinal Fact Extraction Gate" },
   { id: "test:longitudinal-e2e", file: "tests/patient-profile/multi-visit-longitudinal-e2e.test.ts", description: "Multi-Visit Longitudinal Context & Clinical Reasoning E2E" },
+  { id: "test:hardening", file: "tests/patient-profile/single-patient-mvp-hardening.test.ts", description: "Single-Patient MVP Identity & Longitudinal Hardening" },
   { id: "test:consultation-lifecycle", file: "tests/security-eval/consultation-lifecycle.test.ts", description: "Consultation Lifecycle & Signing Invariants" },
   { id: "test:voice-telemetry", file: "tests/security-eval/voice-telemetry-lifecycle.test.ts", description: "Voice Telemetry Isolation & RBAC Lifecycle" },
   { id: "test:audit-checkpoint", file: "tests/security-eval/audit-checkpoint-adversarial.test.ts", description: "Audit Checkpoint Verification and Adversarial Defense" },
@@ -35,6 +36,7 @@ export const CANONICAL_TEST_BATTERY: TestSuiteDefinition[] = [
     { id: "test:persistence-audit", file: "tests/verification/persistence-and-audit-integrity.test.ts", description: "Clinical Evidence Ledger, Audit Chaining & Failure-Path Safety" },
   { id: "test:atomic-concurrency", file: "tests/security-eval/atomic-concurrency-idempotency.test.ts", description: "Atomic CAS & Unique Idempotency", requiresDatabase: true },
   { id: "test:durable-audit", file: "tests/security-eval/durable-audit.test.ts", description: "Durable SHA-256 Chained Audit Ledger", requiresDatabase: true },
+  { id: "test:longitudinal-db", file: "tests/patient-profile/longitudinal-database-persistence.test.ts", description: "Longitudinal Fact Persistence & Atomic Lineage in Live PostgreSQL", requiresDatabase: true },
   { id: "test:turn-idempotency", file: "tests/security-eval/turn-idempotency-defense.test.ts", description: "Finding 7: Turn Idempotency Defense & Atomic Fencing Battery" },
 
   // 3. Clinical Safety, Arbiters & Red Flags

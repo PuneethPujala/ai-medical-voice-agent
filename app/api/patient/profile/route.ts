@@ -1,7 +1,11 @@
 import { NextResponse } from "next/server";
 import { getAuthContext } from "@/lib/auth/rbac";
 import { logAuditEventAsync } from "@/lib/audit/audit-logger";
-import { PatientProfileService, PatientProfileDatabaseError } from "@/lib/patient/patient-profile-service";
+import {
+  PatientProfileService,
+  PatientProfileDatabaseError,
+  CannotReclassifyDependentProfileError,
+} from "@/lib/patient/patient-profile-service";
 import { sanitizeErrorMessage } from "@/lib/security/error-sanitizer";
 
 const PHI_RESPONSE_HEADERS = {
@@ -122,6 +126,22 @@ export async function POST(request: Request) {
     // In single-patient MVP, profile always represents the authenticated patient ("self")
     body.relationshipToUser = "self";
 
+    // Enforce legacy profile preservation: Never allow a dependent profile ID to be reclassified as self
+    if (body.id && typeof body.id === "string") {
+      const existingProfile = await PatientProfileService.getProfileById(body.id, auth.userId);
+      if (existingProfile && existingProfile.relationshipToUser !== "self") {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Cannot convert legacy dependent profile '${body.id}' (${existingProfile.relationshipToUser}) into a self-profile. Legacy records must remain preserved.`,
+            code: "CANNOT_RECLASSIFY_DEPENDENT_PROFILE",
+            requestId,
+          },
+          { status: 400, headers: { "x-request-id": requestId } }
+        );
+      }
+    }
+
     // Save profile via service layer
     const savedProfile = await PatientProfileService.upsertProfile(auth.userId, body);
 
@@ -152,6 +172,17 @@ export async function POST(request: Request) {
     );
   } catch (error: any) {
     console.error("[POST /api/patient/profile] Error:", error);
+    if (error instanceof CannotReclassifyDependentProfileError) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: error.message,
+          code: "CANNOT_RECLASSIFY_DEPENDENT_PROFILE",
+          requestId,
+        },
+        { status: 400, headers: { "x-request-id": requestId } }
+      );
+    }
     if (error instanceof PatientProfileDatabaseError) {
       return NextResponse.json(
         {
