@@ -90,9 +90,18 @@ async function runLiveLongitudinalDbTests() {
   }
 
   try {
-    // 0. Ensure schema & stored procedure are installed
+    // 0. Ensure schema & stored procedure are installed and verified
     console.log("\n[Setup] Running longitudinal migrations on isolated test database...");
-    await runLongitudinalMigrations(dbUrl);
+    const migrationReport = await runLongitudinalMigrations(dbUrl);
+    assert(migrationReport, "Migration report returned");
+    assert.strictEqual(migrationReport.tableExists, true, "Table exists");
+    assert.strictEqual(migrationReport.procedureExists, true, "Procedure exists");
+    assert.strictEqual(migrationReport.indexesVerified.length, 3, "All 3 indexes verified");
+    assert.strictEqual(migrationReport.timestampColumnsVerified.reported_at, "timestamp with time zone");
+    assert.strictEqual(migrationReport.timestampColumnsVerified.recorded_at, "timestamp with time zone");
+    assert.strictEqual(migrationReport.timestampColumnsVerified.last_reviewed_at, "timestamp with time zone");
+    assert.strictEqual(migrationReport.timestampColumnsVerified.superseded_at, "timestamp with time zone");
+    testPass("Schema, indexes, stored procedure, and timestamp with time zone verified on live PostgreSQL");
 
     // 1. Seed Alice profile with DPDP consent in real database
     console.log("\n[Test 1] Visit 1: Record Initial Sleep Baseline into PostgreSQL");
