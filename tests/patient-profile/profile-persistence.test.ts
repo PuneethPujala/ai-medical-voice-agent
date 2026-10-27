@@ -124,65 +124,43 @@ async function runProfilePersistenceTests() {
   }
 
   // -----------------------------------------------------------------------------
-  // Test 4: Multi-Patient Representation (Caregiver managing Self, Parent, Child)
+  // Test 4: Single-Patient MVP Model & Locked Identity
   // -----------------------------------------------------------------------------
-  console.log("\n[Group 4] Multi-Patient Separation Under Single Caregiver Account");
+  console.log("\n[Group 4] Single-Patient Model & Locked Self Identity");
   try {
-    // 1. Caregiver Self Profile
-    const caregiverSelf = await PatientProfileService.upsertProfile(userCaregiver, {
+    // 1. Primary Patient Self Profile
+    const patientSelf = await PatientProfileService.upsertProfile(userCaregiver, {
       name: "Marcus Vance",
       relationshipToUser: "self",
       age: 42,
       sexAssignedAtBirth: "male",
-      knownConditions: []
+      knownConditions: ["Hypertension"]
     });
 
-    // 2. Caregiver's Elderly Mother (Parent)
-    const caregiverMother = await PatientProfileService.upsertProfile(userCaregiver, {
-      name: "Eleanor Vance",
-      relationshipToUser: "parent",
-      dateOfBirth: "1948-03-12",
-      sexAssignedAtBirth: "female",
-      knownConditions: ["Osteoarthritis", "Type 2 Diabetes"],
-      currentMedications: [{ name: "Metformin", dose: "500mg", frequency: "twice daily" }]
+    // 2. Querying self-profile returns the single authorized identity
+    const retrievedSelf = await PatientProfileService.getSelfProfile(userCaregiver);
+    assert(retrievedSelf?.name === "Marcus Vance", "getSelfProfile retrieves the patient's primary record");
+    assert(retrievedSelf?.relationshipToUser === "self", "Profile relationship is strictly 'self'");
+    assert(retrievedSelf?.knownConditions?.includes("Hypertension") === true, "Self profile retains medical history");
+
+    // 3. Updating profile updates the single existing record instead of creating diverging branches
+    const updatedSelf = await PatientProfileService.upsertProfile(userCaregiver, {
+      clinicalNotes: "Monitors blood pressure weekly"
     });
+    assert(updatedSelf.id === patientSelf.id, "Upsert updates the patient's single identity without ID divergence");
+    assert(updatedSelf.clinicalNotes === "Monitors blood pressure weekly", "Clinical notes persisted on self record");
 
-    // 3. Caregiver's Child
-    const caregiverChild = await PatientProfileService.upsertProfile(userCaregiver, {
-      name: "Leo Vance",
-      relationshipToUser: "child",
-      dateOfBirth: "2019-07-22",
-      sexAssignedAtBirth: "male",
-      knownConditions: ["Pediatric Asthma"],
-      drugAllergies: [{ drugName: "Amoxicillin", severity: "moderate", reactionType: "allergy" }]
-    });
-
-    const allCaregiverProfiles = await PatientProfileService.listProfiles(userCaregiver);
-    assert(allCaregiverProfiles.length === 3, "Caregiver has exactly 3 separate profiles registered");
-
-    assert(caregiverSelf.id !== caregiverMother.id, "Self and Mother profiles have distinct IDs");
-    assert(caregiverMother.id !== caregiverChild.id, "Mother and Child profiles have distinct IDs");
-
-    // Verify queries by relationship return correct distinct identities
-    const retrievedMother = await PatientProfileService.getProfileByRelationship(userCaregiver, "parent");
-    assert(retrievedMother?.name === "Eleanor Vance", "Retrieved parent profile matches mother");
-    assert(retrievedMother?.knownConditions?.includes("Type 2 Diabetes") === true, "Mother profile retains diabetic history");
-
-    const retrievedChild = await PatientProfileService.getProfileByRelationship(userCaregiver, "child");
-    assert(retrievedChild?.name === "Leo Vance", "Retrieved child profile matches Leo");
-    assert(retrievedChild?.knownConditions?.includes("Pediatric Asthma") === true, "Child profile retains pediatric asthma");
-
-    // Modifying Child profile does not affect Mother or Self
-    await PatientProfileService.upsertProfile(userCaregiver, {
-      id: caregiverChild.id,
-      relationshipToUser: "child",
-      clinicalNotes: "Uses salbutamol inhaler before exercise"
-    });
-
-    const refreshedMother = await PatientProfileService.getProfileById(caregiverMother.id, userCaregiver);
-    assert(refreshedMother?.clinicalNotes === undefined, "Mother profile was not mutated by child update");
+    // 4. resolveTargetPatientProfile locks strictly to self profile even if third-party keywords appear
+    const resolution = await PatientProfileService.resolveTargetPatientProfile(
+      userCaregiver,
+      "My mother has been having severe chest pain"
+    );
+    assert(resolution.profile?.id === patientSelf.id, "Target profile remains locked to patient's self profile");
+    assert(resolution.inferredSubject === "self", "Inferred subject is strictly locked to 'self'");
+    assert(resolution.thirdPartyDetected === true, "Third-party concern correctly flagged without profile switching");
+    assert(resolution.thirdPartyRelation === "mother", "Third-party relation identified as mother");
   } catch (err: any) {
-    assert(false, "Multi-patient representation test threw error", err.message);
+    assert(false, "Single-patient model test threw error", err.message);
   }
 
   // -----------------------------------------------------------------------------

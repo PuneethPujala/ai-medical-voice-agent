@@ -180,9 +180,9 @@ async function runContextAwareChatTests() {
   }
 
   // -----------------------------------------------------------------------------
-  // Test 4: Subject Attribution Resolution (Caregiver vs Patient Separation)
+  // Test 4: Single-Patient Identity Invariant & Third-Party Record Isolation
   // -----------------------------------------------------------------------------
-  console.log("\n[Group 4] Subject Attribution Resolution (Caller vs Third-Party)");
+  console.log("\n[Group 4] Single-Patient Identity Invariant & Third-Party Record Isolation");
   try {
     // Scenario A: Caller speaks for themselves
     const selfResolution = await PatientProfileService.resolveTargetPatientProfile(
@@ -192,38 +192,56 @@ async function runContextAwareChatTests() {
       "self"
     );
     assert(selfResolution.inferredSubject === "self", "Self utterance infers 'self' subject");
-    assert(selfResolution.profile?.name === "Marcus Vance", "Self utterance resolves caregiver's self profile");
+    assert(selfResolution.profile?.name === "Marcus Vance", "Self utterance resolves caller's locked self profile");
+    assert(!selfResolution.thirdPartyDetected, "No third-party detected for self utterance");
 
-    // Scenario B: Caller speaks for their mother
+    // Scenario B: Caller mentions their mother (Single-Patient Model: Profile remains locked to self)
     const motherResolution = await PatientProfileService.resolveTargetPatientProfile(
       caregiverId,
       "My mother has a fever and her blood sugar reading is 240 this morning",
       undefined,
       undefined
     );
-    assert(motherResolution.inferredSubject === "mother", "Mother utterance infers 'mother' subject");
-    assert(motherResolution.profile?.name === "Eleanor Vance", "Mother utterance resolves mother profile");
-    assert(motherResolution.profile?.knownConditions?.includes("Type 2 Diabetes") === true, "Resolved mother profile includes diabetic history");
+    assert(motherResolution.inferredSubject === "self", "Mother utterance keeps active subject locked to 'self'");
+    assert(motherResolution.profile?.name === "Marcus Vance", "Mother utterance preserves caller's self profile");
+    assert(motherResolution.thirdPartyDetected === true, "Mother mention accurately flags thirdPartyDetected: true");
+    assert(motherResolution.thirdPartyRelation === "mother", "Identifies thirdPartyRelation as 'mother'");
 
-    // Scenario C: Caller speaks for their child
+    // Scenario C: Caller mentions their child (Profile remains locked to self)
     const childResolution = await PatientProfileService.resolveTargetPatientProfile(
       caregiverId,
       "My child Leo broke out in a rash on his arms",
       undefined,
       undefined
     );
-    assert(childResolution.inferredSubject === "child", "Child utterance infers 'child' subject");
-    assert(childResolution.profile?.name === "Leo Vance", "Child utterance resolves Leo's profile");
+    assert(childResolution.inferredSubject === "self", "Child utterance keeps active subject locked to 'self'");
+    assert(childResolution.profile?.name === "Marcus Vance", "Child utterance preserves caller's self profile");
+    assert(childResolution.thirdPartyDetected === true, "Child mention accurately flags thirdPartyDetected: true");
+    assert(childResolution.thirdPartyRelation === "child", "Identifies thirdPartyRelation as 'child'");
 
-    // Scenario D: Explicit patientId override
-    const explicitResolution = await PatientProfileService.resolveTargetPatientProfile(
-      caregiverId,
-      "She feels dizzy",
-      motherProfile.id,
-      "parent"
+    // Scenario D: Prompt injection of third-party clinical boundary
+    const boundaryPrompt = buildDoctorSystemPrompt({
+      patientProfile: selfProfile,
+      callerProfile: {
+        id: "caller_marcus",
+        name: "Marcus Vance",
+        relationshipToPatient: "self"
+      },
+      inferredSubject: "self",
+      thirdPartyMention: "mother"
+    });
+    assert(
+      boundaryPrompt.includes("THIRD-PARTY CLINICAL CONTEXT & PATIENT RECORD BOUNDARY"),
+      "Doctor prompt includes THIRD-PARTY CLINICAL CONTEXT & PATIENT RECORD BOUNDARY"
     );
-    assert(explicitResolution.profile?.id === motherProfile.id, "Explicit patientId takes precedence");
-    assert(explicitResolution.profile?.name === "Eleanor Vance", "Explicit patientId retrieves correct mother record");
+    assert(
+      boundaryPrompt.includes("DO NOT record or attribute these symptoms to the account holder's personal health record"),
+      "Doctor prompt contains strict instruction not to attribute third-party symptoms to account holder"
+    );
+    assert(
+      boundaryPrompt.includes("concerns about someone else (mother)"),
+      "Doctor prompt specifies the mentioned third-party relationship (mother)"
+    );
   } catch (err: any) {
     assert(false, "Subject attribution test failed", err.message);
   }
