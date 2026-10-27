@@ -60,10 +60,12 @@ export {
   buildRateLimit429Response,
   getActiveRateLimitStore,
   setRateLimitStoreForTesting,
+  getRateLimiterConfigDiagnostics,
 } from "./distributed-rate-limiter";
 export type {
   DistributedRateLimitStore,
   RateLimitStatus,
+  RateLimiterConfigDiagnostics,
 } from "./distributed-rate-limiter";
 
 /**
