@@ -6,10 +6,13 @@
  *
  * Core Invariants:
  * 1. Pure Deterministic Gate: No LLM calls, no heuristic guessing, zero hallucination surface.
- * 2. Strict Subject Attribution: Requires patient or authorized caregiver speaking for the target profile.
+ * 2. Strict Subject Attribution: Requires patient or authorized caregiver speaking for the target profile;
+ *    explicitly rejects attribution: 'third_party' or 'external'.
  * 3. Clinical Concept Registry: Only allows explicitly registered longitudinal concepts (sleep, HR, mobility).
  * 4. Temporal Classification: Explicit acute single events -> episodic; habitual/routine baselines -> baseline.
- * 5. Unverified Default: All extracted patient-reported facts are strictly marked verification: 'unverified'.
+ *    Ambiguous temporality is strictly rejected from promotion until clarified.
+ * 5. Scalar Precision: Rejects ambiguous numeric ranges (e.g. '5-6 hours') to prevent information loss.
+ * 6. Unverified Default: All extracted patient-reported facts are strictly marked verification: 'unverified'.
  */
 
 import { AttributedClinicalFactV3 } from "@/lib/agents/schemas";
@@ -96,18 +99,31 @@ function resolveConceptDefinition(rawConcept: string): ConceptDefinition | null 
 }
 
 /**
+ * Detects whether an utterance contains an ungrounded range (e.g. "5 to 6", "5-6")
+ * instead of an exact scalar value.
+ */
+function containsRangeExpression(text: string): boolean {
+  return /\b\d+(?:\.\d+)?\s*(?:-|to)\s*\d+(?:\.\d+)?\b/i.test(text);
+}
+
+/**
  * Parses numeric scalars and units from utterance text and concept context.
  */
 function parseNumericObservation(
   conceptDef: ConceptDefinition,
   rawUtterance: string
-): { numericValue: number; unit: string; reportedValue: string } | null {
+): { numericValue: number; unit: string; reportedValue: string } | { isRange: true } | null {
   const text = rawUtterance.toLowerCase();
+
+  // Guard against lossy scalar reduction of numeric ranges
+  if (containsRangeExpression(text)) {
+    return { isRange: true };
+  }
 
   switch (conceptDef.category) {
     case "lifestyle_sleep": {
-      // Matches: "5 hours", "5.5 hrs", "5-6 hours", "about 5 hours a night"
-      const sleepMatch = text.match(/(\d+(?:\.\d+)?)(?:\s*(?:-|to)\s*\d+(?:\.\d+)?)?\s*(?:hours|hrs|hr|h)\b/i);
+      // Matches: "5 hours", "5.5 hrs", "about 5 hours a night"
+      const sleepMatch = text.match(/(\d+(?:\.\d+)?)\s*(?:hours|hrs|hr|h)\b/i);
       if (sleepMatch) {
         const val = parseFloat(sleepMatch[1]);
         if (!isNaN(val) && val >= 0 && val <= 24) {
@@ -196,34 +212,35 @@ function parseNumericObservation(
 }
 
 /**
- * Determines whether the statement reflects an acute single event (episodic)
- * or an ongoing, habitual routine/capacity (baseline).
+ * Classifies whether the statement reflects an acute single event (episodic),
+ * an ongoing routine/capacity (baseline), or is temporally ambiguous.
  */
-function classifyTemporalScope(utterance: string, factTemporality?: string): TemporalScope {
+function classifyTemporalScope(utterance: string, factTemporality?: string): TemporalScope | "ambiguous" {
   const text = utterance.toLowerCase();
 
-  // Explicit acute episodic markers
+  // 1. Explicit acute episodic markers
   const isEpisodic =
-    /\b(last night|last evening|yesterday|this morning|today only|suddenly today|one time|last night only|slept poorly last night)\b/i.test(text);
+    /\b(last night|last evening|yesterday|this morning|today only|suddenly today|one time|last night only|slept poorly last night|woke up today)\b/i.test(text);
 
   if (isEpisodic) {
     return "episodic";
   }
 
-  // Explicit habitual / baseline markers
+  // 2. Explicit habitual / routine baseline markers
   const isHabitual =
-    /\b(usually|normally|typically|generally|routine|every night|per night|a night|always|for (?:years|months|weeks)|baseline|on average)\b/i.test(text);
+    /\b(usually|normally|typically|generally|routine|every night|per night|a night|always|for (?:years|months|weeks)|baseline|on average|can usually)\b/i.test(text);
 
   if (isHabitual) {
     return "baseline";
   }
 
-  // Default to fact temporality if explicitly labeled historical/current
+  // 3. Fallback to explicit fact temporality label if provided by upstream engine
   if (factTemporality === "historical") {
     return "baseline";
   }
 
-  return "baseline";
+  // 4. Do not silently guess: ambiguous statements require clarification
+  return "ambiguous";
 }
 
 /**
@@ -249,7 +266,15 @@ export function extractLongitudinalCandidate(
     };
   }
 
-  // 3. Clinical concept registry check
+  // 3. Explicit Attribution Validation: Rejects third_party attributions
+  if (fact.attribution === "third_party") {
+    return {
+      eligible: false,
+      rejectionReason: `Fact attribution is 'third_party'. Third-party facts are strictly disqualified from profile promotion.`,
+    };
+  }
+
+  // 4. Clinical concept registry check
   const conceptDef = resolveConceptDefinition(fact.concept);
   if (!conceptDef) {
     return {
@@ -258,14 +283,13 @@ export function extractLongitudinalCandidate(
     };
   }
 
-  // 4. Third-party leakage prevention
+  // 5. Third-party relative statement heuristic
   const utterance = (fact.sourceUtterance || "").trim();
   const lowerUtterance = utterance.toLowerCase();
   const isSelfRelation = !context.targetSubjectRelation || context.targetSubjectRelation === "self";
 
   if (isSelfRelation) {
-    // If target profile is "self", but utterance speaks about third parties
-    if (/\b(my (?:mother|father|mom|dad|son|daughter|sister|brother|husband|wife|child|friend))\b/i.test(lowerUtterance)) {
+    if (/\b(my (?:mother|father|mom|dad|son|daughter|sister|brother|husband|wife|child|friend|aunt|uncle))\b/i.test(lowerUtterance)) {
       return {
         eligible: false,
         rejectionReason: "Utterance refers to a third-party relative while target profile is 'self'.",
@@ -273,7 +297,7 @@ export function extractLongitudinalCandidate(
     }
   }
 
-  // 5. Numeric observation parsing
+  // 6. Numeric observation parsing & range defense
   const parsedObs = parseNumericObservation(conceptDef, utterance);
   if (!parsedObs) {
     return {
@@ -282,10 +306,23 @@ export function extractLongitudinalCandidate(
     };
   }
 
-  // 6. Temporal scope classification
-  const temporalScope = classifyTemporalScope(utterance, fact.temporality);
+  if ("isRange" in parsedObs) {
+    return {
+      eligible: false,
+      rejectionReason: `Observation contains a numeric range rather than an exact scalar value. Ranges require clinical clarification before longitudinal storage.`,
+    };
+  }
 
-  // 7. Assemble validated RecordFactParams with strict 'unverified' status
+  // 7. Temporal scope classification & ambiguous rejection
+  const temporalScope = classifyTemporalScope(utterance, fact.temporality);
+  if (temporalScope === "ambiguous") {
+    return {
+      eligible: false,
+      rejectionReason: `Temporal scope is ambiguous (neither explicit acute episodic nor explicit habitual routine). Statement requires clarification before longitudinal promotion.`,
+    };
+  }
+
+  // 8. Assemble validated RecordFactParams with strict 'unverified' status
   const factParams: RecordFactParams = {
     patientProfileId: context.targetPatientProfileId,
     category: conceptDef.category,
