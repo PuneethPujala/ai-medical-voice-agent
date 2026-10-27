@@ -98,6 +98,7 @@ jobs:
       - name: Gate 3e — Patient Profile & Longitudinal Context Batteries
         run: |
           npm run test:hardening
+          npm run test:longitudinal-migration-runner
           npm run test:profile-persistence
           npm run test:context-chat
           npm run test:longitudinal-facts

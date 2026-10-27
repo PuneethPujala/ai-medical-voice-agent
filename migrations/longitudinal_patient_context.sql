@@ -42,13 +42,49 @@ CREATE TABLE IF NOT EXISTS patient_longitudinal_facts (
 -- Ensure timestamp with time zone on any existing installations
 DO $$
 BEGIN
-  ALTER TABLE patient_longitudinal_facts
-    ALTER COLUMN reported_at TYPE TIMESTAMP WITH TIME ZONE USING reported_at AT TIME ZONE 'UTC',
-    ALTER COLUMN recorded_at TYPE TIMESTAMP WITH TIME ZONE USING recorded_at AT TIME ZONE 'UTC',
-    ALTER COLUMN last_reviewed_at TYPE TIMESTAMP WITH TIME ZONE USING last_reviewed_at AT TIME ZONE 'UTC',
-    ALTER COLUMN superseded_at TYPE TIMESTAMP WITH TIME ZONE USING superseded_at AT TIME ZONE 'UTC';
-EXCEPTION WHEN OTHERS THEN
-  NULL;
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'patient_longitudinal_facts'
+      AND column_name = 'reported_at'
+      AND data_type != 'timestamp with time zone'
+  ) THEN
+    ALTER TABLE patient_longitudinal_facts
+      ALTER COLUMN reported_at TYPE TIMESTAMP WITH TIME ZONE USING reported_at AT TIME ZONE 'UTC';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'patient_longitudinal_facts'
+      AND column_name = 'recorded_at'
+      AND data_type != 'timestamp with time zone'
+  ) THEN
+    ALTER TABLE patient_longitudinal_facts
+      ALTER COLUMN recorded_at TYPE TIMESTAMP WITH TIME ZONE USING recorded_at AT TIME ZONE 'UTC';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'patient_longitudinal_facts'
+      AND column_name = 'last_reviewed_at'
+      AND data_type != 'timestamp with time zone'
+  ) THEN
+    ALTER TABLE patient_longitudinal_facts
+      ALTER COLUMN last_reviewed_at TYPE TIMESTAMP WITH TIME ZONE USING last_reviewed_at AT TIME ZONE 'UTC';
+  END IF;
+
+  IF EXISTS (
+    SELECT 1 FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'patient_longitudinal_facts'
+      AND column_name = 'superseded_at'
+      AND data_type != 'timestamp with time zone'
+  ) THEN
+    ALTER TABLE patient_longitudinal_facts
+      ALTER COLUMN superseded_at TYPE TIMESTAMP WITH TIME ZONE USING superseded_at AT TIME ZONE 'UTC';
+  END IF;
 END $$;
 
 -- 3. Indexes for efficient lookup & idempotency

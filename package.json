@@ -55,6 +55,7 @@
     "test:longitudinal-extractor": "tsx tests/patient-profile/longitudinal-fact-extractor.test.ts",
     "test:longitudinal-e2e": "tsx tests/patient-profile/multi-visit-longitudinal-e2e.test.ts",
     "test:longitudinal-db": "tsx tests/patient-profile/longitudinal-database-persistence.test.ts",
+    "test:longitudinal-migration-runner": "tsx tests/patient-profile/longitudinal-migration-runner.test.ts",
     "migrate:longitudinal": "tsx scripts/run-longitudinal-migrations.ts",
     "test:consultation-lifecycle": "tsx tests/security-eval/consultation-lifecycle.test.ts",
     "test:chat-isolation": "tsx tests/security-eval/chat-identity-isolation.test.ts",
