@@ -23,21 +23,25 @@ import {
   getClientIp,
   buildRateLimitResponse,
   RESOURCE_LIMITS,
+  evaluateRateLimit,
+  buildRateLimit429Response,
+  RATE_LIMIT_POLICIES,
 } from "@/lib/security/rate-limiter";
+import { getAuthContext } from "@/lib/auth/rbac";
 import { sanitizeErrorDetails } from "@/lib/security/error-sanitizer";
 import { reconcileClinicalTranscript } from "@/lib/audio/transcript-reconciler";
 
 export async function POST(request: Request) {
   try {
-    // 1. Abuse Protection: Rate limit per client IP
-    const clientIp = getClientIp(request);
-    const rateLimit = checkRateLimit(
-      `voice_stt:${clientIp}`,
-      RESOURCE_LIMITS.VOICE_STT_RATE_LIMIT_PER_MINUTE,
-      60000
-    );
+    const auth = await getAuthContext(request);
+    // 1. Abuse Protection: Distributed Rate Limiting on Whisper ASR ingress
+    const rateLimit = await evaluateRateLimit({
+      policy: RATE_LIMIT_POLICIES.VOICE_STT,
+      userId: auth.userId,
+      request,
+    });
     if (!rateLimit.allowed) {
-      return buildRateLimitResponse(rateLimit, "/api/voice/stt");
+      return buildRateLimit429Response(rateLimit);
     }
 
     const maxAudioBytes = RESOURCE_LIMITS.VOICE_STT_MAX_AUDIO_BYTES;

@@ -25,6 +25,7 @@ export const CANONICAL_TEST_BATTERY: TestSuiteDefinition[] = [
   { id: "test:voice-telemetry", file: "tests/security-eval/voice-telemetry-lifecycle.test.ts", description: "Voice Telemetry Isolation & RBAC Lifecycle" },
   { id: "test:audit-checkpoint", file: "tests/security-eval/audit-checkpoint-adversarial.test.ts", description: "Audit Checkpoint Verification and Adversarial Defense" },
   { id: "test:production-auth", file: "tests/security-eval/production-auth-and-cross-tenant.test.ts", description: "Production Auth Wall and Cross-Tenant IDOR Matrix" },
+  { id: "test:distributed-rate-limiter", file: "tests/security-eval/distributed-rate-limiter.test.ts", description: "Distributed Sliding-Window Rate Limiter & Adversarial Defense" },
 
   // 2. Concurrency, Durability, and Persistence
   { id: "test:concurrency-durable", file: "tests/security-eval/optimistic-concurrency-durable-state.test.ts", description: "Optimistic Concurrency & Case Versioning" },

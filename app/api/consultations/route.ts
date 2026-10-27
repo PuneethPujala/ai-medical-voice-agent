@@ -5,6 +5,11 @@ import { and, desc, eq, ne, or } from "drizzle-orm";
 import { getAuthContext, hasPermission } from "@/lib/auth/rbac";
 import { logAuditEventAsync } from "@/lib/audit/audit-logger";
 import { validateAudioMetrics } from "@/lib/acoustic/acoustic-dsp-analyzer";
+import {
+  evaluateRateLimit,
+  buildRateLimit429Response,
+  RATE_LIMIT_POLICIES,
+} from "@/lib/security/rate-limiter";
 
 // Baseline synthetic clinical demonstration encounters (strictly segregated from production patient queries)
 export const memoryConsultations: any[] = [
@@ -309,6 +314,16 @@ function checkIdempotencyPayloadMismatch(
 export async function POST(request: Request) {
   try {
     const auth = await getAuthContext(request);
+
+    // Rate Limit: Consultation Mutation policy
+    const rateLimit = await evaluateRateLimit({
+      policy: RATE_LIMIT_POLICIES.CONSULTATION_MUTATION,
+      userId: auth.userId,
+      request,
+    });
+    if (!rateLimit.allowed) {
+      return buildRateLimit429Response(rateLimit);
+    }
 
     // 1. RBAC: Verify permission to record clinical consultations
     if (!hasPermission(auth.role, "consultations:create")) {

@@ -2,6 +2,11 @@ import { NextResponse } from "next/server";
 import { evaluateSafetyArbiter } from "@/lib/triage/safety-arbiter";
 import { getAuthContext } from "@/lib/auth/rbac";
 import { logAuditEventAsync } from "@/lib/audit/audit-logger";
+import {
+  evaluateRateLimit,
+  buildRateLimit429Response,
+  RATE_LIMIT_POLICIES,
+} from "@/lib/security/rate-limiter";
 
 const BACKEND_URL =
   process.env.BACKEND_URL ||
@@ -29,6 +34,32 @@ export async function POST(request: Request) {
         { status: "error", message: "Transcript text is required." },
         { status: 400 }
       );
+    }
+
+    // Distributed Rate Limiting with Deterministic Emergency Preemption
+    const rateLimit = await evaluateRateLimit({
+      policy: RATE_LIMIT_POLICIES.TRIAGE_EVAL,
+      userId: auth.userId,
+      request,
+      preflightUtterance: transcript,
+    });
+    if (!rateLimit.allowed) {
+      return buildRateLimit429Response(rateLimit);
+    }
+    if (rateLimit.emergencyPreempted) {
+      return NextResponse.json({
+        status: "emergency",
+        directive: rateLimit.emergencyDirective,
+        isEmergency: true,
+        redFlagsTriggered: rateLimit.emergencyFlags || [],
+        arbiter: {
+          esiScore: 1,
+          isEmergency: true,
+          redFlagsTriggered: rateLimit.emergencyFlags || [],
+          specialty: "emergency_medicine",
+        },
+        preempted: true,
+      });
     }
 
     let upstreamTriage: any = null;

@@ -19,22 +19,26 @@ import {
   getClientIp,
   buildRateLimitResponse,
   RESOURCE_LIMITS,
+  evaluateRateLimit,
+  buildRateLimit429Response,
+  RATE_LIMIT_POLICIES,
 } from "@/lib/security/rate-limiter";
+import { getAuthContext } from "@/lib/auth/rbac";
 
 export async function POST(request: Request) {
   try {
-    // 1. Abuse Protection: Rate limit per client IP
-    const clientIp = getClientIp(request);
-    const rateLimit = checkRateLimit(
-      `voice_tts:${clientIp}`,
-      RESOURCE_LIMITS.VOICE_TTS_RATE_LIMIT_PER_MINUTE,
-      60000
-    );
-    if (!rateLimit.allowed) {
-      return buildRateLimitResponse(rateLimit, "/api/voice/tts");
-    }
-
+    const auth = await getAuthContext(request);
     const body = await request.json();
+
+    // 1. Abuse Protection: Distributed Rate Limiting (fail-closed on expensive neural speech compute)
+    const rateLimit = await evaluateRateLimit({
+      policy: RATE_LIMIT_POLICIES.VOICE_TTS,
+      userId: auth.userId,
+      request,
+    });
+    if (!rateLimit.allowed) {
+      return buildRateLimit429Response(rateLimit);
+    }
     const { text, doctorId = "dr-sarah-chen", speed, prewarm } = body;
 
     // Fast-path: Explicit non-blocking background model pre-warming
