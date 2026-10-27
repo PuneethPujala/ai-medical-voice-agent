@@ -268,6 +268,7 @@ export async function POST(request: Request) {
     let authoritativeInterviewState: any = undefined;
     let expectedCaseVersion = 1;
     let encounterExistsOnServer = false;
+    let boundEncounterProfileId: string | undefined = undefined;
 
     if (encounterId) {
       if (effectiveUserId === "unauthenticated" && !auth.isDemoMode) {
@@ -322,6 +323,20 @@ export async function POST(request: Request) {
           );
         }
 
+        if (encounter.patientProfileId && effectiveUserId !== "unauthenticated" && !isAdmin) {
+          const boundProfile = await PatientProfileService.getProfileById(encounter.patientProfileId, effectiveUserId);
+          if (boundProfile && boundProfile.relationshipToUser !== "self") {
+            return NextResponse.json(
+              {
+                error: "Encounter is bound to a legacy non-self profile. Single-patient consultations must be bound to the self-profile.",
+                code: "LEGACY_PROFILE_ENCOUNTER_REJECTED",
+              },
+              { status: 400 }
+            );
+          }
+          boundEncounterProfileId = encounter.patientProfileId;
+        }
+
         encounterExistsOnServer = true;
         expectedCaseVersion = typeof encounter.caseVersion === "number" ? encounter.caseVersion : 1;
 
@@ -365,6 +380,20 @@ export async function POST(request: Request) {
             },
             { status: 403 }
           );
+        }
+
+        if (existingMem.patientProfileId && effectiveUserId !== "unauthenticated" && !isAdmin) {
+          const boundProfile = await PatientProfileService.getProfileById(existingMem.patientProfileId, effectiveUserId);
+          if (boundProfile && boundProfile.relationshipToUser !== "self") {
+            return NextResponse.json(
+              {
+                error: "Encounter is bound to a legacy non-self profile. Single-patient consultations must be bound to the self-profile.",
+                code: "LEGACY_PROFILE_ENCOUNTER_REJECTED",
+              },
+              { status: 400 }
+            );
+          }
+          boundEncounterProfileId = existingMem.patientProfileId;
         }
 
         encounterExistsOnServer = true;
@@ -783,20 +812,29 @@ export async function POST(request: Request) {
     let isThirdPartyMention = false;
     let thirdPartyRelation: string | undefined = undefined;
 
-    if (effectiveUserId !== "unauthenticated") {
-      const resolved = await PatientProfileService.resolveTargetPatientProfile(
-        effectiveUserId,
-        cleanMsg,
-        requestedPatientId,
-        patientRelationship
+    const resolved = await PatientProfileService.resolveTargetPatientProfile(
+      effectiveUserId,
+      cleanMsg,
+      requestedPatientId,
+      patientRelationship
+    );
+    if (effectiveUserId !== "unauthenticated" && resolved.profile && resolved.profile.userId === effectiveUserId) {
+      activeProfile = resolved.profile;
+    }
+    inferredSubject = "self"; // Locked to self in single-patient model
+    isThirdPartyMention = Boolean(resolved.thirdPartyDetected);
+    thirdPartyRelation = resolved.thirdPartyRelation;
+
+    // Validate encounter-to-profile binding consistency:
+    // If encounter is already persisted with a patientProfileId, it MUST match the user's active self-profile
+    if (encounterExistsOnServer && boundEncounterProfileId && activeProfile && activeProfile.id !== boundEncounterProfileId) {
+      return NextResponse.json(
+        {
+          error: "Encounter profile binding mismatch: encounter references a profile other than the user's current self-profile.",
+          code: "ENCOUNTER_PROFILE_MISMATCH",
+        },
+        { status: 400 }
       );
-      // Double check tenant isolation: profile must strictly belong to authenticated user
-      if (resolved.profile && resolved.profile.userId === effectiveUserId) {
-        activeProfile = resolved.profile;
-      }
-      inferredSubject = "self"; // Locked to self in single-patient model
-      isThirdPartyMention = Boolean(resolved.thirdPartyDetected);
-      thirdPartyRelation = resolved.thirdPartyRelation;
     }
 
     let longitudinalFacts: LongitudinalPatientFact[] = [];
@@ -847,6 +885,9 @@ export async function POST(request: Request) {
 
     // Stateful Clinical Conversation Manager Turn Execution
     // Invariant: Do not default unknown age to "adult" — preserve "unknown" so pediatric checks are not bypassed
+    const knownFactsBeforeTurn = [...(authoritativeInterviewState?.slots?.known_facts || [])];
+    const confirmedFactsBeforeTurn = [...(authoritativeInterviewState?.conversationMemory?.confirmedFacts || [])];
+
     const turnResult = await conversationManager.processTurn(
       cleanMsg,
       authoritativeInterviewState,
@@ -856,8 +897,20 @@ export async function POST(request: Request) {
         age_source: ageSource
       },
       undefined,
-      { patientProfile: activeProfile || undefined }
+      {
+        patientProfile: activeProfile || undefined,
+        isThirdPartyMention,
+        thirdPartyRelation,
+      }
     );
+
+    // Defense-in-depth: if turn discussed a third party, ensure no third-party facts contaminated patient slots
+    if (isThirdPartyMention) {
+      turnResult.state.slots.known_facts = knownFactsBeforeTurn;
+      if (turnResult.state.conversationMemory) {
+        turnResult.state.conversationMemory.confirmedFacts = confirmedFactsBeforeTurn;
+      }
+    }
 
     // Preserve encounter-scoped acoustic telemetry on interview state
     turnResult.state.audio_metrics = cumulativeAudioMetrics || undefined;
@@ -1148,7 +1201,7 @@ export async function POST(request: Request) {
         temporality: fact.temporalScope === "historical" ? "historical" : "current",
         attribution: isThirdPartyMention ? "third_party" : (fact.source === "caregiver_reported" ? "caregiver_report" : "patient"),
         coverage: "assessed",
-        sourceUtterance: fact.normalizedText || `${fact.concept}: ${fact.assertionStatus}`,
+        sourceUtterance: fact.normalizedText && !fact.normalizedText.includes(":") ? fact.normalizedText : cleanMsg,
         sourceSpeaker: fact.source === "caregiver_reported" ? "caregiver" : "patient",
         turnId: fact.turnId,
         confidence: fact.assertionStatus === "uncertain" ? "explicit_unknown" : "calibrated_score",
@@ -1172,6 +1225,7 @@ export async function POST(request: Request) {
       if (
         effectiveUserId !== "unauthenticated" &&
         activeProfile?.id &&
+        !isThirdPartyMention &&
         turnResult.state.attributedFacts &&
         turnResult.state.attributedFacts.length > 0
       ) {
