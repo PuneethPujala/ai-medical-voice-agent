@@ -249,4 +249,7 @@ export const patientLongitudinalFactsTable = pgTable("patient_longitudinal_facts
     .on(table.userId, table.patientProfileId, table.concept, table.lifecycle),
   uniqueIndex("idx_longitudinal_facts_idempotency_unique")
     .on(table.patientProfileId, table.sourceConsultationId, table.sourceTurnId, table.concept),
+  uniqueIndex("idx_one_active_baseline")
+    .on(table.patientProfileId, table.concept)
+    .where(sql`${table.temporalScope} = 'baseline' AND ${table.lifecycle} = 'active'`),
 ]);

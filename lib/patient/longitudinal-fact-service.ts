@@ -1,7 +1,7 @@
 import { randomUUID } from "crypto";
 import { getDb } from "@/config/db";
 import { patientLongitudinalFactsTable, patientProfilesTable } from "@/config/schema";
-import { and, eq, desc } from "drizzle-orm";
+import { and, eq, desc, sql } from "drizzle-orm";
 import { PatientProfileService, memoryProfiles } from "./patient-profile-service";
 import {
   LongitudinalPatientFact,
@@ -30,6 +30,17 @@ export class FactNotFoundError extends Error {
     super(message);
     this.name = "FactNotFoundError";
   }
+}
+
+export class LongitudinalDatabaseError extends Error {
+  constructor(message: string, public readonly cause?: unknown) {
+    super(message);
+    this.name = "LongitudinalDatabaseError";
+  }
+}
+
+function shouldEnforceDatabase(): boolean {
+  return process.env.NODE_ENV === "production" || Boolean(process.env.DATABASE_URL);
 }
 
 // In-memory backing store for tests and offline/local development
@@ -123,12 +134,17 @@ export class LongitudinalFactService {
           facts = facts.filter((f) => f.temporalScope === options.temporalScope);
         }
         return facts;
-      } catch (err) {
+      } catch (err: any) {
+        if (shouldEnforceDatabase()) {
+          throw new LongitudinalDatabaseError("Failed to retrieve active facts from database. In-memory fallback is disabled.", err);
+        }
         console.warn("[LongitudinalFactService] DB query failed, using in-memory store:", err);
       }
+    } else if (shouldEnforceDatabase()) {
+      throw new LongitudinalDatabaseError("Database client unavailable in production/configured database mode.");
     }
 
-    // In-memory evaluation
+    // In-memory evaluation (test & offline dev only)
     const targetLifecycle = options?.lifecycle || "active";
     const matching: LongitudinalPatientFact[] = [];
     for (const fact of memoryLongitudinalFacts.values()) {
@@ -172,9 +188,14 @@ export class LongitudinalFactService {
           .orderBy(desc(patientLongitudinalFactsTable.reportedAt));
 
         return rows.map(mapRowToFact);
-      } catch (err) {
+      } catch (err: any) {
+        if (shouldEnforceDatabase()) {
+          throw new LongitudinalDatabaseError("Failed to retrieve fact history from database. In-memory fallback is disabled.", err);
+        }
         console.warn("[LongitudinalFactService] DB history query failed, using in-memory store:", err);
       }
+    } else if (shouldEnforceDatabase()) {
+      throw new LongitudinalDatabaseError("Database client unavailable in production/configured database mode.");
     }
 
     const history: LongitudinalPatientFact[] = [];
@@ -192,8 +213,8 @@ export class LongitudinalFactService {
   }
 
   /**
-   * Records a new fact or returns the existing record if the exact source event was already processed (Idempotency).
-   * If the fact is a baseline and a previous active baseline exists for the same concept, atomically supersedes it.
+   * Atomically records a new fact or returns the existing record if the exact source event was already processed (Idempotency).
+   * If the fact is a baseline and a previous active baseline exists for the same concept, atomically supersedes it within a serial transaction.
    */
   public static async recordFact(
     userId: string,
@@ -207,91 +228,107 @@ export class LongitudinalFactService {
     const dbClient = getDb();
     if (dbClient) {
       try {
-        // 1. Idempotency check: check if this turn already recorded this concept
-        const existing = await dbClient
-          .select()
-          .from(patientLongitudinalFactsTable)
-          .where(
-            and(
-              eq(patientLongitudinalFactsTable.patientProfileId, params.patientProfileId),
-              eq(patientLongitudinalFactsTable.sourceConsultationId, params.sourceConsultationId),
-              eq(patientLongitudinalFactsTable.sourceTurnId, params.sourceTurnId),
-              eq(patientLongitudinalFactsTable.concept, params.concept)
-            )
-          )
-          .limit(1);
+        // Execute inside an atomic transaction with advisory lock to serialize baseline mutations per (profile, concept)
+        const result = await dbClient.transaction(async (tx: any) => {
+          // 1. Advisory transaction lock serializes baseline creation/superseding
+          await tx.execute(
+            sql`SELECT pg_advisory_xact_lock(hashtext(${params.patientProfileId} || ':' || ${params.concept}))`
+          );
 
-        if (existing && existing.length > 0) {
-          return mapRowToFact(existing[0]);
-        }
-
-        const newId = `fact_${Date.now()}_${randomUUID().slice(0, 8)}`;
-
-        // 2. If baseline: find existing active baseline to supersede
-        let supersededFactId: string | null = null;
-        if (params.temporalScope === "baseline") {
-          const activeBaselines = await dbClient
+          // 2. Idempotency check: check if this turn already recorded this concept
+          const existing = await tx
             .select()
             .from(patientLongitudinalFactsTable)
             .where(
               and(
-                eq(patientLongitudinalFactsTable.userId, userId),
                 eq(patientLongitudinalFactsTable.patientProfileId, params.patientProfileId),
-                eq(patientLongitudinalFactsTable.concept, params.concept),
-                eq(patientLongitudinalFactsTable.temporalScope, "baseline"),
-                eq(patientLongitudinalFactsTable.lifecycle, "active")
+                eq(patientLongitudinalFactsTable.sourceConsultationId, params.sourceConsultationId),
+                eq(patientLongitudinalFactsTable.sourceTurnId, params.sourceTurnId),
+                eq(patientLongitudinalFactsTable.concept, params.concept)
               )
             )
             .limit(1);
 
-          if (activeBaselines && activeBaselines.length > 0) {
-            supersededFactId = activeBaselines[0].id;
-            await dbClient
-              .update(patientLongitudinalFactsTable)
-              .set({
-                lifecycle: "superseded",
-                supersededByFactId: newId,
-                supersededAt: new Date(recordedAt),
-              })
-              .where(eq(patientLongitudinalFactsTable.id, supersededFactId));
+          if (existing && existing.length > 0) {
+            return mapRowToFact(existing[0]);
           }
-        }
 
-        // 3. Insert new fact
-        const insertValues: any = {
-          id: newId,
-          userId,
-          patientProfileId: params.patientProfileId,
-          category: params.category,
-          concept: params.concept,
-          reportedValue: params.reportedValue,
-          numericValue: params.numericValue !== undefined ? params.numericValue : null,
-          unit: params.unit || null,
-          temporalScope: params.temporalScope,
-          lifecycle: "active",
-          verification: params.verification || "unverified",
-          sourceType: params.sourceType || "patient",
-          sourceConsultationId: params.sourceConsultationId,
-          sourceTurnId: params.sourceTurnId,
-          reportedAt: new Date(reportedAt),
-          recordedAt: new Date(recordedAt),
-          supersedesFactId: supersededFactId,
-          supersededByFactId: null,
-          supersededAt: null,
-        };
+          const newId = `fact_${Date.now()}_${randomUUID().slice(0, 8)}`;
 
-        const insertedRows = await dbClient
-          .insert(patientLongitudinalFactsTable)
-          .values(insertValues)
-          .returning();
+          // 3. If baseline: find existing active baseline to supersede
+          let supersededFactId: string | null = null;
+          if (params.temporalScope === "baseline") {
+            const activeBaselines = await tx
+              .select()
+              .from(patientLongitudinalFactsTable)
+              .where(
+                and(
+                  eq(patientLongitudinalFactsTable.userId, userId),
+                  eq(patientLongitudinalFactsTable.patientProfileId, params.patientProfileId),
+                  eq(patientLongitudinalFactsTable.concept, params.concept),
+                  eq(patientLongitudinalFactsTable.temporalScope, "baseline"),
+                  eq(patientLongitudinalFactsTable.lifecycle, "active")
+                )
+              )
+              .limit(1);
 
-        return mapRowToFact(insertedRows[0]);
+            if (activeBaselines && activeBaselines.length > 0) {
+              const targetOldId = activeBaselines[0].id;
+              supersededFactId = targetOldId;
+              await tx
+                .update(patientLongitudinalFactsTable)
+                .set({
+                  lifecycle: "superseded",
+                  supersededByFactId: newId,
+                  supersededAt: new Date(recordedAt),
+                })
+                .where(eq(patientLongitudinalFactsTable.id, targetOldId));
+            }
+          }
+
+          // 4. Insert new fact
+          const insertValues: any = {
+            id: newId,
+            userId,
+            patientProfileId: params.patientProfileId,
+            category: params.category,
+            concept: params.concept,
+            reportedValue: params.reportedValue,
+            numericValue: params.numericValue !== undefined ? params.numericValue : null,
+            unit: params.unit || null,
+            temporalScope: params.temporalScope,
+            lifecycle: "active",
+            verification: params.verification || "unverified",
+            sourceType: params.sourceType || "patient",
+            sourceConsultationId: params.sourceConsultationId,
+            sourceTurnId: params.sourceTurnId,
+            reportedAt: new Date(reportedAt),
+            recordedAt: new Date(recordedAt),
+            supersedesFactId: supersededFactId,
+            supersededByFactId: null,
+            supersededAt: null,
+          };
+
+          const insertedRows = await tx
+            .insert(patientLongitudinalFactsTable)
+            .values(insertValues)
+            .returning();
+
+          return mapRowToFact(insertedRows[0]);
+        });
+
+        return result;
       } catch (err: any) {
+        if (shouldEnforceDatabase()) {
+          throw new LongitudinalDatabaseError("Transactional fact persistence failed. In-memory fallback is disabled in production/configured DB mode.", err);
+        }
         console.warn("[LongitudinalFactService] DB insert failed, falling back to in-memory:", err);
       }
+    } else if (shouldEnforceDatabase()) {
+      throw new LongitudinalDatabaseError("Database client unavailable in production/configured database mode.");
     }
 
-    // In-memory branch
+    // In-memory branch (test & offline dev only)
     // 1. Idempotency check
     for (const fact of memoryLongitudinalFacts.values()) {
       if (
@@ -362,7 +399,6 @@ export class LongitudinalFactService {
     userId: string,
     params: SupersedeFactParams
   ): Promise<LongitudinalPatientFact> {
-    // RecordFact handles baseline superseding automatically when temporalScope === "baseline"
     return this.recordFact(userId, {
       ...params,
       temporalScope: "baseline",
@@ -404,10 +440,15 @@ export class LongitudinalFactService {
           return mapRowToFact(updated[0]);
         }
         throw new FactNotFoundError(`Fact '${params.factId}' not found for retraction.`);
-      } catch (err) {
+      } catch (err: any) {
         if (err instanceof FactNotFoundError) throw err;
+        if (shouldEnforceDatabase()) {
+          throw new LongitudinalDatabaseError("Failed to retract fact in database. In-memory fallback is disabled.", err);
+        }
         console.warn("[LongitudinalFactService] DB retract failed, falling back to memory:", err);
       }
+    } else if (shouldEnforceDatabase()) {
+      throw new LongitudinalDatabaseError("Database client unavailable in production/configured database mode.");
     }
 
     const existing = memoryLongitudinalFacts.get(params.factId);

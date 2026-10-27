@@ -46,5 +46,9 @@ CREATE INDEX IF NOT EXISTS idx_longitudinal_facts_lookup
 CREATE UNIQUE INDEX IF NOT EXISTS idx_longitudinal_facts_idempotency_unique
   ON patient_longitudinal_facts(patient_profile_id, source_consultation_id, source_turn_id, concept);
 
+CREATE UNIQUE INDEX IF NOT EXISTS idx_one_active_baseline
+  ON patient_longitudinal_facts(patient_profile_id, concept)
+  WHERE temporal_scope = 'baseline' AND lifecycle = 'active';
+
 -- 4. Atomic record-or-supersede function
 \i migrations/record_or_supersede_patient_longitudinal_fact.sql
