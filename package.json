@@ -81,7 +81,8 @@
     "benchmark:acoustic-real": "tsx scripts/benchmark-real-patient-audio.ts",
     "test:audit-checkpoint": "tsx tests/security-eval/audit-checkpoint-adversarial.test.ts",
     "test:production-auth": "tsx tests/security-eval/production-auth-and-cross-tenant.test.ts",
-    "test:distributed-rate-limiter": "tsx tests/security-eval/distributed-rate-limiter.test.ts"
+    "test:distributed-rate-limiter": "tsx tests/security-eval/distributed-rate-limiter.test.ts",
+    "demo:stakeholder": "tsx scripts/run-synthetic-stakeholder-demo.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
