@@ -51,7 +51,9 @@ BEGIN
   -- 1. Verify Profile Ownership & Consent
   SELECT consent_given INTO v_consent_given
   FROM patient_profiles
-  WHERE id = p_patient_profile_id AND user_id = p_user_id AND is_deleted = false;
+  WHERE patient_profiles.id = p_patient_profile_id
+    AND patient_profiles.user_id = p_user_id
+    AND patient_profiles.is_deleted = false;
 
   IF NOT FOUND THEN
     RAISE EXCEPTION 'Profile % not found for authorized user %', p_patient_profile_id, p_user_id
@@ -63,7 +65,12 @@ BEGIN
       USING ERRCODE = '55000';
   END IF;
 
-  -- 2. Idempotency Check: (patient_profile_id, source_consultation_id, source_turn_id, concept)
+  -- 2. Advisory Transaction Lock (Serializes baseline mutations per profile + concept)
+  IF p_temporal_scope = 'baseline' THEN
+    PERFORM pg_advisory_xact_lock(hashtext(p_patient_profile_id || ':' || p_concept));
+  END IF;
+
+  -- 3. Idempotency Check: (patient_profile_id, source_consultation_id, source_turn_id, concept)
   SELECT plf.id INTO v_existing_id
   FROM patient_longitudinal_facts plf
   WHERE plf.patient_profile_id = p_patient_profile_id
@@ -83,7 +90,7 @@ BEGIN
     RETURN;
   END IF;
 
-  -- 3. If Baseline: find and lock previous active baseline to supersede
+  -- 4. If Baseline: find and lock previous active baseline to supersede
   IF p_temporal_scope = 'baseline' THEN
     SELECT plf.id INTO v_superseded_id
     FROM patient_longitudinal_facts plf
@@ -103,7 +110,7 @@ BEGIN
     END IF;
   END IF;
 
-  -- 4. Insert new fact
+  -- 5. Insert new fact
   INSERT INTO patient_longitudinal_facts (
     id, user_id, patient_profile_id, category, concept,
     reported_value, numeric_value, unit, temporal_scope,
@@ -116,7 +123,7 @@ BEGIN
     p_source_consultation_id, p_source_turn_id, p_reported_at, v_now, v_superseded_id
   );
 
-  -- 5. Return inserted row
+  -- 6. Return inserted row
   RETURN QUERY
   SELECT plf.id, plf.user_id, plf.patient_profile_id, plf.category, plf.concept,
          plf.reported_value, plf.numeric_value, plf.unit, plf.temporal_scope,
