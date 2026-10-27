@@ -1,4 +1,5 @@
 import assert from "assert";
+import http from "http";
 import {
   RATE_LIMIT_POLICIES,
   resolveTrustedClientIp,
@@ -14,6 +15,7 @@ import {
   setRateLimitStoreForTesting,
   getActiveRateLimitStore,
   getFallbackLocalStore,
+  getRateLimiterConfigDiagnostics,
 } from "../../lib/security/distributed-rate-limiter";
 import { POST as chatHandler } from "../../app/api/voice/chat/route";
 import { POST as ttsHandler } from "../../app/api/voice/tts/route";
@@ -588,6 +590,176 @@ async function runDistributedRateLimiterTests() {
   } catch (err) {
     setRateLimitStoreForTesting(null);
     testFail("Consultation mutations: POST and PATCH enforce distributed rate limits with 429 responses", err);
+  }
+
+  // ---------------------------------------------------------------------------
+  // 11. Multi-Instance HTTP Network Integration Test (Independent Redis Clients)
+  // ---------------------------------------------------------------------------
+  try {
+    // Spin up an in-process HTTP mock server simulating Upstash Redis /eval over TCP
+    const serverStorage = new Map<string, number[]>();
+
+    const mockServer = http.createServer(async (req, res) => {
+      if (req.method === "POST" && req.url === "/eval") {
+        let body = "";
+        for await (const chunk of req) {
+          body += chunk;
+        }
+
+        try {
+          const payload = JSON.parse(body);
+          // Format: [script, numKeys, key, nowStr, windowStr, limitStr, costStr, member, ttlStr]
+          const key = payload[2];
+          const now = Number(payload[3]);
+          const windowMs = Number(payload[4]);
+          const limit = Number(payload[5]);
+          const cost = Number(payload[6]) || 1;
+
+          let timestamps = serverStorage.get(key) || [];
+          const clearBefore = now - windowMs;
+          timestamps = timestamps.filter((t) => t > clearBefore);
+
+          if (timestamps.length + cost <= limit) {
+            for (let i = 0; i < cost; i++) {
+              timestamps.push(now);
+            }
+            serverStorage.set(key, timestamps);
+            const remaining = limit - timestamps.length;
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ result: [1, limit, remaining, windowMs, 0] }));
+          } else {
+            serverStorage.set(key, timestamps);
+            const oldest = timestamps[0] || now;
+            const resetMs = Math.max(0, oldest + windowMs - now);
+            const retryAfterSec = Math.max(1, Math.ceil(resetMs / 1000));
+            res.writeHead(200, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ result: [0, limit, 0, resetMs, retryAfterSec] }));
+          }
+        } catch (e: any) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ error: e.message }));
+        }
+      } else {
+        res.writeHead(404).end();
+      }
+    });
+
+    await new Promise<void>((resolve) => {
+      mockServer.listen(0, "127.0.0.1", () => resolve());
+    });
+
+    try {
+      const address = mockServer.address() as any;
+      const serverUrl = `http://127.0.0.1:${address.port}`;
+
+      // Create two independent UpstashRedisRateLimitStore client instances
+      const clientInstanceA = new UpstashRedisRateLimitStore({
+        url: serverUrl,
+        token: "secret_test_token_a",
+      });
+
+      const clientInstanceB = new UpstashRedisRateLimitStore({
+        url: serverUrl,
+        token: "secret_test_token_b",
+      });
+
+      const sharedKey = "cluster:independent:instances:test";
+      const sharedLimit = 8;
+      const windowMs = 60_000;
+      const now = 5_000_000;
+
+      // Concurrently fire 20 requests across both independent clients over TCP
+      const clientRequests = Array.from({ length: 20 }, (_, idx) => {
+        const client = idx % 2 === 0 ? clientInstanceA : clientInstanceB;
+        const clientLabel = idx % 2 === 0 ? "clientA" : "clientB";
+        return client
+          .checkAndIncrement({
+            key: sharedKey,
+            limit: sharedLimit,
+            windowMs,
+            now,
+          })
+          .then((res) => ({ clientLabel, ...res }));
+      });
+
+      const responses = await Promise.all(clientRequests);
+      const allowedResponses = responses.filter((r) => r.allowed);
+      const deniedResponses = responses.filter((r) => !r.allowed);
+
+      assert.strictEqual(
+        allowedResponses.length,
+        sharedLimit,
+        `Shared cluster quota must allow exactly ${sharedLimit} requests across independent instances`
+      );
+      assert.strictEqual(
+        deniedResponses.length,
+        20 - sharedLimit,
+        `Remaining ${20 - sharedLimit} requests must be blocked across independent instances`
+      );
+
+      // Verify both instances engaged in network communication
+      assert.ok(
+        allowedResponses.some((r) => r.clientLabel === "clientA"),
+        "Client A must have successful allowed requests"
+      );
+      assert.ok(
+        allowedResponses.some((r) => r.clientLabel === "clientB"),
+        "Client B must have successful allowed requests"
+      );
+      assert.ok(
+        deniedResponses.every((r) => r.storeType === "redis"),
+        "All denied responses must identify storeType as redis"
+      );
+
+      // Verify window rollout: advance time by 60_001 ms, verify next request on Client B succeeds
+      const rolledOutRes = await clientInstanceB.checkAndIncrement({
+        key: sharedKey,
+        limit: sharedLimit,
+        windowMs,
+        now: now + 60_001,
+      });
+      assert.strictEqual(rolledOutRes.allowed, true, "Request must be allowed after window rolls out");
+
+      testPass("Multi-instance HTTP integration: independent Redis client instances enforce shared cluster quota");
+    } finally {
+      await new Promise<void>((resolve) => mockServer.close(() => resolve()));
+    }
+  } catch (err) {
+    testFail("Multi-instance HTTP integration: independent Redis client instances enforce shared cluster quota", err);
+  }
+
+  // ---------------------------------------------------------------------------
+  // 12. Rate Limiter Configuration Diagnostics & Production Warning
+  // ---------------------------------------------------------------------------
+  try {
+    const origUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const origToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+
+    try {
+      // Test without env vars
+      delete process.env.UPSTASH_REDIS_REST_URL;
+      delete process.env.UPSTASH_REDIS_REST_TOKEN;
+      const diagMemory = getRateLimiterConfigDiagnostics();
+      assert.strictEqual(diagMemory.mode, "process_memory");
+      assert.strictEqual(diagMemory.redisConfigured, false);
+
+      // Test with env vars
+      process.env.UPSTASH_REDIS_REST_URL = "https://example.upstash.io";
+      process.env.UPSTASH_REDIS_REST_TOKEN = "tok_example";
+      const diagRedis = getRateLimiterConfigDiagnostics();
+      assert.strictEqual(diagRedis.mode, "distributed_redis");
+      assert.strictEqual(diagRedis.redisConfigured, true);
+
+      testPass("Diagnostics: getRateLimiterConfigDiagnostics correctly reports active engine state");
+    } finally {
+      if (origUrl) process.env.UPSTASH_REDIS_REST_URL = origUrl;
+      else delete process.env.UPSTASH_REDIS_REST_URL;
+
+      if (origToken) process.env.UPSTASH_REDIS_REST_TOKEN = origToken;
+      else delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    }
+  } catch (err) {
+    testFail("Diagnostics: getRateLimiterConfigDiagnostics correctly reports active engine state", err);
   }
 
   // ---------------------------------------------------------------------------

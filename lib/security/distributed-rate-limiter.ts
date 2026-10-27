@@ -261,6 +261,25 @@ export class UpstashRedisRateLimitStore implements DistributedRateLimitStore {
 let customTestStore: DistributedRateLimitStore | null = null;
 let fallbackLocalStore = new MemoryRateLimitStore();
 
+let hasLoggedProductionWarning = false;
+
+export interface RateLimiterConfigDiagnostics {
+  mode: "distributed_redis" | "process_memory";
+  redisConfigured: boolean;
+  environment: string;
+}
+
+export function getRateLimiterConfigDiagnostics(): RateLimiterConfigDiagnostics {
+  const url = process.env.UPSTASH_REDIS_REST_URL;
+  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
+  const redisConfigured = Boolean(url && token);
+  return {
+    mode: redisConfigured ? "distributed_redis" : "process_memory",
+    redisConfigured,
+    environment: process.env.NODE_ENV || "development",
+  };
+}
+
 export function setRateLimitStoreForTesting(store: DistributedRateLimitStore | null) {
   customTestStore = store;
 }
@@ -275,6 +294,14 @@ export function getActiveRateLimitStore(): DistributedRateLimitStore {
 
   if (url && token) {
     return new UpstashRedisRateLimitStore({ url, token });
+  }
+
+  if (process.env.NODE_ENV === "production" && !hasLoggedProductionWarning) {
+    hasLoggedProductionWarning = true;
+    console.warn(
+      "[WARN][RateLimiter] UPSTASH_REDIS_REST_URL / UPSTASH_REDIS_REST_TOKEN missing in production. " +
+      "Falling back to process-local MemoryRateLimitStore. Multi-instance cluster rate limits will NOT be unified."
+    );
   }
 
   // Fallback to local memory store for local development/unit tests
