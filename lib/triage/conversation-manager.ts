@@ -154,6 +154,8 @@ export interface ProcessTurnOptions {
   callerProfile?: CallerProfile;
   patientProfile?: PatientProfile;
   conversationHistory?: Array<{ role: "patient" | "doctor" | "assistant"; text?: string; content?: string }>;
+  isThirdPartyMention?: boolean;
+  thirdPartyRelation?: string;
 }
 
 /**
@@ -858,7 +860,9 @@ export class ConversationManager {
     } as any);
 
     // Ingest extracted demographics & modifiers from speech into patient profile & state
-    const extDemo = preArbiterResult?.universal_red_flag_result?.extractedDemographics;
+    // Invariant: Third-party mentions must NEVER mutate the primary patient profile or personal history slots
+    const isThirdParty = Boolean(options?.isThirdPartyMention);
+    const extDemo = isThirdParty ? undefined : preArbiterResult?.universal_red_flag_result?.extractedDemographics;
     if (extDemo) {
       const extAge = (extDemo.ageYears != null && extDemo.ageYears > 0)
         ? extDemo.ageYears
@@ -1009,8 +1013,8 @@ export class ConversationManager {
     }
     const mem = state.conversationMemory;
 
-    // Ingest extra semantic information into memory
-    if (semantic.extractedFrequency) {
+    // Ingest extra semantic information into memory (strictly isolated from third-party statements)
+    if (!isThirdParty && semantic.extractedFrequency) {
       mem.frequencyPattern = semantic.extractedFrequency;
       const fact = `Frequency: ${semantic.extractedFrequency}`;
       if (!state.slots.known_facts.includes(fact)) {
@@ -1018,7 +1022,7 @@ export class ConversationManager {
         mem.confirmedFacts.push(fact);
       }
     }
-    if (semantic.extractedRiskFactors) {
+    if (!isThirdParty && semantic.extractedRiskFactors) {
       mem.riskFactors = semantic.extractedRiskFactors;
       const fact = `Risk factors: ${semantic.extractedRiskFactors}`;
       if (!state.slots.known_facts.includes(fact)) {
@@ -1034,7 +1038,7 @@ export class ConversationManager {
     }
 
     // Contradiction / Correction check
-    if (semantic.isCorrection && semantic.correctedSlot && semantic.correctedValue) {
+    if (!isThirdParty && semantic.isCorrection && semantic.correctedSlot && semantic.correctedValue) {
       const slot = semantic.correctedSlot;
       const val = semantic.correctedValue;
       (state.slots as any)[slot] = val;
@@ -1048,7 +1052,7 @@ export class ConversationManager {
     if (!state.contextState) {
       state.contextState = createInitialConversationContextState();
     }
-    if (semantic.proposals && semantic.proposals.length > 0) {
+    if (!isThirdParty && semantic.proposals && semantic.proposals.length > 0) {
       const commitRes = FactCommitEngine.commit(
         state.contextState,
         semantic.proposals,
@@ -1060,7 +1064,9 @@ export class ConversationManager {
     }
 
     // Opportunistic extraction from transcript before response planning
-    this.extractOpportunisticFacts(state);
+    if (!isThirdParty) {
+      this.extractOpportunisticFacts(state);
+    }
 
     // If an existing pending question was answered, resolve it before planning the next action
     if (state.pendingQuestion && state.pendingQuestion.status === "pending") {
