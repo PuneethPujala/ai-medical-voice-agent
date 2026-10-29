@@ -4651,8 +4651,12 @@ export default function ConsultPage() {
             assessment: "",
             plan: "",
           },
+          patientAge: activeProfile?.age != null ? String(activeProfile.age) : undefined,
+          patientGender: activeProfile?.gender || undefined,
           auditSha256: boardData?.trace?.audit_sha256,
           userId: user?.id,
+          userRole: (user?.publicMetadata?.role as string) || "patient",
+          caseVersion: currentCaseVersionRef.current ? currentCaseVersionRef.current + 1 : undefined,
         }}
         onSaveSuccess={() => {
           setPersistenceStatus("saved");

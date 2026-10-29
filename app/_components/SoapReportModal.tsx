@@ -44,6 +44,8 @@ export interface SoapEncounterData {
   auditSha256?: string;
   boardConsensusCount?: string;
   userId?: string;
+  userRole?: string;
+  caseVersion?: number;
 }
 
 interface SoapReportModalProps {
@@ -79,6 +81,7 @@ export function SoapReportModal({
   const [plan, setPlan] = useState("");
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [copiedNote, setCopiedNote] = useState(false);
   const [showTranscript, setShowTranscript] = useState(false);
 
@@ -133,6 +136,7 @@ export function SoapReportModal({
 
       setIsEditing(false);
       setSaveSuccess(false);
+      setSaveError(null);
     }
   }, [isOpen, encounter, chiefConcern, cleanDoctorName]);
 
@@ -241,12 +245,16 @@ Information Sources: Patient-reported · AI-inferred · Zero fabricated vitals
   };
 
   // Commit / Save Encounter to Database
+  const isClinicianOrAdmin = encounter?.userRole === "clinician" || encounter?.userRole === "admin";
+  const preferredStatus = isClinicianOrAdmin ? "approved" : "completed_pending_review";
+
   const handleApproveAndSave = async () => {
     setIsSaving(true);
+    setSaveError(null);
     try {
-      const payload = {
+      const basePayload = {
         id: encounterId,
-        userId: encounter.userId || "anon-user",
+        userId: encounter.userId || undefined,
         patientName: encounter.patientName || "Patient",
         patientAge: encounter.patientAge,
         patientGender: encounter.patientGender,
@@ -266,27 +274,64 @@ Information Sources: Patient-reported · AI-inferred · Zero fabricated vitals
         soapPlan: plan,
         recommendedAction: encounter.recommendedAction,
         durationSeconds: encounter.callDuration,
-        status: "approved",
+        caseVersion: encounter.caseVersion,
       };
 
-      const res = await fetch("/api/consultations", {
+      let payload: any = {
+        ...basePayload,
+        status: preferredStatus,
+      };
+
+      let res = await fetch("/api/consultations", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
 
+      // If approval fails due to signing authority (patient role), gracefully fallback to completed_pending_review
+      if (!res.ok && res.status === 403) {
+        const errorData = await res.clone().json().catch(() => ({}));
+        if (errorData.code === "FORBIDDEN_SIGNING_AUTHORITY") {
+          console.warn("[MedVoice] Signing authority restricted for role; saving note as completed_pending_review...");
+          payload = { ...basePayload, status: "completed_pending_review" };
+          res = await fetch("/api/consultations", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+        }
+      }
+
+      // If concurrency conflict (409), synchronize with datastore version and retry once
+      if (!res.ok && res.status === 409) {
+        const conflictData = await res.clone().json().catch(() => ({}));
+        if (conflictData.currentVersion !== undefined) {
+          const retryVersion = Number(conflictData.currentVersion) + 1;
+          payload = { ...payload, caseVersion: retryVersion };
+          res = await fetch("/api/consultations", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+        }
+      }
+
       if (res.ok) {
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         setSaveSuccess(true);
         setIsEditing(false);
         if (onSaveSuccess) {
           onSaveSuccess(data.consultation || payload);
         }
       } else {
-        throw new Error("Failed to save consultation");
+        const errJson = await res.json().catch(() => ({}));
+        const errMsg = errJson.error || errJson.message || `Failed to save consultation (HTTP ${res.status})`;
+        console.error("[MedVoice] Encounter save error:", errMsg);
+        setSaveError(errMsg);
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error("Error approving encounter:", err);
+      setSaveError(err?.message || "Network error saving consultation.");
     } finally {
       setIsSaving(false);
     }
@@ -577,6 +622,19 @@ Information Sources: Patient-reported · AI-inferred · Zero fabricated vitals
           )}
         </div>
 
+        {saveError && (
+          <div className="px-6 sm:px-8 py-2.5 bg-rose-50 border-t border-rose-200 text-xs text-rose-700 flex items-center justify-between">
+            <span className="font-medium">{saveError}</span>
+            <button
+              type="button"
+              onClick={() => setSaveError(null)}
+              className="text-rose-500 hover:text-rose-700 font-bold ml-2 cursor-pointer"
+            >
+              ×
+            </button>
+          </div>
+        )}
+
         {/* ============================================================ Fixed Bottom Action Bar */}
         <div className="px-6 sm:px-8 py-4 border-t border-slate-200 bg-white/95 backdrop-blur-md flex flex-wrap items-center justify-between gap-3 shrink-0">
           <div className="flex items-center gap-2">
@@ -628,7 +686,11 @@ Information Sources: Patient-reported · AI-inferred · Zero fabricated vitals
               disabled={isSaving || saveSuccess}
               icon={saveSuccess ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <Save className="w-4 h-4" />}
             >
-              {isSaving ? "Saving..." : saveSuccess ? "Clinician Approved" : "Approve & Sign Note"}
+              {isSaving
+                ? "Saving..."
+                : saveSuccess
+                ? (isClinicianOrAdmin ? "Clinician Approved" : "Consultation Saved")
+                : (isClinicianOrAdmin ? "Approve & Sign Note" : "Save Consultation Note")}
             </PremiumButton>
           </div>
         </div>
