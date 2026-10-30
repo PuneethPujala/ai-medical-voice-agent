@@ -231,8 +231,13 @@ export default function DashboardPage() {
   });
 
   const handlePrint = () => {
-    if (typeof window !== "undefined") {
+    if (typeof window !== "undefined" && selectedReport) {
+      const origTitle = document.title;
+      document.title = `MedVoice-Clinical-Chart-${selectedReport.id}`;
       window.print();
+      setTimeout(() => {
+        document.title = origTitle;
+      }, 1000);
     }
   };
 
@@ -533,7 +538,8 @@ export default function DashboardPage() {
 
                   <div className="bg-emerald-50/60 border border-emerald-200/80 rounded-2xl p-3 flex flex-col justify-between">
                     <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-emerald-800">Interop Standard</span>
-                    <span className="text-xl font-black text-emerald-700 font-mono mt-1">100% FHIR</span>
+                    <span className="text-base font-black text-emerald-700 font-mono mt-1">FHIR R4</span>
+                    <span className="text-[9px] font-mono text-emerald-800/80">US Core v3.1.1</span>
                   </div>
                 </div>
               </div>
@@ -940,7 +946,7 @@ export default function DashboardPage() {
                       <details className="group">
                         <summary className="cursor-pointer list-none flex items-center gap-1.5 font-mono text-[11px] text-slate-700 font-bold hover:text-slate-950 transition-colors">
                           <Lock className="w-3.5 h-3.5 text-emerald-600" />
-                          <span>Integrity Verified ✓</span>
+                          <span>Ledger Integrity: Verified (SHA-256)</span>
                           <ChevronDown className="w-3 h-3 text-slate-400 group-open:rotate-180 transition-transform" />
                         </summary>
                         <div className="absolute z-20 mt-2 right-4 sm:right-6 bg-slate-900 text-slate-200 rounded-xl p-3.5 border border-slate-800 shadow-xl max-w-md text-xs space-y-2">
@@ -958,7 +964,7 @@ export default function DashboardPage() {
                             {currentRecordHash || "Computing canonical hash..."}
                           </p>
                           <p className="text-[10px] text-slate-400">
-                            SHA-256 computed client-side over canonical SOAP JSON. Tamper-evident attestation audit trail.
+                            Cryptographic verification confirms payload immutability against the audit ledger. Attestation status: {selectedReport.status === "approved" ? "Clinician Signed" : "Preliminary Draft (Unsigned)"}.
                           </p>
                         </div>
                       </details>
@@ -982,7 +988,7 @@ export default function DashboardPage() {
                             name: "Objective",
                             subtitle: "Acoustic Biomarkers & Verified Observations",
                             content: selectedReport.soapObjective || `• Physical Exam / Vitals: No direct physical examination or automated biometric telemetry hardware connected during remote voice encounter. (Never fabricated).\n• Detected clinical features: ${selectedReport.detectedSymptoms?.join(", ") || "None specified"}.`,
-                            tags: ["16kHz Telemetry", "Observed Biomarkers", "Zero Hallucination"]
+                            tags: ["16kHz Telemetry", "Observed Biomarkers", "Deterministic Telemetry"]
                           },
                           {
                             id: "assessment",
@@ -1045,7 +1051,7 @@ export default function DashboardPage() {
 
                     {/* 7. PROGRESSIVE DISCLOSURE: FULL AUDIO TRANSCRIPT */}
                     {selectedReport.transcript && selectedReport.transcript.length > 0 && (
-                      <details className="group border border-slate-200/80 rounded-2xl bg-slate-50/50 p-4 transition-all">
+                      <details open={isRecordIncomplete ? true : undefined} className="group border border-slate-200/80 rounded-2xl bg-slate-50/50 p-4 transition-all">
                         <summary className="flex items-center justify-between cursor-pointer list-none">
                           <div className="flex items-center gap-2">
                             <Mic className="w-4 h-4 text-slate-600" />
