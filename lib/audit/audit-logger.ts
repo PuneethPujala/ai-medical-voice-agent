@@ -357,15 +357,27 @@ export async function logAuditEventAsync(params: {
           auditLedger.push(fullEvent);
           return fullEvent;
         } catch (dbErr: any) {
-          // If conflict on index (concurrent insert from another process/lambda), re-sync and retry
-          if (dbErr?.code === "23505" || dbErr?.message?.includes("unique constraint") || dbErr?.message?.includes("duplicate key")) {
+          // If conflict on index (concurrent insert from another process/lambda), re-sync and retry.
+          // Drizzle wraps the underlying Postgres error — check both wrapper and cause.
+          const rootCause = dbErr?.cause ?? dbErr;
+          const rootCode = rootCause?.code ?? dbErr?.code;
+          const rootMsg = rootCause?.message ?? "";
+          const outerMsg = dbErr?.message ?? "";
+          const isUniqueViolation =
+            rootCode === "23505" ||
+            outerMsg.includes("unique constraint") || outerMsg.includes("duplicate key") ||
+            rootMsg.includes("unique constraint") || rootMsg.includes("duplicate key");
+          if (isUniqueViolation) {
             console.warn(`Concurrent audit collision on index ${index}. Re-syncing and retrying (attempt ${attempts}/${maxAttempts})...`);
             await syncAuditLedgerFromDb();
             continue;
           }
 
-          console.error(`Durable audit persistence failed for event ${id}:`, dbErr?.message);
-          throw new Error(`Durable audit persistence failed: ${dbErr?.message}`);
+          // Non-fatal: fall back to in-memory ledger so audit failures never crash the primary API.
+          // The event is still recorded in-memory for the current process lifetime.
+          console.error(`Durable audit persistence failed for event ${id} (falling back to memory):`, outerMsg, rootMsg);
+          auditLedger.push(fullEvent);
+          return fullEvent;
         }
       } else {
         // In environments without DB (e.g. offline unit testing), commit to memory ledger
