@@ -144,9 +144,9 @@ export function Navbar() {
   return (
     <>
       {/* ============================================================ Floating Single Unified Capsule Header */}
-      <header className={`${isHome ? "fixed" : "sticky"} top-0 left-0 right-0 z-50 w-full pt-3 sm:pt-4 pb-2 px-4 sm:px-8 pointer-events-none transition-all duration-300`}>
+      <header className="fixed top-0 left-0 right-0 z-50 w-full pt-3 sm:pt-4 pb-2 px-4 sm:px-8 pointer-events-none transition-all duration-300">
         <div
-          className="mx-auto flex h-14 max-w-5xl items-center justify-between px-5 py-2 rounded-full bg-white/90 backdrop-blur-md border border-slate-200/90 shadow-[0_4px_24px_-4px_rgba(0,0,0,0.06)] pointer-events-auto transition-all"
+          className="mx-auto flex h-14 max-w-5xl items-center justify-between px-5 py-2 rounded-full bg-white/95 backdrop-blur-md border border-slate-200/90 shadow-[0_4px_24px_-4px_rgba(0,0,0,0.06)] pointer-events-auto transition-all"
         >
           
           {/* Group 1: Brand Identity Anchor */}

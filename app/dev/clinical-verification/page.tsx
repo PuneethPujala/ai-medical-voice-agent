@@ -67,7 +67,7 @@ export default function ClinicalVerificationDevPage() {
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans flex flex-col">
 
-      <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 pt-8 pb-16 flex flex-col gap-6">
+      <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 pt-28 sm:pt-32 pb-16 flex flex-col gap-6">
         
         {/* DEV TOOLBAR HEADER */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-6 rounded-3xl bg-slate-900 border border-slate-800 shadow-xl">

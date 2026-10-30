@@ -589,7 +589,7 @@ export default function CarePage() {
     <div className="relative min-h-screen bg-[#FAF9F6] text-[#05070F] flex flex-col font-sans selection:bg-[#B7FF72] selection:text-[#05070F]">
 
       {/* Main Command Center Canvas */}
-      <main className="relative z-10 flex-1 max-w-[1400px] w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-10 pb-16 flex flex-col gap-6">
+      <main className="relative z-10 flex-1 max-w-[1400px] w-full mx-auto px-4 sm:px-6 lg:px-8 pt-28 sm:pt-32 pb-16 flex flex-col gap-6">
 
         {/* ========================================================================= */}
         {/* COMMAND CENTER HEADER: COMPACT CLINICAL NARRATIVE                         */}

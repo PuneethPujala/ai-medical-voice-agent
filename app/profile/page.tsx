@@ -419,7 +419,7 @@ export default function PatientProfilePage() {
     <div className="relative min-h-screen bg-[#FAF9F6] text-[#05070F] flex flex-col font-sans selection:bg-[#B7FF72] selection:text-[#05070F]">
 
       {/* Main Container: Expanded to full desktop canvas (1200-1280px) */}
-      <main className="relative z-10 flex-1 max-w-[1240px] w-full mx-auto px-4 sm:px-6 lg:px-8 pt-6 sm:pt-10 pb-12 sm:pb-16 flex flex-col gap-8">
+      <main className="relative z-10 flex-1 max-w-[1240px] w-full mx-auto px-4 sm:px-6 lg:px-8 pt-28 sm:pt-32 pb-12 sm:pb-16 flex flex-col gap-8">
 
         {/* ========================================================================= */}
         {/* EDITORIAL SETTINGS HEADER: LINEAR / RAYCAST / APPLE HIG PATTERN           */}
