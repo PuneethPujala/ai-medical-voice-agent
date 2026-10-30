@@ -461,6 +461,7 @@ export default function ConsultPage() {
             if (parsed.expiresAt && Date.now() < parsed.expiresAt && parsed.payload?.transcript?.length > 0) {
               if (messages.length === 0 && !callActiveRef.current) {
                 stableEncounterIdRef.current = parsed.payload.id;
+                serverEncounterCreatedRef.current = true;
                 setCurrentEncounterId(parsed.payload.id);
                 setMessages(parsed.payload.transcript);
                 setCallDuration(parsed.payload.durationSeconds || 0);
@@ -633,6 +634,9 @@ export default function ConsultPage() {
 
   // Encounter Persistence & Review State Machine
   const stableEncounterIdRef = useRef<string>("");
+  const serverEncounterCreatedRef = useRef<boolean>(false);
+  const serverEncounterPromiseRef = useRef<Promise<boolean> | null>(null);
+  const isPersistingEncounterRef = useRef<boolean>(false);
   const encounterVersionRef = useRef<number>(0);
   const [currentEncounterId, setCurrentEncounterId] = useState<string>("");
   const [persistenceStatus, setPersistenceStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -1923,6 +1927,10 @@ export default function ConsultPage() {
       const genId = `ENC-${Date.now().toString().slice(-6)}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
       stableEncounterIdRef.current = genId;
       setCurrentEncounterId(genId);
+      serverEncounterCreatedRef.current = false;
+      ensureServerEncounter(genId, "Clinical voice consultation initiation").catch((err) =>
+        console.warn("[MedVoice] Pre-initialize encounter notice:", err)
+      );
     }
 
     // Pre-warm the persistent HTML5 AudioElement during the user gesture to prime autoplay privileges
@@ -1979,6 +1987,10 @@ export default function ConsultPage() {
       stableEncounterIdRef.current = genId;
       setCurrentEncounterId(genId);
       encounterVersionRef.current = 0;
+      serverEncounterCreatedRef.current = false;
+      ensureServerEncounter(genId, "Clinical voice consultation initiation").catch((err) =>
+        console.warn("[MedVoice] Pre-initialize encounter notice:", err)
+      );
     }
     consultationStartedAtRef.current = Date.now();
 
@@ -2021,8 +2033,14 @@ export default function ConsultPage() {
     durationSecs: number,
     statusOverride: "in_progress" | "incomplete_intake" | "completed_pending_review" | "approved" = "completed_pending_review",
     customMessages?: ChatMessage[],
-    customTriage?: any
-  ) => {
+    customTriage?: any,
+    initialConcernOverride?: string,
+    customCaseVersion?: number
+  ): Promise<boolean> => {
+    if (isPersistingEncounterRef.current) {
+      return false;
+    }
+    isPersistingEncounterRef.current = true;
     setPersistenceStatus("saving");
     setPersistenceError(null);
 
@@ -2030,11 +2048,13 @@ export default function ConsultPage() {
     const activeTriage = customTriage !== undefined ? customTriage : triageData;
 
     const patientUtterances = activeMessages.filter((m) => m.role === "patient");
-    const chiefConcern = patientUtterances.length > 0
-      ? patientUtterances[0].text.replace(/^"|"$/g, "")
-      : activeTriage?.detectedSymptoms?.length
-      ? activeTriage.detectedSymptoms.join(", ")
-      : "Clinical voice intake consultation";
+    const chiefConcern = initialConcernOverride || (
+      patientUtterances.length > 0
+        ? patientUtterances[0].text.replace(/^"|"$/g, "")
+        : activeTriage?.detectedSymptoms?.length
+        ? activeTriage.detectedSymptoms.join(", ")
+        : "Clinical voice intake consultation"
+    );
 
     const hasCompleteSoap = Boolean(activeTriage?.soap?.subjective && activeTriage?.soap?.assessment);
     const isEarlyTermination = !hasCompleteSoap && statusOverride === "completed_pending_review";
@@ -2070,7 +2090,9 @@ export default function ConsultPage() {
 
     // Monotonic optimistic concurrency version calculation
     let nextCaseVersion: number;
-    if (interviewState?.caseVersion && typeof interviewState.caseVersion === "number") {
+    if (customCaseVersion !== undefined) {
+      nextCaseVersion = customCaseVersion;
+    } else if (interviewState?.caseVersion && typeof interviewState.caseVersion === "number") {
       nextCaseVersion = Math.max(interviewState.caseVersion, encounterVersionRef.current + 1);
     } else if (encounterVersionRef.current === 0) {
       nextCaseVersion = 1;
@@ -2142,6 +2164,7 @@ export default function ConsultPage() {
         encounterVersionRef.current = Number(serverVersion);
         setPersistenceStatus("saved");
         setPersistenceError(null);
+        serverEncounterCreatedRef.current = true;
         if (statusOverride === "completed_pending_review" || statusOverride === "approved") {
           if (typeof window !== "undefined" && window.sessionStorage) {
             try {
@@ -2149,6 +2172,7 @@ export default function ConsultPage() {
             } catch {}
           }
         }
+        return true;
       } else if (res.status === 409) {
         const data = await res.json().catch(() => ({}));
         console.warn("[MedVoice Concurrency] 409 conflict during persist:", data.error);
@@ -2168,25 +2192,60 @@ export default function ConsultPage() {
             const retryData = await retryRes.json().catch(() => ({}));
             const serverVersion = retryData.consultation?.caseVersion ?? retryData.consultation?.version ?? encounterVersionRef.current;
             encounterVersionRef.current = Number(serverVersion);
+            serverEncounterCreatedRef.current = true;
             setPersistenceStatus("saved");
             setPersistenceError(null);
-            return;
+            return true;
           }
         } catch (retryErr) {
           console.warn("[MedVoice Concurrency] Auto-reconciliation retry notice:", retryErr);
         }
         setPersistenceStatus("error");
         setPersistenceError(data.error || "Encounter version conflict.");
+        return false;
       } else {
         const data = await res.json().catch(() => ({}));
         console.warn("[MedVoice Encounter Sync] Persistence notice:", data.error || res.statusText);
         setPersistenceStatus("error");
         setPersistenceError(data.error || "Failed to persist consultation to clinical archive.");
+        return false;
       }
     } catch (err: any) {
       console.warn("Auto-persist encounter error:", err);
       setPersistenceStatus("error");
       setPersistenceError(err?.message || "Encounter sync failed.");
+      return false;
+    } finally {
+      isPersistingEncounterRef.current = false;
+    }
+  };
+
+  // Pre-initialize or confirm encounter record exists on the server datastore
+  const ensureServerEncounter = async (encId: string, initialChiefConcern?: string): Promise<boolean> => {
+    if (serverEncounterCreatedRef.current) return true;
+    if (serverEncounterPromiseRef.current) {
+      return serverEncounterPromiseRef.current;
+    }
+    const p = (async () => {
+      const ok = await persistEncounterRecord(
+        encId,
+        0,
+        "in_progress",
+        messages.length > 0 ? messages : undefined,
+        undefined,
+        initialChiefConcern,
+        1
+      );
+      if (ok) {
+        serverEncounterCreatedRef.current = true;
+      }
+      return ok;
+    })();
+    serverEncounterPromiseRef.current = p;
+    try {
+      return await p;
+    } finally {
+      serverEncounterPromiseRef.current = null;
     }
   };
 
@@ -2253,6 +2312,7 @@ export default function ConsultPage() {
     setInterviewState(null);
     setAudioState("IDLE");
     stableEncounterIdRef.current = "";
+    serverEncounterCreatedRef.current = false;
     encounterVersionRef.current = 0;
     setCurrentEncounterId("");
     setPersistenceStatus("idle");
@@ -2297,7 +2357,33 @@ export default function ConsultPage() {
     setMessages((prev) => [...prev, userMessage]);
 
     const clientTurnId = `turn-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+    // Ensure the encounter is registered on the server before sending the dialogue turn
+    if (!serverEncounterCreatedRef.current && stableEncounterIdRef.current) {
+      await ensureServerEncounter(stableEncounterIdRef.current, cleanUserText);
+    }
+
     try {
+      const chatPayload = {
+        encounterId: stableEncounterIdRef.current,
+        doctorId: selectedDoctor.id,
+        message: cleanUserText,
+        conversationHistory: [...messages, userMessage],
+        patientName: patientDisplayName,
+        patientAge: activeProfile?.age != null ? String(activeProfile.age) : undefined,
+        patientId: activeProfile?.id,
+        patientRelationship: activeProfile?.relationshipToUser || "self",
+        patientProfile: activeProfile || undefined,
+        userId: user?.id,
+        isInterruption: isBargeIn,
+        interruptedAgent: selectedDoctor.name,
+        interviewState: interviewState,
+        userLocation: userLocation || undefined,
+        locationPermission: locationPermission,
+        audioMetrics: audioMetrics || undefined,
+        stream: true,
+      };
+
       let res = await fetch("/api/voice/chat", {
         method: "POST",
         headers: {
@@ -2305,26 +2391,24 @@ export default function ConsultPage() {
           "Accept": "text/event-stream, application/json",
           "x-turn-id": clientTurnId,
         },
-        body: JSON.stringify({
-          encounterId: stableEncounterIdRef.current,
-          doctorId: selectedDoctor.id,
-          message: cleanUserText,
-          conversationHistory: [...messages, userMessage],
-          patientName: patientDisplayName,
-          patientAge: activeProfile?.age != null ? String(activeProfile.age) : undefined,
-          patientId: activeProfile?.id,
-          patientRelationship: activeProfile?.relationshipToUser || "self",
-          patientProfile: activeProfile || undefined,
-          userId: user?.id,
-          isInterruption: isBargeIn,
-          interruptedAgent: selectedDoctor.name,
-          interviewState: interviewState,
-          userLocation: userLocation || undefined,
-          locationPermission: locationPermission,
-          audioMetrics: audioMetrics || undefined,
-          stream: true,
-        }),
+        body: JSON.stringify(chatPayload),
       });
+
+      // Self-healing recovery: if server reported 404 encounter not found, register on server and retry once
+      if (res.status === 404 && stableEncounterIdRef.current) {
+        console.warn("[MedVoice] Encounter 404 detected; self-healing by registering encounter on server and retrying...");
+        serverEncounterCreatedRef.current = false;
+        await ensureServerEncounter(stableEncounterIdRef.current, cleanUserText);
+        res = await fetch("/api/voice/chat", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Accept": "text/event-stream, application/json",
+            "x-turn-id": clientTurnId,
+          },
+          body: JSON.stringify(chatPayload),
+        });
+      }
 
       if (!res.ok) {
         const errJson = await res.json().catch(() => ({}));
