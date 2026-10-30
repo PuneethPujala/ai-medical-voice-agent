@@ -32,7 +32,7 @@ export interface ConsultationRecordFHIR {
   specialty?: string;
   chiefComplaint?: string;
   status?: string;
-  triageLevel?: "emergency" | "priority" | "routine";
+  triageLevel?: "emergency" | "priority" | "routine" | "gathering_history";
   triageTitle?: string;
   esiScore?: number;
   icd10Codes?: string[];

@@ -191,9 +191,18 @@ export async function GET(request: Request) {
             .orderBy(desc(consultationsTable.createdAt))
             .limit(50);
         }
+        const sanitizedResults = results.map((row: any) => {
+          if (
+            (row.triageLevel === "gathering_history" || (typeof row.soapSubjective === "string" && row.soapSubjective.includes("[INCOMPLETE"))) &&
+            row.status === "approved"
+          ) {
+            return { ...row, status: "incomplete_intake" };
+          }
+          return row;
+        });
         return NextResponse.json({
           success: true,
-          consultations: results,
+          consultations: sanitizedResults,
           isSyntheticDataset: false,
         });
       } catch (dbErr) {
@@ -373,8 +382,8 @@ export async function POST(request: Request) {
       specialty = "General Physician",
       chiefComplaint = "",
       transcript = [],
-      triageLevel = "routine",
-      triageTitle = "LEVEL 3: ROUTINE CLINICAL CARE",
+      triageLevel = (body.status === "incomplete_intake" || body.status === "in_progress") ? "gathering_history" : "routine",
+      triageTitle = (body.status === "incomplete_intake" || body.status === "in_progress") ? "CLINICAL HISTORY GATHERING" : "LEVEL 3: ROUTINE CLINICAL CARE",
       icd10Codes = [],
       detectedSymptoms = [],
       soapSubjective = "",
@@ -440,6 +449,23 @@ export async function POST(request: Request) {
     // Clinical signing authority validation:
     // Only clinicians and administrators possess authority to create or transition a consultation to approved.
     const isApprovingRequested = requestedStatus === "approved";
+    const isNewIntakeIncomplete =
+      requestedStatus === "incomplete_intake" ||
+      requestedStatus === "in_progress" ||
+      triageLevel === "gathering_history" ||
+      (typeof soapSubjective === "string" && soapSubjective.includes("[INCOMPLETE DRAFT"));
+
+    if (isApprovingRequested && isNewIntakeIncomplete) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Cannot approve incomplete intake. Clinical documentation must be completed before physician signature.",
+          code: "CANNOT_APPROVE_INCOMPLETE_INTAKE",
+        },
+        { status: 422 }
+      );
+    }
+
     if (isApprovingRequested && !hasPermission(auth.role, "consultations:approve")) {
       await logAuditEventAsync({
         actorId: auth.userId,
@@ -627,6 +653,23 @@ export async function POST(request: Request) {
       }
 
       const nextVersion = submittedVersion !== undefined ? submittedVersion : (expectedVersion + 1);
+
+      const existingIsIncomplete =
+        existingRecord.status === "incomplete_intake" ||
+        existingRecord.status === "in_progress" ||
+        existingRecord.triageLevel === "gathering_history" ||
+        (typeof existingRecord.soapSubjective === "string" && existingRecord.soapSubjective.includes("[INCOMPLETE DRAFT"));
+
+      if (isApprovingRequested && existingIsIncomplete) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Cannot approve incomplete intake. Clinical documentation must be completed before physician signature.",
+            code: "CANNOT_APPROVE_INCOMPLETE_INTAKE",
+          },
+          { status: 422 }
+        );
+      }
 
       const isTransitioningToApproved = isApprovingRequested && existingRecord.status !== "approved";
       const finalStatus = isApprovingRequested ? "approved" : (requestedStatus || existingRecord.status || "completed_pending_review");

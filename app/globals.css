@@ -236,3 +236,55 @@
     align-items: start !important;
   }
 }
+
+/* ==========================================================================
+   Clinical Chart Isolated Media Print Styles
+   Eliminates all viewport chrome, navigation bars, queue sidebars, and footers.
+   Renders isolated 1-2 page clinical chart with full uncollapsed transcript.
+   ========================================================================== */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm 15mm 15mm 15mm;
+  }
+  html, body {
+    background: #ffffff !important;
+    color: #0f172a !important;
+    font-size: 10pt !important;
+    line-height: 1.4 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  header, nav, footer, aside, button, input, .no-print, [role="navigation"] {
+    display: none !important;
+  }
+  .print\:hidden {
+    display: none !important;
+  }
+  .print\:block {
+    display: block !important;
+  }
+  .print-clinical-document {
+    display: block !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    color: #0f172a !important;
+  }
+  .print-clinical-document details {
+    display: block !important;
+  }
+  .print-clinical-document details[open] summary ~ * {
+    display: block !important;
+  }
+  .print-clinical-document summary {
+    display: block !important;
+    font-weight: bold;
+    margin-bottom: 4px;
+  }
+  .print-break-inside-avoid {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+}

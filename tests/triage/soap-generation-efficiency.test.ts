@@ -220,7 +220,7 @@ async function runSoapEfficiencySuite() {
   // ===========================================================================
   console.log(">>> TEST 3: Direct ClinicalBoard Engine Efficiency & Provenance Audit");
   {
-    const benchmarkCases: Array<{ name: string; patientCase: PatientCase }> = [
+    const benchmarkCases: Array<{ name: string; patientCase: any }> = [
       {
         name: "Acute Coronary Syndrome (Cardiology)",
         patientCase: {

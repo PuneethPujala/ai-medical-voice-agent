@@ -49,7 +49,7 @@ interface ConsultationRecord {
   doctorName: string;
   specialty: string;
   chiefComplaint: string;
-  triageLevel: "emergency" | "priority" | "routine";
+  triageLevel: "emergency" | "priority" | "routine" | "gathering_history";
   triageTitle: string;
   esiScore?: number;
   icd10Codes?: string[];
@@ -60,7 +60,7 @@ interface ConsultationRecord {
   soapPlan?: string;
   recommendedAction?: string;
   durationSeconds?: number;
-  status?: "in_progress" | "completed_pending_review" | "approved";
+  status?: "in_progress" | "completed_pending_review" | "approved" | "incomplete_intake";
   approvedAt?: string;
   approvedBy?: string;
   isSynthetic?: boolean;
@@ -97,6 +97,14 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState<boolean>(true);
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [selectedReport, setSelectedReport] = useState<ConsultationRecord | null>(null);
+  const isRecordIncomplete = Boolean(
+    selectedReport && (
+      selectedReport.status === "incomplete_intake" ||
+      selectedReport.status === "in_progress" ||
+      selectedReport.triageLevel === "gathering_history" ||
+      selectedReport.soapSubjective?.includes("[INCOMPLETE")
+    )
+  );
   const [filterSeverity, setFilterSeverity] = useState<string>("all");
   const [filterStatus, setFilterStatus] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -387,7 +395,7 @@ export default function DashboardPage() {
         {/* Ambient Subtle Motion Layer: Faint Mint particles and acoustic trace in whitespace */}
         <SoapWorkspaceAmbientMotion />
 
-        <main className="flex-1 w-full relative z-10 pt-28 sm:pt-32 pb-20 px-4 sm:px-6 lg:px-8 max-w-[1400px] mx-auto">
+        <main className="flex-1 w-full relative z-10 pt-28 sm:pt-32 pb-20 px-4 sm:px-6 lg:px-8 max-w-[1400px] mx-auto print:hidden">
           {/* ===================================================================== */}
           {/* PRODUCT-FIRST CLINICAL RECORDS WORKSPACE HEADER                       */}
           {/* ===================================================================== */}
@@ -644,7 +652,7 @@ export default function DashboardPage() {
                           <div className="flex items-center justify-between mb-2">
                             <span className="font-extrabold text-slate-900 text-sm truncate">{item.doctorName}</span>
                             <div className="flex items-center gap-1.5 flex-shrink-0">
-                              {item.soapSubjective?.includes("[INCOMPLETE INTAKE") || item.status === "in_progress" ? (
+                              {Boolean(item.status === "incomplete_intake" || item.status === "in_progress" || item.triageLevel === "gathering_history" || item.soapSubjective?.includes("[INCOMPLETE")) ? (
                                 <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 uppercase">
                                   Incomplete
                                 </span>
@@ -658,7 +666,7 @@ export default function DashboardPage() {
                                 </span>
                               )}
                               <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border uppercase ${getUrgencyBadge(item.triageLevel)}`}>
-                                {item.triageLevel}
+                                {Boolean(item.status === "incomplete_intake" || item.status === "in_progress" || item.triageLevel === "gathering_history" || item.soapSubjective?.includes("[INCOMPLETE")) ? "Unassessed" : item.triageLevel}
                               </span>
                             </div>
                           </div>
@@ -731,6 +739,14 @@ export default function DashboardPage() {
                                 </span>
                               )}
                             </div>
+                          ) : isRecordIncomplete ? (
+                            <div
+                              className="px-4 py-2 bg-slate-100 text-slate-400 border border-slate-200 rounded-xl text-xs font-mono font-bold flex items-center gap-2 cursor-not-allowed"
+                              title="Incomplete intake cannot be signed. Clinical documentation must be completed first."
+                            >
+                              <Lock className="w-4 h-4 text-slate-400" />
+                              <span>NOT READY FOR SIGNATURE</span>
+                            </div>
                           ) : (
                             <button
                               onClick={() => handleApproveReport(selectedReport.id)}
@@ -786,7 +802,7 @@ export default function DashboardPage() {
                           <span className="text-[11px] font-mono uppercase text-slate-400 font-bold">Acuity:</span>
                           <span className={`font-mono text-xs font-extrabold px-2.5 py-0.5 rounded-full uppercase border ${getUrgencyBadge(selectedReport.triageLevel)}`}>
                             {selectedReport.triageTitle || selectedReport.triageLevel}
-                            {selectedReport.esiScore ? ` · ESI Level ${selectedReport.esiScore}` : (selectedReport.triageLevel === "emergency" ? " · ESI Level 2" : " · ESI Level 4")}
+                            {isRecordIncomplete || !selectedReport.esiScore ? " · ESI: Not Yet Assessed" : (selectedReport.triageLevel === "emergency" ? " · ESI Level 2" : ` · ESI Level ${selectedReport.esiScore}`)}
                           </span>
                         </div>
 
@@ -794,11 +810,17 @@ export default function DashboardPage() {
 
                         <div className="flex flex-wrap items-center gap-1.5">
                           <span className="text-[11px] font-mono uppercase text-slate-400 font-bold">ICD-10:</span>
-                          {(selectedReport.icd10Codes && selectedReport.icd10Codes.length > 0 ? selectedReport.icd10Codes : ["Z76.0"]).map((code, idx) => (
-                            <span key={idx} className="font-mono text-xs bg-slate-100 text-slate-800 border border-slate-200/80 px-2 py-0.5 rounded font-bold">
-                              {code}
+                          {selectedReport.icd10Codes && selectedReport.icd10Codes.length > 0 ? (
+                            selectedReport.icd10Codes.map((code, idx) => (
+                              <span key={idx} className="font-mono text-xs bg-slate-100 text-slate-800 border border-slate-200/80 px-2 py-0.5 rounded font-bold">
+                                {code}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="font-mono text-xs bg-slate-100 text-slate-500 border border-slate-200/80 px-2 py-0.5 rounded italic">
+                              Not assigned (unsupported)
                             </span>
-                          ))}
+                          )}
                         </div>
 
                         <span className="text-slate-300 hidden sm:inline">•</span>
@@ -968,7 +990,11 @@ export default function DashboardPage() {
                             name: "Assessment",
                             subtitle: "Multi-Specialist Deliberation & Differential",
                             content: selectedReport.soapAssessment || selectedReport.triageTitle || "Clinical triage evaluation complete.",
-                            tags: [`ESI Score: ${selectedReport.esiScore || (selectedReport.triageLevel === "emergency" ? 2 : 4)}`, "Differential Synthesis", ...(selectedReport.icd10Codes || ["Z76.0"])]
+                            tags: [
+                              selectedReport.esiScore ? `ESI Score: ${selectedReport.esiScore}` : "ESI: Unassessed",
+                              "Differential Synthesis",
+                              ...(selectedReport.icd10Codes && selectedReport.icd10Codes.length > 0 ? selectedReport.icd10Codes : ["ICD-10: Unassigned"])
+                            ]
                           },
                           {
                             id: "plan",
@@ -1000,7 +1026,7 @@ export default function DashboardPage() {
                         <ClinicalFlipCard
                           category="HL7 FHIR R4 Bundle"
                           title={`${selectedReport.patientName} — ${selectedReport.triageTitle || selectedReport.specialty}`}
-                          frontSnippet={`Encounter with ${selectedReport.doctorName} (${selectedReport.specialty}). Chief complaint: "${selectedReport.chiefComplaint}". ESI triage classification: Level ${selectedReport.esiScore || (selectedReport.triageLevel === "emergency" ? 2 : 4)}.`}
+                          frontSnippet={`Encounter with ${selectedReport.doctorName} (${selectedReport.specialty}). Chief complaint: "${selectedReport.chiefComplaint}". ESI triage: ${selectedReport.esiScore ? `Level ${selectedReport.esiScore}` : "Not yet assessed"}.`}
                           frontBadge={`${new Date(selectedReport.createdAt).toLocaleDateString()} · ${selectedReport.triageLevel.toUpperCase()}`}
                           backTitle="FHIR R4 Resource & Integrity Schema"
                           backItems={[
@@ -1008,8 +1034,8 @@ export default function DashboardPage() {
                             { label: "Encounter ID", value: selectedReport.id },
                             { label: "Patient Ref", value: selectedReport.userId || "urn:uuid:patient-1002" },
                             { label: "Practitioner", value: selectedReport.doctorName },
-                            { label: "Triage / ESI", value: `ESI-${selectedReport.esiScore || (selectedReport.triageLevel === "emergency" ? 2 : 4)} (${selectedReport.triageLevel})` },
-                            { label: "ICD-10-CM", value: (selectedReport.icd10Codes || ["Z76.0"]).join(", ") },
+                            { label: "Triage / ESI", value: selectedReport.esiScore ? `ESI-${selectedReport.esiScore} (${selectedReport.triageLevel})` : `Unassessed (${selectedReport.triageLevel})` },
+                            { label: "ICD-10-CM", value: (selectedReport.icd10Codes && selectedReport.icd10Codes.length > 0 ? selectedReport.icd10Codes.join(", ") : "Not assigned (unsupported)") },
                             { label: "SHA-256 Hash", value: currentRecordHash ? `${currentRecordHash.substring(0, 18)}...` : "TAMPER_EVIDENT_OK" },
                           ]}
                           backNote="Compliant with US Core v3.1.1 / HL7 FHIR Release 4 standard. Verified immutable cryptographically."
@@ -1283,7 +1309,7 @@ export default function DashboardPage() {
                             <div>
                               <span className="text-[10px] font-mono text-slate-400 uppercase block font-bold">Acuity Stratification:</span>
                               <span className="font-mono font-bold text-slate-800">
-                                ESI Level {selectedReport.esiScore || (selectedReport.triageLevel === "emergency" ? 2 : 4)} · 5-Level Triage
+                                {selectedReport.esiScore ? `ESI Level ${selectedReport.esiScore}` : "ESI: Not Yet Assessed"} · 5-Level Triage
                               </span>
                             </div>
                             <div>
@@ -1303,7 +1329,7 @@ export default function DashboardPage() {
                         </span>
 
                         <div className="space-y-1.5">
-                          {(selectedReport.icd10Codes && selectedReport.icd10Codes.length > 0 ? selectedReport.icd10Codes : ["Z76.0"]).map((code, idx) => (
+                          {(selectedReport.icd10Codes && selectedReport.icd10Codes.length > 0 ? selectedReport.icd10Codes : ["Not assigned"]).map((code, idx) => (
                             <div key={idx} className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 text-xs">
                               <span className="font-mono font-bold text-[#18251D] bg-white px-2 py-0.5 rounded border border-slate-200">
                                 {code}
@@ -1356,8 +1382,133 @@ export default function DashboardPage() {
           )}
         </AnimatePresence>
 
+        {/* ===================================================================== */}
+        {/* DEDICATED ISOLATED PRINT CLINICAL DOCUMENT                            */}
+        {/* Strictly renders during window.print() — no nav, no footer, no chrome */}
+        {/* ===================================================================== */}
+        {selectedReport && (
+          <div className="hidden print:block print-clinical-document text-slate-900 font-sans p-4">
+            {/* 1. INSTITUTIONAL CLINICAL HEADER */}
+            <div className="border-b-2 border-slate-900 pb-3 mb-4">
+              <div className="flex justify-between items-start">
+                <div>
+                  <h1 className="text-xl font-black uppercase tracking-wider text-slate-900 m-0">MEDVOICE HEALTHCARE SYSTEM</h1>
+                  <p className="text-xs text-slate-600 m-0 font-medium">Department of Clinical Informatics · Outpatient Telemedicine & Triage Record</p>
+                </div>
+                <div className="text-right">
+                  <div className="font-mono text-xs font-black">ENCOUNTER ID: {selectedReport.id}</div>
+                  <div className="text-[11px] text-slate-500">{new Date(selectedReport.createdAt).toLocaleString()}</div>
+                </div>
+              </div>
+              <div className="mt-2 inline-block px-2.5 py-0.5 rounded text-xs font-mono font-bold uppercase border">
+                {selectedReport.status === "approved" ? "STATUS: CLINICIAN SIGNED & ATTESTED" : isRecordIncomplete ? "STATUS: INCOMPLETE INTAKE — NOT READY FOR SIGNATURE" : "STATUS: PRELIMINARY CLINICAL DRAFT · PENDING ATTESTATION"}
+              </div>
+            </div>
+
+            {/* 2. DEMOGRAPHICS GRID */}
+            <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs mb-4">
+              <div>
+                <div><span className="font-bold text-slate-700">Patient:</span> <span className="font-bold text-slate-900">{selectedReport.patientName}</span></div>
+                <div><span className="font-bold text-slate-700">Record ID:</span> <span className="font-mono">{selectedReport.userId || "URN-PATIENT-1002"}</span></div>
+                <div><span className="font-bold text-slate-700">Chief Complaint:</span> <span className="italic">"{selectedReport.chiefComplaint}"</span></div>
+              </div>
+              <div>
+                <div><span className="font-bold text-slate-700">Attending Clinician:</span> <span className="font-bold">{selectedReport.doctorName}</span></div>
+                <div><span className="font-bold text-slate-700">Clinical Specialty:</span> {selectedReport.specialty}</div>
+                <div><span className="font-bold text-slate-700">Encounter Duration:</span> {selectedReport.durationSeconds || 0} seconds</div>
+              </div>
+            </div>
+
+            {/* 3. CLINICAL ACUITY & DIAGNOSTIC CLASSIFICATION */}
+            <div className="grid grid-cols-3 gap-2 p-2.5 border border-slate-200 rounded-lg text-xs mb-4 text-center font-mono">
+              <div className="p-1.5 bg-slate-100 rounded">
+                <div className="text-[10px] text-slate-500 uppercase font-bold">Triage Acuity</div>
+                <div className="font-bold text-slate-900">{selectedReport.triageTitle || selectedReport.triageLevel}</div>
+              </div>
+              <div className="p-1.5 bg-slate-100 rounded">
+                <div className="text-[10px] text-slate-500 uppercase font-bold">ESI Level</div>
+                <div className="font-bold text-slate-900">{isRecordIncomplete || !selectedReport.esiScore ? "Not Yet Assessed" : `Level ${selectedReport.esiScore}`}</div>
+              </div>
+              <div className="p-1.5 bg-slate-100 rounded">
+                <div className="text-[10px] text-slate-500 uppercase font-bold">Diagnostic ICD-10</div>
+                <div className="font-bold text-slate-900">{selectedReport.icd10Codes && selectedReport.icd10Codes.length > 0 ? selectedReport.icd10Codes.join(", ") : "Not assigned (unsupported)"}</div>
+              </div>
+            </div>
+
+            {/* 4. S · O · A · P NARRATIVE */}
+            <div className="space-y-3 mb-4">
+              <div className="border border-slate-200 rounded-lg p-3">
+                <div className="font-mono font-bold text-xs uppercase text-slate-800 border-b pb-1 mb-1.5">S — Subjective (Patient Narrative & HPI)</div>
+                <pre className="whitespace-pre-wrap font-sans text-xs text-slate-800 leading-relaxed m-0">{selectedReport.soapSubjective || selectedReport.chiefComplaint || "No patient narrative logged."}</pre>
+              </div>
+
+              <div className="border border-slate-200 rounded-lg p-3">
+                <div className="font-mono font-bold text-xs uppercase text-slate-800 border-b pb-1 mb-1.5">O — Objective (Observed Biomarkers & Telemetry)</div>
+                <pre className="whitespace-pre-wrap font-sans text-xs text-slate-800 leading-relaxed m-0">{selectedReport.soapObjective || "• Physical Exam: No physical examination or automated biometric telemetry hardware connected during remote voice encounter. (Never fabricated)."}</pre>
+              </div>
+
+              <div className="border border-slate-200 rounded-lg p-3">
+                <div className="font-mono font-bold text-xs uppercase text-slate-800 border-b pb-1 mb-1.5">A — Assessment (Clinical Synthesis & Differential)</div>
+                <pre className="whitespace-pre-wrap font-sans text-xs text-slate-800 leading-relaxed m-0">{selectedReport.soapAssessment || selectedReport.triageTitle || "Clinical triage evaluation complete."}</pre>
+              </div>
+
+              <div className="border border-slate-200 rounded-lg p-3">
+                <div className="font-mono font-bold text-xs uppercase text-slate-800 border-b pb-1 mb-1.5">P — Plan (Disposition & Directives)</div>
+                <pre className="whitespace-pre-wrap font-sans text-xs text-slate-800 leading-relaxed m-0">{selectedReport.soapPlan || selectedReport.recommendedAction || "Follow standard clinical recommendations."}</pre>
+              </div>
+            </div>
+
+            {/* 5. FULL UNCOLLAPSED AUDIO TRANSCRIPT */}
+            {selectedReport.transcript && selectedReport.transcript.length > 0 && (
+              <div className="border border-slate-200 rounded-lg p-3 mb-4 print-break-inside-avoid">
+                <div className="font-mono font-bold text-xs uppercase text-slate-800 border-b pb-1 mb-2">
+                  Supporting Voice Consultation Transcript ({selectedReport.transcript.length} turns recorded)
+                </div>
+                <div className="space-y-1.5 text-xs">
+                  {selectedReport.transcript.map((t, idx) => (
+                    <div key={idx} className="flex items-start gap-2">
+                      <span className="font-mono text-[10px] text-slate-400 shrink-0 w-12">{t.timestamp || "00:00"}</span>
+                      <span className={`font-mono font-bold text-[11px] shrink-0 w-16 ${t.role === "doctor" ? "text-emerald-800" : "text-blue-800"}`}>
+                        {t.role === "doctor" ? "CLINICIAN:" : "PATIENT:"}
+                      </span>
+                      <span className="text-slate-800 leading-tight">{t.text}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* 6. ATTESTATION & CRYPTOGRAPHIC PROVENANCE FOOTER */}
+            <div className="border-t-2 border-slate-900 pt-3 text-[10px] print-break-inside-avoid">
+              <div className="flex justify-between items-end mb-2">
+                <div>
+                  <div className="font-bold text-slate-800 uppercase">Physician Attestation:</div>
+                  {selectedReport.status === "approved" ? (
+                    <div className="text-emerald-800 font-bold">
+                      ✓ Electronically signed and approved by {selectedReport.doctorName} on {selectedReport.approvedAt ? new Date(selectedReport.approvedAt).toLocaleString() : "Date of attestation"}.
+                    </div>
+                  ) : (
+                    <div className="text-amber-800 font-bold italic">
+                      ⚠ Preliminary draft documentation. Not signed by clinician. Clinical review required prior to official EHR filing.
+                    </div>
+                  )}
+                </div>
+                <div className="text-right font-mono">
+                  <div>LEDGER INTEGRITY: SHA-256 VERIFIED ✓</div>
+                  <div className="text-slate-400">MEDVOICE AUDIT LEDGER · TAMPER-EVIDENT</div>
+                </div>
+              </div>
+              <div className="text-slate-500 text-center border-t border-slate-200 pt-1.5">
+                Confidential Medical Record · Protected Health Information (PHI) · Generated by MedVoice Clinical AI Decision Support
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Architectural Brand Ledger Footer — unified with Landing and Privacy */}
-        <ArchitecturalBrandLedgerFooter />
+        <div className="print:hidden">
+          <ArchitecturalBrandLedgerFooter />
+        </div>
       </div>
   );
 }

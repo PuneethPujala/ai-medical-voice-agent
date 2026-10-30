@@ -194,7 +194,10 @@ export class ClinicalBoard {
     objectiveLines.push(`• Speech Rate: ${speechRate} WPM`);
     objectiveLines.push(`• Acoustic Biomarkers: ${speechObs}`);
     objectiveLines.push(`• Decision Instruments Executed: ${orchResult.tools_executed.length > 0 ? orchResult.tools_executed.map(t => `${t.tool_name} (${t.clinical_summary})`).join("; ") : "Algorithmic ESI v4 Invariant Engine"}`);
-    objectiveLines.push(`• Diagnostic Tags: ${postResult.icd10_codes.join(", ") || "Z76.0"}`);
+    const icdTags = postResult.icd10_codes && postResult.icd10_codes.length > 0
+      ? postResult.icd10_codes.join(", ")
+      : "Not assigned (insufficient clinical evidence)";
+    objectiveLines.push(`• Diagnostic Tags: ${icdTags}`);
 
     const objective = objectiveLines.join("\n");
 

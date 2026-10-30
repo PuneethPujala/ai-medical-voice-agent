@@ -637,6 +637,7 @@ export default function ConsultPage() {
   const serverEncounterCreatedRef = useRef<boolean>(false);
   const serverEncounterPromiseRef = useRef<Promise<boolean> | null>(null);
   const isPersistingEncounterRef = useRef<boolean>(false);
+  const activePersistPromiseRef = useRef<Promise<boolean> | null>(null);
   const encounterVersionRef = useRef<number>(0);
   const [currentEncounterId, setCurrentEncounterId] = useState<string>("");
   const [persistenceStatus, setPersistenceStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
@@ -2037,12 +2038,16 @@ export default function ConsultPage() {
     initialConcernOverride?: string,
     customCaseVersion?: number
   ): Promise<boolean> => {
-    if (isPersistingEncounterRef.current) {
-      return false;
+    if (!encId) return false;
+    while (activePersistPromiseRef.current) {
+      try {
+        await activePersistPromiseRef.current;
+      } catch {}
     }
-    isPersistingEncounterRef.current = true;
-    setPersistenceStatus("saving");
-    setPersistenceError(null);
+    const runPersist = async (): Promise<boolean> => {
+      isPersistingEncounterRef.current = true;
+      setPersistenceStatus("saving");
+      setPersistenceError(null);
 
     const activeMessages = customMessages || messages;
     const activeTriage = customTriage !== undefined ? customTriage : triageData;
@@ -2058,33 +2063,26 @@ export default function ConsultPage() {
 
     const hasCompleteSoap = Boolean(activeTriage?.soap?.subjective && activeTriage?.soap?.assessment);
     const isEarlyTermination = !hasCompleteSoap && statusOverride === "completed_pending_review";
+    const isDraftOrIncomplete = isEarlyTermination || statusOverride === "in_progress" || statusOverride === "incomplete_intake";
 
     const soapSubjective = activeTriage?.soap?.subjective || (
-      isEarlyTermination
-        ? `[INCOMPLETE INTAKE - GATHERING HISTORY]\nChief Concern: ${chiefConcern}\nDialogue turns recorded: ${activeMessages.length}. Patient ended consultation prior to formal multi-agent clinical consensus.`
-        : statusOverride === "in_progress"
-        ? `[IN PROGRESS DRAFT - GATHERING HISTORY]\nChief Concern: ${chiefConcern}\nTurns recorded: ${activeMessages.length}.`
+      isDraftOrIncomplete
+        ? `[INCOMPLETE DRAFT - HISTORY GATHERING]\n• Patient's recorded chief-concern text: "${chiefConcern}".\n• Presenting complaint and HPI not yet established in the clinical documentation.\n• Dialogue turns recorded: ${activeMessages.length}.`
         : ""
     );
     const soapObjective = activeTriage?.soap?.objective || (
-      isEarlyTermination
-        ? "[INCOMPLETE INTAKE] Telemetry and physical examination unassessed. Physical presence not established."
-        : statusOverride === "in_progress"
-        ? "[IN PROGRESS] History gathering in progress. Physical telemetry unassessed."
+      isDraftOrIncomplete
+        ? "[NOT ASSESSED]\n• No vitals or physical examination findings documented in the record.\n• Automated biometric telemetry hardware unconnected during remote voice intake."
         : ""
     );
     const soapAssessment = activeTriage?.soap?.assessment || (
-      isEarlyTermination
-        ? "[INCOMPLETE INTAKE] Intake terminated prior to multi-agent deliberation. Formal differential diagnosis deferred pending complete history."
-        : statusOverride === "in_progress"
-        ? "[IN PROGRESS] Clinical evaluation in progress. Differential diagnosis deferred."
+      isDraftOrIncomplete
+        ? "[ASSESSMENT DEFERRED]\n• Assessment deferred: Insufficient verified clinical information.\n• Diagnostic ICD-10: Not assigned.\n• ESI Triage: Not yet assessed.\n• Clinical status: Intake ended prior to multi-agent clinical consensus."
         : ""
     );
     const soapPlan = activeTriage?.soap?.plan || (
-      isEarlyTermination
-        ? "[INCOMPLETE INTAKE] Recommend re-initiating full clinical intake or scheduling an in-person evaluation with a physician."
-        : statusOverride === "in_progress"
-        ? "[IN PROGRESS] Continue clinical intake dialogue."
+      isDraftOrIncomplete
+        ? "[CONTINUE STRUCTURED INTAKE]\n• Continue structured history collection.\n• Obtain relevant symptoms, duration, severity, associated symptoms, medical history, medications, allergies, and objective observations as appropriate.\n• Require clinician review before finalization.\n• Clinical documentation status: Not ready for signature."
         : ""
     );
 
@@ -2114,23 +2112,25 @@ export default function ConsultPage() {
         text: m.text,
         timestamp: m.timestamp,
       })),
-      triageLevel: activeTriage?.triageLevel || (boardData?.phase === "decided" ? "priority" : "routine"),
-      triageTitle: isEarlyTermination
-        ? "INCOMPLETE INTAKE: GATHERING HISTORY"
-        : activeTriage?.triageTitle || "Clinical Voice Consultation Evaluation",
-      esiScore: activeTriage?.esiScore ?? null,
-      icd10Codes: activeTriage?.icdCodes || [],
-      detectedSymptoms: activeTriage?.detectedSymptoms || [],
+      triageLevel: isDraftOrIncomplete
+        ? "gathering_history"
+        : (activeTriage?.triageLevel || (boardData?.phase === "decided" ? "priority" : "routine")),
+      triageTitle: isDraftOrIncomplete
+        ? "CLINICAL HISTORY GATHERING"
+        : (activeTriage?.triageTitle || "Clinical Voice Consultation Evaluation"),
+      esiScore: isDraftOrIncomplete ? null : (activeTriage?.esiScore ?? null),
+      icd10Codes: isDraftOrIncomplete ? [] : (activeTriage?.icdCodes || []),
+      detectedSymptoms: isDraftOrIncomplete ? [] : (activeTriage?.detectedSymptoms || []),
       soapSubjective,
       soapObjective,
       soapAssessment,
       soapPlan,
       recommendedSpecialists: selectedDoctor?.department ? [selectedDoctor.department] : [],
-      recommendedAction: isEarlyTermination
-        ? "Consultation ended early. Please schedule an in-person evaluation or restart clinical intake."
-        : activeTriage?.recommendedAction || "Consultation complete.",
+      recommendedAction: isDraftOrIncomplete
+        ? "Consultation ended early. Continue structured clinical intake or schedule an in-person evaluation."
+        : (activeTriage?.recommendedAction || "Consultation complete."),
       durationSeconds: durationSecs,
-      status: statusOverride,
+      status: isEarlyTermination ? "incomplete_intake" : statusOverride,
       interviewState: interviewState,
       deliveredTurnRecords: interviewState?.deliveredTurnRecords || [],
       attributedFacts: interviewState?.attributedFacts || [],
@@ -2217,6 +2217,14 @@ export default function ConsultPage() {
       return false;
     } finally {
       isPersistingEncounterRef.current = false;
+    }
+    };
+    const p = runPersist();
+    activePersistPromiseRef.current = p;
+    try {
+      return await p;
+    } finally {
+      activePersistPromiseRef.current = null;
     }
   };
 
@@ -2345,6 +2353,13 @@ export default function ConsultPage() {
     transcriptTextRef.current = "";
     accumulatedTranscriptRef.current = "";
 
+    if (!stableEncounterIdRef.current) {
+      const genId = `ENC-${Date.now().toString().slice(-6)}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
+      stableEncounterIdRef.current = genId;
+      setCurrentEncounterId(genId);
+      serverEncounterCreatedRef.current = false;
+    }
+
     // Exact patient words — no "URGENT BARGE-IN" text injection!
     const userMessage: ChatMessage = {
       id: `msg-${Date.now()}`,
@@ -2384,7 +2399,8 @@ export default function ConsultPage() {
         stream: true,
       };
 
-      let res = await fetch("/api/voice/chat", {
+      const chatEndpoint = (!user?.id) ? "/api/voice/chat?demo=true" : "/api/voice/chat";
+      let res = await fetch(chatEndpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -2399,7 +2415,7 @@ export default function ConsultPage() {
         console.warn("[MedVoice] Encounter 404 detected; self-healing by registering encounter on server and retrying...");
         serverEncounterCreatedRef.current = false;
         await ensureServerEncounter(stableEncounterIdRef.current, cleanUserText);
-        res = await fetch("/api/voice/chat", {
+        res = await fetch(chatEndpoint, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",

@@ -399,6 +399,26 @@ export async function PATCH(
       );
     }
 
+    // STATE MACHINE RULE 1b: Incomplete intake approval rejection
+    const isExistingRecordIncomplete =
+      record.status === "incomplete_intake" ||
+      record.status === "in_progress" ||
+      record.triageLevel === "gathering_history" ||
+      (typeof record.soapSubjective === "string" && record.soapSubjective.includes("[INCOMPLETE DRAFT")) ||
+      body.status === "incomplete_intake" ||
+      body.status === "in_progress";
+
+    if (isApproving && isExistingRecordIncomplete) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Cannot approve incomplete intake. Clinical documentation must be completed before physician signature.",
+          code: "CANNOT_APPROVE_INCOMPLETE_INTAKE",
+        },
+        { status: 422 }
+      );
+    }
+
     // STATE MACHINE RULE 2: If already approved, preserve approvedAt and approvedBy
     const isTransitioningToApproved = isApproving && record.status !== "approved";
     const nextStatus = isApproving ? "approved" : (body.status || record.status || "completed_pending_review");
