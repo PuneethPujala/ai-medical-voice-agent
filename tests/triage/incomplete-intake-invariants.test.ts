@@ -4,7 +4,7 @@ import { PATCH as consultPatch } from "../../app/api/consultations/[id]/route";
 import { ClinicalBoard } from "../../lib/agents/clinical-board";
 import { DEFAULT_INTERNAL_TEST_SECRET } from "../../lib/auth/rbac";
 
-process.env.NODE_ENV = "test";
+(process.env as Record<string, string | undefined>).NODE_ENV = "test";
 process.env.INTERNAL_TEST_SECRET = DEFAULT_INTERNAL_TEST_SECRET;
 
 async function runIncompleteIntakeTests() {
