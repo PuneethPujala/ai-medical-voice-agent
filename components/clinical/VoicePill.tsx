@@ -24,6 +24,7 @@ export interface VoicePillProps {
   className?: string;
   speakerName?: string;
   speakerVoiceId?: string;
+  isSessionActive?: boolean;
 }
 
 export function VoicePill({
@@ -44,6 +45,7 @@ export function VoicePill({
   className = "",
   speakerName,
   speakerVoiceId,
+  isSessionActive = true,
 }: VoicePillProps) {
   const shouldReduceMotion = useReducedMotion();
   const isListening = state === "listening";
@@ -81,16 +83,16 @@ export function VoicePill({
       transition={{ type: "spring", stiffness: 420, damping: 32 }}
       className={`relative w-full rounded-2xl border transition-all ${
         isReview
-          ? "bg-white text-slate-900 border-cyan-500/80 shadow-lg ring-4 ring-cyan-500/10 p-4"
+          ? "bg-white text-slate-900 border-[#18251D] shadow-lg ring-4 ring-[#B7FF72]/20 p-4"
           : isListening
-          ? "bg-slate-950 text-white border-cyan-400 shadow-[0_8px_30px_rgba(6,182,212,0.25)] ring-4 ring-cyan-500/20 flex items-center gap-3 px-4 py-2.5"
+          ? "bg-slate-950 text-white border-[#18251D] shadow-[0_8px_30px_rgba(24,37,29,0.25)] ring-4 ring-[#B7FF72]/30 flex items-center gap-3 px-4 py-2.5"
           : isResponding
-          ? "bg-slate-900 text-white border-cyan-500/80 shadow-md flex items-center gap-3 px-4 py-2.5"
+          ? "bg-slate-900 text-white border-[#18251D] shadow-md flex items-center gap-3 px-4 py-2.5"
           : state === "understanding"
           ? "bg-slate-50 text-slate-800 border-slate-200/90 shadow-xs flex items-center gap-3 px-4 py-2.5"
           : isTranscribing
           ? "bg-slate-900 text-white border-slate-700 shadow-sm flex items-center gap-3 px-4 py-2.5"
-          : "bg-white text-slate-900 border-slate-200/90 shadow-xs hover:border-slate-300 focus-within:border-cyan-500 focus-within:ring-2 focus-within:ring-cyan-100 flex items-center gap-3 px-4 py-2.5"
+          : "bg-white text-slate-900 border-slate-200/90 shadow-xs hover:border-slate-300 focus-within:border-[#18251D] focus-within:ring-2 focus-within:ring-[#B7FF72]/40 flex items-center gap-3 px-4 py-2.5"
       } ${className}`}
     >
       {/* Visually hidden screen reader status announcement */}
@@ -107,8 +109,8 @@ export function VoicePill({
       {isReview ? (
         <div className="flex flex-col gap-2.5 w-full">
           <div className="flex items-center justify-between text-xs">
-            <div className="inline-flex items-center gap-2 text-cyan-800 font-semibold font-mono text-[11px] bg-cyan-50 px-2.5 py-1 rounded-lg border border-cyan-200/90">
-              <span className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
+            <div className="inline-flex items-center gap-2 text-[#18251D] font-semibold font-mono text-[11px] bg-[#FAF9F6] px-2.5 py-1 rounded-lg border border-[#18251D]/20">
+              <span className="w-2 h-2 rounded-full bg-[#B7FF72] animate-pulse" />
               <span>Whisper STT Transcribed · Review &amp; Edit</span>
             </div>
             {onDiscard && (
@@ -140,7 +142,7 @@ export function VoicePill({
             placeholder="Review or edit your spoken message before submitting..."
             aria-label="Edit transcribed speech"
             autoFocus
-            className="w-full bg-slate-50 border border-slate-200 focus:border-cyan-500 focus:bg-white rounded-xl p-3 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 outline-none resize-none font-sans leading-relaxed focus:ring-2 focus:ring-cyan-100 transition-all shadow-inner"
+            className="w-full bg-slate-50 border border-slate-200 focus:border-[#18251D] focus:bg-white rounded-xl p-3 text-xs sm:text-sm text-slate-900 placeholder:text-slate-400 outline-none resize-none font-sans leading-relaxed focus:ring-2 focus:ring-[#B7FF72]/40 transition-all shadow-inner"
           />
 
           <div className="flex items-center justify-between gap-2 pt-1 border-t border-slate-100">
@@ -155,7 +157,7 @@ export function VoicePill({
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 text-xs font-semibold transition-all cursor-pointer"
                   aria-label="Re-record speech"
                 >
-                  <RotateCcw className="w-3.5 h-3.5 text-cyan-600" />
+                  <RotateCcw className="w-3.5 h-3.5 text-[#18251D]" />
                   <span>Re-record</span>
                 </button>
               )}
@@ -171,7 +173,7 @@ export function VoicePill({
                 }`}
               >
                 <span>Confirm &amp; Send</span>
-                <Send className="w-3 h-3 text-cyan-400" />
+                <Send className="w-3 h-3 text-[#B7FF72]" />
               </button>
             </div>
           </div>
@@ -193,7 +195,7 @@ export function VoicePill({
               isListening
                 ? `bg-rose-500 text-white shadow-md ${shouldReduceMotion ? "" : "animate-pulse"}`
                 : isResponding
-                ? "bg-cyan-500 text-white hover:bg-cyan-600 shadow-xs"
+                ? "bg-[#18251D] text-[#B7FF72] hover:bg-black shadow-xs"
                 : "bg-slate-900 text-white hover:bg-slate-800 shadow-2xs"
             }`}
           >
@@ -202,9 +204,9 @@ export function VoicePill({
             ) : isResponding ? (
               <Volume2 className={`w-4 h-4 ${shouldReduceMotion ? "" : "animate-pulse"}`} />
             ) : isTranscribing ? (
-              <Loader2 className={`w-4 h-4 text-cyan-400 ${shouldReduceMotion ? "" : "animate-spin"}`} />
+              <Loader2 className={`w-4 h-4 text-[#B7FF72] ${shouldReduceMotion ? "" : "animate-spin"}`} />
             ) : (
-              <Mic className="w-4 h-4 text-cyan-400" />
+              <Mic className="w-4 h-4 text-[#B7FF72]" />
             )}
           </button>
 
@@ -219,19 +221,19 @@ export function VoicePill({
                       <div
                         key={i}
                         style={{ height: `${Math.round(scale * 100)}%` }}
-                        className="w-1 bg-cyan-400 rounded-full origin-center"
+                        className="w-1 bg-[#B7FF72] rounded-full origin-center"
                       />
                     ) : (
                       <motion.div
                         key={i}
                         animate={{ scaleY: [scale * 0.3, scale, scale * 0.35] }}
                         transition={{ repeat: Infinity, duration: 0.7, delay: i * 0.07, ease: "easeInOut" }}
-                        className="w-1 bg-cyan-400 rounded-full h-full origin-center"
+                        className="w-1 bg-[#B7FF72] rounded-full h-full origin-center"
                       />
                     )
                   )}
                 </div>
-                <span className="text-xs text-cyan-200 font-sans truncate font-medium">
+                <span className="text-xs text-slate-200 font-sans truncate font-medium">
                   {transcriptSnippet ? `"${transcriptSnippet}"` : "Listening to your voice... speak now"}
                 </span>
               </div>
@@ -240,8 +242,8 @@ export function VoicePill({
             {/* State B: TRANSCRIBING / UNDERSTANDING (Processing Feedback) */}
             {isTranscribing && (
               <div className="flex items-center gap-2 text-xs font-sans">
-                <span className={`w-2 h-2 rounded-full ${state === "understanding" ? "bg-cyan-500" : "bg-cyan-400"} ${shouldReduceMotion ? "" : "animate-pulse"}`} />
-                <span className={`font-mono text-[11px] font-bold uppercase tracking-wider ${state === "understanding" ? "text-cyan-700" : "text-cyan-400"}`}>
+                <span className={`w-2 h-2 rounded-full ${state === "understanding" ? "bg-[#18251D]" : "bg-[#B7FF72]"} ${shouldReduceMotion ? "" : "animate-pulse"}`} />
+                <span className={`font-mono text-[11px] font-bold uppercase tracking-wider ${state === "understanding" ? "text-[#18251D]" : "text-[#B7FF72]"}`}>
                   {state === "understanding" ? "Clinical deliberation in progress..." : "Transcribing..."}
                 </span>
                 {transcriptSnippet && (
@@ -261,7 +263,7 @@ export function VoicePill({
                     {speakerName || "Doctor"} is speaking...
                   </span>
                 </div>
-                <span className="text-[11px] font-mono text-cyan-300 hidden sm:inline flex-shrink-0">
+                <span className="text-[11px] font-mono text-slate-300 hidden sm:inline flex-shrink-0">
                   Click to interrupt
                 </span>
               </div>
@@ -290,7 +292,7 @@ export function VoicePill({
                 type="button"
                 onClick={onSendRecord || onToggleRecord}
                 aria-label="Review recorded voice"
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-cyan-500/20 text-cyan-300 border border-cyan-400/40 hover:bg-cyan-500/30 text-xs font-bold font-mono uppercase tracking-wider transition-colors cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#18251D] text-[#B7FF72] border border-[#18251D] hover:bg-black text-xs font-bold font-mono uppercase tracking-wider transition-colors cursor-pointer"
               >
                 <span>Done</span>
                 <Send className="w-3 h-3" />
@@ -311,7 +313,7 @@ export function VoicePill({
                   className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-bold shadow-2xs transition-all cursor-pointer"
                 >
                   <span>Send</span>
-                  <ArrowRight className="w-3 h-3 text-cyan-400" />
+                  <ArrowRight className="w-3 h-3 text-[#B7FF72]" />
                 </button>
               )
             )}

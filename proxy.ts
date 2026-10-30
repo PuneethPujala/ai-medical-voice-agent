@@ -146,13 +146,13 @@ export default clerkMiddleware(async (auth, req) => {
 
   // 0. Test Runner / Automated Integration Bypass (Disabled by default in production & cloud deployments)
   if (isTestBypassPermitted(req)) {
-    const res = NextResponse.next({ request: { headers: requestHeaders } });
+    const res = NextResponse.next();
     res.headers.set('x-request-id', requestId);
     return res;
   }
 
   if (isPublicRoute(req)) {
-    const res = NextResponse.next({ request: { headers: requestHeaders } });
+    const res = NextResponse.next();
     res.headers.set('x-request-id', requestId);
     return res;
   }
@@ -193,7 +193,7 @@ export default clerkMiddleware(async (auth, req) => {
   }
 
   // 3. Inject HIPAA Security & No-Store Cache Headers for PHI API responses
-  const response = NextResponse.next({ request: { headers: requestHeaders } });
+  const response = NextResponse.next();
   response.headers.set('x-request-id', requestId);
   if (req.nextUrl.pathname.startsWith('/api/')) {
     response.headers.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');

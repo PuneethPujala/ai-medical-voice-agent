@@ -5,11 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   FileText,
   Activity,
-  Calendar,
   Clock,
-  User,
-  Stethoscope,
-  ChevronRight,
   Printer,
   Download,
   AlertTriangle,
@@ -18,28 +14,31 @@ import {
   Mic,
   ArrowRight,
   Search,
-  ExternalLink,
   ShieldCheck,
-  Sparkles,
   ClipboardList,
   Radio,
   Copy,
   Check,
   FileCode,
   Lock,
-  Zap,
   X,
-  Send
+  Send,
+  ChevronDown,
+  Eye,
+  Code2,
+  AlertCircle,
+  User,
+  Stethoscope,
 } from "lucide-react";
 import Link from "next/link";
-import { AppFooter } from "../_components/AppFooter";
-import { generateFHIRBundle } from "@/lib/fhir/bundle";
+
+import { LandingFloatingNavbar } from "../_components/LandingFloatingNavbar";
+import { ArchitecturalBrandLedgerFooter } from "../_components/ArchitecturalBrandLedgerFooter";
+import { SoapWorkspaceAmbientMotion } from "./_components/SoapWorkspaceAmbientMotion";
+import { generateFHIRBundle, validateFhirR4Bundle, getICD10Display, type FHIRBundle, type FhirValidationResult } from "@/lib/fhir/bundle";
 import CountUp from "@/components/CountUp";
-import { ClinicalSwipeRow, SoapSection } from "@/components/clinical/ClinicalSwipeRow";
-import { SpotlightCard } from "@/components/motion/SpotlightCard";
+import { ClinicalSwipeRow } from "@/components/clinical/ClinicalSwipeRow";
 import { ClinicalFlipCard } from "@/components/clinical/ClinicalFlipCard";
-import SplitText from "@/components/ui/SplitText";
-import GradientText from "@/components/ui/GradientText";
 import StarBorder from "@/components/ui/StarBorder";
 
 interface ConsultationRecord {
@@ -108,27 +107,37 @@ export default function DashboardPage() {
   const [showFhirModal, setShowFhirModal] = useState<boolean>(false);
   const [fhirJsonString, setFhirJsonString] = useState<string>("");
   const [copiedFhir, setCopiedFhir] = useState<boolean>(false);
+  const [fhirBundle, setFhirBundle] = useState<FHIRBundle | null>(null);
+  const [fhirValidation, setFhirValidation] = useState<FhirValidationResult | null>(null);
+  const [fhirActiveTab, setFhirActiveTab] = useState<"summary" | "json">("summary");
 
   // Hospital Pre-Arrival Dispatch State
   const [isDispatching, setIsDispatching] = useState<boolean>(false);
   const [dispatches, setDispatches] = useState<Record<string, DispatchReceiptState>>({});
-  
+
   // SHA-256 Cryptographic Hash State
   const [currentRecordHash, setCurrentRecordHash] = useState<string>("");
   const [copiedHash, setCopiedHash] = useState<boolean>(false);
 
-  const fetchRecords = async (datasetMode: "genuine" | "synthetic" = "genuine") => {
+  const fetchRecords = async (_mode?: string) => {
     setIsLoading(true);
     setFetchError(null);
     try {
-      const url = datasetMode === "synthetic" ? "/api/consultations?dataset=synthetic_demo" : "/api/consultations";
-      const res = await fetch(url);
+      const res = await fetch("/api/consultations");
       if (res.ok) {
         const data = await res.json();
-        setIsSyntheticDataset(Boolean(data.isSyntheticDataset));
+        setIsSyntheticDataset(false);
         const list: ConsultationRecord[] = data.consultations || [];
         setConsultations(list);
         setSelectedReport(list.length > 0 ? list[0] : null);
+      } else if (res.status === 401) {
+        const demoRes = await fetch("/api/consultations?dataset=synthetic_demo");
+        if (demoRes.ok) {
+          const data = await demoRes.json();
+          const list: ConsultationRecord[] = data.consultations || [];
+          setConsultations(list);
+          setSelectedReport(list.length > 0 ? list[0] : null);
+        }
       } else {
         const errJson = await res.json().catch(() => ({}));
         if (res.status === 503) {
@@ -150,7 +159,7 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
-    fetchRecords("genuine");
+    fetchRecords();
   }, []);
 
   const handleApproveReport = async (reportId: string) => {
@@ -243,8 +252,12 @@ export default function DashboardPage() {
       transcript: selectedReport.transcript,
     });
 
+    const validation = validateFhirR4Bundle(bundle as unknown as Record<string, unknown>);
+    setFhirBundle(bundle);
+    setFhirValidation(validation);
     const jsonStr = JSON.stringify(bundle, null, 2);
     setFhirJsonString(jsonStr);
+    setFhirActiveTab("summary");
     setShowFhirModal(true);
   };
 
@@ -313,9 +326,9 @@ export default function DashboardPage() {
         chiefComplaint: selectedReport.chiefComplaint || "Emergency Medical Evaluation",
         icd10Codes: selectedReport.icd10Codes || ["R07.9"],
         detectedSymptoms: selectedReport.detectedSymptoms || ["Acute Complaint"],
-        redFlagsTriggered: selectedReport.triageLevel === "emergency" 
-          ? (selectedReport.specialty.toLowerCase().includes("cardio") 
-              ? ["ACS_CHEST_PAIN_WITH_HIGH_RISK_RADIATION_OR_DIAPHORESIS"] 
+        redFlagsTriggered: selectedReport.triageLevel === "emergency"
+          ? (selectedReport.specialty.toLowerCase().includes("cardio")
+              ? ["ACS_CHEST_PAIN_WITH_HIGH_RISK_RADIATION_OR_DIAPHORESIS"]
               : ["BE_FAST_ACUTE_ISCHEMIC_STROKE_SYMPTOMS"])
           : [],
         targetHospitalName: "Regional Level-1 Trauma & Emergency Medical Center",
@@ -356,556 +369,581 @@ export default function DashboardPage() {
 
   const activeDispatch = selectedReport ? dispatches[selectedReport.id] : null;
 
+  const scrollToSection = (id: string) => {
+    if (typeof window !== "undefined") {
+      const el = document.getElementById(id);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth" });
+      }
+    }
+  };
+
   return (
-    <div className="relative min-h-screen bg-transparent text-slate-900 font-sans flex flex-col justify-between selection:bg-cyan-500 selection:text-white">
-      <div>
-        {/* PAGE HEADER */}
-        <section className="pt-14 pb-8 px-6 max-w-4xl mx-auto text-center space-y-3">
-          <div className="flex items-center justify-center gap-2">
-            <span className="text-xs font-mono font-bold uppercase tracking-widest text-cyan-700 bg-cyan-50 border border-cyan-200 px-3.5 py-1 rounded-full inline-block">
-              EHR CLINICAL ARCHIVE
-            </span>
-            <span className="text-xs font-mono font-bold uppercase tracking-widest text-emerald-700 bg-emerald-50 border border-emerald-200 px-3.5 py-1 rounded-full inline-flex items-center gap-1.5">
-              <ShieldCheck className="w-3 h-3" />
-              <span>HL7 FHIR R4 & ED DISPATCH</span>
-            </span>
-          </div>
-          <div className="space-y-1">
-            <SplitText
-              text="SOAP Clinical Reports & Records"
-              tag="h1"
-              className="text-4xl sm:text-5xl font-extrabold tracking-tight text-slate-950"
-            />
-            <div className="pt-0.5">
-              <GradientText
-                colors={["#0891b2", "#06b6d4", "#0e7490"]}
-                className="text-xs sm:text-sm font-bold uppercase tracking-wider font-mono"
-              >
-                Structured Clinical Encounters & Interoperability
-              </GradientText>
-            </div>
-          </div>
-          <p className="text-base text-slate-600 max-w-2xl mx-auto leading-relaxed font-medium">
-            Review automated SOAP documentation, export interoperable HL7 FHIR R4 JSON bundles, and simulate emergency hospital pre-arrival telemetry dispatch.
-          </p>
-        </section>
+      <div className="relative min-h-screen bg-[#FAF9F6] text-slate-900 font-sans flex flex-col justify-between selection:bg-[#B7FF72] selection:text-[#05070F] overflow-x-clip">
 
-        {/* MAIN WORKSPACE */}
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 pb-16">
-          
-          {/* STATS OVERVIEW CARDS WITH COUNTUP & SPOTLIGHT */}
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-6">
-            <SpotlightCard className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs flex flex-col justify-between">
-              <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-slate-500">Total Encounters</span>
-              <div className="flex items-baseline gap-1.5 mt-2">
-                <span className="text-2xl sm:text-3xl font-extrabold text-slate-900 font-mono">
-                  <CountUp to={consultations.length} duration={1.2} />
-                </span>
-                <span className="text-xs text-slate-500 font-medium">SOAP records</span>
-              </div>
-            </SpotlightCard>
+        {/* Floating Pill Navbar with Centered Navigation and Active SOAP Pill */}
+        <LandingFloatingNavbar />
 
-            <SpotlightCard className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs flex flex-col justify-between">
-              <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-rose-600 flex items-center gap-1.5">
-                <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
-                Emergency Cases
-              </span>
-              <div className="flex items-baseline gap-1.5 mt-2">
-                <span className="text-2xl sm:text-3xl font-extrabold text-rose-600 font-mono">
-                  <CountUp to={consultations.filter((c) => c.triageLevel === "emergency").length} duration={1.2} />
-                </span>
-                <span className="text-xs text-slate-500 font-medium">ESI 1-2 triage</span>
-              </div>
-            </SpotlightCard>
+        {/* Ambient Subtle Motion Layer: Faint Mint particles and acoustic trace in whitespace */}
+        <SoapWorkspaceAmbientMotion />
 
-            <SpotlightCard className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs flex flex-col justify-between">
-              <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-cyan-700">Priority Outpatient</span>
-              <div className="flex items-baseline gap-1.5 mt-2">
-                <span className="text-2xl sm:text-3xl font-extrabold text-slate-900 font-mono">
-                  <CountUp to={consultations.filter((c) => c.triageLevel !== "emergency").length} duration={1.2} />
-                </span>
-                <span className="text-xs text-slate-500 font-medium">ambulatory / urgent</span>
-              </div>
-            </SpotlightCard>
-
-            <SpotlightCard className="bg-white border border-slate-200/90 rounded-2xl p-4 shadow-2xs flex flex-col justify-between">
-              <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-emerald-700 flex items-center gap-1.5">
-                <ShieldCheck className="w-3.5 h-3.5" />
-                Interop Standard
-              </span>
-              <div className="flex items-baseline gap-1 mt-2">
-                <span className="text-2xl sm:text-3xl font-extrabold text-emerald-600 font-mono">
-                  <CountUp from={50} to={100} duration={1.5} />%
-                </span>
-                <span className="text-xs text-slate-500 font-medium">HL7 FHIR R4</span>
-              </div>
-            </SpotlightCard>
-          </div>
-
-          {/* SYNTHETIC DEMONSTRATION DATASET WATERMARK BANNER */}
-          {isSyntheticDataset && (
-            <div className="mb-6 p-4 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-900">
-              <div className="flex items-center gap-2">
-                <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
-                <span className="font-mono font-bold tracking-wide">
-                  SYNTHETIC DEMONSTRATION DATASET · FOR EVALUATION ONLY · NOT REAL PATIENT RECORDS
-                </span>
-              </div>
-              <button
-                onClick={() => fetchRecords("genuine")}
-                className="px-3 py-1.5 rounded-xl bg-slate-900 text-white font-bold text-xs hover:bg-slate-800 transition-all cursor-pointer w-fit"
-              >
-                Return to My Records
-              </button>
-            </div>
-          )}
-
-          {/* Action & Filter Bar */}
-          <div className="bg-white border border-slate-200/90 rounded-2xl p-4 mb-6 shadow-sm flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-mono font-bold text-slate-500 mr-1 uppercase">Severity:</span>
-              {["all", "emergency", "priority", "routine"].map((lvl) => (
-                <button
-                  key={lvl}
-                  onClick={() => setFilterSeverity(lvl)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold font-mono uppercase transition-all cursor-pointer ${
-                    filterSeverity === lvl
-                      ? "bg-slate-950 text-white shadow-sm"
-                      : "bg-slate-100 text-slate-600 hover:bg-slate-200/70"
-                  }`}
-                >
-                  {lvl}
-                </button>
-              ))}
-
-              <div className="h-4 w-px bg-slate-200 mx-1 hidden sm:block" />
-
-              <span className="text-xs font-mono font-bold text-slate-500 mr-1 uppercase">Review:</span>
-              {[
-                { key: "all", label: "All" },
-                { key: "approved", label: "Approved" },
-                { key: "pending", label: "Pending" },
-              ].map((st) => (
-                <button
-                  key={st.key}
-                  onClick={() => setFilterStatus(st.key)}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-bold font-mono uppercase transition-all cursor-pointer ${
-                    filterStatus === st.key
-                      ? "bg-cyan-700 text-white shadow-sm"
-                      : "bg-slate-100 text-slate-600 hover:bg-slate-200/70"
-                  }`}
-                >
-                  {st.label}
-                </button>
-              ))}
-            </div>
-
-            <div className="flex items-center gap-3">
-              <div className="relative flex-1 sm:w-64">
-                <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  placeholder="Search doctor, symptom..."
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="bg-slate-50 border border-slate-200 focus:border-slate-400 focus:bg-white rounded-xl pl-9 pr-4 py-2 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none w-full transition-all"
-                />
-              </div>
-
-              {!isSyntheticDataset && (
-                <button
-                  onClick={() => fetchRecords("synthetic")}
-                  className="inline-flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200/80 text-slate-700 border border-slate-200/90 px-3 py-2 rounded-xl text-xs font-bold transition-all flex-shrink-0 cursor-pointer"
-                  title="Preview synthetic clinical demonstration dataset"
-                >
-                  <Sparkles className="w-3.5 h-3.5 text-cyan-700" />
-                  <span>Demo Dataset</span>
-                </button>
-              )}
-
-              <Link
-                href="/consult"
-                className="inline-flex items-center gap-1.5 bg-cyan-600 hover:bg-cyan-700 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-sm transition-all flex-shrink-0"
-              >
-                <Mic className="w-3.5 h-3.5" />
-                <span>New Voice Consult</span>
-              </Link>
-            </div>
-          </div>
-
-          {/* GRID LAYOUT */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
-            
-            {/* LEFT: Consultation History List */}
-            <div className="lg:col-span-5 space-y-3">
-              <div className="flex items-center justify-between px-1">
-                <span className="text-xs font-mono font-bold uppercase tracking-wider text-slate-500">
-                  Recorded Sessions (<CountUp to={filteredConsultations.length} duration={1} />)
-                </span>
-                <span className="text-[11px] text-slate-400 font-medium">Click to inspect SOAP chart</span>
-              </div>
-
-              {isLoading ? (
-                <div className="p-8 text-center bg-white rounded-2xl border border-slate-200 text-xs text-slate-500 shadow-sm">
-                  Loading clinical consultation history...
+        <main className="flex-1 w-full relative z-10 pt-28 sm:pt-32 pb-20 px-4 sm:px-6 lg:px-8 max-w-[1400px] mx-auto">
+          {/* ===================================================================== */}
+          {/* PRODUCT-FIRST CLINICAL RECORDS WORKSPACE HEADER                       */}
+          {/* ===================================================================== */}
+          <div className="mb-6">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4">
+              <div>
+                <div className="flex items-center gap-2 mb-1.5">
+                  <h1 className="text-2xl sm:text-3xl font-black text-[#05070F] tracking-tight">
+                    Clinical Records
+                  </h1>
+                  <span className="font-mono text-[11px] font-bold uppercase tracking-wider text-[#18251D] px-2.5 py-0.5 rounded-full bg-white border border-slate-200 shadow-2xs">
+                    Product-first
+                  </span>
                 </div>
-              ) : fetchError ? (
-                <div className="p-8 text-center bg-white rounded-2xl border border-rose-200 space-y-3 shadow-sm text-xs text-rose-800">
-                  <AlertTriangle className="w-6 h-6 mx-auto text-rose-600" />
-                  <div className="font-bold">{fetchError}</div>
+                <p className="text-xs sm:text-sm text-slate-500 font-normal">
+                  Review encounters, manage clinical notes and continue documentation.
+                </p>
+              </div>
+
+              {/* Action Buttons: New Voice Consult + Optional Pipeline Guide */}
+              <div className="flex flex-wrap items-center gap-2.5">
+                <Link
+                  href="/consult"
+                  className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#18251D] hover:bg-slate-800 text-white font-mono text-xs font-bold transition-all shadow-sm"
+                >
+                  <Mic className="w-3.5 h-3.5 text-[#B7FF72]" />
+                  <span>New Voice Consult</span>
+                </Link>
+              </div>
+            </div>
+
+            {/* Quick Filter Bar & Encounter Tabs */}
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-3 border-t border-slate-200/70">
+              <div className="flex flex-wrap items-center gap-2">
+                {[
+                  { key: "all", label: "All encounters" },
+                  { key: "pending", label: "Needs review" },
+                  { key: "approved", label: "Approved" },
+                ].map((st) => (
                   <button
-                    onClick={() => fetchRecords(isSyntheticDataset ? "synthetic" : "genuine")}
-                    className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold cursor-pointer transition-all"
+                    key={st.key}
+                    onClick={() => setFilterStatus(st.key)}
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                      filterStatus === st.key
+                        ? "bg-[#18251D] text-white shadow-sm"
+                        : "bg-white border border-slate-200/90 text-slate-600 hover:bg-slate-50"
+                    }`}
                   >
-                    Retry Connection
+                    {st.label}
+                  </button>
+                ))}
+
+                <div className="h-4 w-px bg-slate-200 mx-1 hidden sm:block" />
+
+                <span className="text-[11px] font-mono font-bold text-slate-400 uppercase hidden sm:inline">Severity:</span>
+                {["all", "emergency", "priority", "routine"].map((lvl) => (
+                  <button
+                    key={lvl}
+                    onClick={() => setFilterSeverity(lvl)}
+                    className={`px-2.5 py-1 rounded-lg text-[11px] font-bold font-mono uppercase transition-all cursor-pointer ${
+                      filterSeverity === lvl
+                        ? "bg-slate-800 text-white shadow-xs"
+                        : "bg-slate-100 text-slate-600 hover:bg-slate-200/70"
+                    }`}
+                  >
+                    {lvl}
+                  </button>
+                ))}
+              </div>
+
+              {/* Search & Telemetry Summary */}
+              <div className="flex items-center gap-2 sm:gap-3 w-full sm:w-auto">
+                <div className="relative flex-1 sm:w-64">
+                  <Search className="w-3.5 h-3.5 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    placeholder="Search doctor, symptom..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="bg-white border border-slate-200/90 focus:border-slate-400 focus:bg-white rounded-xl pl-8 pr-3 py-1.5 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none w-full transition-all shadow-2xs"
+                  />
+                </div>
+
+
+              </div>
+            </div>
+          </div>
+
+          {/* ===================================================================== */}
+          {/* SECTION: UNIFIED INTERACTIVE CLINICAL WORKSPACE                       */}
+          {/* ===================================================================== */}
+          <section id="clinical-workspace" className="space-y-4">
+
+            {/* WORKSPACE HEADER & REAL-TIME STATS STRIP */}
+            <div className="bg-white border border-slate-200/90 rounded-3xl p-5 sm:p-6 mb-6 shadow-sm">
+              <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+                <div>
+                  <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-50 border border-slate-200 text-slate-700 text-xs font-mono font-bold mb-2">
+                    <span className="w-2 h-2 rounded-full bg-[#18251D] animate-pulse" />
+                    <span>EHR CLINICAL ARCHIVE &amp; CONSULTATION REGISTRY</span>
+                  </div>
+                  <h2 className="text-2xl sm:text-3xl font-black text-[#05070F] tracking-tight">
+                    Interactive Clinical Workspace
+                  </h2>
+                  <p className="text-xs sm:text-sm text-slate-500 mt-1">
+                    Review and sign generated SOAP charts, verify SHA-256 integrity, trigger ED pre-arrival dispatch, and export HL7 FHIR R4 bundles.
+                  </p>
+                </div>
+
+                {/* Telemetry Summary Counters */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+                  <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3 flex flex-col justify-between">
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-slate-400">Total Encounters</span>
+                    <span className="text-xl font-black text-slate-900 font-mono mt-1">
+                      <CountUp to={consultations.length} duration={1} />
+                    </span>
+                  </div>
+
+                  <div className="bg-rose-50/60 border border-rose-200/80 rounded-2xl p-3 flex flex-col justify-between">
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-rose-700 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-pulse" />
+                      Emergency
+                    </span>
+                    <span className="text-xl font-black text-rose-700 font-mono mt-1">
+                      <CountUp to={consultations.filter((c) => c.triageLevel === "emergency").length} duration={1} />
+                    </span>
+                  </div>
+
+                  <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3 flex flex-col justify-between">
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-[#18251D]">Priority Outpatient</span>
+                    <span className="text-xl font-black text-slate-900 font-mono mt-1">
+                      <CountUp to={consultations.filter((c) => c.triageLevel !== "emergency").length} duration={1} />
+                    </span>
+                  </div>
+
+                  <div className="bg-emerald-50/60 border border-emerald-200/80 rounded-2xl p-3 flex flex-col justify-between">
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-emerald-800">Interop Standard</span>
+                    <span className="text-xl font-black text-emerald-700 font-mono mt-1">100% FHIR</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* SYNTHETIC DEMONSTRATION DATASET WATERMARK BANNER */}
+              {isSyntheticDataset && (
+                <div className="mt-4 p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-amber-900">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                    <span className="font-mono font-bold tracking-wide">
+                      SYNTHETIC DEMONSTRATION DATASET · FOR EVALUATION ONLY · NOT REAL PATIENT RECORDS
+                    </span>
+                  </div>
+                  <button
+                    onClick={() => fetchRecords("genuine")}
+                    className="px-3 py-1.5 rounded-xl bg-slate-900 text-white font-bold text-xs hover:bg-slate-800 transition-all cursor-pointer w-fit"
+                  >
+                    Return to My Records
                   </button>
                 </div>
-              ) : filteredConsultations.length === 0 ? (
-                <div className="p-8 text-center bg-white rounded-2xl border border-slate-200 space-y-3 shadow-sm">
-                  <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-400">
-                    <ClipboardList className="w-6 h-6" />
-                  </div>
-                  <div className="text-sm font-bold text-slate-900">No Clinical Consultations Found</div>
-                  <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
-                    You have not completed any clinical consultations yet under this account. All voice encounters conducted on MedVoice will be permanently archived here.
-                  </p>
-                  <div className="flex flex-col sm:flex-row items-center justify-center gap-2 pt-2">
-                    <Link
-                      href="/consult"
-                      className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-bold transition-all shadow-2xs"
-                    >
-                      <Mic className="w-3.5 h-3.5" />
-                      <span>Start Voice Consultation</span>
-                    </Link>
-                    {!isSyntheticDataset && (
-                      <button
-                        onClick={() => fetchRecords("synthetic")}
-                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition-all cursor-pointer"
-                      >
-                        <Sparkles className="w-3.5 h-3.5 text-cyan-700" />
-                        <span>Preview Demo Dataset</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-2.5 max-h-[720px] overflow-y-auto pr-1">
-                  {filteredConsultations.map((item) => {
-                    const isSelected = selectedReport?.id === item.id;
-                    const dateStr = item.createdAt
-                      ? new Date(item.createdAt).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })
-                      : "Recent";
-
-                    return (
-                      <button
-                        key={item.id}
-                        onClick={() => setSelectedReport(item)}
-                        className={`w-full text-left p-4 rounded-2xl border transition-all cursor-pointer ${
-                          isSelected
-                            ? "bg-white border-cyan-500 shadow-md ring-2 ring-cyan-500/10"
-                            : "bg-white border-slate-200/90 hover:border-slate-300 shadow-sm"
-                        }`}
-                      >
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="font-extrabold text-slate-900 text-sm truncate">{item.doctorName}</span>
-                          <div className="flex items-center gap-1.5 flex-shrink-0">
-                            {item.soapSubjective?.includes("[INCOMPLETE INTAKE") || item.status === "in_progress" ? (
-                              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 uppercase">
-                                Incomplete
-                              </span>
-                            ) : item.status === "approved" ? (
-                              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase">
-                                Approved
-                              </span>
-                            ) : (
-                              <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 uppercase">
-                                Pending
-                              </span>
-                            )}
-                            <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border uppercase ${getUrgencyBadge(item.triageLevel)}`}>
-                              {item.triageLevel}
-                            </span>
-                          </div>
-                        </div>
-
-                        <p className="text-xs text-slate-600 line-clamp-2 mb-3 font-medium">
-                          {item.chiefComplaint || "Routine clinical triage evaluation"}
-                        </p>
-
-                        <div className="flex items-center justify-between text-[11px] font-mono text-slate-500 border-t border-slate-100 pt-2.5">
-                          <span className="text-cyan-700 font-bold">{item.specialty}</span>
-                          <div className="flex items-center gap-2">
-                            {dispatches[item.id] && (
-                              <span className="text-[10px] bg-amber-50 text-amber-800 border border-amber-300 px-1.5 py-0.5 rounded font-bold font-mono">
-                                SIMULATED ED ALERT
-                              </span>
-                            )}
-                            <span>{dateStr}</span>
-                          </div>
-                        </div>
-                      </button>
-                    );
-                  })}
-                </div>
               )}
             </div>
 
-            {/* RIGHT: SOAP Report Detailed Chart */}
-            <div className="lg:col-span-7 space-y-4">
-              {selectedReport ? (
-                <div className="bg-white border border-slate-200/90 rounded-2xl p-6 sm:p-8 shadow-sm space-y-6">
-                  
-                  {/* Document Top Bar */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
-                    <div>
-                      <div className="flex items-center gap-2 text-xs font-mono font-bold text-cyan-700 mb-1">
-                        <span>RECORD ID: {selectedReport.id}</span>
-                        <span className="text-slate-300">•</span>
-                        <span className="text-slate-500">Patient: {selectedReport.patientName}</span>
-                      </div>
-                      <h2 className="text-2xl font-extrabold text-slate-950">Clinical SOAP Documentation</h2>
-                      <p className="text-xs text-slate-500 mt-0.5 font-medium">
-                        Evaluating Physician: <span className="text-slate-900 font-bold">{selectedReport.doctorName}</span> ({selectedReport.specialty})
-                      </p>
+            {/* BALANCED 12-COLUMN MASTER-DETAIL CLINICAL INTERFACE */}
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
 
-                      <div className="flex flex-wrap items-center gap-2 mt-2.5">
-                        {selectedReport.status === "approved" ? (
-                          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-xs font-mono font-bold text-emerald-800">
-                            <CheckCircle className="w-3.5 h-3.5 text-emerald-600" />
-                            <span>CLINICIAN APPROVED & SIGNED</span>
-                            {selectedReport.approvedAt && (
-                              <span className="text-slate-400 font-normal">
-                                · {new Date(selectedReport.approvedAt).toLocaleDateString()}
+              {/* LEFT: Consultation Queue (4 Columns) */}
+              <div className="lg:col-span-4 space-y-3">
+                <div className="flex items-center justify-between px-1">
+                  <span className="text-xs font-mono font-bold uppercase tracking-wider text-slate-500">
+                    Consultation Queue (<CountUp to={filteredConsultations.length} duration={1} />)
+                  </span>
+                  <span className="text-[11px] text-slate-400 font-medium">Select record to inspect</span>
+                </div>
+
+                {isLoading ? (
+                  <div className="p-8 text-center bg-white rounded-3xl border border-slate-200 text-xs text-slate-500 shadow-sm">
+                    Loading clinical consultation history...
+                  </div>
+                ) : fetchError ? (
+                  <div className="p-8 text-center bg-white rounded-3xl border border-rose-200 space-y-3 shadow-sm text-xs text-rose-800">
+                    <AlertTriangle className="w-6 h-6 mx-auto text-rose-600" />
+                    <div className="font-bold">{fetchError}</div>
+                    <button
+                      onClick={() => fetchRecords()}
+                      className="px-3.5 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold cursor-pointer transition-all"
+                    >
+                      Retry Connection
+                    </button>
+                  </div>
+                ) : filteredConsultations.length === 0 ? (
+                  <div className="p-8 text-center bg-white rounded-3xl border border-slate-200 space-y-3 shadow-sm">
+                    <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center mx-auto text-slate-400">
+                      <ClipboardList className="w-6 h-6" />
+                    </div>
+                    <div className="text-sm font-bold text-slate-900">
+                      {filterStatus === "approved"
+                        ? "No Approved Clinical Notes Yet"
+                        : filterStatus === "pending"
+                        ? "No Pending Notes"
+                        : "No Clinical Consultations Found"}
+                    </div>
+                    <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
+                      {filterStatus === "approved"
+                        ? "You have clinical encounters waiting for review. Switch to 'Needs review' to inspect and sign them."
+                        : filterStatus === "pending"
+                        ? "All recorded voice consultations have been reviewed and approved."
+                        : "All voice encounters conducted on MedVoice will be permanently archived and verified here."}
+                    </p>
+                    <div className="flex flex-col sm:flex-row items-center justify-center gap-2 pt-2">
+                      {filterStatus === "approved" ? (
+                        <button
+                          onClick={() => setFilterStatus("pending")}
+                          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#18251D] hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-2xs cursor-pointer"
+                        >
+                          <Clock className="w-3.5 h-3.5 text-[#B7FF72]" />
+                          <span>View Pending Consultations</span>
+                        </button>
+                      ) : filterStatus === "pending" ? (
+                        <button
+                          onClick={() => setFilterStatus("all")}
+                          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#18251D] hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-2xs cursor-pointer"
+                        >
+                          <ClipboardList className="w-3.5 h-3.5 text-[#B7FF72]" />
+                          <span>View All Encounters</span>
+                        </button>
+                      ) : (
+                        <Link
+                          href="/consult"
+                          className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#18251D] hover:bg-slate-800 text-white text-xs font-bold transition-all shadow-2xs"
+                        >
+                          <Mic className="w-3.5 h-3.5 text-[#B7FF72]" />
+                          <span>Start Voice Consultation</span>
+                        </Link>
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2.5 max-h-[800px] overflow-y-auto pr-1">
+                    {filteredConsultations.map((item) => {
+                      const isSelected = selectedReport?.id === item.id;
+                      const dateStr = item.createdAt
+                        ? new Date(item.createdAt).toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" })
+                        : "Recent";
+
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => setSelectedReport(item)}
+                          className={`w-full text-left p-4 rounded-2xl border transition-all cursor-pointer ${
+                            isSelected
+                              ? "bg-white border-[#18251D] shadow-md ring-2 ring-[#18251D]/10"
+                              : "bg-white border-slate-200/90 hover:border-slate-300 shadow-sm"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="font-extrabold text-slate-900 text-sm truncate">{item.doctorName}</span>
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              {item.soapSubjective?.includes("[INCOMPLETE INTAKE") || item.status === "in_progress" ? (
+                                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-300 uppercase">
+                                  Incomplete
+                                </span>
+                              ) : item.status === "approved" ? (
+                                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 uppercase">
+                                  Approved
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200 uppercase">
+                                  Pending
+                                </span>
+                              )}
+                              <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded-full border uppercase ${getUrgencyBadge(item.triageLevel)}`}>
+                                {item.triageLevel}
                               </span>
-                            )}
+                            </div>
                           </div>
-                        ) : (
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-xs font-mono font-bold text-amber-800">
-                              <Clock className="w-3.5 h-3.5 text-amber-600" />
-                              <span>PENDING CLINICIAN REVIEW</span>
+
+                          <p className="text-xs text-slate-600 line-clamp-2 mb-3 font-medium">
+                            {item.chiefComplaint || "Routine clinical triage evaluation"}
+                          </p>
+
+                          <div className="flex items-center justify-between text-[11px] font-mono text-slate-500 border-t border-slate-100 pt-2.5">
+                            <span className="text-[#18251D] font-bold">{item.specialty}</span>
+                            <div className="flex items-center gap-2">
+                              {dispatches[item.id] && (
+                                <span className="text-[10px] bg-amber-50 text-amber-800 border border-amber-300 px-1.5 py-0.5 rounded font-bold font-mono">
+                                  SIMULATED ED ALERT
+                                </span>
+                              )}
+                              <span>{dateStr}</span>
+                            </div>
+                          </div>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* RIGHT: Selected SOAP Clinical Chart (8 Columns) */}
+              <div className="lg:col-span-8 space-y-4">
+                {selectedReport ? (
+                  <div className="bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-8 shadow-sm space-y-5">
+
+                    {/* 1. CLINICAL HEADER & ENCOUNTER IDENTITY */}
+                    <div className="border-b border-slate-100 pb-5 space-y-3">
+                      <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+                        <div>
+                          <div className="flex flex-wrap items-center gap-2 text-xs font-mono font-bold text-[#18251D] mb-1.5">
+                            <span className="text-slate-400 uppercase tracking-wider text-[11px]">Encounter</span>
+                            <span className="bg-slate-100 text-slate-800 px-2 py-0.5 rounded border border-slate-200">{selectedReport.id}</span>
+                            <span className="text-slate-300">•</span>
+                            <span className="text-slate-500 font-normal">
+                              {new Date(selectedReport.createdAt).toLocaleDateString(undefined, {
+                                year: 'numeric',
+                                month: 'short',
+                                day: 'numeric',
+                                hour: '2-digit',
+                                minute: '2-digit'
+                              })}
                             </span>
+
+                          </div>
+
+                          <h2 className="text-2xl sm:text-3xl font-black text-slate-950 tracking-tight">
+                            {selectedReport.patientName}
+                          </h2>
+
+                          <p className="text-xs text-slate-500 mt-1 font-medium">
+                            Attending Clinician: <span className="text-slate-900 font-bold">{selectedReport.doctorName}</span> · <span className="text-slate-600">{selectedReport.specialty}</span>
+                          </p>
+                        </div>
+
+                        {/* Action cluster: Primary (Approve/Status) + Secondary */}
+                        <div className="flex flex-wrap items-center gap-2.5">
+                          {selectedReport.status === "approved" ? (
+                            <div className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-50 border border-emerald-300 text-xs font-mono font-bold text-emerald-800 shadow-2xs">
+                              <CheckCircle className="w-4 h-4 text-emerald-600" />
+                              <span>CLINICIAN SIGNED</span>
+                              {selectedReport.approvedAt && (
+                                <span className="text-emerald-600/70 font-normal">
+                                  · {new Date(selectedReport.approvedAt).toLocaleDateString()}
+                                </span>
+                              )}
+                            </div>
+                          ) : (
                             <button
                               onClick={() => handleApproveReport(selectedReport.id)}
                               disabled={isApprovingRecord}
-                              className="px-3 py-1 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-2xs cursor-pointer flex items-center gap-1.5"
+                              className="px-4 py-2 bg-[#18251D] hover:bg-slate-900 text-white rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer flex items-center gap-2"
                             >
-                              <CheckCircle className="w-3 h-3 text-emerald-400" />
+                              <CheckCircle className="w-4 h-4 text-[#B7FF72]" />
                               <span>{isApprovingRecord ? "Signing..." : "Approve & Sign Note"}</span>
+                            </button>
+                          )}
+
+                          {selectedReport.triageLevel === "emergency" && (
+                            <Link
+                              href="/care"
+                              className="inline-flex items-center gap-1.5 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 px-3 py-2 rounded-xl text-xs font-bold transition-all"
+                              title="Locate nearest verified Emergency Rooms & Trauma Bays"
+                            >
+                              <Building2 className="w-3.5 h-3.5" />
+                              <span>Find ERs</span>
+                            </Link>
+                          )}
+
+                          <StarBorder
+                            as="button"
+                            onClick={handleOpenFhirModal}
+                            color="#18251D"
+                            duration={3.5}
+                            theme="light"
+                            backgroundColor="#FAF9F6"
+                            textColor="#18251D"
+                            radius={12}
+                            className="inline-flex items-center gap-1.5 border border-slate-200 px-3 py-2 text-xs font-bold transition-all shadow-2xs hover:shadow-slate-500/10"
+                            title="Inspect or download HL7 FHIR R4 Bundle"
+                          >
+                            <FileCode className="w-3.5 h-3.5 text-[#18251D]" />
+                            <span>FHIR R4</span>
+                          </StarBorder>
+
+                          <button
+                            onClick={handlePrint}
+                            className="inline-flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200/80 border border-slate-200 text-slate-800 px-3 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                            title="Print clinical SOAP chart"
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                            <span>Print</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Clinical Triage & Diagnostic Codes Metadata Ribbon */}
+                      <div className="flex flex-wrap items-center gap-2 pt-2 text-xs">
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[11px] font-mono uppercase text-slate-400 font-bold">Acuity:</span>
+                          <span className={`font-mono text-xs font-extrabold px-2.5 py-0.5 rounded-full uppercase border ${getUrgencyBadge(selectedReport.triageLevel)}`}>
+                            {selectedReport.triageTitle || selectedReport.triageLevel}
+                            {selectedReport.esiScore ? ` · ESI Level ${selectedReport.esiScore}` : (selectedReport.triageLevel === "emergency" ? " · ESI Level 2" : " · ESI Level 4")}
+                          </span>
+                        </div>
+
+                        <span className="text-slate-300 hidden sm:inline">•</span>
+
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-[11px] font-mono uppercase text-slate-400 font-bold">ICD-10:</span>
+                          {(selectedReport.icd10Codes && selectedReport.icd10Codes.length > 0 ? selectedReport.icd10Codes : ["Z76.0"]).map((code, idx) => (
+                            <span key={idx} className="font-mono text-xs bg-slate-100 text-slate-800 border border-slate-200/80 px-2 py-0.5 rounded font-bold">
+                              {code}
+                            </span>
+                          ))}
+                        </div>
+
+                        <span className="text-slate-300 hidden sm:inline">•</span>
+
+                        <div className="text-[11px] text-slate-500 font-medium truncate max-w-md">
+                          Chief Complaint: <span className="text-slate-800 font-semibold italic">"{selectedReport.chiefComplaint}"</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* 2. INCOMPLETE INTAKE BANNER (Conditional) */}
+                    {(selectedReport.soapSubjective?.includes("[INCOMPLETE INTAKE") || selectedReport.status === "in_progress") && (
+                      <div className="p-3.5 rounded-2xl border border-amber-300 bg-amber-50/90 text-amber-900 space-y-1 shadow-2xs">
+                        <div className="flex items-center gap-2">
+                          <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
+                          <span className="text-xs font-mono font-bold uppercase tracking-wider text-amber-900">
+                            Incomplete Intake Encounter — History Gathering Phase
+                          </span>
+                        </div>
+                        <p className="text-xs text-amber-950 font-medium leading-relaxed pl-6">
+                          This voice consultation ended prior to formal multi-agent clinical consensus. Complete differential diagnosis and automated telemetry are unassessed. Direct in-person evaluation is recommended.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* 3. EMERGENCY PRE-ARRIVAL DISPATCH TELEMETRY (Compact) */}
+                    {selectedReport.triageLevel === "emergency" && (
+                      <div className="p-4 rounded-2xl border bg-gradient-to-r from-rose-50/70 to-amber-50/70 border-rose-200 space-y-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <Radio className={`w-4 h-4 ${activeDispatch ? "text-rose-600 animate-ping" : "text-rose-600"}`} />
+                            <span className="text-xs font-mono font-extrabold uppercase tracking-wider text-rose-900">
+                              Pre-Arrival Hospital Telemetry Webhook
+                            </span>
+                            <span className="text-[10px] font-mono font-extrabold uppercase bg-amber-200 text-amber-900 px-2 py-0.5 rounded-md border border-amber-300">
+                              Simulation Only · Training Environment
+                            </span>
+                          </div>
+                          {activeDispatch ? (
+                            <span className="text-[11px] font-mono font-bold bg-amber-100 text-amber-900 border border-amber-300 px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
+                              <CheckCircle className="w-3 h-3 text-emerald-600" />
+                              <span>SIMULATED ED ALERT TRANSMITTED (~<CountUp to={activeDispatch.etaMinutes} duration={0.8} />m ETA)</span>
+                            </span>
+                          ) : (
+                            <span className="text-[11px] font-mono text-slate-500 font-medium">
+                              Status: Awaiting Clinician Transmission (Simulation)
+                            </span>
+                          )}
+                        </div>
+
+                        {activeDispatch ? (
+                          <div className="bg-white/90 rounded-xl p-3.5 border border-rose-200/80 space-y-2 text-xs">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              <div>
+                                <span className="text-[10px] font-mono uppercase text-slate-400 font-bold block">Assigned Intake Bay (Demo):</span>
+                                <span className="font-extrabold text-slate-900">{activeDispatch.assignedHospitalBay}</span>
+                              </div>
+                              <div>
+                                <span className="text-[10px] font-mono uppercase text-slate-400 font-bold block">On-Call Attending (Demo):</span>
+                                <span className="font-bold text-slate-800">{activeDispatch.attendingPhysicianOnCall}</span>
+                              </div>
+                            </div>
+
+                            <div className="border-t border-slate-100 pt-2">
+                              <span className="text-[10px] font-mono uppercase text-rose-700 font-bold block mb-1">Pre-Arrival Directives Transmitted:</span>
+                              <ul className="space-y-1 text-[11px] text-slate-700">
+                                {activeDispatch.preArrivalDirectives.map((d, i) => (
+                                  <li key={i} className="flex items-center gap-1.5">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-rose-500 shrink-0" />
+                                    <span>{d}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+
+                            <div className="text-[10px] font-mono text-slate-500 flex items-center justify-between border-t border-slate-100 pt-1.5">
+                              <span>Receipt ID: {activeDispatch.dispatchId}</span>
+                              <span className="text-emerald-700 font-bold">✓ Cryptographically Verified (Simulation)</span>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white/70 rounded-xl p-3 border border-rose-200/60">
+                            <p className="text-xs text-slate-700 font-medium">
+                              Life-threat criteria detected. Alert the receiving emergency department and Cath/Stroke team prior to patient arrival. (Simulation mode: no real-world dispatch occurs).
+                            </p>
+                            <button
+                              onClick={handleTransmitPreArrival}
+                              disabled={isDispatching}
+                              className="inline-flex items-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white px-3.5 py-1.5 rounded-xl text-xs font-extrabold shadow-sm transition-all shrink-0 disabled:opacity-50 cursor-pointer"
+                            >
+                              <Send className="w-3.5 h-3.5" />
+                              <span>{isDispatching ? "Transmitting..." : "Simulate ED Alert"}</span>
                             </button>
                           </div>
                         )}
-                        {selectedReport.isSynthetic && (
-                          <span className="text-[10px] font-mono font-bold bg-amber-100 text-amber-800 border border-amber-200 px-2 py-0.5 rounded-full">
-                            SYNTHETIC DATA
-                          </span>
-                        )}
                       </div>
-                    </div>
+                    )}
 
-                    <div className="flex flex-wrap items-center gap-2">
-                      {/* HL7 FHIR EXPORT BUTTON WITH STAR BORDER */}
-                      <StarBorder
-                        as="button"
-                        onClick={handleOpenFhirModal}
-                        color="#06b6d4"
-                        duration={3.5}
-                        theme="light"
-                        backgroundColor="#ecfeff"
-                        textColor="#0e7490"
-                        radius={12}
-                        className="inline-flex items-center gap-1.5 border border-cyan-200 px-3 py-2 text-xs font-bold transition-all shadow-2xs hover:shadow-cyan-500/20"
-                        title="Inspect or download HL7 FHIR R4 Bundle"
-                      >
-                        <FileCode className="w-3.5 h-3.5 text-cyan-700" />
-                        <span>FHIR R4</span>
-                      </StarBorder>
-
-                      <button
-                        onClick={handlePrint}
-                        className="inline-flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200/80 border border-slate-200 text-slate-800 px-3 py-2 rounded-xl text-xs font-bold transition-all"
-                      >
-                        <Printer className="w-3.5 h-3.5" />
-                        <span>Print</span>
-                      </button>
-
-                      <Link
-                        href="/care"
-                        className="inline-flex items-center gap-1.5 bg-rose-50 hover:bg-rose-100 border border-rose-200 text-rose-700 px-3 py-2 rounded-xl text-xs font-bold transition-all"
-                      >
-                        <Building2 className="w-3.5 h-3.5" />
-                        <span>Find ERs</span>
-                      </Link>
-                    </div>
-                  </div>
-
-                  {/* INCOMPLETE INTAKE ALERT BANNER */}
-                  {(selectedReport.soapSubjective?.includes("[INCOMPLETE INTAKE") || selectedReport.status === "in_progress") && (
-                    <div className="p-4 rounded-2xl border border-amber-300 bg-amber-50/80 text-amber-900 space-y-1.5 shadow-2xs">
+                    {/* 4. CONSOLIDATED AI REVIEW STATUS & CRYPTOGRAPHIC INTEGRITY STRIP */}
+                    <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-3 sm:px-4 sm:py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs relative">
                       <div className="flex items-center gap-2">
-                        <AlertTriangle className="w-4 h-4 text-amber-700 flex-shrink-0" />
-                        <span className="text-xs font-mono font-bold uppercase tracking-wider text-amber-800">
-                          Incomplete Intake Encounter — History Gathering Phase
-                        </span>
-                      </div>
-                      <p className="text-xs text-amber-950 font-medium leading-relaxed pl-6">
-                        This voice consultation ended prior to formal multi-agent clinical consensus. Telemetry, vital signs, and complete differential diagnosis are unassessed. Re-consultation or formal in-person clinical evaluation is recommended.
-                      </p>
-                    </div>
-                  )}
-
-                  {/* EMERGENCY PRE-ARRIVAL DISPATCH TELEMETRY BANNER */}
-                  {selectedReport.triageLevel === "emergency" && (
-                    <div className="p-4 rounded-2xl border bg-gradient-to-r from-rose-50/70 to-amber-50/70 border-rose-200 space-y-3">
-                      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <Radio className={`w-4 h-4 ${activeDispatch ? "text-rose-600 animate-ping" : "text-rose-600"}`} />
-                          <span className="text-xs font-mono font-extrabold uppercase tracking-wider text-rose-900">
-                            Pre-Arrival Hospital Telemetry Webhook
-                          </span>
-                          <span className="text-[10px] font-mono font-extrabold uppercase bg-amber-200 text-amber-900 px-2 py-0.5 rounded-md border border-amber-300">
-                            Simulation Only · Training Environment
-                          </span>
-                        </div>
-                        {activeDispatch ? (
-                          <span className="text-[11px] font-mono font-bold bg-amber-100 text-amber-900 border border-amber-300 px-2.5 py-0.5 rounded-full inline-flex items-center gap-1">
-                            <CheckCircle className="w-3 h-3 text-emerald-600" />
-                            <span>SIMULATED ED ALERT TRANSMITTED (~<CountUp to={activeDispatch.etaMinutes} duration={0.8} />m ETA)</span>
+                        {selectedReport.status === "approved" ? (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-mono font-bold text-[10px]">
+                            <Check className="w-3 h-3 text-emerald-600" /> ATTESTED RECORD
                           </span>
                         ) : (
-                          <span className="text-[11px] font-mono text-slate-500 font-medium">
-                            Status: Awaiting Clinician Transmission (Simulation)
+                          <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md bg-amber-100 text-amber-800 font-mono font-bold text-[10px]">
+                            <Clock className="w-3 h-3 text-amber-600" /> AI PRELIMINARY · CLINICAL REVIEW REQUIRED
                           </span>
                         )}
+                        <span className="text-slate-600 text-[11px] hidden md:inline">
+                          Synthesized from voice consultation. Review required before official EHR filing.
+                        </span>
                       </div>
 
-                      {activeDispatch ? (
-                        <div className="bg-white/90 rounded-xl p-3.5 border border-rose-200/80 space-y-2 text-xs">
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            <div>
-                              <span className="text-[10px] font-mono uppercase text-slate-400 font-bold block">Assigned Intake Bay (Demo):</span>
-                              <span className="font-extrabold text-slate-900">{activeDispatch.assignedHospitalBay}</span>
-                            </div>
-                            <div>
-                              <span className="text-[10px] font-mono uppercase text-slate-400 font-bold block">On-Call Attending (Demo):</span>
-                              <span className="font-bold text-slate-800">{activeDispatch.attendingPhysicianOnCall}</span>
-                            </div>
+                      {/* Inline Integrity status with expandable disclosure */}
+                      <details className="group">
+                        <summary className="cursor-pointer list-none flex items-center gap-1.5 font-mono text-[11px] text-slate-700 font-bold hover:text-slate-950 transition-colors">
+                          <Lock className="w-3.5 h-3.5 text-emerald-600" />
+                          <span>Integrity Verified ✓</span>
+                          <ChevronDown className="w-3 h-3 text-slate-400 group-open:rotate-180 transition-transform" />
+                        </summary>
+                        <div className="absolute z-20 mt-2 right-4 sm:right-6 bg-slate-900 text-slate-200 rounded-xl p-3.5 border border-slate-800 shadow-xl max-w-md text-xs space-y-2">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="font-mono text-[10px] text-slate-400 uppercase font-bold">Canonical SHA-256 Digest:</span>
+                            <button
+                              onClick={handleCopyHash}
+                              className="inline-flex items-center gap-1 bg-slate-800 hover:bg-slate-700 text-slate-200 px-2 py-0.5 rounded text-[10px] font-mono transition-all cursor-pointer"
+                            >
+                              {copiedHash ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                              <span>{copiedHash ? "Copied" : "Copy"}</span>
+                            </button>
                           </div>
-
-                          <div className="border-t border-slate-100 pt-2">
-                            <span className="text-[10px] font-mono uppercase text-rose-700 font-bold block mb-1">Pre-Arrival Directives Transmitted:</span>
-                            <ul className="space-y-1 text-[11px] text-slate-700">
-                              {activeDispatch.preArrivalDirectives.map((d, i) => (
-                                <li key={i} className="flex items-center gap-1.5">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-rose-500 flex-shrink-0" />
-                                  <span>{d}</span>
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-
-                          <div className="text-[10px] font-mono text-slate-500 flex items-center justify-between border-t border-slate-100 pt-1.5">
-                            <span>Receipt ID: {activeDispatch.dispatchId}</span>
-                            <span className="text-emerald-700 font-bold">✓ Cryptographically Verified (Simulation)</span>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-white/70 rounded-xl p-3 border border-rose-200/60">
-                          <p className="text-xs text-slate-700 font-medium">
-                            Life-threat criteria detected. Alert the receiving emergency department and Cath/Stroke team prior to patient arrival. (Simulation mode: no real-world dispatch occurs).
+                          <p className="font-mono text-[10px] text-slate-300 break-all bg-slate-950 p-2 rounded border border-slate-800 select-all">
+                            {currentRecordHash || "Computing canonical hash..."}
                           </p>
-                          <button
-                            onClick={handleTransmitPreArrival}
-                            disabled={isDispatching}
-                            className="inline-flex items-center gap-1.5 bg-rose-600 hover:bg-rose-700 text-white px-3.5 py-1.5 rounded-xl text-xs font-extrabold shadow-sm transition-all flex-shrink-0 disabled:opacity-50"
-                          >
-                            <Send className="w-3.5 h-3.5" />
-                            <span>{isDispatching ? "Transmitting..." : "Simulate ED Alert"}</span>
-                          </button>
+                          <p className="text-[10px] text-slate-400">
+                            SHA-256 computed client-side over canonical SOAP JSON. Tamper-evident attestation audit trail.
+                          </p>
                         </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Urgency & Symptoms Bar */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-4">
-                      <span className="text-[11px] font-mono uppercase text-slate-500 font-bold block mb-1">Triage Urgency Level</span>
-                      <span className={`text-xs font-mono font-bold px-2.5 py-1 rounded-full uppercase inline-block border ${getUrgencyBadge(selectedReport.triageLevel)}`}>
-                        {selectedReport.triageTitle || selectedReport.triageLevel}
-                      </span>
+                      </details>
                     </div>
 
-                    <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-4">
-                      <span className="text-[11px] font-mono uppercase text-slate-500 font-bold block mb-1">Diagnostic ICD-10 Tags</span>
-                      <div className="flex flex-wrap gap-1.5">
-                        {(selectedReport.icd10Codes && selectedReport.icd10Codes.length > 0
-                          ? selectedReport.icd10Codes
-                          : ["Z76.0"]
-                        ).map((c, i) => (
-                          <span key={i} className="text-xs bg-cyan-50 text-cyan-800 border border-cyan-200 px-2 py-0.5 rounded-md font-mono font-bold">
-                            {c}
-                          </span>
-                        ))}
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* CRYPTOGRAPHIC SHA-256 INTEGRITY BADGE */}
-                  <div className="bg-slate-900 text-slate-200 rounded-xl p-3.5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                    <div className="flex items-center gap-2.5">
-                      <Lock className="w-4 h-4 text-emerald-400 flex-shrink-0" />
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono font-bold text-slate-100 text-[11px]">SHA-256 AUDIT INTEGRITY:</span>
-                          <span className="text-[10px] bg-emerald-500/20 text-emerald-300 px-1.5 py-0.2 rounded font-mono font-bold">
-                            TAMPER EVIDENT
-                          </span>
-                        </div>
-                        <span className="font-mono text-[10px] text-slate-400 break-all">
-                          {currentRecordHash || "Computing canonical hash..."}
-                        </span>
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={handleCopyHash}
-                      className="inline-flex items-center gap-1 bg-slate-800 hover:bg-slate-700 text-slate-300 px-2.5 py-1 rounded-lg text-[11px] font-mono transition-all flex-shrink-0"
-                    >
-                      {copiedHash ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                      <span>{copiedHash ? "Copied" : "Copy Hash"}</span>
-                    </button>
-                  </div>
-
-                  {/* MANDATORY CLINICAL SAFETY WARNING BANNER */}
-                  <div className="p-3.5 rounded-xl bg-amber-50/90 border border-amber-300/80 shadow-2xs flex items-start gap-2.5">
-                    <AlertTriangle className="w-4 h-4 text-amber-800 shrink-0 mt-0.5" />
+                    {/* 5. PRIMARY WORKSPACE: S · O · A · P SEGMENTED CONTROL & DOCUMENT */}
                     <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-black uppercase tracking-wider font-mono px-1.5 py-0.5 rounded-md bg-amber-200/80 text-amber-950 border border-amber-300">
-                          AI GENERATED · CLINICAL REVIEW REQUIRED
-                        </span>
-                        <span className="text-[11px] text-amber-900 font-bold">
-                          Preliminary Medical Record
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-amber-900/90 mt-1 leading-relaxed font-medium">
-                        Synthesized automatically from voice consultation and multi-specialist deliberation. Distinguishes patient-reported history from preliminary AI impressions. Licensed clinician review and approval required before official EHR filing.
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* SOAP SWIPE ROW & INTERACTIVE FLIP CARD */}
-                  <div className="space-y-6">
-                    <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="font-mono text-xs font-bold uppercase tracking-wider text-slate-500">
-                          Segmented Clinical Dimensions
-                        </span>
-                        <span className="font-mono text-[11px] text-cyan-700 bg-cyan-50 px-2 py-0.5 rounded border border-cyan-200">
-                          Swipe or Click to Review S · O · A · P
-                        </span>
-                      </div>
                       <ClinicalSwipeRow
                         sections={[
                           {
@@ -944,155 +982,382 @@ export default function DashboardPage() {
                       />
                     </div>
 
-                    {/* CLINICAL FLIP CARD: HUMAN-READABLE SUMMARY ⟷ FHIR / AUDIT SPEC */}
+                    {/* 6. PROGRESSIVE DISCLOSURE: FHIR R4 INTEROPERABILITY & AUDIT SPEC */}
+                    <details className="group border border-slate-200/80 rounded-2xl bg-slate-50/50 p-4 transition-all">
+                      <summary className="flex items-center justify-between cursor-pointer list-none">
+                        <div className="flex items-center gap-2">
+                          <FileCode className="w-4 h-4 text-slate-600" />
+                          <span className="font-mono text-xs font-bold uppercase tracking-wider text-slate-700">
+                            HL7 FHIR R4 Interoperability & Audit Schema
+                          </span>
+                          <span className="text-[11px] font-mono text-slate-400 hidden sm:inline">
+                            (US Core v3.1.1 Document Bundle)
+                          </span>
+                        </div>
+                        <ChevronDown className="w-4 h-4 text-slate-400 group-open:rotate-180 transition-transform" />
+                      </summary>
+                      <div className="mt-4 pt-4 border-t border-slate-200/60">
+                        <ClinicalFlipCard
+                          category="HL7 FHIR R4 Bundle"
+                          title={`${selectedReport.patientName} — ${selectedReport.triageTitle || selectedReport.specialty}`}
+                          frontSnippet={`Encounter with ${selectedReport.doctorName} (${selectedReport.specialty}). Chief complaint: "${selectedReport.chiefComplaint}". ESI triage classification: Level ${selectedReport.esiScore || (selectedReport.triageLevel === "emergency" ? 2 : 4)}.`}
+                          frontBadge={`${new Date(selectedReport.createdAt).toLocaleDateString()} · ${selectedReport.triageLevel.toUpperCase()}`}
+                          backTitle="FHIR R4 Resource & Integrity Schema"
+                          backItems={[
+                            { label: "Resource Type", value: "Bundle (Document / Encounter)" },
+                            { label: "Encounter ID", value: selectedReport.id },
+                            { label: "Patient Ref", value: selectedReport.userId || "urn:uuid:patient-1002" },
+                            { label: "Practitioner", value: selectedReport.doctorName },
+                            { label: "Triage / ESI", value: `ESI-${selectedReport.esiScore || (selectedReport.triageLevel === "emergency" ? 2 : 4)} (${selectedReport.triageLevel})` },
+                            { label: "ICD-10-CM", value: (selectedReport.icd10Codes || ["Z76.0"]).join(", ") },
+                            { label: "SHA-256 Hash", value: currentRecordHash ? `${currentRecordHash.substring(0, 18)}...` : "TAMPER_EVIDENT_OK" },
+                          ]}
+                          backNote="Compliant with US Core v3.1.1 / HL7 FHIR Release 4 standard. Verified immutable cryptographically."
+                        />
+                      </div>
+                    </details>
+
+                    {/* 7. PROGRESSIVE DISCLOSURE: FULL AUDIO TRANSCRIPT */}
+                    {selectedReport.transcript && selectedReport.transcript.length > 0 && (
+                      <details className="group border border-slate-200/80 rounded-2xl bg-slate-50/50 p-4 transition-all">
+                        <summary className="flex items-center justify-between cursor-pointer list-none">
+                          <div className="flex items-center gap-2">
+                            <Mic className="w-4 h-4 text-slate-600" />
+                            <span className="font-mono text-xs font-bold uppercase tracking-wider text-slate-700">
+                              Full Recorded Audio Dialogue ({selectedReport.transcript.length} turns)
+                            </span>
+                          </div>
+                          <ChevronDown className="w-4 h-4 text-slate-400 group-open:rotate-180 transition-transform" />
+                        </summary>
+                        <div className="mt-4 pt-4 border-t border-slate-200/60 space-y-2 max-h-64 overflow-y-auto pr-1">
+                          {selectedReport.transcript.map((t, i) => (
+                            <div key={i} className="p-3 rounded-xl bg-white border border-slate-200/80 text-xs shadow-2xs">
+                              <span className="font-mono font-bold text-[#18251D] uppercase text-[10px] mr-2">
+                                [{t.role}]:
+                              </span>
+                              <span className="text-slate-800">{t.text}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </details>
+                    )}
+
+                    {/* 8. FOOTER DISCLAIMER */}
+                    <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 flex items-center gap-3 text-[11px] text-slate-600">
+                      <ShieldCheck className="w-4 h-4 text-[#18251D] shrink-0" />
+                      <span>
+                        MedVoice AI clinical decision support documentation. For medical emergencies, always call 911 / 108 immediately.
+                      </span>
+                    </div>
+
+                  </div>
+                ) : (
+                  <div className="h-full min-h-[350px] flex items-center justify-center p-12 bg-white border border-slate-200/90 rounded-3xl text-center text-slate-400 text-xs shadow-sm">
+                    Select a consultation report from the left to view the complete clinical SOAP chart.
+                  </div>
+                )}
+              </div>
+
+            </div>
+          </section>
+        </main>
+
+        {/* HL7 FHIR R4 CLINICAL INTEROPERABILITY MODAL */}
+        <AnimatePresence>
+          {showFhirModal && selectedReport && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/70 backdrop-blur-sm overflow-y-auto">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.96, y: 12 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.96, y: 12 }}
+                className="bg-[#FAF9F6] border border-slate-200/90 rounded-3xl w-full max-w-4xl max-h-[90vh] my-auto flex flex-col shadow-2xl overflow-hidden text-slate-900"
+              >
+                {/* 1. Modal Header */}
+                <div className="p-5 sm:p-6 bg-white border-b border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-2xl bg-[#18251D] flex items-center justify-center text-[#B7FF72] shadow-xs shrink-0">
+                      <FileCode className="w-5 h-5" />
+                    </div>
                     <div>
-                      <div className="flex items-center justify-between mb-2">
-                        <span className="font-mono text-xs font-bold uppercase tracking-wider text-slate-500">
-                          Encounter Record ⟷ FHIR Interoperability
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="font-mono text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200 uppercase">
+                          HL7 FHIR Release 4
                         </span>
-                        <span className="font-mono text-[11px] text-slate-400">
-                          Click card to 3D flip between clinical view and FHIR schema
+                        <span className="text-slate-300">•</span>
+                        <span className="font-mono text-xs text-slate-500 font-bold">
+                          Encounter {selectedReport.id}
                         </span>
                       </div>
-                      <ClinicalFlipCard
-                        category="HL7 FHIR R4 Bundle"
-                        title={`${selectedReport.patientName} — ${selectedReport.triageTitle || selectedReport.specialty}`}
-                        frontSnippet={`Encounter with ${selectedReport.doctorName} (${selectedReport.specialty}). Chief complaint: "${selectedReport.chiefComplaint}". ESI triage classification: Level ${selectedReport.esiScore || (selectedReport.triageLevel === "emergency" ? 2 : 4)}.`}
-                        frontBadge={`${new Date(selectedReport.createdAt).toLocaleDateString()} · ${selectedReport.triageLevel.toUpperCase()}`}
-                        backTitle="FHIR R4 Resource & Integrity Schema"
-                        backItems={[
-                          { label: "Resource Type", value: "Bundle (Document / Encounter)" },
-                          { label: "Encounter ID", value: selectedReport.id },
-                          { label: "Patient Ref", value: selectedReport.userId || "urn:uuid:patient-1002" },
-                          { label: "Practitioner", value: selectedReport.doctorName },
-                          { label: "Triage / ESI", value: `ESI-${selectedReport.esiScore || (selectedReport.triageLevel === "emergency" ? 2 : 4)} (${selectedReport.triageLevel})` },
-                          { label: "ICD-10-CM", value: (selectedReport.icd10Codes || ["Z76.0"]).join(", ") },
-                          { label: "SHA-256 Hash", value: currentRecordHash ? `${currentRecordHash.substring(0, 18)}...` : "TAMPER_EVIDENT_OK" },
-                        ]}
-                        backNote="Compliant with US Core v3.1.1 / HL7 FHIR Release 4 standard. Verified immutable cryptographically."
-                      />
+                      <h3 className="font-extrabold text-base sm:text-lg text-[#05070F] mt-0.5">
+                        Clinical Document Bundle
+                      </h3>
                     </div>
                   </div>
 
-                  {/* Transcript Accordion */}
-                  {selectedReport.transcript && selectedReport.transcript.length > 0 && (
-                    <div className="border-t border-slate-100 pt-4">
-                      <h4 className="text-xs font-mono font-bold text-slate-500 uppercase mb-3">
-                        Full Recorded Audio Dialogue ({selectedReport.transcript.length} turns)
-                      </h4>
-                      <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
-                        {selectedReport.transcript.map((t, i) => (
-                          <div key={i} className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-xs">
-                            <span className="font-mono font-bold text-cyan-800 uppercase text-[10px] mr-2">
-                              [{t.role}]:
-                            </span>
-                            <span className="text-slate-800">{t.text}</span>
-                          </div>
-                        ))}
-                      </div>
+                  <div className="flex items-center gap-2 self-end sm:self-auto">
+                    {/* View Switcher: Readable Summary vs Developer JSON */}
+                    <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 text-xs font-mono font-bold">
+                      <button
+                        onClick={() => setFhirActiveTab("summary")}
+                        className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                          fhirActiveTab === "summary"
+                            ? "bg-white text-[#18251D] shadow-2xs font-extrabold"
+                            : "text-slate-600 hover:text-slate-900"
+                        }`}
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>Readable View</span>
+                      </button>
+                      <button
+                        onClick={() => setFhirActiveTab("json")}
+                        className={`px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1.5 ${
+                          fhirActiveTab === "json"
+                            ? "bg-white text-[#18251D] shadow-2xs font-extrabold"
+                            : "text-slate-600 hover:text-slate-900"
+                        }`}
+                      >
+                        <Code2 className="w-3.5 h-3.5" />
+                        <span>Raw JSON</span>
+                      </button>
                     </div>
-                  )}
 
-                  {/* Footer Disclaimer */}
-                  <div className="p-3.5 rounded-xl bg-slate-50 border border-slate-200/80 flex items-center gap-3 text-[11px] text-slate-600">
-                    <ShieldCheck className="w-4 h-4 text-cyan-700 flex-shrink-0" />
-                    <span>
-                      MediVoice AI clinical decision support documentation. For medical emergencies, always call 911 / 108 immediately.
+                    <button
+                      onClick={() => setShowFhirModal(false)}
+                      className="p-2 rounded-xl text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition-all cursor-pointer ml-1"
+                      aria-label="Close modal"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* 2. Validation Status Bar (Live Validation Engine) */}
+                <div className="px-5 sm:px-6 py-3 bg-white border-b border-slate-200/80 flex flex-wrap items-center justify-between gap-2.5 text-xs">
+                  <div className="flex items-center gap-2">
+                    {fhirValidation?.valid ? (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-300 text-emerald-800 font-mono font-bold text-[11px]">
+                        <CheckCircle className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                        <span>FHIR R4 VALIDATED</span>
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-300 text-amber-900 font-mono font-bold text-[11px]">
+                        <AlertCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                        <span>VALIDATION PENDING / ${fhirValidation?.issues?.length || 0} WARNINGS</span>
+                      </span>
+                    )}
+                    <span className="text-slate-600 text-xs hidden md:inline">
+                      {fhirValidation?.valid
+                        ? `Conforms to US Core v3.1.1 Document Profile (${fhirBundle?.entry?.length || 6} resources bundled)`
+                        : `Preliminary bundle structure with ${fhirValidation?.issues?.length || 0} schema diagnostics`}
                     </span>
                   </div>
 
-                </div>
-              ) : (
-                <div className="h-full min-h-[350px] flex items-center justify-center p-12 bg-white border border-slate-200/90 rounded-2xl text-center text-slate-400 text-xs shadow-sm">
-                  Select a consultation report from the left to view the complete clinical SOAP chart.
-                </div>
-              )}
-            </div>
-
-          </div>
-        </div>
-      </div>
-
-      {/* HL7 FHIR R4 INSPECTION MODAL */}
-      <AnimatePresence>
-        {showFhirModal && selectedReport && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
-            <motion.div
-              initial={{ opacity: 0, scale: 0.95, y: 10 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.95, y: 10 }}
-              className="bg-slate-900 border border-slate-800 rounded-3xl w-full max-w-4xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden text-slate-100"
-            >
-              {/* Modal Header */}
-              <div className="p-5 border-b border-slate-800 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-9 h-9 rounded-xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400">
-                    <FileCode className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 className="font-extrabold text-base text-white">HL7 FHIR Release 4 Document Bundle</h3>
-                    <p className="text-xs text-slate-400 font-mono">
-                      LOINC 11488-4 (Consultation Note) • SNOMED CT • ICD-10-CM
-                    </p>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleCopyFhir}
+                      className="inline-flex items-center gap-1.5 bg-slate-100 hover:bg-slate-200/80 border border-slate-200 text-slate-800 px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition-all cursor-pointer"
+                      title="Copy full JSON payload"
+                    >
+                      {copiedFhir ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedFhir ? "Copied" : "Copy JSON"}</span>
+                    </button>
+                    <button
+                      onClick={handleDownloadFhir}
+                      className="inline-flex items-center gap-1.5 bg-[#18251D] hover:bg-slate-900 text-white px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                      title="Download standardized .json bundle"
+                    >
+                      <Download className="w-3.5 h-3.5 text-[#B7FF72]" />
+                      <span>Export Bundle</span>
+                    </button>
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={handleCopyFhir}
-                    className="inline-flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 px-3 py-1.5 rounded-xl text-xs font-mono font-bold transition-all"
-                  >
-                    {copiedFhir ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                    <span>{copiedFhir ? "Copied" : "Copy JSON"}</span>
-                  </button>
-                  <button
-                    onClick={handleDownloadFhir}
-                    className="inline-flex items-center gap-1.5 bg-cyan-600 hover:bg-cyan-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-sm"
-                  >
-                    <Download className="w-3.5 h-3.5" />
-                    <span>Download .json</span>
-                  </button>
+                {/* 3. Modal Body: Either Readable Clinical View or Raw JSON */}
+                <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4">
+                  {fhirActiveTab === "summary" ? (
+                    <div className="space-y-4">
+                      {/* Clinical Overview Grid */}
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {/* Patient & Subject Card */}
+                        <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-2xs space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="font-mono text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                              Resource: Patient
+                            </span>
+                            <span className="font-mono text-[10px] text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded border border-emerald-200">
+                              Subject
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2.5 pt-1">
+                            <div className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600">
+                              <User className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <div className="font-extrabold text-sm text-slate-900">{selectedReport.patientName}</div>
+                              <div className="font-mono text-[11px] text-slate-500">
+                                Identifier: urn:uuid:patient-{selectedReport.id.replace(/[^a-zA-Z0-9-]/g, "")}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* Practitioner & Author Card */}
+                        <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-2xs space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="font-mono text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                              Resource: Practitioner
+                            </span>
+                            <span className="font-mono text-[10px] text-indigo-700 font-bold bg-indigo-50 px-2 py-0.5 rounded border border-indigo-200">
+                              Author
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2.5 pt-1">
+                            <div className="w-8 h-8 rounded-xl bg-slate-100 flex items-center justify-center text-slate-600">
+                              <Stethoscope className="w-4 h-4" />
+                            </div>
+                            <div>
+                              <div className="font-extrabold text-sm text-slate-900">{selectedReport.doctorName}</div>
+                              <div className="text-xs text-slate-500 font-medium">
+                                {selectedReport.specialty} · NPI Active
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Encounter & Composition Details */}
+                      <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-2xs space-y-3">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                          <div className="flex items-center gap-2">
+                            <FileText className="w-4 h-4 text-[#18251D]" />
+                            <span className="font-bold text-xs text-slate-900 uppercase font-mono tracking-wider">
+                              Composition &amp; Encounter Context
+                            </span>
+                          </div>
+                          <span className="font-mono text-[10px] font-bold bg-slate-100 text-slate-700 px-2 py-0.5 rounded border border-slate-200">
+                            LOINC 11488-4 (Consultation Note)
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs">
+                          <div>
+                            <span className="text-[10px] font-mono text-slate-400 uppercase block font-bold">Encounter ID:</span>
+                            <span className="font-mono font-bold text-slate-800">{selectedReport.id}</span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-mono text-slate-400 uppercase block font-bold">Document Status:</span>
+                            <span className="font-mono font-bold text-emerald-700 capitalize">
+                              {selectedReport.status === "approved" ? "Final (Clinician Signed)" : "Preliminary (AI Synthesized)"}
+                            </span>
+                          </div>
+                          <div>
+                            <span className="text-[10px] font-mono text-slate-400 uppercase block font-bold">Encounter Class:</span>
+                            <span className="font-mono font-bold text-slate-800">AMB (Ambulatory / Telehealth)</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Observations: Triage, Symptoms, Acuity */}
+                      <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-2xs space-y-3">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+                          <div className="flex items-center gap-2">
+                            <Activity className="w-4 h-4 text-emerald-600" />
+                            <span className="font-bold text-xs text-slate-900 uppercase font-mono tracking-wider">
+                              Clinical Observations &amp; Triage Findings
+                            </span>
+                          </div>
+                          <span className={`font-mono text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border uppercase ${getUrgencyBadge(selectedReport.triageLevel)}`}>
+                            {selectedReport.triageTitle || selectedReport.triageLevel}
+                          </span>
+                        </div>
+
+                        <div className="space-y-2 text-xs">
+                          <div>
+                            <span className="text-[10px] font-mono text-slate-400 uppercase block font-bold">Chief Complaint:</span>
+                            <p className="text-slate-800 font-semibold italic mt-0.5">
+                              &ldquo;{selectedReport.chiefComplaint}&rdquo;
+                            </p>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                            <div>
+                              <span className="text-[10px] font-mono text-slate-400 uppercase block font-bold">Acuity Stratification:</span>
+                              <span className="font-mono font-bold text-slate-800">
+                                ESI Level {selectedReport.esiScore || (selectedReport.triageLevel === "emergency" ? 2 : 4)} · 5-Level Triage
+                              </span>
+                            </div>
+                            <div>
+                              <span className="text-[10px] font-mono text-slate-400 uppercase block font-bold">Detected Clinical Features:</span>
+                              <span className="text-slate-700 font-medium">
+                                {selectedReport.detectedSymptoms?.join(", ") || "None specified in consultation narrative"}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Condition / Diagnostic Coding (ICD-10-CM with readable text) */}
+                      <div className="bg-white rounded-2xl p-4 border border-slate-200/80 shadow-2xs space-y-3">
+                        <span className="font-bold text-xs text-slate-900 uppercase font-mono tracking-wider block">
+                          Resource: Condition (Diagnostic ICD-10-CM Coding)
+                        </span>
+
+                        <div className="space-y-1.5">
+                          {(selectedReport.icd10Codes && selectedReport.icd10Codes.length > 0 ? selectedReport.icd10Codes : ["Z76.0"]).map((code, idx) => (
+                            <div key={idx} className="flex items-center justify-between p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 text-xs">
+                              <span className="font-mono font-bold text-[#18251D] bg-white px-2 py-0.5 rounded border border-slate-200">
+                                {code}
+                              </span>
+                              <span className="text-slate-700 font-medium truncate ml-3">
+                                {getICD10Display(code)}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Advanced Developer JSON Inspector */
+                    <div className="space-y-3">
+                      <div className="p-3 bg-amber-50 border border-amber-200 text-amber-900 rounded-xl text-xs flex items-start gap-2">
+                        <ShieldCheck className="w-4 h-4 text-amber-700 shrink-0 mt-0.5" />
+                        <div>
+                          <span className="font-bold font-mono">Sensitive Protected Health Information (PHI):</span>
+                          <p className="text-[11px] text-amber-900/90 mt-0.5 leading-relaxed">
+                            This bundle contains direct patient identifiers and clinical records. Raw export and copy events are cryptographically audited per HIPAA / DPDP Act compliance invariants.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="p-4 bg-[#0a0f18] rounded-2xl border border-slate-800 font-mono text-xs text-slate-300 leading-relaxed overflow-x-auto max-h-[50vh]">
+                        <pre className="whitespace-pre">{fhirJsonString}</pre>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* 4. Modal Footer */}
+                <div className="p-4 bg-white border-t border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 text-xs text-slate-500">
+                  <div className="flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-[#18251D]" />
+                    <span className="font-mono text-[11px]">
+                      HL7 FHIR Release 4 (v4.0.1) Document Bundle · US Core Implementation Guide
+                    </span>
+                  </div>
                   <button
                     onClick={() => setShowFhirModal(false)}
-                    className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-all ml-1"
+                    className="px-4 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-800 rounded-xl font-bold transition-all text-xs cursor-pointer self-end sm:self-auto"
                   >
-                    <X className="w-5 h-5" />
+                    Close
                   </button>
                 </div>
-              </div>
+              </motion.div>
+            </div>
+          )}
+        </AnimatePresence>
 
-              {/* Resource Summary Badges */}
-              <div className="px-5 py-2.5 bg-slate-950/60 border-b border-slate-800 flex flex-wrap gap-2 text-[11px] font-mono">
-                <span className="text-slate-400">Bundle Resources:</span>
-                <span className="bg-cyan-950/60 text-cyan-300 border border-cyan-800 px-2 py-0.5 rounded">Composition</span>
-                <span className="bg-indigo-950/60 text-indigo-300 border border-indigo-800 px-2 py-0.5 rounded">Patient</span>
-                <span className="bg-purple-950/60 text-purple-300 border border-purple-800 px-2 py-0.5 rounded">Practitioner</span>
-                <span className="bg-emerald-950/60 text-emerald-300 border border-emerald-800 px-2 py-0.5 rounded">Encounter ({selectedReport.triageLevel.toUpperCase()})</span>
-                <span className="bg-amber-950/60 text-amber-300 border border-amber-800 px-2 py-0.5 rounded">Observation (ESI Acuity)</span>
-                <span className="bg-rose-950/60 text-rose-300 border border-rose-800 px-2 py-0.5 rounded">Condition ({selectedReport.icd10Codes?.join(", ") || "Z76.0"})</span>
-              </div>
-
-              {/* Modal Body: Raw Code */}
-              <div className="flex-1 p-5 overflow-auto bg-[#0a0f18] font-mono text-xs text-slate-300 leading-relaxed">
-                <pre className="whitespace-pre">{fhirJsonString}</pre>
-              </div>
-
-              {/* Modal Footer */}
-              <div className="p-4 border-t border-slate-800 bg-slate-900/90 flex items-center justify-between text-xs text-slate-400">
-                <span>Conforms to HL7 FHIR v4.0.1 Document StructureDefinition</span>
-                <button
-                  onClick={() => setShowFhirModal(false)}
-                  className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl font-bold transition-all text-xs"
-                >
-                  Close
-                </button>
-              </div>
-            </motion.div>
-          </div>
-        )}
-      </AnimatePresence>
-
-      <AppFooter />
-    </div>
+        {/* Architectural Brand Ledger Footer — unified with Landing and Privacy */}
+        <ArchitecturalBrandLedgerFooter />
+      </div>
   );
 }

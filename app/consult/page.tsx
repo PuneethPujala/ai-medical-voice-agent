@@ -41,7 +41,8 @@ import {
   AlertTriangle
 } from "lucide-react";
 import Link from "next/link";
-import { AppFooter } from "../_components/AppFooter";
+import { LandingFloatingNavbar } from "../_components/LandingFloatingNavbar";
+import { ArchitecturalBrandLedgerFooter } from "../_components/ArchitecturalBrandLedgerFooter";
 import { SoapReportModal } from "../_components/SoapReportModal";
 import { DOCTOR_PROFILES, DoctorProfile, getDoctorById } from "@/config/doctors";
 import { CursorGrid } from "@/components/ui/cursor-grid";
@@ -63,20 +64,28 @@ import { PulseHeart } from "@/components/clinical/PulseHeart";
 import { SwipeToast } from "@/components/feedback/SwipeToast";
 import { PeekRating } from "@/components/feedback/PeekRating";
 import { splitIntoSpeechChunks } from "@/lib/audio/sentence-splitter";
+import gsap from "gsap";
+import { ExpressiveVoiceOrb, VoiceOrbState } from "./_components/ExpressiveVoiceOrb";
+import { TranscriptReviewBar } from "./_components/TranscriptReviewBar";
+import { ConsultHeader } from "./_components/ConsultHeader";
+import { ConsultDialogueFeed } from "./_components/ConsultDialogueFeed";
+import { ConsultClinicalContext } from "./_components/ConsultClinicalContext";
 import { AcousticDSPAnalyzer, LiveAudioMetrics } from "@/lib/acoustic/acoustic-dsp-analyzer";
 import { normalizeCompletenessPercent } from "@/lib/triage/clinical-state";
-import { reconcileClinicalTranscript } from "@/lib/audio/transcript-reconciler";
 
 
 type AudioState =
   | "IDLE"
+  | "INTRODUCING"
   | "PATIENT_LISTENING"
   | "PROCESSING_TRANSCRIPTION"
-  | "TRANSCRIPT_REVIEW"
   | "PROCESSING_CLINICAL"
   | "DOCTOR_SPEAKING"
   | "BARGE_IN_DETECTED"
-  | "PROCESSING_INTERRUPTION";
+  | "PROCESSING_INTERRUPTION"
+  | "TRANSCRIPT_REVIEW"
+  | "REQUESTING_MIC"
+  | "ERROR";
 
 interface ChatMessage {
   id: string;
@@ -88,7 +97,6 @@ interface ChatMessage {
   doctorId?: string;
   wasInterrupted?: boolean;
   isBargeIn?: boolean;
-  turnId?: string;
 }
 
 interface BoardMessage {
@@ -374,6 +382,26 @@ function formatClinicalFact(raw: string): string {
       return `Abdominal location: ${val}`;
     }
 
+    if (key === "LIFESTYLE") {
+      return `Lifestyle: ${val}`;
+    }
+
+    if (key === "SECONDARY_CONCERN" || key === "SECONDARY CONCERN") {
+      return `Secondary concern: ${val}`;
+    }
+
+    if (key === "DISTRIBUTION") {
+      return `Distribution: ${val}`;
+    }
+
+    if (key === "PATIENT_CONCERN" || key === "PATIENT CONCERN") {
+      return `Patient concern: ${val}`;
+    }
+
+    if (key.startsWith("TIMELINE")) {
+      return `${key}: ${val}`;
+    }
+
     if (key === "VOICE_CHANGE" || key === "VOICE CHANGE") {
       return "Voice change present";
     }
@@ -420,10 +448,8 @@ export default function ConsultPage() {
     }
   }, [user?.id]);
 
-  const draftRestoredRef = useRef<boolean>(false);
   // Recover transient session draft on page mount if user navigated away or reloaded
   useEffect(() => {
-    if (draftRestoredRef.current) return;
     if (typeof window === "undefined" || !window.sessionStorage) return;
     try {
       for (let i = 0; i < window.sessionStorage.length; i++) {
@@ -434,26 +460,20 @@ export default function ConsultPage() {
             const parsed = JSON.parse(raw);
             if (parsed.expiresAt && Date.now() < parsed.expiresAt && parsed.payload?.transcript?.length > 0) {
               if (messages.length === 0 && !callActiveRef.current) {
-                draftRestoredRef.current = true;
                 stableEncounterIdRef.current = parsed.payload.id;
                 setCurrentEncounterId(parsed.payload.id);
                 setMessages(parsed.payload.transcript);
                 setCallDuration(parsed.payload.durationSeconds || 0);
                 setPersistenceStatus("saved");
-                const uniqueToastId = `draft-restored-${parsed.payload.id || Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-                setClinicalToasts((prev) => {
-                  if (prev.some((t) => t.id.startsWith("draft-restored-"))) return prev;
-                  return [
-                    ...prev,
-                    {
-                      id: uniqueToastId,
-                      type: "info",
-                      title: "Active Encounter Draft Restored",
-                      description: `Recovered ${parsed.payload.transcript.length} turns from previous session (${parsed.payload.id}).`
-                    }
-                  ];
-                });
-                break;
+                setClinicalToasts((prev) => [
+                  ...prev,
+                  {
+                    id: `draft-restored-${Date.now()}`,
+                    type: "info",
+                    title: "Active Encounter Draft Restored",
+                    description: `Recovered ${parsed.payload.transcript.length} turns from previous session (${parsed.payload.id}).`
+                  }
+                ]);
               }
             }
           }
@@ -466,7 +486,16 @@ export default function ConsultPage() {
 
   const patientDisplayName = activeProfile?.name || user?.fullName || user?.firstName || "Patient";
 
-  const [sessionMode, setSessionMode] = useState<ConsultSessionMode>("CONSULT_LOBBY");
+  // Dynamic clinical personalized greeting resolver (ChatGPT-style conversational intake)
+  const getPersonalizedGreeting = useCallback((doc: DoctorProfile) => {
+    const rawName = activeProfile?.name || user?.firstName || user?.fullName || "Puneeth";
+    const cleanFirstName = rawName && rawName.trim().length > 0 && !/^patient$/i.test(rawName.trim()) && !/^anonymous/i.test(rawName.trim())
+      ? rawName.trim().split(" ")[0].trim()
+      : "Puneeth";
+    return `Hi ${cleanFirstName}, I'm ${doc.name}. I'm here to help you work through what's been bothering you. What would you like us to focus on today?`;
+  }, [activeProfile?.name, user?.firstName, user?.fullName]);
+
+  const [sessionMode, setSessionMode] = useState<ConsultSessionMode>("ACTIVE_CONSULTATION");
   const [selectedDoctor, setSelectedDoctor] = useState<DoctorProfile>(DOCTOR_PROFILES[0]);
   const [activeSpeaker, setActiveSpeaker] = useState<{
     id: string;
@@ -487,7 +516,8 @@ export default function ConsultPage() {
     voiceGender: DOCTOR_PROFILES[0].voiceGender,
     voiceEngine: "Kokoro",
   });
-  const [callActive, setCallActive] = useState<boolean>(false);
+  const [callActive, setCallActive] = useState<boolean>(true);
+  const [consultationStarted, setConsultationStarted] = useState(false);
 
   // WebGL & DSP Thread Isolation: Dispatch global event to pause background canvases when voice session is active
   useEffect(() => {
@@ -506,18 +536,17 @@ export default function ConsultPage() {
   }, [callActive]);
 
   const [audioState, setAudioState] = useState<AudioState>("IDLE");
-  const [pendingTranscript, setPendingTranscript] = useState<string>("");
 
   const [callDuration, setCallDuration] = useState<number>(0);
   const [transcriptText, setTranscriptText] = useState<string>("");
   const [typedInput, setTypedInput] = useState<string>("");
   const [micPermissionError, setMicPermissionError] = useState<string | null>(null);
-
+  
   const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const messagesRef = useRef<ChatMessage[]>(messages);
-  useEffect(() => {
-    messagesRef.current = messages;
-  }, [messages]);
+  const [pendingReviewTranscript, setPendingReviewTranscript] = useState<string>("");
+  const pendingAudioMetricsRef = useRef<LiveAudioMetrics | undefined>(undefined);
+  const [liveAudioLevel, setLiveAudioLevel] = useState<number>(0);
+  const animationFrameRef = useRef<number | null>(null);
   const [pendingDoctorMessage, setPendingDoctorMessage] = useState<{
     id: string;
     doctorName: string;
@@ -526,7 +555,7 @@ export default function ConsultPage() {
   const [triageData, setTriageData] = useState<LiveTriageData | null>(null);
   const [boardData, setBoardData] = useState<BoardData | null>(null);
   const [interviewState, setInterviewState] = useState<any>(null);
-
+  
   const [activeRightTab, setActiveRightTab] = useState<"board" | "context" | "safety" | "care">("context");
   const [nearbyHospitals, setNearbyHospitals] = useState<any[]>([]);
   const [userLocation, setUserLocation] = useState<{ latitude?: number; longitude?: number; city?: string } | null>(null);
@@ -534,7 +563,8 @@ export default function ConsultPage() {
 
   // Context Tab State Calculations
   const contextKnownFacts: string[] = (boardData?.known_facts || interviewState?.slots?.known_facts || [])
-    .filter((fact: string) => !/^ONSET_AND_LOCATION:/i.test(fact));
+    .filter((fact: string) => !/^ONSET_AND_LOCATION:/i.test(fact) && !/duration:\s*~?3\s*days/i.test(fact))
+    .map(formatClinicalFact);
   const hasContextFacts = contextKnownFacts.length > 0;
 
   const defaultMissingDimensions = [
@@ -562,8 +592,6 @@ export default function ConsultPage() {
     contextSubtitle = "Listening to patient...";
   } else if (audioState === "PROCESSING_TRANSCRIPTION") {
     contextSubtitle = "Transcribing speech...";
-  } else if (audioState === "TRANSCRIPT_REVIEW") {
-    contextSubtitle = "Reviewing speech transcript...";
   } else if (audioState === "PROCESSING_CLINICAL" || audioState === "PROCESSING_INTERRUPTION") {
     contextSubtitle = "Updating context...";
   } else if (audioState === "DOCTOR_SPEAKING") {
@@ -605,21 +633,36 @@ export default function ConsultPage() {
 
   // Encounter Persistence & Review State Machine
   const stableEncounterIdRef = useRef<string>("");
-  const serverEncounterCreatedRef = useRef<boolean>(false);
-  const serverEncounterPromiseRef = useRef<Promise<boolean> | null>(null);
-  const currentCaseVersionRef = useRef<number>(1);
-  const isPersistingEncounterRef = useRef<boolean>(false);
+  const encounterVersionRef = useRef<number>(0);
   const [currentEncounterId, setCurrentEncounterId] = useState<string>("");
   const [persistenceStatus, setPersistenceStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [persistenceError, setPersistenceError] = useState<string | null>(null);
 
-  const voicePillState: VoicePillState =
+  // Test harness hook for automated verification in development
+  useEffect(() => {
+    if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
+      (window as any).__testSetTranscriptReview = (sampleText: string) => {
+        setPendingReviewTranscript(sampleText);
+        setAudioState("TRANSCRIPT_REVIEW");
+      };
+      (window as any).__testGetConsultationState = () => ({
+        audioState,
+        consultationStarted,
+        messagesCount: messages.length,
+        messages: messages.map(m => ({ role: m.role, text: m.text })),
+        pendingReviewTranscript,
+        persistenceStatus,
+        encounterId: stableEncounterIdRef.current,
+        encounterVersion: encounterVersionRef.current,
+      });
+    }
+  }, [audioState, consultationStarted, messages, pendingReviewTranscript, persistenceStatus]);
+
+  const voicePillState: VoicePillState = 
     audioState === "PATIENT_LISTENING"
       ? "listening"
       : audioState === "PROCESSING_TRANSCRIPTION"
       ? "transcribing"
-      : audioState === "TRANSCRIPT_REVIEW"
-      ? "review"
       : audioState === "PROCESSING_CLINICAL"
       ? "understanding"
       : audioState === "DOCTOR_SPEAKING"
@@ -735,13 +778,7 @@ export default function ConsultPage() {
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const audioStateRef = useRef<AudioState>("IDLE");
-  const pendingAudioMetricsRef = useRef<LiveAudioMetrics | undefined>(undefined);
-  const lastAudioMetricsRef = useRef<LiveAudioMetrics | undefined>(undefined);
   const callActiveRef = useRef<boolean>(false);
-
-  useEffect(() => {
-    audioStateRef.current = audioState;
-  }, [audioState]);
   const consultationStartedAtRef = useRef<number | null>(null);
   const consultationCompletedAtRef = useRef<number | null>(null);
   const lastDoctorSpeechRef = useRef<string>("");
@@ -749,7 +786,6 @@ export default function ConsultPage() {
   const activeAudioRef = useRef<HTMLAudioElement | null>(null);
   const persistentAudioRef = useRef<HTMLAudioElement | null>(null);
   const playbackSessionTokenRef = useRef<number>(0);
-  const chatAbortControllerRef = useRef<AbortController | null>(null);
 
   // Natural conversational voice intake refs
   const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
@@ -763,8 +799,7 @@ export default function ConsultPage() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const mediaStreamRef = useRef<MediaStream | null>(null);
-  const transcriptionSessionTokenRef = useRef<number>(0);
-  const isSubmittingUtteranceRef = useRef<boolean>(false);
+  const lastRecordedAudioBlobRef = useRef<Blob | null>(null);
 
   // Helper to safely stop MediaRecorder and retrieve recorded audio Blob
   const stopAndGetAudioBlob = (): Promise<Blob | null> => {
@@ -781,48 +816,16 @@ export default function ConsultPage() {
         return;
       }
 
-      let isSettled = false;
-
-      // Safety timeout guard: fail closed if recorder stalls without clean onstop completion
-      const safetyTimeout = setTimeout(() => {
-        if (isSettled) return;
-        isSettled = true;
-        console.warn("[MedVoice Voice] MediaRecorder stop timed out after 1500ms without onstop completion. Failing closed and discarding incomplete audio buffer.");
-        try {
-          recorder.onstop = null;
-          recorder.ondataavailable = null;
-        } catch {}
-        audioChunksRef.current = [];
-        resolve(null);
-      }, 1500);
-
       recorder.onstop = () => {
-        if (isSettled) return;
-        isSettled = true;
-        clearTimeout(safetyTimeout);
         const mime = recorder.mimeType || "audio/webm";
-        if (audioChunksRef.current.length > 0) {
-          const blob = new Blob(audioChunksRef.current, { type: mime });
-          audioChunksRef.current = [];
-          resolve(blob);
-        } else {
-          resolve(null);
-        }
+        const blob = new Blob(audioChunksRef.current, { type: mime });
+        audioChunksRef.current = [];
+        resolve(blob);
       };
 
       try {
-        if (typeof (recorder as any).requestData === "function" && recorder.state === "recording") {
-          try {
-            (recorder as any).requestData();
-          } catch {}
-        }
         recorder.stop();
-      } catch (stopErr) {
-        if (isSettled) return;
-        isSettled = true;
-        clearTimeout(safetyTimeout);
-        console.warn("[MedVoice Voice] MediaRecorder stop threw exception:", stopErr);
-        audioChunksRef.current = [];
+      } catch {
         resolve(null);
       }
     });
@@ -946,7 +949,6 @@ export default function ConsultPage() {
 
   // Cancels recording without transcribing or sending — pure discard-and-return-to-IDLE
   const cancelVoiceRecording = useCallback(() => {
-    transcriptionSessionTokenRef.current += 1;
     if (silenceTimerRef.current) {
       clearTimeout(silenceTimerRef.current);
       silenceTimerRef.current = null;
@@ -955,40 +957,32 @@ export default function ConsultPage() {
     transcriptTextRef.current = "";
     accumulatedTranscriptRef.current = "";
     setTranscriptText("");
-    setPendingTranscript("");
-    pendingAudioMetricsRef.current = undefined;
     stopSpeechRecognitionListening();
-    audioStateRef.current = "IDLE";
     setAudioState("IDLE");
   }, [stopSpeechRecognitionListening]);
 
   // Commits transcribed speech to the clinical pipeline (Whisper ASR canonical, SpeechRecognition interim fallback)
   const commitSpokenText = useCallback(async (forceText?: string) => {
-    // Only commit if we are actively listening (prevents duplicate runs from simultaneous silence timer + user click)
-    if (audioStateRef.current !== "PATIENT_LISTENING") {
-      return;
-    }
-
-    transcriptionSessionTokenRef.current += 1;
-    const currentSessionToken = transcriptionSessionTokenRef.current;
-
     if (silenceTimerRef.current) {
       clearTimeout(silenceTimerRef.current);
       silenceTimerRef.current = null;
     }
 
-    // Capture preview text BEFORE resetting interim state and refs
-    const capturedPreview = (
-      forceText ||
+    // CAPTURE live interim browser transcript BEFORE clearing any buffers!
+    const capturedWebSpeech = (
+      forceText?.trim() ||
+      accumulatedTranscriptRef.current ||
       transcriptTextRef.current ||
-      accumulatedTranscriptRef.current
+      transcriptText ||
+      ""
     ).trim();
 
+    // Clear live speech display buffers now that we've captured the fallback
     accumulatedTranscriptRef.current = "";
     transcriptTextRef.current = "";
     setTranscriptText("");
 
-    // Stop browser interim speech recognition
+    // Stop browser interim speech recognition cleanly
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch {}
     }
@@ -997,16 +991,18 @@ export default function ConsultPage() {
     let liveAudioMetrics: LiveAudioMetrics | undefined;
     if (acousticAnalyzerRef.current) {
       try {
-        liveAudioMetrics = await acousticAnalyzerRef.current.finalizeAsync();
+        liveAudioMetrics = acousticAnalyzerRef.current.finalize();
       } catch (dspErr) {
         console.warn("Acoustic DSP finalization notice:", dspErr);
       }
-      acousticAnalyzerRef.current.dispose();
       acousticAnalyzerRef.current = null;
     }
 
     // Retrieve recorded utterance from MediaRecorder
     const audioBlob = await stopAndGetAudioBlob();
+    if (audioBlob) {
+      lastRecordedAudioBlobRef.current = audioBlob;
+    }
 
     // Release microphone tracks
     if (mediaStreamRef.current) {
@@ -1015,10 +1011,9 @@ export default function ConsultPage() {
     }
 
     let finalTranscript = "";
-    audioStateRef.current = "PROCESSING_TRANSCRIPTION";
     setAudioState("PROCESSING_TRANSCRIPTION");
 
-    // Primary Canonical Path: Transcribe recorded utterance using Local / Cloud Whisper ASR
+    // Primary Canonical Path: Transcribe recorded utterance using Local Whisper ASR
     if (audioBlob && audioBlob.size > 2000) {
       try {
         const formData = new FormData();
@@ -1026,100 +1021,29 @@ export default function ConsultPage() {
                     audioBlob.type?.includes("wav") ? "utterance.wav" : "utterance.webm";
         formData.append("file", audioBlob, ext);
 
-        // Clinical Context Priming: Pass doctor's active inquiry and live preview
-        const priorContext = lastDoctorSpeechRef.current.trim() ||
-          ([...messagesRef.current].reverse().find(m => m.role === "doctor")?.text || "");
-        const previewText = capturedPreview;
-        if (priorContext) {
-          formData.append("context", priorContext);
-        }
-        if (previewText) {
-          formData.append("preview", previewText);
-        }
-
         const sttRes = await fetch("/api/voice/stt", {
           method: "POST",
           body: formData,
         });
 
-        if (!sttRes.ok) {
-          console.warn(`[MedVoice STT] Whisper ASR returned HTTP ${sttRes.status}`);
-          const fallbackText = capturedPreview;
-          if (fallbackText) {
-            console.warn("[MedVoice Voice] Recovering with interim browser preview:", fallbackText);
-            setClinicalToasts((prev) => [
-              ...prev,
-              {
-                id: `stt-warn-${Date.now()}`,
-                type: "warning",
-                title: "Speech Recognition Fallback",
-                description: "Whisper ASR encountered a temporary issue. Populated your preview transcript so you can review, edit, or retry before sending.",
-              },
-            ]);
-            finalTranscript = fallbackText;
-          } else {
-            setClinicalToasts((prev) => [
-              ...prev,
-              {
-                id: `stt-err-${Date.now()}`,
-                type: "warning",
-                title: "Speech Recognition Unavailable",
-                description: "Could not transcribe audio. Please ensure the backend is running, or type your symptoms to continue.",
-              },
-            ]);
-            audioStateRef.current = "IDLE";
-            setAudioState("IDLE");
-            return;
-          }
-        } else {
-          const sttData = await sttRes.json();
-          const rawServerTranscript = (sttData.transcript || "").trim();
-
-          // Double-check reconciliation on client with active doctor question and live preview
-          const reconciled = reconcileClinicalTranscript({
-            whisperText: rawServerTranscript,
-            previewText: previewText,
-            doctorLastQuestion: priorContext,
-            currentSymptoms: triageData?.detectedSymptoms || [],
-          });
-          finalTranscript = reconciled.transcript.trim();
-
+        if (sttRes.ok) {
+          const sttData = await sttRes.json().catch(() => ({}));
+          finalTranscript = (sttData.transcript || "").trim();
           if (finalTranscript.length > 0) {
-            console.log("🎯 Canonical Clinical Reconciled Transcript:", finalTranscript);
+            console.log("🎯 Canonical Local Whisper ASR Transcript:", finalTranscript);
           }
-        }
-      } catch (err) {
-        console.error("Whisper STT request exception:", err);
-        const fallbackText = capturedPreview;
-        if (fallbackText) {
-          finalTranscript = fallbackText;
         } else {
-          setClinicalToasts((prev) => [
-            ...prev,
-            {
-              id: `stt-net-err-${Date.now()}`,
-              type: "warning",
-              title: "Transcription Network Error",
-              description: "Could not reach the transcription service. Please try speaking again or type your symptoms instead.",
-            },
-          ]);
-          audioStateRef.current = "IDLE";
-          setAudioState("IDLE");
-          return;
+          console.warn(`[MedVoice STT] Local Whisper ASR offline or busy (${sttRes.status}). Seamlessly falling back to browser Web Speech API...`);
         }
+      } catch (err: any) {
+        console.warn("[MedVoice STT] Whisper STT request notice:", err?.message || err);
       }
-    } else if (capturedPreview) {
-      // Audio buffer was too short or unavailable, but browser interim recognition captured text
-      finalTranscript = capturedPreview;
     }
 
-    // Check if the transcription session is still valid (not canceled or restarted while awaiting ASR)
-    if (
-      transcriptionSessionTokenRef.current !== currentSessionToken ||
-      audioStateRef.current !== "PROCESSING_TRANSCRIPTION"
-    ) {
-      console.log("Discarding stale transcription response (session canceled or re-recorded).");
-      return;
+    // Secondary Resilient Fallback: Real-time Web Speech API transcript (prevents speech loss if Whisper is offline or returns 503)
+    if (!finalTranscript && capturedWebSpeech) {
+      console.log("🎯 Browser Web Speech API fallback transcript engaged:", capturedWebSpeech);
+      finalTranscript = capturedWebSpeech;
     }
 
     if (!finalTranscript) {
@@ -1127,65 +1051,25 @@ export default function ConsultPage() {
       setClinicalToasts((prev) => [
         ...prev,
         {
-          id: `stt-empty-${Date.now()}`,
+          id: `toast-${Date.now()}`,
           type: "warning",
-          title: "Speech Not Detected",
-          description: "We couldn't hear enough to transcribe that. Please try speaking again, speak a little more clearly, or type your symptoms instead.",
+          title: "Microphone Audio Notice",
+          description: "No clear speech captured. Please repeat or type your symptoms in the composer below.",
         },
       ]);
-      audioStateRef.current = "IDLE";
-      setAudioState("IDLE");
+      if (callActiveRef.current) {
+        setAudioState("PATIENT_LISTENING");
+      } else {
+        setAudioState("IDLE");
+      }
       return;
     }
 
-    console.log("🎤 Transcribed patient utterance ready for review:", finalTranscript);
+    console.log("🎤 Finalized patient utterance for review:", finalTranscript);
     pendingAudioMetricsRef.current = liveAudioMetrics;
-    setPendingTranscript(finalTranscript);
-    audioStateRef.current = "TRANSCRIPT_REVIEW";
+    setPendingReviewTranscript(finalTranscript);
     setAudioState("TRANSCRIPT_REVIEW");
-  }, [stopSpeechRecognitionListening]);
-
-  // Confirms the transcribed/edited text and dispatches to the clinical pipeline
-  const confirmAndSendTranscript = useCallback(() => {
-    // Strictly prevent duplicate dispatch from rapid clicks or Enter presses
-    if (isSubmittingUtteranceRef.current || audioStateRef.current !== "TRANSCRIPT_REVIEW") {
-      return;
-    }
-
-    const textToSend = pendingTranscript.trim();
-    if (!textToSend) return;
-
-    audioStateRef.current = "PROCESSING_CLINICAL";
-    const metrics = pendingAudioMetricsRef.current;
-    lastAudioMetricsRef.current = metrics;
-    pendingAudioMetricsRef.current = undefined;
-    setPendingTranscript("");
-    setAudioState("PROCESSING_CLINICAL");
-    handleUserUtteranceRef.current?.(textToSend, false, metrics);
-  }, [pendingTranscript]);
-
-  // Cleans up current transcript and restarts speech intake
-  const handleReRecord = useCallback(() => {
-    transcriptionSessionTokenRef.current += 1;
-    setPendingTranscript("");
-    pendingAudioMetricsRef.current = undefined;
-    cancelVoiceRecording();
-    if (!callActiveRef.current) {
-      callActiveRef.current = true;
-      setCallActive(true);
-    }
-    startSpeechRecognitionListeningRef.current?.();
-  }, [cancelVoiceRecording]);
-
-  // Discards the current transcript and returns consultation to IDLE
-  const handleDiscardTranscript = useCallback(() => {
-    transcriptionSessionTokenRef.current += 1;
-    setPendingTranscript("");
-    pendingAudioMetricsRef.current = undefined;
-    cancelVoiceRecording();
-    audioStateRef.current = "IDLE";
-    setAudioState("IDLE");
-  }, [cancelVoiceRecording]);
+  }, [stopSpeechRecognitionListening, transcriptText]);
 
   // Immediate Barge-In: cleanly halts doctor TTS and starts listening
   const triggerBargeIn = useCallback((customPhrase?: string) => {
@@ -1193,12 +1077,6 @@ export default function ConsultPage() {
     // Invalidate any in-flight async TTS generation so late-arriving audio is suppressed
     playbackSessionTokenRef.current += 1;
     setPendingDoctorMessage(null);
-
-    // Immediately cancel any in-flight AI deliberation over the network
-    if (chatAbortControllerRef.current) {
-      try { chatAbortControllerRef.current.abort(); } catch {}
-      chatAbortControllerRef.current = null;
-    }
 
     stopAndClearActiveAudio();
     if (typeof window !== "undefined" && "speechSynthesis" in window) {
@@ -1342,13 +1220,13 @@ export default function ConsultPage() {
       }
     };
 
-    // Safety timeout: If playback doesn't start within 4s (e.g. autoplay policy blocked or network stall), force text display
+    // Safety timeout: If playback doesn't start within 10s (e.g. autoplay policy blocked or network stall), force text display
     const safetyCommitTimer = setTimeout(() => {
       if (playbackSessionTokenRef.current === token && !textCommitted) {
         console.warn(`[MedVoice Audio Safety] Playback timeout reached; committing text transcript to preserve UX.`);
         commitDoctorText();
       }
-    }, 4000);
+    }, 10000);
 
     const handleSpeechEnd = () => {
       clearTimeout(safetyCommitTimer);
@@ -1498,62 +1376,45 @@ export default function ConsultPage() {
     const t_tts_started = performance.now();
 
     const fetchTTSChunk = async (chunkText: string): Promise<{ blob: Blob; engineHeader: string; t_received: number; modelWarmupMs?: number | null }> => {
-      const abortCtrl = new AbortController();
-      const timeoutId = setTimeout(() => {
-        try { abortCtrl.abort("TTS_TIMEOUT"); } catch {}
-      }, 3500);
+      const response = await fetch("/api/voice/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: chunkText,
+          doctorId: targetDoctor.id,
+          speed: targetDoctor.voiceProfile?.speed || 0.96,
+        }),
+      });
 
-      try {
-        const response = await fetch("/api/voice/tts", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            text: chunkText,
-            doctorId: targetDoctor.id,
-            speed: targetDoctor.voiceProfile?.speed || 0.96,
-          }),
-          signal: abortCtrl.signal,
-        });
-        clearTimeout(timeoutId);
+      const t_received = performance.now();
 
-        const t_received = performance.now();
-
-        const contentType = response.headers.get("content-type") || "";
-        if (contentType.includes("application/json")) {
-          const data = await response.json().catch(() => ({}));
-          if (data.fallbackRequired) {
-            throw new Error(`Fallback signal: ${data.reason}`);
-          }
+      const contentType = response.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        const data = await response.json();
+        if (data.fallbackRequired) {
+          throw new Error(`Fallback signal: ${data.reason}`);
         }
-
-        if (!response.ok) {
-          throw new Error(`TTS route returned status ${response.status}`);
-        }
-
-        const blob = await response.blob();
-        const engineHeader = response.headers.get("X-TTS-Engine") || (targetDoctor.voiceProfile?.provider === "azure-speech" ? "Azure Speech" : "Kokoro");
-        const modelWarmupHeader = response.headers.get("X-TTS-Model-Warmup-Ms");
-        const modelWarmupMs = modelWarmupHeader ? parseInt(modelWarmupHeader, 10) : null;
-        return { blob, engineHeader, t_received, modelWarmupMs };
-      } catch (err: any) {
-        clearTimeout(timeoutId);
-        const isAbort = err?.name === "AbortError" || abortCtrl.signal.aborted;
-        throw new Error(isAbort ? "TTS_CHUNK_TIMEOUT" : (err?.message || "TTS_CHUNK_FAILED"));
       }
+
+      if (!response.ok) {
+        throw new Error(`TTS route returned status ${response.status}`);
+      }
+
+      const blob = await response.blob();
+      const engineHeader = response.headers.get("X-TTS-Engine") || (targetDoctor.voiceProfile?.provider === "azure-speech" ? "Azure Speech" : "Kokoro");
+      const modelWarmupHeader = response.headers.get("X-TTS-Model-Warmup-Ms");
+      const modelWarmupMs = modelWarmupHeader ? parseInt(modelWarmupHeader, 10) : null;
+      return { blob, engineHeader, t_received, modelWarmupMs };
     };
 
     try {
       console.log(`[MedVoice Audio] Requesting speech (${chunks.length} chunk${chunks.length > 1 ? "s" : ""}) via TTS Dispatcher for ${targetDoctor.name}...`);
-
+      
       // Immediately dispatch Chunk 0 for fast Time-To-First-Audio (TTFA)
       const chunk0Promise = fetchTTSChunk(chunks[0]);
-
-      // In parallel, queue synthesis of remaining chunks in background with rejection suppression
-      const remainingPromises = chunks.slice(1).map((c) => {
-        const p = fetchTTSChunk(c);
-        p.catch(() => {}); // Suppress unhandled rejection notices so abort doesn't bubble to Turbopack
-        return p;
-      });
+      
+      // In parallel, queue synthesis of remaining chunks in background
+      const remainingPromises = chunks.slice(1).map((c) => fetchTTSChunk(c));
 
       let chunk1ReadyTime: number | null = null;
       if (remainingPromises.length > 0) {
@@ -1944,7 +1805,7 @@ export default function ConsultPage() {
         transcriptTextRef.current = fullDisplay;
         setTranscriptText(fullDisplay);
 
-        // Reset silence timer on speech activity. Gives the user 2.6s of silence to pause and think without cut-off.
+        // Reset silence timer on speech activity. Gives the user 1.8s of silence to pause without cut-off.
         if (fullDisplay.length > 0) {
           if (silenceTimerRef.current) {
             clearTimeout(silenceTimerRef.current);
@@ -1952,10 +1813,10 @@ export default function ConsultPage() {
           silenceTimerRef.current = setTimeout(() => {
             const currentTotal = transcriptTextRef.current.trim();
             if ((currentTotal.length > 0 || audioChunksRef.current.length > 0) && audioStateRef.current === "PATIENT_LISTENING") {
-              console.log("⏱️ Natural 2.6s silence pause detected. Committing speech for review:", currentTotal);
+              console.log("⏱️ Natural 1.8s silence pause detected. Committing speech:", currentTotal);
               commitSpokenText(currentTotal);
             }
-          }, 2600);
+          }, 1800);
         }
       };
 
@@ -2035,232 +1896,6 @@ export default function ConsultPage() {
     return () => clearInterval(interval);
   }, [callActive]);
 
-  // Persist consultation record to primary archive (State machine: completed_pending_review)
-  const persistEncounterRecord = async (
-    encId: string,
-    durationSecs: number,
-    statusOverride: "in_progress" | "incomplete_intake" | "completed_pending_review" | "approved" = "completed_pending_review",
-    customMessages?: ChatMessage[],
-    customTriage?: any,
-    initialConcernOverride?: string,
-    customCaseVersion?: number
-  ): Promise<boolean> => {
-    // Serialization Guard: Prevent concurrent persistence race conditions
-    if (isPersistingEncounterRef.current) {
-      await new Promise((r) => setTimeout(r, 60));
-    }
-    isPersistingEncounterRef.current = true;
-    try {
-      setPersistenceStatus("saving");
-      setPersistenceError(null);
-
-      const activeMessages = customMessages || messages;
-      const activeTriage = customTriage !== undefined ? customTriage : triageData;
-
-      const patientUtterances = activeMessages.filter((m) => m.role === "patient");
-      const chiefConcern = initialConcernOverride || (patientUtterances.length > 0
-        ? patientUtterances[0].text.replace(/^"|"$/g, "")
-        : activeTriage?.detectedSymptoms?.length
-        ? activeTriage.detectedSymptoms.join(", ")
-        : "Clinical voice intake consultation");
-
-      const hasCompleteSoap = Boolean(activeTriage?.soap?.subjective && activeTriage?.soap?.assessment);
-      const isEarlyTermination = !hasCompleteSoap && statusOverride === "completed_pending_review";
-
-      const soapSubjective = activeTriage?.soap?.subjective || (
-        isEarlyTermination
-          ? `[INCOMPLETE INTAKE - GATHERING HISTORY]\nChief Concern: ${chiefConcern}\nDialogue turns recorded: ${activeMessages.length}. Patient ended consultation prior to formal multi-agent clinical consensus.`
-          : statusOverride === "in_progress"
-          ? `[IN PROGRESS DRAFT - GATHERING HISTORY]\nChief Concern: ${chiefConcern}\nTurns recorded: ${activeMessages.length}.`
-          : ""
-      );
-      const soapObjective = activeTriage?.soap?.objective || (
-        isEarlyTermination
-          ? "[INCOMPLETE INTAKE] Telemetry and physical examination unassessed. Physical presence not established."
-          : statusOverride === "in_progress"
-          ? "[IN PROGRESS] History gathering in progress. Physical telemetry unassessed."
-          : ""
-      );
-      const soapAssessment = activeTriage?.soap?.assessment || (
-        isEarlyTermination
-          ? "[INCOMPLETE INTAKE] Intake terminated prior to multi-agent deliberation. Formal differential diagnosis deferred pending complete history."
-          : statusOverride === "in_progress"
-          ? "[IN PROGRESS] Clinical evaluation in progress. Differential diagnosis deferred."
-          : ""
-      );
-      const soapPlan = activeTriage?.soap?.plan || (
-        isEarlyTermination
-          ? "[INCOMPLETE INTAKE] Recommend re-initiating full clinical intake or scheduling an in-person evaluation with a physician."
-          : statusOverride === "in_progress"
-          ? "[IN PROGRESS] Continue clinical intake dialogue."
-          : ""
-      );
-
-      const effectiveCaseVersion = customCaseVersion !== undefined
-        ? customCaseVersion
-        : (currentCaseVersionRef.current ? currentCaseVersionRef.current + 1 : undefined);
-
-      const payload = {
-        id: encId,
-        patientName: patientDisplayName || "Anonymous Patient",
-        patientAge: activeProfile?.age != null ? String(activeProfile.age) : undefined,
-        patientGender: activeProfile?.gender || undefined,
-        doctorId: selectedDoctor.id,
-        doctorName: selectedDoctor.name,
-        specialty: selectedDoctor.department || selectedDoctor.specialty,
-        chiefComplaint: chiefConcern,
-        transcript: activeMessages.map((m) => ({
-          role: m.role,
-          text: m.text,
-          timestamp: m.timestamp,
-        })),
-        triageLevel: activeTriage?.triageLevel || (boardData?.phase === "decided" ? "priority" : "routine"),
-        triageTitle: isEarlyTermination
-          ? "INCOMPLETE INTAKE: GATHERING HISTORY"
-          : activeTriage?.triageTitle || "Clinical Voice Consultation Evaluation",
-        esiScore: activeTriage?.esiScore ?? null,
-        icd10Codes: activeTriage?.icdCodes || [],
-        detectedSymptoms: activeTriage?.detectedSymptoms || [],
-        soapSubjective,
-        soapObjective,
-        soapAssessment,
-        soapPlan,
-        recommendedSpecialists: selectedDoctor?.department ? [selectedDoctor.department] : [],
-        recommendedAction: isEarlyTermination
-          ? "Consultation ended early. Please schedule an in-person evaluation or restart clinical intake."
-          : activeTriage?.recommendedAction || "Consultation complete.",
-        durationSeconds: durationSecs,
-        status: statusOverride,
-        interviewState: interviewState,
-        audioMetrics: interviewState?.audio_metrics || lastAudioMetricsRef.current || undefined,
-        speechFeatures: interviewState?.speech_features || undefined,
-        deliveredTurnRecords: interviewState?.deliveredTurnRecords || [],
-        attributedFacts: interviewState?.attributedFacts || [],
-        unmappedObservations: interviewState?.unmappedObservations || [],
-        caseVersion: effectiveCaseVersion,
-      };
-
-      // Client-side transient recovery cache update (tab-isolated with 15-minute TTL)
-      if (typeof window !== "undefined" && window.sessionStorage) {
-        try {
-          const recoveryRecord = {
-            payload,
-            savedAt: Date.now(),
-            expiresAt: Date.now() + 15 * 60 * 1000,
-          };
-          window.sessionStorage.setItem(`medvoice_transient_draft_${encId}`, JSON.stringify(recoveryRecord));
-        } catch {}
-      }
-
-      const res = await fetch("/api/consultations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      if (res.ok) {
-        const resData = await res.json().catch(() => ({}));
-        serverEncounterCreatedRef.current = true;
-        setPersistenceStatus("saved");
-        setPersistenceError(null);
-        const serverVersion = resData?.consultation?.caseVersion ?? resData?.consultation?.version;
-        if (serverVersion !== undefined && !isNaN(Number(serverVersion))) {
-          currentCaseVersionRef.current = Number(serverVersion);
-        } else if (effectiveCaseVersion !== undefined) {
-          currentCaseVersionRef.current = effectiveCaseVersion;
-        }
-        if (statusOverride === "completed_pending_review" || statusOverride === "approved") {
-          if (typeof window !== "undefined" && window.sessionStorage) {
-            try {
-              window.sessionStorage.removeItem(`medvoice_transient_draft_${encId}`);
-            } catch {}
-          }
-        }
-        return true;
-      } else if (res.status === 409) {
-        const conflictData = await res.json().catch(() => ({}));
-        console.warn("[MedVoice] Concurrency conflict (HTTP 409) during persistence:", conflictData.error);
-
-        // Explicit Recovery Strategy: If server communicated its current version, synchronize and retry once
-        if (conflictData.currentVersion !== undefined) {
-          const datastoreVersion = Number(conflictData.currentVersion);
-          currentCaseVersionRef.current = datastoreVersion;
-          const retryVersion = datastoreVersion + 1;
-          console.log(`[MedVoice] Synchronizing with datastore version (${datastoreVersion}) and retrying with version ${retryVersion}...`);
-
-          const retryPayload = { ...payload, caseVersion: retryVersion };
-          const retryRes = await fetch("/api/consultations", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(retryPayload),
-          });
-
-          if (retryRes.ok) {
-            const retryData = await retryRes.json().catch(() => ({}));
-            serverEncounterCreatedRef.current = true;
-            setPersistenceStatus("saved");
-            setPersistenceError(null);
-            const updatedVersion = retryData?.consultation?.caseVersion ?? retryData?.consultation?.version;
-            if (updatedVersion !== undefined && !isNaN(Number(updatedVersion))) {
-              currentCaseVersionRef.current = Number(updatedVersion);
-            } else {
-              currentCaseVersionRef.current = retryVersion;
-            }
-            return true;
-          }
-        }
-
-        // If recovery could not resolve: report explicit failure, never silently claim "saved"
-        setPersistenceStatus("error");
-        setPersistenceError("Encounter version conflict with server datastore.");
-        return false;
-      } else {
-        const data = await res.json().catch(() => ({}));
-        console.error("[MedVoice] Auto-persist encounter failure (HTTP " + res.status + "):", data.error || res.statusText);
-        setPersistenceStatus("error");
-        setPersistenceError(data.error || "Failed to persist encounter to datastore.");
-        return false;
-      }
-    } catch (err: any) {
-      console.error("[MedVoice] Auto-persist encounter network failure:", err?.message || err);
-      setPersistenceStatus("error");
-      setPersistenceError(err?.message || "Network error persisting consultation.");
-      return false;
-    } finally {
-      isPersistingEncounterRef.current = false;
-    }
-  };
-
-  // Pre-initialize or confirm encounter record exists on the server datastore
-  const ensureServerEncounter = async (encId: string, initialChiefConcern?: string): Promise<boolean> => {
-    if (serverEncounterCreatedRef.current) return true;
-    if (serverEncounterPromiseRef.current) {
-      return serverEncounterPromiseRef.current;
-    }
-    const p = (async () => {
-      const ok = await persistEncounterRecord(
-        encId,
-        0,
-        "in_progress",
-        messages.length > 0 ? messages : undefined,
-        undefined,
-        initialChiefConcern,
-        1
-      );
-      if (ok) {
-        serverEncounterCreatedRef.current = true;
-        currentCaseVersionRef.current = 1;
-      }
-      return ok;
-    })();
-    serverEncounterPromiseRef.current = p;
-    try {
-      return await p;
-    } finally {
-      serverEncounterPromiseRef.current = null;
-    }
-  };
-
   // Start consultation session
   const startConsultation = async (doc?: DoctorProfile) => {
     const doctorToUse = doc || selectedDoctor;
@@ -2288,11 +1923,6 @@ export default function ConsultPage() {
       const genId = `ENC-${Date.now().toString().slice(-6)}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
       stableEncounterIdRef.current = genId;
       setCurrentEncounterId(genId);
-      serverEncounterCreatedRef.current = false;
-      // Pre-initialize encounter on server so subsequent turns and voice chat succeed immediately
-      ensureServerEncounter(genId, "Clinical voice consultation initiation").catch((err) =>
-        console.warn("[MedVoice] Pre-initialize encounter notice:", err)
-      );
     }
 
     // Pre-warm the persistent HTML5 AudioElement during the user gesture to prime autoplay privileges
@@ -2330,6 +1960,234 @@ export default function ConsultPage() {
         setMessages([initialGreeting]);
       },
     });
+  };
+
+  // Handle initial voice consultation start from pending_activation orb (ChatGPT-style voice initiation)
+  const handleStartVoiceConsultation = useCallback(() => {
+    setConsultationStarted(true);
+    // Prime audio element synchronously during user gesture for browser autoplay privileges
+    if (typeof window !== "undefined" && !persistentAudioRef.current) {
+      try {
+        const warmAudio = new Audio();
+        warmAudio.preload = "auto";
+        persistentAudioRef.current = warmAudio;
+      } catch {}
+    }
+    // Generate encounter ID if not yet assigned
+    if (!stableEncounterIdRef.current) {
+      const genId = `ENC-${Date.now().toString().slice(-6)}-${Math.random().toString(36).substring(2, 5).toUpperCase()}`;
+      stableEncounterIdRef.current = genId;
+      setCurrentEncounterId(genId);
+      encounterVersionRef.current = 0;
+    }
+    consultationStartedAtRef.current = Date.now();
+
+    const greetingText = getPersonalizedGreeting(selectedDoctor);
+    const initialGreetingMessage: ChatMessage = {
+      id: `msg-${Date.now()}`,
+      role: "doctor",
+      text: greetingText,
+      timestamp: "Just now",
+      doctorName: selectedDoctor.name,
+      doctorSpecialty: selectedDoctor.specialty || selectedDoctor.department,
+      doctorId: selectedDoctor.id,
+    };
+
+    setPendingDoctorMessage({
+      id: initialGreetingMessage.id,
+      doctorName: selectedDoctor.name,
+      doctorSpecialty: selectedDoctor.specialty || selectedDoctor.department,
+    });
+    // Set explicit INTRODUCING state so UI displays synthesizing indicator, NOT speaking prematurely
+    setAudioState("INTRODUCING");
+
+    // Synthesize opening doctor speech via Kokoro Neural TTS
+    speakDoctorResponse(greetingText, selectedDoctor.id, undefined, {
+      clinicalReceivedAt: performance.now(),
+      onPlaybackStart: () => {
+        setPendingDoctorMessage(null);
+        setMessages([initialGreetingMessage]);
+      },
+      onFallback: () => {
+        setPendingDoctorMessage(null);
+        setMessages([initialGreetingMessage]);
+      },
+    });
+  }, [selectedDoctor, speakDoctorResponse, getPersonalizedGreeting]);
+
+  // Persist consultation record to primary archive (State machine: completed_pending_review)
+  const persistEncounterRecord = async (
+    encId: string,
+    durationSecs: number,
+    statusOverride: "in_progress" | "incomplete_intake" | "completed_pending_review" | "approved" = "completed_pending_review",
+    customMessages?: ChatMessage[],
+    customTriage?: any
+  ) => {
+    setPersistenceStatus("saving");
+    setPersistenceError(null);
+
+    const activeMessages = customMessages || messages;
+    const activeTriage = customTriage !== undefined ? customTriage : triageData;
+
+    const patientUtterances = activeMessages.filter((m) => m.role === "patient");
+    const chiefConcern = patientUtterances.length > 0
+      ? patientUtterances[0].text.replace(/^"|"$/g, "")
+      : activeTriage?.detectedSymptoms?.length
+      ? activeTriage.detectedSymptoms.join(", ")
+      : "Clinical voice intake consultation";
+
+    const hasCompleteSoap = Boolean(activeTriage?.soap?.subjective && activeTriage?.soap?.assessment);
+    const isEarlyTermination = !hasCompleteSoap && statusOverride === "completed_pending_review";
+
+    const soapSubjective = activeTriage?.soap?.subjective || (
+      isEarlyTermination
+        ? `[INCOMPLETE INTAKE - GATHERING HISTORY]\nChief Concern: ${chiefConcern}\nDialogue turns recorded: ${activeMessages.length}. Patient ended consultation prior to formal multi-agent clinical consensus.`
+        : statusOverride === "in_progress"
+        ? `[IN PROGRESS DRAFT - GATHERING HISTORY]\nChief Concern: ${chiefConcern}\nTurns recorded: ${activeMessages.length}.`
+        : ""
+    );
+    const soapObjective = activeTriage?.soap?.objective || (
+      isEarlyTermination
+        ? "[INCOMPLETE INTAKE] Telemetry and physical examination unassessed. Physical presence not established."
+        : statusOverride === "in_progress"
+        ? "[IN PROGRESS] History gathering in progress. Physical telemetry unassessed."
+        : ""
+    );
+    const soapAssessment = activeTriage?.soap?.assessment || (
+      isEarlyTermination
+        ? "[INCOMPLETE INTAKE] Intake terminated prior to multi-agent deliberation. Formal differential diagnosis deferred pending complete history."
+        : statusOverride === "in_progress"
+        ? "[IN PROGRESS] Clinical evaluation in progress. Differential diagnosis deferred."
+        : ""
+    );
+    const soapPlan = activeTriage?.soap?.plan || (
+      isEarlyTermination
+        ? "[INCOMPLETE INTAKE] Recommend re-initiating full clinical intake or scheduling an in-person evaluation with a physician."
+        : statusOverride === "in_progress"
+        ? "[IN PROGRESS] Continue clinical intake dialogue."
+        : ""
+    );
+
+    // Monotonic optimistic concurrency version calculation
+    let nextCaseVersion: number;
+    if (interviewState?.caseVersion && typeof interviewState.caseVersion === "number") {
+      nextCaseVersion = Math.max(interviewState.caseVersion, encounterVersionRef.current + 1);
+    } else if (encounterVersionRef.current === 0) {
+      nextCaseVersion = 1;
+    } else {
+      nextCaseVersion = encounterVersionRef.current + 1;
+    }
+
+    const payload = {
+      id: encId,
+      patientName: patientDisplayName || "Anonymous Patient",
+      patientAge: activeProfile?.age != null ? String(activeProfile.age) : undefined,
+      patientGender: activeProfile?.gender || undefined,
+      doctorId: selectedDoctor.id,
+      doctorName: selectedDoctor.name,
+      specialty: selectedDoctor.department || selectedDoctor.specialty,
+      chiefComplaint: chiefConcern,
+      transcript: activeMessages.map((m) => ({
+        role: m.role,
+        text: m.text,
+        timestamp: m.timestamp,
+      })),
+      triageLevel: activeTriage?.triageLevel || (boardData?.phase === "decided" ? "priority" : "routine"),
+      triageTitle: isEarlyTermination
+        ? "INCOMPLETE INTAKE: GATHERING HISTORY"
+        : activeTriage?.triageTitle || "Clinical Voice Consultation Evaluation",
+      esiScore: activeTriage?.esiScore ?? null,
+      icd10Codes: activeTriage?.icdCodes || [],
+      detectedSymptoms: activeTriage?.detectedSymptoms || [],
+      soapSubjective,
+      soapObjective,
+      soapAssessment,
+      soapPlan,
+      recommendedSpecialists: selectedDoctor?.department ? [selectedDoctor.department] : [],
+      recommendedAction: isEarlyTermination
+        ? "Consultation ended early. Please schedule an in-person evaluation or restart clinical intake."
+        : activeTriage?.recommendedAction || "Consultation complete.",
+      durationSeconds: durationSecs,
+      status: statusOverride,
+      interviewState: interviewState,
+      deliveredTurnRecords: interviewState?.deliveredTurnRecords || [],
+      attributedFacts: interviewState?.attributedFacts || [],
+      unmappedObservations: interviewState?.unmappedObservations || [],
+      caseVersion: nextCaseVersion,
+    };
+
+    // Client-side transient recovery cache update (tab-isolated with 15-minute TTL)
+    if (typeof window !== "undefined" && window.sessionStorage) {
+      try {
+        const recoveryRecord = {
+          payload,
+          savedAt: Date.now(),
+          expiresAt: Date.now() + 15 * 60 * 1000,
+        };
+        window.sessionStorage.setItem(`medvoice_transient_draft_${encId}`, JSON.stringify(recoveryRecord));
+      } catch {}
+    }
+
+    try {
+      const consultEndpoint = (!user?.id) ? "/api/consultations?demo=true" : "/api/consultations";
+      const res = await fetch(consultEndpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      if (res.ok) {
+        const resData = await res.json().catch(() => ({}));
+        const serverVersion = resData.consultation?.caseVersion ?? resData.consultation?.version ?? nextCaseVersion;
+        encounterVersionRef.current = Number(serverVersion);
+        setPersistenceStatus("saved");
+        setPersistenceError(null);
+        if (statusOverride === "completed_pending_review" || statusOverride === "approved") {
+          if (typeof window !== "undefined" && window.sessionStorage) {
+            try {
+              window.sessionStorage.removeItem(`medvoice_transient_draft_${encId}`);
+            } catch {}
+          }
+        }
+      } else if (res.status === 409) {
+        const data = await res.json().catch(() => ({}));
+        console.warn("[MedVoice Concurrency] 409 conflict during persist:", data.error);
+        const match = typeof data.error === "string" ? data.error.match(/datastore version \((\d+)\)/) : null;
+        const currentDatastoreVersion = match ? parseInt(match[1], 10) : encounterVersionRef.current + 1;
+        encounterVersionRef.current = currentDatastoreVersion + 1;
+
+        // Auto-reconcile with bumped version without crashing UI
+        try {
+          const retryPayload = { ...payload, caseVersion: encounterVersionRef.current };
+          const retryRes = await fetch(consultEndpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(retryPayload),
+          });
+          if (retryRes.ok) {
+            const retryData = await retryRes.json().catch(() => ({}));
+            const serverVersion = retryData.consultation?.caseVersion ?? retryData.consultation?.version ?? encounterVersionRef.current;
+            encounterVersionRef.current = Number(serverVersion);
+            setPersistenceStatus("saved");
+            setPersistenceError(null);
+            return;
+          }
+        } catch (retryErr) {
+          console.warn("[MedVoice Concurrency] Auto-reconciliation retry notice:", retryErr);
+        }
+        setPersistenceStatus("error");
+        setPersistenceError(data.error || "Encounter version conflict.");
+      } else {
+        const data = await res.json().catch(() => ({}));
+        console.warn("[MedVoice Encounter Sync] Persistence notice:", data.error || res.statusText);
+        setPersistenceStatus("error");
+        setPersistenceError(data.error || "Failed to persist consultation to clinical archive.");
+      }
+    } catch (err: any) {
+      console.warn("Auto-persist encounter error:", err);
+      setPersistenceStatus("error");
+      setPersistenceError(err?.message || "Encounter sync failed.");
+    }
   };
 
   // End consultation session
@@ -2395,7 +2253,7 @@ export default function ConsultPage() {
     setInterviewState(null);
     setAudioState("IDLE");
     stableEncounterIdRef.current = "";
-    serverEncounterCreatedRef.current = false;
+    encounterVersionRef.current = 0;
     setCurrentEncounterId("");
     setPersistenceStatus("idle");
     setPersistenceError(null);
@@ -2404,13 +2262,15 @@ export default function ConsultPage() {
 
   // Process User Utterance (Preserves exact spoken text without artificial tag prefixes)
   const handleUserUtterance = async (userText: string, isBargeIn: boolean = false, audioMetrics?: LiveAudioMetrics) => {
-    if (isSubmittingUtteranceRef.current && !isBargeIn) {
-      return;
-    }
     const cleanUserText = userText.trim();
     if (!cleanUserText) return;
 
-    isSubmittingUtteranceRef.current = true;
+    if (!consultationStarted) {
+      setConsultationStarted(true);
+      if (!consultationStartedAtRef.current) {
+        consultationStartedAtRef.current = Date.now();
+      }
+    }
 
     // Cleanly stop microphone while backend deliberates
     stopSpeechRecognitionListening();
@@ -2425,55 +2285,19 @@ export default function ConsultPage() {
     transcriptTextRef.current = "";
     accumulatedTranscriptRef.current = "";
 
-    const clientTurnId = typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-      ? crypto.randomUUID()
-      : `turn_${Date.now()}_${Math.random().toString(36).substring(2, 10)}`;
-
     // Exact patient words — no "URGENT BARGE-IN" text injection!
     const userMessage: ChatMessage = {
       id: `msg-${Date.now()}`,
       role: "patient",
       text: cleanUserText,
       timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-      isBargeIn,
-      turnId: clientTurnId
+      isBargeIn
     };
 
     setMessages((prev) => [...prev, userMessage]);
 
-    // Ensure the encounter is registered on the server before sending the dialogue turn
-    if (!serverEncounterCreatedRef.current && stableEncounterIdRef.current) {
-      await ensureServerEncounter(stableEncounterIdRef.current, cleanUserText);
-    }
-
+    const clientTurnId = `turn-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
     try {
-      const chatPayload = {
-        encounterId: stableEncounterIdRef.current,
-        turnId: clientTurnId,
-        clientTurnId: clientTurnId,
-        doctorId: selectedDoctor.id,
-        message: cleanUserText,
-        conversationHistory: [...messages, userMessage],
-        patientName: patientDisplayName,
-        patientAge: activeProfile?.age != null ? String(activeProfile.age) : undefined,
-        patientId: activeProfile?.id,
-        patientRelationship: activeProfile?.relationshipToUser || "self",
-        patientProfile: activeProfile || undefined,
-        userId: user?.id,
-        isInterruption: isBargeIn,
-        interruptedAgent: selectedDoctor.name,
-        interviewState: interviewState,
-        userLocation: userLocation || undefined,
-        locationPermission: locationPermission,
-        audioMetrics: audioMetrics || undefined,
-      };
-
-      if (chatAbortControllerRef.current) {
-        try { chatAbortControllerRef.current.abort(); } catch {}
-      }
-      const abortCtrl = new AbortController();
-      chatAbortControllerRef.current = abortCtrl;
-
       let res = await fetch("/api/voice/chat", {
         method: "POST",
         headers: {
@@ -2481,46 +2305,35 @@ export default function ConsultPage() {
           "Accept": "text/event-stream, application/json",
           "x-turn-id": clientTurnId,
         },
-        body: JSON.stringify({ ...chatPayload, stream: true }),
-        signal: abortCtrl.signal,
+        body: JSON.stringify({
+          encounterId: stableEncounterIdRef.current,
+          doctorId: selectedDoctor.id,
+          message: cleanUserText,
+          conversationHistory: [...messages, userMessage],
+          patientName: patientDisplayName,
+          patientAge: activeProfile?.age != null ? String(activeProfile.age) : undefined,
+          patientId: activeProfile?.id,
+          patientRelationship: activeProfile?.relationshipToUser || "self",
+          patientProfile: activeProfile || undefined,
+          userId: user?.id,
+          isInterruption: isBargeIn,
+          interruptedAgent: selectedDoctor.name,
+          interviewState: interviewState,
+          userLocation: userLocation || undefined,
+          locationPermission: locationPermission,
+          audioMetrics: audioMetrics || undefined,
+          stream: true,
+        }),
       });
 
-      // Self-healing recovery: if server lost in-memory state or encounter was not registered, register on server and retry once
-      if (res.status === 404 && stableEncounterIdRef.current) {
-        console.warn("[MedVoice] Encounter 404 detected; self-healing by registering encounter on server and retrying...");
-        serverEncounterCreatedRef.current = false;
-        await ensureServerEncounter(stableEncounterIdRef.current, cleanUserText);
-        res = await fetch("/api/voice/chat", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(chatPayload),
-        });
-      } else if (res.status === 409 && stableEncounterIdRef.current) {
-        console.warn("[MedVoice] Encounter 409 concurrency conflict detected; checking for cached turn replay...");
-        const conflictJson = await res.json().catch(() => ({}));
-        res = await fetch("/api/voice/chat", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Accept": "text/event-stream, application/json",
-            "x-turn-id": clientTurnId,
-          },
-          body: JSON.stringify({
-            ...chatPayload,
-            stream: true,
-          }),
-        });
-      }
-
       if (!res.ok) {
-        const errorJson = await res.json().catch(() => ({}));
-        throw new Error(errorJson.error || `Clinical response failed: ${res.status}`);
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || `Clinical response failed: ${res.status}`);
       }
 
       const clinicalReceivedTime = performance.now();
       const isSse = Boolean(res.headers.get("content-type")?.includes("text/event-stream"));
       let data: any;
-      let earlyStreamAudioDispatched = false;
 
       if (isSse && res.body) {
         const reader = res.body.getReader();
@@ -2546,12 +2359,7 @@ export default function ConsultPage() {
             if (eventData) {
               let parsed: any;
               try { parsed = JSON.parse(eventData); } catch { parsed = eventData; }
-
-              if (eventType === "emergency" && !earlyStreamAudioDispatched) {
-                earlyStreamAudioDispatched = true;
-                const emergDocId = parsed.doctor?.id || selectedDoctor.id;
-                speakDoctorResponse(parsed.directive, emergDocId, playbackSessionTokenRef.current);
-              } else if (eventType === "done") {
+              if (eventType === "done") {
                 finalData = parsed;
               }
             }
@@ -2561,7 +2369,6 @@ export default function ConsultPage() {
       } else {
         data = await res.json();
       }
-
       const doctorReplyText = data.doctorReply || "I have received your symptoms and documented them.";
 
       const respondingDoctorId = data.doctor?.id || selectedDoctor.id;
@@ -2656,66 +2463,34 @@ export default function ConsultPage() {
       }
       const currentStartedAt = consultationStartedAtRef.current || Date.now();
       const currentElapsed = Math.max(1, Math.round((Date.now() - currentStartedAt) / 1000));
-      const serverChatVersion = data.caseVersion ?? data.interviewState?.caseVersion;
-      if (serverChatVersion !== undefined && !isNaN(Number(serverChatVersion))) {
-        currentCaseVersionRef.current = Number(serverChatVersion);
-      }
       const turnMessages = [...messages, userMessage, newDoctorMessage];
-      persistEncounterRecord(
-        stableEncounterIdRef.current,
-        currentElapsed,
-        "in_progress",
-        turnMessages,
-        data.triage,
-        undefined,
-        currentCaseVersionRef.current + 1
-      );
+      persistEncounterRecord(stableEncounterIdRef.current, currentElapsed, "in_progress", turnMessages, data.triage);
 
-      if (!earlyStreamAudioDispatched) {
-        speakDoctorResponse(doctorReplyText, respondingDoctorId, undefined, {
-          clinicalReceivedAt: clinicalReceivedTime,
-          onPlaybackStart: () => {
-            setPendingDoctorMessage(null);
-            setMessages((prev) => {
-              if (prev.some((m) => m.id === newDoctorMessage.id)) return prev;
-              return [...prev, newDoctorMessage];
-            });
-          },
-          onFallback: () => {
-            setPendingDoctorMessage(null);
-            setMessages((prev) => {
-              if (prev.some((m) => m.id === newDoctorMessage.id)) return prev;
-              return [...prev, newDoctorMessage];
-            });
-          },
-        });
-      } else {
-        setPendingDoctorMessage(null);
-        setMessages((prev) => {
-          if (prev.some((m) => m.id === newDoctorMessage.id)) return prev;
-          return [...prev, newDoctorMessage];
-        });
-      }
-    } catch (err: any) {
-      if (err?.name === "AbortError" || err?.message?.includes("aborted")) {
-        console.log("⚡ [MedVoice] Dialogue turn cleanly cancelled by barge-in or navigation.");
-        return;
-      }
+      speakDoctorResponse(doctorReplyText, respondingDoctorId, undefined, {
+        clinicalReceivedAt: clinicalReceivedTime,
+        onPlaybackStart: () => {
+          setPendingDoctorMessage(null);
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === newDoctorMessage.id)) return prev;
+            return [...prev, newDoctorMessage];
+          });
+        },
+        onFallback: () => {
+          setPendingDoctorMessage(null);
+          setMessages((prev) => {
+            if (prev.some((m) => m.id === newDoctorMessage.id)) return prev;
+            return [...prev, newDoctorMessage];
+          });
+        },
+      });
+    } catch (err) {
       console.error("Consultation chat error:", err);
       setPendingDoctorMessage(null);
-      // Safe fallback: never revert to listening on a clinical failure
-      setAudioState("IDLE");
-      setClinicalToasts((prev) => [
-        ...prev,
-        {
-          id: `chat-err-${Date.now()}`,
-          type: "warning",
-          title: "Clinical Response Interrupted",
-          description: err?.message || "Communication with clinical deliberation service failed. Please retry your utterance or click Speak.",
-        },
-      ]);
-    } finally {
-      isSubmittingUtteranceRef.current = false;
+      if (callActiveRef.current) {
+        setAudioState("PATIENT_LISTENING");
+      } else {
+        setAudioState("IDLE");
+      }
     }
   };
 
@@ -2788,642 +2563,267 @@ export default function ConsultPage() {
   const activeSpecialistsCount = boardData?.active_specialists?.length || (boardData?.opinions?.length ? boardData.opinions.length : 1);
   const currentRound = boardData?.deliberation_rounds || (boardData?.peer_challenges_count ? 2 : 1);
 
+
+  // GSAP subtle entrance choreography for consult room
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const ctx = gsap.context(() => {
+      gsap.from(".consult-room-container", {
+        opacity: 0,
+        y: 14,
+        duration: 0.5,
+        ease: "power2.out",
+      });
+    });
+    return () => ctx.revert();
+  }, []);
+
+  const getOrbState = (): VoiceOrbState => {
+    if (!consultationStarted) return "pending_activation";
+    if (micPermissionError) return "error";
+    switch (audioState) {
+      case "INTRODUCING":
+        return "thinking";
+      case "PATIENT_LISTENING":
+        return "listening";
+      case "PROCESSING_TRANSCRIPTION":
+        return "transcribing";
+      case "TRANSCRIPT_REVIEW":
+        return "reviewing";
+      case "PROCESSING_CLINICAL":
+        return "thinking";
+      case "DOCTOR_SPEAKING":
+        return "speaking";
+      case "BARGE_IN_DETECTED":
+        return "interrupted";
+      case "REQUESTING_MIC":
+        return "requesting_mic";
+      case "ERROR":
+        return "error";
+      case "IDLE":
+      default:
+        return "ready";
+    }
+  };
+
+  const handleApproveTranscript = (approvedText: string) => {
+    const textToSend = approvedText.trim();
+    if (!textToSend) return;
+    setPendingReviewTranscript("");
+    setAudioState("PROCESSING_CLINICAL");
+    handleUserUtteranceRef.current?.(textToSend, false, pendingAudioMetricsRef.current);
+  };
+
+  const handleReRecord = () => {
+    setPendingReviewTranscript("");
+    setAudioState("PATIENT_LISTENING");
+    startSpeechRecognitionListening();
+  };
+
+  const handleCancelReview = () => {
+    setPendingReviewTranscript("");
+    if (callActiveRef.current) {
+      setAudioState("PATIENT_LISTENING");
+    } else {
+      setAudioState("IDLE");
+    }
+  };
+
+  const handleMicClick = () => {
+    if (!consultationStarted) {
+      handleStartVoiceConsultation();
+      return;
+    }
+    if (audioState === "PATIENT_LISTENING") {
+      commitSpokenText();
+    } else if (audioState === "DOCTOR_SPEAKING") {
+      triggerBargeIn();
+    } else if (audioState === "ERROR") {
+      setMicPermissionError(null);
+      startSpeechRecognitionListening();
+    } else if (audioState === "IDLE" || audioState === "TRANSCRIPT_REVIEW") {
+      setPendingReviewTranscript("");
+      startSpeechRecognitionListening();
+    }
+  };
   return (
-    <div className="relative min-h-screen bg-transparent text-slate-900 flex flex-col font-sans selection:bg-cyan-500 selection:text-white overflow-x-clip">
-      {/* React Bits Subtle Interactive Ambient Cursor Glow */}
-      <GlowCursor color="rgba(6, 182, 212, 0.12)" size={350} blur={65} opacity={0.7} />
+    <div className="relative min-h-screen bg-[#FAF9F6] text-[#05070F] flex flex-col font-sans selection:bg-[#B7FF72] selection:text-[#05070F] overflow-x-clip">
+      <LandingFloatingNavbar />
 
-      <main className="relative z-10 flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 pt-6 sm:pt-8 pb-16 flex flex-col gap-8">
+      <main className="relative z-10 flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-32 sm:pt-36 pb-16 flex flex-col gap-6 consult-room-container">
+        {/* 1. TOP HEADER: Clinician status, Timer, Specialists count, SOAP & End consultation */}
+        <ConsultHeader
+          doctor={selectedDoctor}
+          callDuration={callDuration}
+          isSessionActive={consultationStarted}
+          audioStateLabel={
+            audioState === "DOCTOR_SPEAKING"
+              ? "Doctor speaking response…"
+              : audioState === "INTRODUCING"
+              ? "Connecting doctor voice…"
+              : audioState === "PATIENT_LISTENING"
+              ? "Listening to your voice…"
+              : audioState === "TRANSCRIPT_REVIEW"
+              ? "Reviewing captured speech…"
+              : audioState === "PROCESSING_TRANSCRIPTION"
+              ? "Transcribing with Whisper…"
+              : audioState === "PROCESSING_CLINICAL"
+              ? "Clinical synthesis in progress…"
+              : !consultationStarted
+              ? "Awaiting session start"
+              : "Attending clinician ready"
+          }
+          hasMessages={messages.length > 0}
+          onOpenSoapModal={() => setShowSoapModal(true)}
+          onEndConsultation={endConsultation}
+          onSelectDoctor={handleSelectDoctor}
+          isDoctorSwitchingDisabled={audioState === "PROCESSING_CLINICAL" || audioState === "PROCESSING_TRANSCRIPTION"}
+        />
 
-        <AnimatePresence mode="wait">
-          {/* ========================================================================= */}
-          {/* STATE A: CONSULT LOBBY (CHOOSE YOUR CLINICIAN EXPERIENCE)                 */}
-          {/* ========================================================================= */}
-          {sessionMode === "CONSULT_LOBBY" && (
-            <motion.div
-              key="consult-lobby"
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.98, y: -16 }}
-              transition={{ duration: 0.35, ease: "easeOut" }}
-              className="flex flex-col gap-8 max-w-5xl mx-auto w-full"
-            >
-              {/* Calm Hero Header */}
-              <div className="flex flex-col items-center text-center space-y-4 pt-2 sm:pt-4">
-                <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-cyan-50 border border-cyan-200/90 shadow-2xs font-mono">
-                  <span className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
-                  <span className="text-xs font-bold uppercase tracking-[0.1em] text-cyan-900">
-                    MEDVOICE · VOICE CLINICAL CONSULTATION
-                  </span>
-                </div>
-                <div className="space-y-1">
-                  <SplitText
-                    text="Ready when you are."
-                    tag="h1"
-                    className="text-4xl sm:text-5xl lg:text-6xl font-black text-slate-950 tracking-tight leading-[1.08]"
-                  />
-                  <div className="pt-0.5">
-                    <GradientText
-                      colors={["#0891b2", "#06b6d4", "#0e7490"]}
-                      className="text-xs sm:text-sm font-bold uppercase tracking-wider font-mono"
-                    >
-                      Real-Time Clinical Voice Intelligence
-                    </GradientText>
-                  </div>
-                </div>
-                <p className="text-base sm:text-lg text-slate-600 max-w-2xl font-normal leading-relaxed">
-                  Choose who you&apos;d like to consult with. Your symptoms will be carefully reviewed, with safety checks running continuously in the background.
-                </p>
-
-                {/* Linked Patient Profile Context Banner */}
-                <div className="pt-1">
-                  {activeProfile ? (
-                    <div className="inline-flex items-center gap-2.5 px-4 py-2 rounded-2xl bg-white border border-slate-200/90 shadow-2xs text-xs">
-                      <span className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_6px_#10b981]" />
-                      <span className="text-slate-500 font-medium">Consulting for:</span>
-                      <strong className="text-slate-900 font-bold">{activeProfile.name || "Myself"}</strong>
-                      {activeProfile.age ? (
-                        <span className="text-slate-500 font-mono text-[11px]">({activeProfile.age}y)</span>
-                      ) : null}
-                      {activeProfile.knownConditions?.length ? (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-cyan-50 border border-cyan-200 text-cyan-800 text-[10px] font-bold">
-                          {activeProfile.knownConditions.length} condition{activeProfile.knownConditions.length > 1 ? "s" : ""}
-                        </span>
-                      ) : null}
-                      <Link
-                        href="/profile"
-                        className="ml-2 font-semibold text-cyan-700 hover:text-cyan-900 text-[11px] underline"
-                      >
-                        Edit Profile
-                      </Link>
-                    </div>
-                  ) : (
-                    <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/90 border border-slate-200/80 text-xs text-slate-500 shadow-2xs">
-                      <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />
-                      <span>No medical profile attached.</span>
-                      <Link href="/profile" className="text-cyan-700 hover:text-cyan-900 font-semibold text-[11px] underline">
-                        Add Details (Optional)
-                      </Link>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Active Clinical Team Quick Roster Rail */}
-              <div className="flex flex-col items-center gap-3">
-                <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-slate-500">
-                  ACTIVE CLINICAL TEAM
-                </span>
-                <div className="flex items-center justify-center gap-2 sm:gap-3 flex-wrap">
-                  {DOCTOR_PROFILES.map((doc) => {
-                    const isSelected = selectedDoctor.id === doc.id;
-                    const liveStatus = getDoctorLiveStatus(doc);
-                    return (
-                      <button
-                        key={doc.id}
-                        type="button"
-                        onClick={() => handleSelectDoctor(doc)}
-                        className={`inline-flex items-center gap-2.5 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold transition-all cursor-pointer ${
-                          isSelected
-                            ? "bg-slate-950 text-white shadow-sm ring-2 ring-cyan-500/30"
-                            : "bg-white text-slate-700 hover:bg-slate-50 border border-slate-200/90 shadow-2xs"
-                        }`}
-                      >
-                        <span className={`w-2 h-2 rounded-full ${isSelected ? "bg-cyan-400 animate-pulse" : liveStatus.dot}`} />
-                        <span>{doc.name.split(" ")[1] || doc.name}</span>
-                        <span className={`text-[10px] font-mono uppercase ${isSelected ? "text-cyan-300" : "text-slate-400"}`}>
-                          {doc.specialty.split("&")[0].trim()}
-                        </span>
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Featured Lead Clinician Surface */}
-              <div className="bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-8 shadow-xs flex flex-col md:flex-row items-center md:items-start gap-6 sm:gap-8">
-                {/* Doctor Portrait with Live Status */}
-                <div className="relative flex-shrink-0">
-                  <img
-                    src={selectedDoctor.avatarUrl}
-                    alt={selectedDoctor.name}
-                    className="w-28 h-28 sm:w-36 sm:h-36 rounded-2xl object-cover border border-slate-200 shadow-sm"
-                  />
-                  <div className="absolute -bottom-2 -right-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-[11px] font-bold text-emerald-800 shadow-xs">
-                    <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                    <span>Available now</span>
-                  </div>
-                </div>
-
-                {/* Doctor Details & Action */}
-                <div className="flex-1 flex flex-col items-center md:items-start text-center md:text-left space-y-3">
-                  <div>
-                    <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-950 tracking-tight">
-                      {selectedDoctor.name}
-                    </h2>
-                    <p className="text-sm sm:text-base text-cyan-800 font-semibold mt-0.5">
-                      {selectedDoctor.department} · {selectedDoctor.experience}
-                    </p>
-                  </div>
-
-                  <p className="text-sm text-slate-600 leading-relaxed max-w-xl font-normal">
-                    &quot;{selectedDoctor.greeting}&quot;
-                  </p>
-
-                  {/* Clinical Focus Badges */}
-                  <div className="flex flex-wrap items-center justify-center md:justify-start gap-1.5 pt-1">
-                    {selectedDoctor.clinicalFocus.map((focus, i) => (
-                      <span
-                        key={i}
-                        className="font-mono text-xs text-slate-600 bg-slate-50 border border-slate-200/80 px-2.5 py-1 rounded-lg"
-                      >
-                        {focus}
-                      </span>
-                    ))}
-                  </div>
-
-                  {/* Begin Consultation CTA */}
-                  <div className="pt-3">
-                    <button
-                      type="button"
-                      onClick={() => startConsultation(selectedDoctor)}
-                      className="inline-flex items-center justify-center gap-3 px-7 py-3.5 rounded-2xl bg-slate-950 hover:bg-slate-800 text-white text-sm sm:text-base font-bold shadow-md hover:shadow-lg transition-all cursor-pointer group"
-                    >
-                      <Mic className="w-5 h-5 text-cyan-400 group-hover:scale-110 transition-transform" />
-                      <span>Begin Voice Consultation with {selectedDoctor.name.split(",")[0]} →</span>
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Specialists Grid: All 5 Doctors with One-Click Consult */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between px-1">
-                  <span className="font-mono text-xs font-bold uppercase tracking-wider text-slate-600">
-                    Clinical Specialist Network (5 Board-Certified Agents)
-                  </span>
-                  <span className="text-xs text-slate-500 font-mono">High-Definition Audio</span>
-                </div>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {DOCTOR_PROFILES.map((doc) => {
-                    const isSelected = selectedDoctor.id === doc.id;
-                    const liveStatus = getDoctorLiveStatus(doc);
-                    return (
-                      <div
-                        key={doc.id}
-                        onClick={() => handleSelectDoctor(doc)}
-                        className={`p-5 rounded-2xl bg-white border transition-all cursor-pointer flex flex-col justify-between gap-4 ${
-                          isSelected
-                            ? "border-cyan-500 ring-2 ring-cyan-400/20 shadow-md"
-                            : "border-slate-200/90 hover:border-slate-300 shadow-2xs hover:shadow-xs"
-                        }`}
-                      >
-                        <div className="flex items-start gap-3.5">
-                          <img
-                            src={doc.avatarUrl}
-                            alt={doc.name}
-                            className="w-12 h-12 rounded-xl object-cover border border-slate-200 flex-shrink-0"
-                          />
-                          <div className="min-w-0 flex-1">
-                            <div className="flex items-center justify-between">
-                              <h3 className="text-sm font-bold text-slate-950 truncate">{doc.name}</h3>
-                              <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full ${liveStatus.color}`}>
-                                {liveStatus.label}
-                              </span>
-                            </div>
-                            <p className="text-xs text-slate-500 truncate mt-0.5">{doc.department}</p>
-                          </div>
-                        </div>
-
-                        <p className="text-xs text-slate-600 line-clamp-2 leading-relaxed">
-                          {doc.title}
-                        </p>
-
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            startConsultation(doc);
-                          }}
-                          className="w-full inline-flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl bg-slate-50 hover:bg-slate-950 hover:text-white text-slate-800 text-xs font-bold border border-slate-200/90 transition-all cursor-pointer"
-                        >
-                          <span>Consult with {doc.name.split(" ")[1] || doc.name}</span>
-                          <ArrowRight className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Technical Trust Strip */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
-                <div className="p-3.5 rounded-xl bg-white border border-slate-200/90 shadow-2xs text-center">
-                  <div className="text-xs font-bold text-slate-900 font-mono">ZERO AUDIO STORAGE</div>
-                  <div className="text-[11px] text-slate-500 mt-0.5">Purged post-transcription</div>
-                </div>
-                <div className="p-3.5 rounded-xl bg-white border border-slate-200/90 shadow-2xs text-center">
-                  <div className="text-xs font-bold text-slate-900 font-mono">NATURAL VOICE</div>
-                  <div className="text-[11px] text-slate-500 mt-0.5">Real-time clinical dialogue</div>
-                </div>
-                <div className="p-3.5 rounded-xl bg-white border border-slate-200/90 shadow-2xs text-center">
-                  <div className="text-xs font-bold text-slate-900 font-mono">HL7 FHIR R4 READY</div>
-                  <div className="text-[11px] text-slate-500 mt-0.5">Automated EHR Bundles</div>
-                </div>
-                <div className="p-3.5 rounded-xl bg-white border border-slate-200/90 shadow-2xs text-center">
-                  <div className="text-xs font-bold text-slate-900 font-mono">SAFETY CHECKS</div>
-                  <div className="text-[11px] text-slate-500 mt-0.5">Continuous safety monitoring</div>
-                </div>
-              </div>
-            </motion.div>
-          )}
-
-          {/* ========================================================================= */}
-          {/* STATE B: ACTIVE CONSULTATION WORKSPACE                                    */}
-          {/* ========================================================================= */}
-          {sessionMode === "ACTIVE_CONSULTATION" && (
-            <motion.div
-              key="active-consultation"
-              initial={{ opacity: 0, scale: 0.98, y: 16 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, scale: 0.98, y: -16 }}
-              transition={{ duration: 0.4, ease: "easeOut" }}
-              className="flex flex-col gap-6 w-full"
-            >
-              {/* TOP COMMAND HEADER */}
-              <header className="flex flex-wrap items-center justify-between gap-4 p-4 sm:p-5 rounded-2xl bg-white/85 backdrop-blur-xl border border-slate-200/90 shadow-xs animate-in fade-in slide-in-from-top-2 duration-300">
-                <div className="flex items-center gap-3.5 min-w-0">
-                  <div className="relative flex-shrink-0">
+        {/* 2. MAIN WORKSPACE ASYMMETRIC GRID (7:5) */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+          {/* LEFT PANEL (7 cols): Primary Voice Console & Conversation Stage */}
+          <section className="lg:col-span-7 flex flex-col justify-between p-5 sm:p-6 rounded-3xl bg-white border border-slate-200/90 shadow-xs min-h-[580px]">
+            {/* STAGE A: When conversation has just started (only initial greeting) */}
+            {messages.length <= 1 ? (
+              <div className="flex-1 flex flex-col items-center justify-center gap-6 py-2">
+                {/* Doctor Opening Statement Banner */}
+                <div className="flex items-start gap-3.5 p-4 rounded-2xl bg-[#FAF9F6] border border-slate-200/90 shadow-2xs">
+                  <div className="relative shrink-0">
                     <img
                       src={selectedDoctor.avatarUrl}
                       alt={selectedDoctor.name}
-                      className="w-12 h-12 rounded-xl object-cover border border-cyan-400 shadow-2xs"
+                      className="w-11 h-11 rounded-xl object-cover border border-slate-200"
                     />
-                    <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-emerald-500 border-2 border-white animate-pulse" />
+                    <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-[#B7FF72] border-2 border-white ring-1 ring-[#18251D]" />
                   </div>
-
-                  <div className="flex flex-col min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <span className="text-base sm:text-lg font-black text-slate-950 truncate">
-                        {selectedDoctor.name}
-                      </span>
-                      <span className="text-xs sm:text-sm text-slate-500 font-semibold truncate">
-                        · {selectedDoctor.department}
-                      </span>
-                      <span className="text-[10px] font-mono font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200/90">
-                        Active Session
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2 text-xs text-slate-500 mt-0.5">
-                      <span className="font-mono font-bold text-cyan-900 bg-cyan-50 px-2 py-0.5 rounded border border-cyan-200">
-                        ⏱ {formatTimer(callDuration)}
-                      </span>
-                      <span>·</span>
-                      <span className="text-slate-600 truncate">
-                        {audioState === "DOCTOR_SPEAKING"
-                          ? "Doctor speaking response..."
-                          : audioState === "PATIENT_LISTENING"
-                          ? "Listening to patient voice input..."
-                          : audioState === "PROCESSING_TRANSCRIPTION"
-                          ? "Transcribing patient speech..."
-                          : audioState === "TRANSCRIPT_REVIEW"
-                          ? "Awaiting transcript confirmation..."
-                          : audioState === "PROCESSING_CLINICAL" || audioState === "PROCESSING_INTERRUPTION" || pendingDoctorMessage
-                          ? "Multi-specialist board analyzing..."
-                          : "Consultation ready"}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <div className="hidden md:flex items-center gap-2 text-xs font-mono font-semibold text-slate-600 bg-slate-50/80 px-3 py-1.5 rounded-xl border border-slate-200">
-                    <span className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
-                    <span>5 Specialists Synchronized</span>
-                  </div>
-
-                  {messages.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setShowSoapModal(true)}
-                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold text-slate-700 bg-white border border-slate-200/90 hover:bg-slate-50 transition-colors shadow-2xs cursor-pointer"
-                    >
-                      <FileText className="w-3.5 h-3.5 text-cyan-700" />
-                      <span>SOAP Report</span>
-                    </button>
-                  )}
-
-                  {/* Refined, quiet End Consultation button */}
-                  <button
-                    type="button"
-                    onClick={endConsultation}
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs sm:text-sm font-semibold text-slate-700 bg-white border border-slate-200/90 hover:bg-rose-50 hover:text-rose-700 hover:border-rose-300 transition-colors shadow-2xs cursor-pointer group"
-                  >
-                    <PhoneOff className="w-3.5 h-3.5 text-slate-400 group-hover:text-rose-600 transition-colors" />
-                    <span>End Consultation</span>
-                  </button>
-                </div>
-              </header>
-
-              {/* ACTIVE BOARD SPECIALIST HUD */}
-              <section className="flex items-center justify-between gap-3 p-3 rounded-2xl bg-white/70 backdrop-blur-md border border-slate-200/70 shadow-2xs overflow-x-auto scrollbar-none">
-                <div className="flex items-center gap-2 flex-shrink-0">
-                  <span className="text-[11px] font-mono font-bold uppercase tracking-wider text-slate-500">
-                    Active Board:
-                  </span>
-                </div>
-                <div className="flex items-center gap-2.5 overflow-x-auto scrollbar-none">
-                  {DOCTOR_PROFILES.map((doc) => {
-                    const isSelected = selectedDoctor.id === doc.id;
-                    const liveStatus = getDoctorLiveStatus(doc);
-                    return (
-                      <button
-                        key={doc.id}
-                        type="button"
-                        onClick={() => handleSelectDoctor(doc)}
-                        className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-semibold transition-all cursor-pointer flex-shrink-0 ${
-                          isSelected
-                            ? "bg-cyan-500 text-white shadow-xs font-bold"
-                            : "bg-white/90 text-slate-700 hover:bg-white border border-slate-200/80"
-                        }`}
-                      >
-                        <img
-                          src={doc.avatarUrl}
-                          alt={doc.name}
-                          className="w-5 h-5 rounded-full object-cover border border-white/40"
-                        />
-                        <span className="truncate max-w-[120px]">
-                          {doc.name.split(" ")[1] || doc.name}
+                  <div className="flex flex-col gap-1 min-w-0">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-extrabold text-xs text-[#05070F] tracking-wide uppercase">
+                          {selectedDoctor.name}
                         </span>
-                        <span className={`w-1.5 h-1.5 rounded-full ${isSelected ? "bg-white" : liveStatus.dot}`} />
-                      </button>
-                    );
-                  })}
+                        <span className="text-[11px] font-semibold text-slate-500 font-sans">
+                          · {selectedDoctor.specialty || selectedDoctor.department}
+                        </span>
+                      </div>
+                      {audioState === "DOCTOR_SPEAKING" ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-[#18251D] text-[#B7FF72] border border-[#18251D]">
+                          <Volume2 className="w-3 h-3 animate-pulse text-[#B7FF72]" />
+                          <span>Doctor speaking…</span>
+                        </span>
+                      ) : audioState === "INTRODUCING" ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-[#18251D] text-white border border-[#18251D]">
+                          <span className="w-2 h-2 rounded-full bg-[#B7FF72] animate-ping" />
+                          <span>Synthesizing voice…</span>
+                        </span>
+                      ) : !consultationStarted ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-semibold bg-amber-50 text-amber-900 border border-amber-200">
+                          Awaiting start · click orb below
+                        </span>
+                      ) : audioState === "PATIENT_LISTENING" ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-50 text-emerald-900 border border-emerald-300">
+                          <Mic className="w-3 h-3 text-emerald-600 animate-pulse" />
+                          <span>Your turn to speak</span>
+                        </span>
+                      ) : (
+                        <span className="text-[10px] font-mono text-slate-400">Just now</span>
+                      )}
+                    </div>
+                    <p className="text-sm sm:text-base text-slate-900 leading-relaxed font-medium">
+                      {!consultationStarted
+                        ? `Ready to begin consultation with ${selectedDoctor.name}. Click the voice orb below to start.`
+                        : messages[0]?.text
+                        ? `"${messages[0].text}"`
+                        : "Preparing doctor greeting…"}
+                    </p>
+                  </div>
                 </div>
-              </section>
 
-        {/* CLINICAL WORKSPACE ENCLOSURE SHELL */}
-        <section id="workspace" className="p-3 sm:p-6 lg:p-7 rounded-3xl bg-white/75 backdrop-blur-xl border border-slate-200/80 shadow-sm flex flex-col gap-6">
-          <div className="flex items-center justify-between px-1">
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-cyan-500 animate-pulse shadow-[0_0_8px_rgba(6,182,212,0.6)]" />
-              <span className="text-xs font-bold uppercase tracking-widest text-slate-700 font-mono">
-                Clinical Consultation
-              </span>
-            </div>
-          </div>
+                {/* Central ElevenLabs-Inspired Voice Stage */}
+                <div className="flex-1 flex flex-col items-center justify-center py-4">
+                  <ExpressiveVoiceOrb
+                    state={getOrbState()}
+                    audioLevel={liveAudioLevel}
+                    speakerName={selectedDoctor.name}
+                    errorMessage={micPermissionError || undefined}
+                    onMicClick={handleMicClick}
+                    onInterrupt={triggerBargeIn}
+                    onStartConsultation={handleStartVoiceConsultation}
+                  />
 
-          {/* ASYMMETRIC WORKSPACE: 7:5 GRID */}
-          <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-
-            {/* LEFT PANEL (7 cols): PRIMARY VOICE CONSOLE */}
-            <section className="relative lg:col-span-7 flex flex-col gap-5 p-6 rounded-2xl bg-white border border-slate-200/90 shadow-sm overflow-hidden">
-
-            {/* Conversation Console Header */}
-            <div className="flex items-center justify-between pb-3.5 border-b border-slate-200/80">
-              <div className="flex items-center gap-2.5">
-                <span className="w-2.5 h-2.5 rounded-full bg-cyan-500 animate-pulse shadow-[0_0_8px_rgba(6,182,212,0.8)]" />
-                <span className="text-xs font-mono font-bold uppercase tracking-wider text-slate-900">
-                  Live Consultation Dialogue
-                </span>
+                  {/* Clinical Chief Complaint Starters */}
+                  <div className="mt-4 flex flex-col items-center gap-2 w-full max-w-lg">
+                    <span className="text-[11px] font-mono font-bold uppercase tracking-widest text-slate-400">
+                      Or select a symptom to discuss:
+                    </span>
+                    <div className="flex flex-wrap items-center justify-center gap-2">
+                      {[
+                        "Crushing retrosternal chest pain",
+                        "Severe throbbing migraine with aura",
+                        "High fever with chills & cough",
+                      ].map((prompt, i) => (
+                        <button
+                          key={i}
+                          type="button"
+                          onClick={() => {
+                            setTypedInput(prompt);
+                          }}
+                          className="px-3 py-1.5 rounded-full text-xs font-semibold bg-slate-50 hover:bg-slate-100 text-slate-700 hover:text-slate-950 border border-slate-200/80 transition-all cursor-pointer shadow-2xs"
+                        >
+                          ⚡ {prompt}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div className="flex items-center gap-2 text-xs font-mono">
-                {audioState === "DOCTOR_SPEAKING" ? (
-                  <span className="text-emerald-700 font-bold animate-pulse flex items-center gap-1.5">
-                    ● {activeSpeaker.name.split(",")[0].split(" ").pop() || "Doctor"} Speaking
-                  </span>
-                ) : audioState === "PATIENT_LISTENING" ? (
-                  <span className="text-cyan-700 font-bold animate-pulse flex items-center gap-1.5">
-                    ● Listening...
-                  </span>
-                ) : audioState === "PROCESSING_TRANSCRIPTION" ? (
-                  <span className="text-cyan-600 font-bold flex items-center gap-1.5">
-                    ● Transcribing...
-                  </span>
-                ) : audioState === "TRANSCRIPT_REVIEW" ? (
-                  <span className="text-cyan-700 font-bold flex items-center gap-1.5">
-                    ● Review Transcript
-                  </span>
-                ) : audioState === "PROCESSING_CLINICAL" || audioState === "PROCESSING_INTERRUPTION" || pendingDoctorMessage ? (
-                  <span className="text-cyan-700 font-bold animate-pulse flex items-center gap-1.5">
-                    ● Dr. {activeSpeaker.name.split(",")[0].split(" ").pop() || "Sarah"} is Thinking...
-                  </span>
-                ) : (
-                  <span className="text-slate-500 flex items-center gap-1.5">
-                    ● Ready
-                  </span>
-                )}
-              </div>
-            </div>
+            ) : (
+              /* STAGE B: When multi-turn conversation is active */
+              <div className="flex-1 flex flex-col gap-4">
+                {/* Compact Acoustic Monitor Strip */}
+                <ExpressiveVoiceOrb
+                  state={getOrbState()}
+                  audioLevel={liveAudioLevel}
+                  speakerName={selectedDoctor.name}
+                  errorMessage={micPermissionError || undefined}
+                  onMicClick={handleMicClick}
+                  onInterrupt={triggerBargeIn}
+                  compact={true}
+                />
 
-            {/* Visually hidden screen reader status announcement */}
-            <div
-              role="status"
-              aria-live="polite"
-              aria-atomic="true"
-              className="sr-only"
-            >
-              {audioState === "PATIENT_LISTENING"
-                ? "Microphone listening for patient speech."
-                : audioState === "PROCESSING_TRANSCRIPTION"
-                ? "Transcribing patient speech."
-                : audioState === "TRANSCRIPT_REVIEW"
-                ? "Review and edit your spoken transcript before submitting."
-                : audioState === "PROCESSING_CLINICAL" || audioState === "PROCESSING_INTERRUPTION"
-                ? "Reviewing symptoms and updating clinical assessment."
-                : audioState === "DOCTOR_SPEAKING"
-                ? `${activeSpeaker.name.split(",")[0]} is speaking.`
-                : micPermissionError
-                ? `Microphone alert: ${micPermissionError}`
-                : "Consultation ready."}
-            </div>
-
-            {/* Quiet Barge-In Interruption Bar */}
-            <AnimatePresence>
-              {audioState === "DOCTOR_SPEAKING" && (
-                <motion.div
-                  initial={{ opacity: 0, height: 0 }}
-                  animate={{ opacity: 1, height: "auto" }}
-                  exit={{ opacity: 0, height: 0 }}
-                  className="flex items-center justify-between px-4 py-2.5 rounded-xl bg-amber-50/90 border border-amber-200/90 text-xs sm:text-sm text-amber-950 shadow-2xs"
-                >
-                  <span className="font-medium flex items-center gap-2">
-                    <Volume2 className="w-4 h-4 text-amber-600" />
-                    Doctor is speaking. Click Interrupt to speak
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => triggerBargeIn()}
-                    className="px-3 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition-colors cursor-pointer"
-                  >
-                    Interrupt
-                  </button>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Mic Permission Alert */}
-            {micPermissionError && (
-              <div className="px-4 py-3 rounded-xl bg-rose-50 border border-rose-200 text-xs sm:text-sm text-rose-800 flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-rose-600 flex-shrink-0" />
-                <span>{micPermissionError}</span>
+                {/* Multi-Turn Conversation Feed */}
+                <ConsultDialogueFeed
+                  messages={messages}
+                  pendingDoctorMessage={pendingDoctorMessage}
+                  selectedDoctorName={selectedDoctor.name}
+                  isDoctorSpeaking={audioState === "DOCTOR_SPEAKING"}
+                  onInterrupt={triggerBargeIn}
+                  micPermissionError={micPermissionError}
+                />
               </div>
             )}
 
-            {/* Conversation Feed */}
-            <div
-              ref={chatScrollRef}
-              className="h-[340px] sm:h-[380px] overflow-y-auto flex flex-col gap-4 pr-2"
-            >
-              {messages.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-center p-8 sm:p-10 text-slate-400 gap-3">
-                  <div className="w-14 h-14 rounded-2xl bg-cyan-50 border border-cyan-200 flex items-center justify-center mb-1 shadow-2xs">
-                    <Stethoscope className="w-7 h-7 text-cyan-700" />
-                  </div>
-                  <h3 className="text-xl sm:text-2xl font-black text-slate-950 tracking-tight">Ready when you are</h3>
-                  <p className="text-sm sm:text-base text-slate-600 max-w-md leading-relaxed font-normal">
-                    Start a voice consultation with {selectedDoctor?.name ? selectedDoctor.name.split(",")[0] : "your physician"}. You can speak naturally or type your symptoms below.
-                  </p>
-                </div>
-              ) : (
-                messages.map((msg, mIdx) => (
-                  <div
-                    key={`${msg.id || "msg"}-${mIdx}`}
-                    className={`flex flex-col gap-1.5 ${
-                      msg.role === "system"
-                        ? "items-center w-full my-3"
-                        : msg.role === "doctor"
-                        ? "items-start"
-                        : "items-end"
-                    }`}
-                  >
-                    {/* System Handover / Event Divider */}
-                    {msg.role === "system" && (
-                      <div className="w-full flex items-center justify-center my-2">
-                        <div className="flex items-center gap-2.5 px-4 py-1.5 rounded-full bg-slate-100/90 border border-slate-200/80 text-xs font-semibold text-slate-700 shadow-2xs">
-                          <span className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
-                          <span>{msg.text}</span>
-                          <span className="text-[10px] text-slate-400 font-mono">· {msg.timestamp}</span>
-                        </div>
-                      </div>
-                    )}
+            {/* TRANSCRIPT REVIEW & CORRECTION BAR (Progressive disclosure on capture) */}
+            {audioState === "TRANSCRIPT_REVIEW" && pendingReviewTranscript && (
+              <div className="my-3 animate-in fade-in slide-in-from-top-2 duration-200">
+                <TranscriptReviewBar
+                  initialTranscript={pendingReviewTranscript}
+                  onSend={handleApproveTranscript}
+                  onReRecord={handleReRecord}
+                  onCancel={handleCancelReview}
+                />
+              </div>
+            )}
 
-                    {/* Doctor Message */}
-                    {msg.role === "doctor" && (
-                      <>
-                        <span className="text-xs sm:text-sm font-black text-slate-900 tracking-wide flex items-center gap-2">
-                          {msg.doctorName?.toUpperCase() || "DR. SARAH CHEN"}
-                          <span className="text-xs font-semibold text-slate-500">· {msg.doctorSpecialty}</span>
-                        </span>
-                        <div className="max-w-[92%] text-slate-900 text-sm sm:text-base leading-relaxed font-medium bg-slate-50/90 border border-slate-200/70 rounded-2xl px-4 py-3">
-                          "{msg.text}"
-                        </div>
-                        <div className="flex items-center gap-2 text-xs text-slate-400 font-mono">
-                          <span>{msg.timestamp}</span>
-                          {msg.wasInterrupted && (
-                            <>
-                              <span>·</span>
-                              <span className="text-amber-600 font-sans font-semibold">Interrupted by patient</span>
-                            </>
-                          )}
-                        </div>
-                      </>
-                    )}
-
-                    {/* Patient Message */}
-                    {msg.role === "patient" && (
-                      <>
-                        <div className="max-w-[85%] rounded-2xl px-5 py-3.5 bg-slate-950 text-white text-sm sm:text-base leading-relaxed shadow-2xs font-normal">
-                          {msg.text}
-                        </div>
-                        <div className="flex items-center gap-1 text-xs text-slate-400 font-mono pr-1">
-                          <span>{msg.timestamp}</span>
-                          {msg.isBargeIn && (
-                            <>
-                              <span>·</span>
-                              <span className="text-amber-600 font-sans font-semibold">Patient interruption</span>
-                            </>
-                          )}
-                        </div>
-                      </>
-                    )}
-                  </div>
-                ))
-              )}
-
-              {/* Synchronized Pending Doctor Turn Indicator (visible while neural TTS synthesizes) */}
-              {pendingDoctorMessage && (
-                <div className="flex flex-col gap-1.5 items-start">
-                  <span className="text-xs sm:text-sm font-black text-slate-900 tracking-wide flex items-center gap-2">
-                    {pendingDoctorMessage.doctorName.toUpperCase()}
-                    {pendingDoctorMessage.doctorSpecialty && (
-                      <span className="text-xs font-semibold text-slate-500">· {pendingDoctorMessage.doctorSpecialty}</span>
-                    )}
-                  </span>
-                  <div className="flex items-center gap-2.5 max-w-[92%] text-slate-700 text-sm font-medium bg-slate-50 border border-slate-200/80 rounded-2xl px-4 py-3 shadow-xs">
-                    <span className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
-                    <span>Dr. {pendingDoctorMessage.doctorName.split(",")[0].split(" ").pop() || "Sarah"} is formulating clinical response...</span>
-                  </div>
-                </div>
-              )}
-
-              {/* ThoughtLine Micro-Interaction (active only when doctor is not formulating) */}
-              {(callActive || audioState !== "IDLE" || Boolean(triageData?.isEmergency)) && !pendingDoctorMessage && (
-                <div className="pt-2 pb-1 border-t border-slate-100 flex items-center justify-between">
-                  <ThoughtLine
-                    label={
-                      triageData?.isEmergency
-                        ? "Emergency override active"
-                        : audioState === "PATIENT_LISTENING"
-                        ? "Listening…"
-                        : audioState === "PROCESSING_TRANSCRIPTION"
-                        ? "Transcribing…"
-                        : audioState === "TRANSCRIPT_REVIEW"
-                        ? "Reviewing transcript…"
-                        : audioState === "DOCTOR_SPEAKING"
-                        ? "Speaking…"
-                        : "Ready"
-                    }
-                    doneLabel="Clinical system ready"
-                    working={
-                      !triageData?.isEmergency &&
-                      (audioState === "PATIENT_LISTENING" ||
-                        audioState === "PROCESSING_TRANSCRIPTION" ||
-                        audioState === "TRANSCRIPT_REVIEW" ||
-                        audioState === "BARGE_IN_DETECTED")
-                    }
-                    isEmergency={Boolean(triageData?.isEmergency)}
-                    emergencyDirective={
-                      triageData?.isEmergency
-                        ? "Deterministic Red Flag Detected · Emergency Escalation Active"
-                        : undefined
-                    }
-                    steps={[]}
-                    collapsible={false}
-                    showTimer={false}
-                    glyph={triageData?.isEmergency ? "none" : "sparkle"}
-                    color="#0891b2"
-                    glyphColor="#06b6d4"
-                    className="w-full justify-between"
-                  />
-                </div>
-              )}
-
-            </div>
-
-            {/* UNIFIED PHYSICAL VOICE PILL CONTROL */}
-            <div className="pt-2 border-t border-slate-200/80">
+            {/* UNIFIED VOICE & TEXT COMPOSER */}
+            <div className="pt-3 border-t border-slate-100">
               <VoicePill
                 state={voicePillState}
+                isSessionActive={consultationStarted}
                 transcriptSnippet={transcriptText}
                 typedValue={typedInput}
                 onTypedChange={setTypedInput}
-                pendingTranscript={pendingTranscript}
-                onPendingTranscriptChange={setPendingTranscript}
-                onConfirmSend={confirmAndSendTranscript}
-                onReRecord={handleReRecord}
-                onDiscard={handleDiscardTranscript}
                 speakerName={activeSpeaker.name}
                 speakerVoiceId={activeSpeaker.voiceId}
                 onSubmitText={(text) => {
@@ -3431,1153 +2831,82 @@ export default function ConsultPage() {
                   if (audioState === "DOCTOR_SPEAKING") {
                     triggerBargeIn(text);
                   } else {
-                    handleUserUtterance(text);
+                    handleUserUtterance(text, false);
                   }
                 }}
-                onToggleRecord={() => {
-                  if (audioState === "TRANSCRIPT_REVIEW") {
-                    handleReRecord();
-                  } else if (audioState !== "PATIENT_LISTENING") {
-                    if (!callActive) {
-                      callActiveRef.current = true;
-                      setCallActive(true);
-                    }
-                    startSpeechRecognitionListening();
-                  }
-                }}
-                onStopRecord={cancelVoiceRecording}
-                onSendRecord={() => commitSpokenText()}
-                onInterrupt={() => triggerBargeIn()}
+                onToggleRecord={handleMicClick}
+                onInterrupt={triggerBargeIn}
               />
-            </div>
-
-            {/* Compact Clinical Safety Status */}
-            <div className="pt-3 border-t border-slate-200/70">
-              <div className="flex items-center justify-between px-1">
-                <div className="flex items-center gap-2">
-                  <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                  <span className="text-xs font-semibold text-slate-700">Clinical Safety</span>
-                </div>
-                <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full border ${
-                  triageData?.isEmergency
-                    ? "text-rose-800 bg-rose-50 border-rose-200"
-                    : "text-emerald-800 bg-emerald-50 border-emerald-200"
-                }`}>
-                  <span className={`w-1.5 h-1.5 rounded-full ${
-                    triageData?.isEmergency ? "bg-rose-500" : "bg-emerald-500"
-                  } animate-pulse`} />
-                  {triageData?.isEmergency
-                    ? "Emergency Detected"
-                    : callActive
-                    ? "Active · Protected"
-                    : "Standby"}
-                </span>
-              </div>
             </div>
           </section>
 
-          {/* RIGHT PANEL (5 cols): CLINICAL BOARD HERO + UNIFIED STATUS */}
-          <div className="lg:col-span-5 flex flex-col gap-4">
-
-            {/* HERO MODULE: LIVE CLINICAL BOARD REASONING */}
-            <section className="relative flex flex-col gap-4 p-5 sm:p-6 rounded-2xl bg-[#F8FAFC] border border-slate-200/90 shadow-sm overflow-hidden">
-
-              {/* Subtle CursorGrid background texture */}
-              <CursorGrid
-                cellSize={50}
-                radius={100}
-                falloff="smooth"
-                holdTime={250}
-                fadeDuration={700}
-                lineWidth={0.8}
-                maxOpacity={0.07}
-                fillOpacity={0}
-                gridOpacity={0.02}
-                cellRadius={0}
-                clickPulse={true}
-                pulseSpeed={600}
-              />
-
-              <div className="relative z-10 flex flex-col gap-5">
-
-                {/* Module Header */}
-                <div className="relative flex flex-col gap-3 pb-3 border-b border-slate-200/80">
-
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className="text-xs font-bold uppercase tracking-widest text-slate-500 font-mono">
-                        Assessment
-                      </span>
-                      <div className="flex items-center gap-2 mt-0.5">
-                        <span className="w-2.5 h-2.5 rounded-full bg-cyan-500 animate-pulse shadow-[0_0_8px_rgba(6,182,212,0.8)]" />
-                        <span className="text-sm font-bold text-slate-900 uppercase tracking-wide font-mono">
-                          {callActive ? "In Progress" : "Standby"}
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                {/* Clinical Segmented Tab Navigation */}
-                <div className="flex items-center gap-1.5 p-1.5 rounded-2xl bg-slate-100/90 border border-slate-200/70 text-sm font-semibold">
-                  <button
-                    type="button"
-                    onClick={() => setActiveRightTab("board")}
-                    className={`flex-1 py-2.5 px-4 rounded-xl transition-all cursor-pointer text-center text-xs sm:text-sm ${
-                      activeRightTab === "board"
-                        ? "bg-white text-slate-950 font-bold shadow-xs border border-slate-200/80"
-                        : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
-                    }`}
-                  >
-                    Review
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setActiveRightTab("context")}
-                    className={`flex-1 py-2.5 px-4 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 text-xs sm:text-sm ${
-                      activeRightTab === "context"
-                        ? "bg-white text-slate-950 font-bold shadow-xs border border-slate-200/80"
-                        : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
-                    }`}
-                  >
-                    <span>Context</span>
-                    {hasContextFacts && (
-                      <span className="px-2 py-0.5 rounded-full text-xs font-mono bg-teal-100 text-teal-800 font-bold">
-                        {contextKnownFacts.length}
-                      </span>
-                    )}
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setActiveRightTab("care")}
-                    className={`flex-1 py-2.5 px-4 rounded-xl transition-all cursor-pointer flex items-center justify-center gap-1.5 text-xs sm:text-sm ${
-                      activeRightTab === "care"
-                        ? "bg-white text-slate-950 font-bold shadow-xs border border-slate-200/80"
-                        : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
-                    }`}
-                  >
-                    <span>Care Options</span>
-                    {nearbyHospitals && nearbyHospitals.length > 0 && (
-                      <span className="px-2 py-0.5 rounded-full text-xs font-mono bg-emerald-100 text-emerald-800 font-bold">
-                        {nearbyHospitals.length}
-                      </span>
-                    )}
-                  </button>
-                </div>
-
-                {/* TAB: DELIBERATION STREAM (HUMAN-SCALE AGENT CARDS + REACT BITS ANIMATION) */}
-                {activeRightTab === "board" && (
-                  <div className="flex flex-col gap-5 pt-1">
-
-                    {/* Active Inquiry Specialist Banner (if awaiting response) */}
-                    {boardData?.phase === "active_inquiring" && boardData.active_requests && boardData.active_requests.length > 0 && (
-                      <AnimatedContent contentKey={boardData.active_requests[0].targetSlot}>
-                        <div className="p-4.5 rounded-2xl bg-amber-50/90 border border-amber-200 flex flex-col gap-2.5 shadow-2xs">
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-bold text-slate-900">
-                              {boardData.active_requests[0].doctorName.replace(", MD, FACC", "").replace(", MD, PhD", "").replace(", MD, FAAP", "").replace(", MD", "")}
-                            </span>
-                            <span className="text-xs font-mono font-bold uppercase tracking-wider text-amber-900 bg-amber-200/80 px-2.5 py-0.5 rounded-full border border-amber-300">
-                              {boardData.active_requests[0].targetSlot.toUpperCase()}
-                            </span>
-                          </div>
-                          <p className="text-sm text-slate-800 italic leading-relaxed">
-                            "{boardData.active_requests[0].suggestedQuestion}"
-                          </p>
-                        </div>
-                      </AnimatedContent>
-                    )}
-
-                    {/* Agent Cards Feed with GlowingBorder & Tiny Pulse Motion */}
-                    <div className="flex flex-col gap-4.5">
-                      {(() => {
-                        if (!boardData?.deliberation_messages || boardData.deliberation_messages.length === 0) {
-                          return [
-                            {
-                              id: "intake-lead",
-                              doctorName: selectedDoctor?.name ? selectedDoctor.name.split(",")[0] : "Lead Clinician",
-                              specialty: selectedDoctor?.title || "Primary Care & Clinical Triage Lead",
-                              role: "lead",
-                              statusText: callActive ? "LIVE" : "STANDBY",
-                              statusColor: "bg-cyan-500",
-                              badgeLabel: "PRIMARY INTAKE",
-                              badgeColor: "text-cyan-800 bg-cyan-50 border-cyan-200",
-                              isLive: callActive,
-                              content: callActive
-                                ? `Active consultation in progress with ${selectedDoctor?.name ? selectedDoctor.name.split(",")[0] : "your clinician"}. Your symptoms are being reviewed for important warning signs.`
-                                : `${selectedDoctor?.name ? selectedDoctor.name.split(",")[0] : "Your clinician"} is ready. Start a voice consultation to discuss your symptoms.`,
-                              timestamp: "Live",
-                              evidence: [] as Array<{ name: string; value: string }>
-                            }
-                          ];
-                        }
-
-                        const events: Array<{
-                          id: string;
-                          doctorName: string;
-                          specialty: string;
-                          role: string;
-                          statusText: string;
-                          statusColor: string;
-                          badgeLabel: string;
-                          badgeColor: string;
-                          isLive: boolean;
-                          content: string;
-                          timestamp: string;
-                          evidence: Array<{ name: string; value: string }>;
-                        }> = [];
-
-                        boardData.deliberation_messages.forEach((msg, idx) => {
-                          if (msg.speakerRole === "safety_arbiter") return;
-
-                          if (msg.speakerRole === "tool") {
-                            if (events.length > 0) {
-                              const lastEvent = events[events.length - 1];
-                              const cleanToolName = (msg.tool_data?.tool_name || "Diagnostic Tool")
-                                .replace(/^compute_|^analyze_|^calculate_/, "")
-                                .toUpperCase();
-                              const summary = msg.tool_data?.summary || msg.content.replace(/^Executed [^:]+:\s*/, "");
-                              lastEvent.evidence.push({ name: cleanToolName, value: summary });
-                            }
-                            return;
-                          }
-
-                          const isLead = msg.speakerRole === "lead";
-                          const cleanDocName = msg.doctorName
-                            .replace(", MD, FACC", "")
-                            .replace(", MD, PhD", "")
-                            .replace(", MD, FAAP", "")
-                            .replace(", MD, DVD", "")
-                            .replace(", MD", "");
-                          const specialtyClean = msg.specialty || (isLead ? "Primary Care & Clinical Triage Lead" : "Clinical Specialist");
-
-                          let statusText = isLead ? "LIVE" : "REVIEWING";
-                          let statusColor = isLead ? "bg-cyan-500" : "bg-purple-500";
-                          let badgeLabel = isLead ? "PRIMARY INTAKE" : "ASSESSMENT";
-                          let badgeColor = isLead
-                            ? "text-cyan-800 bg-cyan-50 border-cyan-200"
-                            : "text-purple-800 bg-purple-50 border-purple-200";
-
-                          if (msg.type === "challenge") {
-                            badgeLabel = "PEER CHALLENGE";
-                            badgeColor = "text-amber-800 bg-amber-50 border-amber-200";
-                            statusText = "CHALLENGING";
-                            statusColor = "bg-amber-500";
-                          } else if (msg.type === "synthesis") {
-                            badgeLabel = "SYNTHESIS";
-                            badgeColor = "text-emerald-800 bg-emerald-50 border-emerald-200";
-                            statusText = "ALIGNED";
-                            statusColor = "bg-emerald-500";
-                          }
-
-                          const evidence: Array<{ name: string; value: string }> = [];
-                          if (msg.references && msg.references.length > 0) {
-                            msg.references.forEach((ref) => {
-                              const cit = boardData?.citations?.[ref];
-                              evidence.push({
-                                name: ref,
-                                value: cit ? cit.title : "Clinical Protocol Reference"
-                              });
-                            });
-                          }
-
-                          events.push({
-                            id: msg.id || `evt-${idx}`,
-                            doctorName: cleanDocName,
-                            specialty: specialtyClean,
-                            role: msg.speakerRole,
-                            statusText,
-                            statusColor,
-                            badgeLabel,
-                            badgeColor,
-                            isLive: isLead || msg.type === "synthesis",
-                            content: msg.content.replace(/^"|"$/g, ""),
-                            timestamp: msg.timestamp || "12:48 PM",
-                            evidence
-                          });
-                        });
-
-                        return events;
-                      })().map((evt, idx) => {
-                        return (
-                          <AnimatedContent key={evt.id || idx} contentKey={evt.content}>
-                            <GlowingBorder
-                              active={evt.isLive}
-                              glowColor={evt.role === "lead" ? "cyan" : "purple"}
-                              intensity="subtle"
-                              className="p-5 sm:p-6 rounded-2xl bg-white shadow-2xs flex flex-col gap-3.5 transition-shadow hover:shadow-xs border border-slate-200/90"
-                            >
-                              {/* Card Header: Doctor Name, Specialty, Status & Timestamp */}
-                              <div className="flex flex-wrap items-start justify-between gap-2.5">
-                                <div className="flex flex-col min-w-0">
-                                  <div className="flex items-center gap-2">
-                                    <span className={`w-2.5 h-2.5 rounded-full ${evt.statusColor} ${evt.isLive ? "animate-pulse" : ""}`} />
-                                    <h4 className="text-base sm:text-lg font-bold text-slate-950 tracking-tight">
-                                      {evt.doctorName}
-                                    </h4>
-                                  </div>
-                                  <p className="text-xs sm:text-sm text-slate-500 font-medium mt-0.5">
-                                    {evt.specialty}
-                                  </p>
-                                </div>
-
-                                <div className="flex items-center gap-2.5 shrink-0">
-                                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-mono font-bold uppercase tracking-wider border ${evt.badgeColor}`}>
-                                    {evt.statusText}
-                                  </span>
-                                  <span className="text-xs font-mono text-slate-500 font-medium">
-                                    {formatTimelineTime(evt.timestamp)}
-                                  </span>
-                                </div>
-                              </div>
-
-                              {/* Card Body: High-Legibility Clinical Summary */}
-                              <p className="text-sm sm:text-base text-slate-700 font-normal leading-relaxed">
-                                {evt.content}
-                              </p>
-
-                              {/* Evidence Accordion / Reference Footnote */}
-                              {evt.evidence && evt.evidence.length > 0 && (
-                                <div className="pt-2 border-t border-slate-100">
-                                  <button
-                                    type="button"
-                                    onClick={() => toggleEvidence(evt.id)}
-                                    className="text-xs font-semibold text-cyan-700 hover:text-cyan-900 flex items-center gap-1.5 cursor-pointer transition-colors"
-                                  >
-                                    {expandedEvidenceIds[evt.id] ? (
-                                      <>
-                                        <ChevronDown className="w-4 h-4" />
-                                        <span>Hide clinical references</span>
-                                      </>
-                                    ) : (
-                                      <>
-                                        <ChevronRight className="w-4 h-4" />
-                                        <span>Evidence & guidelines referenced ({evt.evidence.length})</span>
-                                      </>
-                                    )}
-                                  </button>
-
-                                  {expandedEvidenceIds[evt.id] && (
-                                    <div className="mt-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200/80 flex flex-col gap-2 animate-in fade-in duration-200">
-                                      <span className="text-xs font-mono font-bold uppercase tracking-wider text-slate-500">
-                                        Evidence & Validated Guidelines
-                                      </span>
-                                      <div className="space-y-1.5">
-                                        {evt.evidence.map((item, eIdx) => (
-                                          <div key={eIdx} className="flex items-center justify-between py-1.5 px-2.5 rounded-lg bg-white border border-slate-200/60 text-xs">
-                                            <span className="font-mono font-bold text-xs text-slate-800 uppercase">
-                                              {item.name}
-                                            </span>
-                                            <span className="font-medium text-xs text-slate-600 text-right truncate max-w-[220px]">
-                                              {item.value}
-                                            </span>
-                                          </div>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </GlowingBorder>
-                          </AnimatedContent>
-                        );
-                      })}
-                    </div>
-
-
-
-                  </div>
-                )}
-
-                {/* TAB: CLINICAL CONTEXT */}
-                {activeRightTab === "context" && (
-                  <div className="flex flex-col gap-4 py-1">
-                    <SpotlightCard
-                      spotlightColor="rgba(20, 184, 166, 0.12)"
-                      className="p-5 sm:p-6 bg-white border border-slate-200/90 shadow-2xs flex flex-col gap-5"
-                    >
-                      {/* Context Header: Title & History Completeness */}
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="flex flex-col gap-1.5">
-                          <span className="text-xs font-mono font-bold uppercase tracking-wider text-teal-700">
-                            CLINICAL CONTEXT
-                          </span>
-                          <h3 className="text-base sm:text-lg font-bold text-slate-900 leading-snug">
-                            History Completeness
-                          </h3>
-                          <p className="text-xs sm:text-sm text-slate-600 font-medium flex items-center gap-1.5">
-                            {(audioState === "PATIENT_LISTENING" || audioState === "PROCESSING_TRANSCRIPTION" || audioState === "PROCESSING_CLINICAL" || audioState === "PROCESSING_INTERRUPTION") && (
-                              <span className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
-                            )}
-                            <span>{contextSubtitle}</span>
-                          </p>
-                        </div>
-
-                        <div className="text-right shrink-0">
-                          <span className="text-2xl sm:text-3xl font-bold font-mono text-slate-900">
-                            <CountUp to={completenessPercent} duration={0.8} />%
-                          </span>
-                          <p className="text-xs font-mono text-slate-600 mt-0.5">
-                            {hasContextFacts ? `${contextKnownFacts.length} elements confirmed` : "0 elements"}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Progress Bar */}
-                      <div className="w-full bg-slate-100 h-2.5 rounded-full overflow-hidden p-0.5 border border-slate-200/70">
-                        <div
-                          className="h-full bg-linear-to-r from-teal-500 via-emerald-500 to-cyan-500 rounded-full transition-all duration-500"
-                          style={{
-                            width: `${Math.min(100, Math.max(completenessPercent === 0 ? 0 : 4, completenessPercent))}%`
-                          }}
-                        />
-                      </div>
-
-                      {/* Section 0: CURRENT COMPLAINT */}
-                      {hasContextFacts && (
-                        <div className="p-3 rounded-xl bg-teal-50/60 border border-teal-200/80 flex flex-col gap-1.5">
-                          <div className="flex items-center gap-2">
-                            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                            <span className="text-xs font-mono font-bold uppercase tracking-wider text-teal-900">
-                              CURRENT COMPLAINT
-                            </span>
-                          </div>
-                          <p className="text-xs sm:text-sm text-slate-900 font-bold ml-4.5">
-                            {formatClinicalFact(
-                              contextKnownFacts.find(f => /throat|chest|headache|pain|dizz|weak/i.test(f)) ||
-                              contextKnownFacts[0]
-                            )}
-                          </p>
-                          {contextKnownFacts.some(f => /course|onset|duration/i.test(f)) && (
-                            <p className="text-xs text-slate-600 ml-4.5">
-                              {contextKnownFacts
-                                .filter(f => /onset|duration|course/i.test(f))
-                                .map(f => formatClinicalFact(f))
-                                .join(" · ")}
-                            </p>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Section 1: ESTABLISHED CLINICAL FINDINGS */}
-                      <div className="pt-2 border-t border-slate-200/70 flex flex-col gap-2.5">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-mono font-bold uppercase tracking-wider text-slate-700">
-                            ESTABLISHED FINDINGS {hasContextFacts ? `(${contextKnownFacts.length})` : ""}
-                          </span>
-                        </div>
-
-                        {!hasContextFacts ? (
-                          <div className="py-3 px-3.5 rounded-xl bg-slate-50 border border-slate-200/80 flex flex-col gap-1.5">
-                            <p className="text-xs sm:text-sm text-slate-800 font-semibold">
-                              No clinical information captured yet.
-                            </p>
-                            <p className="text-xs text-slate-600 font-normal leading-relaxed">
-                              Start the consultation to establish the patient's presenting symptoms.
-                            </p>
-                          </div>
-                        ) : (
-                          <AnimatedContent contentKey={contextKnownFacts.length}>
-                            <div className="flex flex-col gap-2 max-h-48 overflow-y-auto pr-1">
-                              {contextKnownFacts.map((fact: string, idx: number) => {
-                                const isDenied = /denied|none/i.test(fact);
-                                return (
-                                  <div
-                                    key={idx}
-                                    className={`flex items-start gap-2.5 p-2 rounded-lg border text-xs sm:text-sm font-medium leading-relaxed ${
-                                      isDenied
-                                        ? "bg-slate-50 border-slate-200 text-slate-700"
-                                        : "bg-teal-50/50 border-teal-200/70 text-slate-900"
-                                    }`}
-                                  >
-                                    <CheckCircle2 className={`w-4 h-4 shrink-0 mt-0.5 ${isDenied ? "text-slate-500" : "text-teal-600"}`} />
-                                    <span>{formatClinicalFact(fact)}</span>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </AnimatedContent>
-                        )}
-                      </div>
-
-                      {/* Section 2: STILL TO ESTABLISH */}
-                      <div className="pt-2 border-t border-slate-200/70 flex flex-col gap-2.5">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-mono font-bold uppercase tracking-wider text-slate-700">
-                            STILL TO ESTABLISH {contextMissingDimensions.length > 0 ? `(${contextMissingDimensions.length})` : ""}
-                          </span>
-                        </div>
-
-                        {contextMissingDimensions.length === 0 ? (
-                          <div className="flex items-center gap-2.5 p-3 rounded-lg bg-emerald-50 border border-emerald-200 text-xs sm:text-sm text-emerald-900 font-medium">
-                            <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                            <span>Clinical context sufficient for triage acuity and care disposition</span>
-                          </div>
-                        ) : (
-                          <div className="flex flex-col gap-2 max-h-44 overflow-y-auto pr-1">
-                            {contextMissingDimensions.map((dim: string, idx: number) => (
-                              <div
-                                key={idx}
-                                className="flex items-center gap-3 py-1.5 px-2.5 rounded-lg bg-slate-50/60 border border-slate-200/50 text-xs sm:text-sm text-slate-800 font-medium"
-                              >
-                                <Circle className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                                <span>{dim}</span>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Section 3: RED-FLAG SAFETY SCREEN (INDEPENDENT) */}
-                      <div className="pt-2 border-t border-slate-200/70 flex flex-col gap-2">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-mono font-bold uppercase tracking-wider text-slate-700">
-                            RED-FLAG SAFETY SCREEN
-                          </span>
-                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-mono font-bold uppercase ${
-                            triageData?.isEmergency || (triageData?.redFlagsTriggered && triageData.redFlagsTriggered.length > 0)
-                              ? "bg-red-100 text-red-800 border border-red-200"
-                              : hasContextFacts
-                              ? "bg-amber-50 text-amber-800 border border-amber-200"
-                              : "bg-slate-100 text-slate-600"
-                          }`}>
-                            {triageData?.isEmergency
-                              ? "⚠ Emergency Triggered"
-                              : hasContextFacts
-                              ? "Screening In Progress"
-                              : "Pending Intake"}
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-600">
-                          {triageData?.isEmergency
-                            ? "Immediate safety intervention active. Contact emergency dispatch."
-                            : "Airway, swallowing safety, and hemodynamic red flags monitored independently of history completeness."}
-                        </p>
-                      </div>
-
-                      {/* Section 4: NEXT BEST QUESTION / CLINICAL TARGET */}
-                      {boardData?.pending_question && (
-                        <div className="p-3 rounded-xl bg-cyan-50/70 border border-cyan-200/80 flex flex-col gap-1.5">
-                          <span className="text-xs font-mono font-bold uppercase tracking-wider text-cyan-900">
-                            NEXT BEST QUESTION
-                          </span>
-                          <p className="text-xs sm:text-sm text-slate-900 font-semibold italic">
-                            "{boardData.pending_question.question}"
-                          </p>
-                          <p className="text-xs text-cyan-800">
-                            Purpose: {boardData.pending_question.purpose}
-                          </p>
-                        </div>
-                      )}
-
-                      {/* Footer Guidance Note */}
-                      <div className="pt-2 border-t border-slate-200/70 flex items-center gap-2 text-xs text-slate-600 font-medium">
-                        <Info className="w-3.5 h-3.5 text-slate-500 shrink-0" />
-                        <span>Clinical facts and completeness update dynamically after each patient answer.</span>
-                      </div>
-
-                    </SpotlightCard>
-                  </div>
-                )}
-
-                {/* TAB: CARE OPTIONS & HOSPITAL RAG */}
-                {activeRightTab === "care" && (
-                  <div className="flex flex-col gap-4 py-1">
-                    {/* Location Permission & Status Banner */}
-                    <div className="p-4 sm:p-5 rounded-2xl bg-white border border-slate-200/90 shadow-2xs flex flex-col gap-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2 text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-900 font-mono">
-                          <MapPin className="w-4 h-4 text-cyan-600" />
-                          <span>Emergency Care Network</span>
-                        </div>
-                        <span className="text-xs font-mono uppercase px-2.5 py-1 rounded-full bg-slate-100 text-slate-700 font-bold border border-slate-200">
-                          Verified Registry RAG
-                        </span>
-                      </div>
-                      <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-normal">
-                        Verified emergency departments matched by clinical specialty, verified 24/7 ER status, and strict Haversine distance.
-                      </p>
-
-                      <div className="flex items-center justify-between pt-2.5 border-t border-slate-100">
-                        <div className="flex items-center gap-2 text-xs sm:text-sm text-slate-700 font-medium">
-                          <span className={`w-2.5 h-2.5 rounded-full ${userLocation ? "bg-emerald-500" : "bg-amber-500 animate-pulse"}`} />
-                          <span>
-                            {userLocation ? "Location verified (GPS)" : "Default Hub (Andhra Pradesh / Telangana)"}
-                          </span>
-                        </div>
-                        {!userLocation && (
-                          <button
-                            type="button"
-                            onClick={handleRequestLocation}
-                            className="text-xs sm:text-sm font-bold text-cyan-800 hover:text-cyan-950 flex items-center gap-1.5 cursor-pointer bg-cyan-50 px-3 py-1.5 rounded-xl border border-cyan-300 hover:bg-cyan-100 transition-colors"
-                          >
-                            <Navigation className="w-3.5 h-3.5" />
-                            <span>Share Location</span>
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Hospital Candidates List */}
-                    <div className="flex flex-col gap-3 max-h-[420px] overflow-y-auto pr-1">
-                      {nearbyHospitals && nearbyHospitals.length > 0 ? (
-                        nearbyHospitals.map((h: any, idx: number) => {
-                          const isGov = h.ownership === "government";
-                          const isTrust = h.ownership === "trust";
-                          const ownershipLabel = isGov ? "Government" : isTrust ? "Trust Hospital" : "Private Center";
-
-                          const isVerifiedMatch = h.clinicalSuitability === "verified_match";
-                          const isGeneralER = h.clinicalSuitability === "general_emergency";
-
-                          const isTrafficAware = h.routingMode === "traffic_aware";
-                          const isRoadNetwork = h.routingMode === "road_network";
-
-                          return (
-                            <div
-                              key={h.id || idx}
-                              className={`p-4 sm:p-5 rounded-2xl bg-white border shadow-2xs flex flex-col gap-3 transition-all hover:border-slate-300 ${
-                                idx === 0 && isVerifiedMatch ? "border-cyan-400/80 ring-1 ring-cyan-200" : "border-slate-200/90"
-                              }`}
-                            >
-                              {/* Header: Name, City, and Travel ETA */}
-                              <div className="flex items-start justify-between gap-2">
-                                <div className="flex flex-col min-w-0">
-                                  <div className="flex items-center gap-2 flex-wrap">
-                                    <span className="text-sm sm:text-base font-bold text-slate-950 truncate">
-                                      {h.name}
-                                    </span>
-                                    {idx === 0 && isVerifiedMatch && h.estimatedTravelMinutes && (
-                                      <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-cyan-100 text-cyan-800 font-extrabold tracking-wide">
-                                        ⚡ Fastest Reachable
-                                      </span>
-                                    )}
-                                  </div>
-                                  <span className="text-xs sm:text-sm text-slate-600 font-medium truncate mt-0.5">
-                                    {h.city}, {h.address}
-                                  </span>
-                                </div>
-
-                                <div className="flex flex-col items-end shrink-0">
-                                  <span className="font-mono text-xs sm:text-sm font-black text-cyan-950 bg-cyan-50 px-2.5 py-1 rounded-lg border border-cyan-200">
-                                    {h.durationDisplay && h.durationDisplay !== "Driving time unavailable"
-                                      ? h.durationDisplay
-                                      : h.distanceDisplay || `~${Math.round(h.distanceKm)} km`}
-                                  </span>
-                                  {h.roadDistanceKm && (
-                                    <span className="text-[11px] font-mono text-slate-500 mt-0.5">
-                                      ~{h.roadDistanceKm} km by road
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
-
-                              {/* Badges: Routing Mode, Live Congestion, Clinical Suitability, Ownership */}
-                              <div className="flex items-center gap-2 flex-wrap text-xs font-mono font-medium">
-                                {/* Routing Mode Badge */}
-                                {isTrafficAware ? (
-                                  <span className="px-2.5 py-0.5 rounded-full bg-emerald-50 text-emerald-800 border border-emerald-200 font-semibold">
-                                    🚗 Traffic-Aware ETA
-                                  </span>
-                                ) : isRoadNetwork ? (
-                                  <span className="px-2.5 py-0.5 rounded-full bg-indigo-50 text-indigo-800 border border-indigo-200 font-semibold">
-                                    🚗 Road-Network Estimate
-                                  </span>
-                                ) : (
-                                  <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-600 border border-slate-200">
-                                    📏 Straight-Line Distance
-                                  </span>
-                                )}
-
-                                {/* Live Traffic Congestion Telemetry */}
-                                {h.congestionLevel && h.congestionLevel !== "unknown" && (
-                                  <span className={`px-2.5 py-0.5 rounded-full font-bold border flex items-center gap-1.5 ${
-                                    h.congestionLevel === "heavy"
-                                      ? "bg-rose-50 text-rose-800 border-rose-200"
-                                      : h.congestionLevel === "moderate"
-                                      ? "bg-amber-50 text-amber-800 border-amber-200"
-                                      : "bg-emerald-50 text-emerald-800 border-emerald-200"
-                                  }`}>
-                                    <span className={`w-2 h-2 rounded-full ${
-                                      h.congestionLevel === "heavy"
-                                        ? "bg-rose-500"
-                                        : h.congestionLevel === "moderate"
-                                        ? "bg-amber-500"
-                                        : "bg-emerald-500"
-                                    }`} />
-                                    <span>
-                                      {h.congestionLevel === "heavy" ? "Heavy Traffic" : h.congestionLevel === "moderate" ? "Moderate Traffic" : "Flowing Smoothly"}
-                                      {h.trafficDelayMinutes ? ` (+${h.trafficDelayMinutes}m)` : ""}
-                                    </span>
-                                  </span>
-                                )}
-
-                                {/* Clinical Suitability Badge */}
-                                {isVerifiedMatch ? (
-                                  <span className="px-2.5 py-0.5 rounded-full bg-cyan-50 text-cyan-950 border border-cyan-300 font-bold">
-                                    ✓ Verified Specialty & ER
-                                  </span>
-                                ) : isGeneralER ? (
-                                  <span className="px-2.5 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-200 font-semibold">
-                                    ● 24/7 ER (Specialty Unverified)
-                                  </span>
-                                ) : (
-                                  <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-700 border border-slate-200">
-                                    ○ Discovered Facility
-                                  </span>
-                                )}
-
-                                {/* Ownership Badge */}
-                                <span className="px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-800 border border-slate-200 font-medium">
-                                  🏛 {ownershipLabel}
-                                </span>
-                              </div>
-
-                              {/* Typical vs Traffic Delay Sub-bar */}
-                              {isTrafficAware && h.staticDurationMinutes && h.trafficDelayMinutes !== undefined && h.trafficDelayMinutes > 0 && (
-                                <div className="text-xs text-slate-600 flex items-center gap-2 bg-amber-50/70 px-3 py-1.5 rounded-xl border border-amber-200/80 font-medium">
-                                  <span className="font-bold text-amber-950">Traffic Impact:</span>
-                                  <span>Typical drive is ~{h.staticDurationMinutes} min · Current congestion adds +{h.trafficDelayMinutes} min</span>
-                                </div>
-                              )}
-
-                              {/* Affordability Notes (if verified) */}
-                              {h.affordabilityNotes && (
-                                <p className="text-xs text-slate-700 bg-slate-50 p-2.5 rounded-xl border border-slate-200/80 leading-relaxed font-normal">
-                                  💡 {h.affordabilityNotes}
-                                </p>
-                              )}
-
-                              {/* Footer: Provenance & Direct Dial */}
-                              <div className="flex items-center justify-between pt-2.5 border-t border-slate-100">
-                                <span className="text-xs text-slate-500 font-mono truncate max-w-[200px]" title={`${h.source} · ${h.freshnessLabel || "Calculated just now"}`}>
-                                  ✓ {h.freshnessLabel || h.source || "Verified Registry"}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => handleInitiateEmergencyCall(h.emergencyPhone || h.phone || "108", h.name)}
-                                  className="text-xs sm:text-sm font-bold text-white bg-slate-900 hover:bg-slate-800 px-3.5 py-2 rounded-xl flex items-center gap-2 transition-colors cursor-pointer shadow-2xs"
-                                >
-                                  <PhoneCall className="w-3.5 h-3.5 text-emerald-400" />
-                                  <span>Call {h.emergencyPhone || "108"}</span>
-                                </button>
-                              </div>
-                            </div>
-                          );
-                        })
-                      ) : (
-                        <div className="p-8 sm:p-10 rounded-2xl bg-white border border-slate-200/90 text-center flex flex-col items-center justify-center text-slate-400 gap-3.5 shadow-2xs">
-                          <div className="w-14 h-14 rounded-2xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-500 shadow-2xs">
-                            <Building2 className="w-7 h-7 text-slate-600" />
-                          </div>
-                          <h4 className="text-base sm:text-lg font-bold text-slate-950">No care network barriers triggered yet</h4>
-                          <p className="text-xs sm:text-sm text-slate-600 max-w-sm leading-relaxed font-normal">
-                            Care Network routing engages when financial constraints, remote outskirts, or transportation barriers are expressed by the patient.
-                          </p>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* National Emergency Protocols Box */}
-                    <div className="mt-2 p-4 sm:p-5 rounded-2xl bg-rose-50/90 border border-rose-200/90 flex flex-col gap-3 shadow-2xs">
-                      <div className="flex items-center justify-between">
-                        <span className="text-xs sm:text-sm font-mono font-bold uppercase tracking-wider text-rose-950 flex items-center gap-2">
-                          <PhoneCall className="w-4 h-4 text-rose-600" />
-                          <span>Emergency Dispatch (India)</span>
-                        </span>
-                        <span className="text-xs font-mono font-bold text-rose-700 bg-rose-100 px-2.5 py-0.5 rounded-full border border-rose-200">
-                          24/7 Priority
-                        </span>
-                      </div>
-                      <div className="grid grid-cols-2 gap-3">
-                        <button
-                          type="button"
-                          onClick={() => handleInitiateEmergencyCall("108", "Ambulance")}
-                          className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs sm:text-sm font-bold transition-all shadow-xs cursor-pointer"
-                        >
-                          <PhoneCall className="w-4 h-4" />
-                          <span>Call 108 (Ambulance)</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleInitiateEmergencyCall("112", "National Emergency")}
-                          className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs sm:text-sm font-bold transition-all shadow-xs cursor-pointer"
-                        >
-                          <PhoneCall className="w-4 h-4" />
-                          <span>Call 112 (National)</span>
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-              </div>
-            </section>
-
-            {/* UNIFIED CLINICAL STATUS & SAFETY MODULE */}
-            <GlowingBorder
-              active={true}
-              glowColor="emerald"
-              intensity="subtle"
-              className="p-6 sm:p-7 bg-white border border-slate-200/90 shadow-sm flex flex-col gap-5"
-            >
-              <div className="flex items-center justify-between pb-3.5 border-b border-slate-200/80">
-                <div className="flex items-center gap-2.5">
-                  <ShieldCheck className="w-6 h-6 text-emerald-600" />
-                  <span className="text-base font-bold uppercase tracking-wider text-slate-950 font-mono">
-                    Clinical Safety
-                  </span>
-                </div>
-                <span className="inline-flex items-center gap-2 text-xs sm:text-sm font-mono text-emerald-800 bg-emerald-50 px-3.5 py-1.5 rounded-full border border-emerald-200 font-bold">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" />
-                  <span>ACTIVE</span>
-                </span>
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 pt-1">
-
-                {/* Left Card: Live Triage */}
-                <div className="rounded-2xl border border-slate-200/90 bg-slate-50/70 p-5 flex flex-col justify-between gap-4 shadow-2xs">
-                  <div>
-                    <div className="flex items-center justify-between pb-2.5 border-b border-slate-200/60">
-                      <span className="text-xs font-bold uppercase tracking-wider text-slate-700 font-mono">
-                        Live Triage
-                      </span>
-                      {triageData ? (
-                        <span className={`text-xs font-mono font-bold uppercase px-2.5 py-1 rounded-full border ${
-                          triageData.triageLevel === "emergency"
-                            ? "bg-rose-50 text-rose-700 border-rose-200 font-extrabold"
-                            : triageData.triageLevel === "priority"
-                            ? "bg-amber-50 text-amber-700 border-amber-200"
-                            : triageData.triageLevel === "gathering_history"
-                            ? "bg-cyan-50 text-cyan-800 border-cyan-200"
-                            : "bg-emerald-50 text-emerald-700 border-emerald-200"
-                        }`}>
-                          {triageData.triageLevel === "gathering_history" ? "Intake Active" : triageData.triageLevel}
-                        </span>
-                      ) : (
-                        <span className="text-xs font-mono font-semibold text-slate-500 bg-slate-200/60 px-2.5 py-0.5 rounded-full">
-                          Standby
-                        </span>
-                      )}
-                    </div>
-
-                    <div className="mt-3.5">
-                      {triageData ? (
-                        <AnimatedContent contentKey={`${triageData.esiScore}-${triageData.triageLevel}`}>
-                          <div className="flex flex-col">
-                            <span className="text-xs font-mono font-bold uppercase tracking-wider text-slate-500">
-                              ESI Acuity Index
-                            </span>
-                            {triageData.esiScore !== null && triageData.esiScore !== undefined ? (
-                              <span className={`text-3xl sm:text-4xl font-black font-mono leading-tight mt-0.5 ${
-                                triageData.triageLevel === "emergency" ? "text-rose-600" : "text-slate-900"
-                              }`}>
-                                Level {triageData.esiScore}
-                              </span>
-                            ) : (
-                              <span className="text-3xl sm:text-4xl font-black font-mono leading-tight text-slate-300 mt-0.5">
-                                —
-                              </span>
-                            )}
-                            <h4 className="text-sm sm:text-base font-bold text-slate-950 leading-snug mt-1.5">
-                              {triageData.triageTitle.replace(/^ESI LEVEL \d+:\s*(EMERGENT|URGENT|ROUTINE)?\s*—?\s*/i, "") || "Clinical History Gathering"}
-                            </h4>
-                            <p className="text-xs sm:text-sm text-slate-600 line-clamp-2 mt-1 leading-relaxed font-normal">
-                              {triageData.recommendedAction}
-                            </p>
-                          </div>
-                        </AnimatedContent>
-                      ) : (
-                        <div className="py-1 flex flex-col gap-1.5">
-                          <h4 className="text-base sm:text-lg font-bold text-slate-950">Awaiting symptoms</h4>
-                          <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-normal">
-                            Your consultation is continuously assessed in real time as you provide more information.
-                          </p>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="pt-2.5 border-t border-slate-200/60">
-                    {triageData?.triageLevel === "emergency" ? (
-                      <Link
-                        href="/emergency"
-                        className="w-full py-2.5 px-3.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs sm:text-sm rounded-xl shadow-2xs flex items-center justify-center gap-2 transition-all cursor-pointer"
-                      >
-                        <Building2 className="w-4 h-4" />
-                        <span>Hospital Dispatch →</span>
-                      </Link>
-                    ) : (
-                      <div className="text-xs font-mono text-slate-500 font-medium flex items-center gap-2 py-0.5">
-                        <span className="w-2 h-2 rounded-full bg-slate-400" />
-                        <span>Emergency dispatch standby</span>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {/* Right Card: Safety Guard */}
-                <div className="rounded-2xl border border-slate-200/90 bg-slate-50/70 p-5 flex flex-col justify-between gap-4 shadow-2xs">
-                  <div>
-                    <div className="flex items-center justify-between pb-2.5 border-b border-slate-200/60">
-                      <span className="text-xs font-bold uppercase tracking-wider text-slate-700 font-mono">
-                        Safety Guard
-                      </span>
-                      <span className="inline-flex items-center gap-1.5 text-xs font-mono text-emerald-800 font-bold bg-emerald-50 px-2.5 py-1 rounded-full border border-emerald-200">
-                        <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-                        <span>Protected</span>
-                      </span>
-                    </div>
-
-                    <div className="mt-3.5 flex flex-col gap-1.5">
-                      <h4 className="text-base sm:text-lg font-bold text-slate-950">Continuous Invariant Check</h4>
-                      <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-normal">
-                        Deterministic emergency safety rules remain active throughout the consultation.
-                      </p>
-                    </div>
-                  </div>
-
-                  <div className="pt-2.5 border-t border-slate-200/60">
-                    <button
-                      type="button"
-                      onClick={() => setShowTechnicalTrace(!showTechnicalTrace)}
-                      className="text-xs sm:text-sm font-bold text-emerald-700 hover:text-emerald-900 flex items-center gap-1.5 cursor-pointer transition-colors"
-                    >
-                      <span>Safety details</span>
-                      {showTechnicalTrace ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-
-              </div>
-
-              {/* Patient-Facing Safety Details Drawer */}
-              {showTechnicalTrace && (
-                <div className="p-4 sm:p-5 rounded-2xl bg-emerald-50/70 border border-emerald-200 text-xs sm:text-sm text-slate-700 leading-relaxed animate-in fade-in duration-200 flex flex-col gap-2">
-                  <div className="flex items-center gap-2 font-bold text-emerald-950 font-mono text-xs sm:text-sm uppercase tracking-wider">
-                    <ShieldCheck className="w-4 h-4 text-emerald-600" />
-                    <span>Consultation Safety Policy</span>
-                  </div>
-                  <p className="text-slate-700 text-xs sm:text-sm leading-relaxed font-normal">
-                    Safety protection is active. MedVoice continuously checks for critical symptoms during the consultation. If an emergency concern is detected, the consultation will prioritize urgent care guidance.
-                  </p>
-                </div>
-              )}
-            </GlowingBorder>
-
-          </div>
-
+          {/* RIGHT PANEL (5 cols): Clinical Context, History Completeness & Facilities */}
+          <aside className="lg:col-span-5 flex flex-col gap-4">
+            <ConsultClinicalContext
+              completenessPercent={completenessPercent}
+              establishedFindings={contextKnownFacts}
+              missingElements={contextMissingDimensions}
+              isEmergency={Boolean(triageData?.isEmergency)}
+              triageLevel={triageData?.triageLevel}
+              triageTitle={triageData?.triageTitle}
+              esiScore={triageData?.esiScore}
+              boardMessages={boardData?.opinions || []}
+              nearbyHospitals={nearbyHospitals}
+              onTriggerEmergencyCall={(num) => handleInitiateEmergencyCall(num, "Emergency Services")}
+            />
+          </aside>
         </div>
-        </section>
-            </motion.div>
-          )}
 
-          {/* ========================================================================= */}
-          {/* STATE C: CONSULT COMPLETE (SOAP READY & RETURN TO LOBBY EXPERIENCE)       */}
-          {/* ========================================================================= */}
-          {sessionMode === "CONSULT_COMPLETE" && (
-            <motion.div
-              key="consult-complete"
-              initial={{ opacity: 0, scale: 0.97, y: 16 }}
-              animate={{ opacity: 1, scale: 1, y: 0 }}
-              exit={{ opacity: 0, y: -16 }}
-              transition={{ duration: 0.35, ease: "easeOut" }}
-              className="flex flex-col gap-6 max-w-4xl mx-auto w-full pt-4 sm:pt-6"
-            >
-              {/* Completion Banner */}
-              <div className="bg-white border border-slate-200/90 rounded-3xl p-6 sm:p-8 shadow-xs flex flex-col items-center text-center space-y-4">
-                <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-xs font-bold text-emerald-800 tracking-wider uppercase font-mono shadow-2xs">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  <span>CONSULTATION COMPLETE</span>
-                </div>
-
-                <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-950 tracking-tight">
-                  Your consultation with {selectedDoctor.name.split(",")[0]}
-                </h1>
-                <p className="text-sm sm:text-base text-slate-600 max-w-xl font-normal leading-relaxed">
-                  Your clinical history has been recorded and your assessment is ready to review.
-                </p>
-
-                {/* Real-time Persistence Status Indicator */}
-                <div className="pt-0.5">
-                  {persistenceStatus === "saving" && (
-                    <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-50 border border-cyan-200 text-xs font-mono text-cyan-800">
-                      <span className="w-2 h-2 rounded-full bg-cyan-500 animate-ping" />
-                      <span>Syncing encounter to clinical archive...</span>
-                    </div>
-                  )}
-                  {persistenceStatus === "saved" && (
-                    <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-xs font-mono font-bold text-emerald-800">
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                      <span>Archived to Record · Pending Clinician Review</span>
-                      {currentEncounterId && <span className="text-slate-400 font-normal">({currentEncounterId})</span>}
-                    </div>
-                  )}
-                  {persistenceStatus === "error" && (
-                    <div className="inline-flex items-center gap-3 px-3.5 py-1.5 rounded-xl bg-amber-50 border border-amber-200 text-xs text-amber-900">
-                      <AlertTriangle className="w-4 h-4 text-amber-600 flex-shrink-0" />
-                      <span>Sync pending: {persistenceError}</span>
-                      <button
-                        type="button"
-                        onClick={() => persistEncounterRecord(stableEncounterIdRef.current, callDuration)}
-                        className="px-2.5 py-0.5 rounded-lg bg-amber-700 hover:bg-amber-800 text-white font-bold text-[11px] cursor-pointer"
-                      >
-                        Retry Sync
-                      </button>
-                    </div>
-                  )}
-                </div>
-
-                {/* Clean 3-Card Summary Grid */}
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5 w-full max-w-2xl pt-2">
-                  {/* Card 1: Consultation Duration */}
-                  <div className="p-4.5 rounded-2xl bg-slate-50 border border-slate-200/80 text-left flex flex-col justify-between">
-                    <div className="text-[11px] font-mono font-bold text-slate-500 uppercase">Consultation</div>
-                    <div className="text-xl sm:text-2xl font-black text-slate-900 mt-1.5 font-sans">
-                      {formatNaturalDuration(callDuration)}
-                    </div>
-                    <div className="text-xs text-slate-500 mt-1">
-                      {messages.filter(m => m.role === "patient").length || 1} answers recorded
-                    </div>
-                  </div>
-
-                  {/* Card 2: Assessment */}
-                  <div className="p-4.5 rounded-2xl bg-slate-50 border border-slate-200/80 text-left flex flex-col justify-between">
-                    <div className="text-[11px] font-mono font-bold text-slate-500 uppercase">Assessment</div>
-                    <div className={`text-xl sm:text-2xl font-black mt-1.5 ${
-                      triageData?.triageLevel === "emergency" ? "text-rose-600" : "text-slate-900"
-                    }`}>
-                      {triageData?.triageLevel === "emergency"
-                        ? "Immediate attention"
-                        : triageData?.triageLevel === "priority"
-                        ? "Priority care"
-                        : (triageData?.soap?.assessment || (triageData?.esiScore != null && triageData.triageLevel !== "gathering_history"))
-                        ? "Review ready"
-                        : "Assessment pending"}
-                    </div>
-                    <div className="text-xs text-slate-500 mt-1">
-                      {triageData?.triageLevel === "emergency"
-                        ? "Emergency evaluation indicated"
-                        : (triageData?.soap?.assessment || (triageData?.esiScore != null && triageData.triageLevel !== "gathering_history"))
-                        ? "Symptoms reviewed"
-                        : "Intake recorded for clinician review"}
-                    </div>
-                  </div>
-
-                  {/* Card 3: Record */}
-                  <div className="p-4.5 rounded-2xl bg-slate-50 border border-slate-200/80 text-left flex flex-col justify-between">
-                    <div className="text-[11px] font-mono font-bold text-slate-500 uppercase">Record</div>
-                    <div className="text-xl sm:text-2xl font-black text-slate-900 mt-1.5">
-                      {triageData?.soap?.subjective && triageData?.soap?.assessment
-                        ? "SOAP note available"
-                        : "Intake summary ready"}
-                    </div>
-                    <div className="text-xs text-slate-500 mt-1">
-                      {triageData?.soap?.subjective && triageData?.soap?.assessment
-                        ? "Clinical documentation compiled"
-                        : "Patient narrative documented"}
-                    </div>
-                  </div>
-                </div>
-
-                {/* Action Buttons */}
-                <div className="flex flex-col sm:flex-row items-center justify-center gap-3.5 pt-4 w-full">
-                  <button
-                    type="button"
-                    onClick={() => setShowSoapModal(true)}
-                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-cyan-600 hover:bg-cyan-700 text-white text-sm font-bold shadow-md hover:shadow-lg transition-all cursor-pointer"
-                  >
-                    <FileText className="w-4 h-4" />
-                    <span>View Full SOAP Clinical Report</span>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={startNewConsultation}
-                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-slate-950 hover:bg-slate-800 text-white text-sm font-bold shadow-md hover:shadow-lg transition-all cursor-pointer"
-                  >
-                    <ArrowRight className="w-4 h-4 text-cyan-400" />
-                    <span>Start New Consultation</span>
-                  </button>
-
-                  <Link
-                    href="/care"
-                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3.5 rounded-2xl bg-white hover:bg-slate-50 text-slate-800 text-sm font-semibold border border-slate-200/90 shadow-2xs transition-all cursor-pointer"
-                  >
-                    <Building2 className="w-4 h-4 text-slate-500" />
-                    <span>Hospital Care Options →</span>
-                  </Link>
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-
-
-        {/* EMERGENCY CALL CONFIRMATION MODAL */}
-        {emergencyCallTarget?.isOpen && (
+        {/* EMERGENCY CONFIRMATION MODAL */}
+        {emergencyCallTarget && (
           <div
             role="dialog"
             aria-modal="true"
-            aria-labelledby="emergency-dialog-title"
-            className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
+            className="fixed inset-0 z-50 bg-slate-950/70 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
             onClick={() => setEmergencyCallTarget(null)}
           >
             <div
-              className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 flex flex-col gap-4 animate-in zoom-in-95 duration-150"
+              className="max-w-md w-full bg-white rounded-3xl p-6 shadow-2xl border border-slate-200 flex flex-col gap-4 animate-in zoom-in-95 duration-150 text-slate-900"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center text-red-600 shrink-0">
-                    <PhoneCall className="w-5 h-5" />
-                  </div>
-                  <div>
-                    <h3 id="emergency-dialog-title" className="text-base font-bold text-slate-900 leading-snug">
-                      {emergencyCallTarget.title}
-                    </h3>
-                    <span className="text-xs text-slate-500 font-mono">
-                      Target: {emergencyCallTarget.number} ({emergencyCallTarget.serviceName})
-                    </span>
-                  </div>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-rose-50 text-rose-600 flex items-center justify-center shrink-0">
+                  <PhoneCall className="w-5 h-5" />
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setEmergencyCallTarget(null)}
-                  className="p-1 rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
-                  aria-label="Close dialog"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+                <div>
+                  <h3 className="font-extrabold text-base text-[#05070F]">
+                    Emergency Dispatch Call
+                  </h3>
+                  <span className="text-xs text-slate-500 font-mono">
+                    Target: {emergencyCallTarget.number} ({emergencyCallTarget.serviceName || "Emergency Services"})
+                  </span>
+                </div>
               </div>
 
-              <div className="bg-slate-50 border border-slate-200/80 rounded-xl p-3.5 flex flex-col gap-1.5">
-                <p className="text-xs text-slate-700 leading-relaxed font-medium">
+              <div className="p-3 rounded-2xl bg-slate-50 border border-slate-200 text-xs text-slate-600 flex flex-col gap-1.5">
+                <p className="font-medium text-slate-800">
                   {emergencyCallTarget.description}
                 </p>
-                <p className="text-[11px] text-slate-500 leading-relaxed">
-                  MedVoice provides care guidance and navigation. Please confirm before initiating this outgoing call.
+                <p className="text-[11px] text-slate-500">
+                  MedVoice provides clinical guidance. Confirm to initiate this outgoing emergency call.
                 </p>
               </div>
 
-              <div className="flex items-center justify-end gap-3 pt-2">
+              <div className="flex items-center justify-end gap-2.5 pt-2">
                 <button
                   type="button"
                   onClick={() => setEmergencyCallTarget(null)}
-                  className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-semibold transition-colors cursor-pointer"
+                  className="px-4 py-2 rounded-xl border border-slate-200 text-slate-700 hover:bg-slate-50 text-xs font-bold transition-colors cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
                   onClick={handleConfirmEmergencyCall}
-                  className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold flex items-center gap-2 shadow-xs transition-colors cursor-pointer"
+                  className="px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold flex items-center gap-2 shadow-xs transition-colors cursor-pointer"
                 >
                   <PhoneCall className="w-3.5 h-3.5" />
-                  <span>Open dialer ({emergencyCallTarget.number}) →</span>
+                  <span>Open Dialer ({emergencyCallTarget.number}) →</span>
                 </button>
               </div>
             </div>
@@ -4589,7 +2918,7 @@ export default function ConsultPage() {
           <div
             role="dialog"
             aria-modal="true"
-            className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
+            className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150"
             onClick={() => setShowRatingModal(false)}
           >
             <div
@@ -4608,8 +2937,8 @@ export default function ConsultPage() {
 
         {/* TRANSIENT CLINICAL EVENT TOASTS (SWIPE TOAST) */}
         <div className="fixed bottom-6 right-6 z-50 flex flex-col gap-2 max-w-sm w-full pointer-events-none">
-          {clinicalToasts.map((toast, tIdx) => (
-            <div key={`${toast.id || "toast"}-${tIdx}`} className="pointer-events-auto">
+          {clinicalToasts.map((toast) => (
+            <div key={toast.id} className="pointer-events-auto">
               <SwipeToast
                 id={toast.id}
                 type={toast.type}
@@ -4620,7 +2949,6 @@ export default function ConsultPage() {
             </div>
           ))}
         </div>
-
       </main>
 
       {/* CLINICAL ENCOUNTER SOAP REVIEW & FINALIZATION MODAL (ROOT LAYER OVERLAY) */}
@@ -4629,43 +2957,37 @@ export default function ConsultPage() {
         onClose={() => setShowSoapModal(false)}
         encounter={{
           id: currentEncounterId || stableEncounterIdRef.current || `ENC-${Date.now().toString().slice(-6)}`,
-          patientName: patientDisplayName,
+          patientName: patientDisplayName || "Anonymous Patient",
+          patientAge: activeProfile?.age ? String(activeProfile.age) : undefined,
+          patientGender: activeProfile?.gender || undefined,
           doctorId: selectedDoctor.id,
           doctorName: selectedDoctor.name,
-          specialty: selectedDoctor.department,
+          specialty: selectedDoctor.specialty || selectedDoctor.department,
           callDuration: callDuration,
-          transcript: messages.map((m) => ({
-            role: m.role,
-            text: m.text,
-            timestamp: m.timestamp,
-          })),
-          triageLevel: triageData?.triageLevel || (boardData?.phase === "decided" ? "priority" : "routine"),
+          transcript: messages.map((m) => ({ role: m.role, text: m.text, timestamp: m.timestamp })),
+          triageLevel: triageData?.triageLevel || "routine",
           triageTitle: triageData?.triageTitle || "Clinical Voice Consultation Evaluation",
           esiScore: triageData?.esiScore ?? null,
           detectedSymptoms: triageData?.detectedSymptoms || [],
           icdCodes: triageData?.icdCodes || [],
-          recommendedAction: triageData?.recommendedAction || "Consultation complete. Follow clinical disposition.",
-          soap: triageData?.soap || {
-            subjective: "",
-            objective: "",
-            assessment: "",
-            plan: "",
+          recommendedAction: triageData?.recommendedAction || "Consultation complete.",
+          soap: {
+            subjective: triageData?.soap?.subjective || "",
+            objective: triageData?.soap?.objective || "",
+            assessment: triageData?.soap?.assessment || "",
+            plan: triageData?.soap?.plan || "",
           },
-          patientAge: activeProfile?.age != null ? String(activeProfile.age) : undefined,
-          patientGender: activeProfile?.gender || undefined,
           auditSha256: boardData?.trace?.audit_sha256,
           userId: user?.id,
           userRole: (user?.publicMetadata?.role as string) || "patient",
-          caseVersion: currentCaseVersionRef.current ? currentCaseVersionRef.current + 1 : undefined,
+          caseVersion: encounterVersionRef.current ? encounterVersionRef.current + 1 : undefined,
         }}
         onSaveSuccess={() => {
           setPersistenceStatus("saved");
         }}
       />
 
-      <AppFooter />
+      <ArchitecturalBrandLedgerFooter />
     </div>
   );
 }
-
-
