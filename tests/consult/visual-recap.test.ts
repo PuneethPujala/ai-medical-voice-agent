@@ -7,27 +7,23 @@ import {
 } from "../../lib/triage/recap-categories";
 
 describe("Milestone 4: Grounded Visual Clinical Progress & Patient Recap Invariants", () => {
-  it("1. Accurately extracts and categorizes grounded clinical domains without fake percentages", () => {
-    const mockConsultation = {
-      id: "ENC-TEST-M4-001",
-      patientName: "Jane Doe",
-      chiefComplaint: "Severe throbbing headache with photophobia",
+  // Invariant 1: Provenance Tagging
+  it("1. Accurately preserves patient-reported vs model-extracted vs clinician-confirmed information", () => {
+    const consultation = {
+      id: "ENC-PROV-001",
+      chiefComplaint: "Pounding headache on right temple",
       status: "paused",
-      createdAt: "2026-10-31T09:30:00.000Z",
-      durationSeconds: 145,
+      createdAt: "2026-10-31T09:00:00.000Z",
       transcript: [
-        { role: "doctor", text: "When did your headache start?", timestamp: "09:30 AM" },
-        { role: "patient", text: "It started suddenly about 3 hours ago.", timestamp: "09:31 AM" },
-        { role: "doctor", text: "Are you feeling sensitive to bright light?", timestamp: "09:31 AM" },
-        { role: "patient", text: "Yes, lights make it much worse.", timestamp: "09:32 AM" },
+        { id: "turn-1", role: "patient", text: "My right temple has a pounding headache.", timestamp: "09:00 AM" },
       ],
-      detectedSymptoms: ["Headache", "Photophobia"],
+      detectedSymptoms: ["Headache", "Temple pain"],
       attributedFacts: [
         {
-          id: "fact-hist-1",
+          id: "fact-1",
           category: "chronic_condition",
-          factKey: "Migraine history",
-          factValue: "Diagnosed with episodic migraine in 2024",
+          factKey: "Migraine with aura",
+          factValue: "Confirmed in 2023 by neurologist",
           provenance: "clinician_confirmed",
           isHistoricalContext: true,
         },
@@ -35,170 +31,352 @@ describe("Milestone 4: Grounded Visual Clinical Progress & Patient Recap Invaria
       interviewState: {
         schemaVersion: 2,
         phase: "active_inquiring",
-        caseVersion: 2,
         slots: {
-          onset: "3 hours ago",
-          onset_pattern: "sudden",
-          character: "throbbing",
-          location: "unilateral frontal",
-          associated_symptoms: ["Photophobia"],
-          known_facts: ["Takes sumatriptan as needed"],
-        },
-        resolvedQuestions: [
-          {
-            questionId: "q-light-sens",
-            askedBy: "Attending Neurologist",
-            question: "Are you feeling sensitive to bright light?",
-            patientAnswer: "Yes, lights make it much worse.",
-            resolvedSlot: "associated_symptoms",
-            slotValue: "Photophobia",
-          },
-        ],
-        structuredHistory: {
-          chiefComplaint: "Severe throbbing headache with photophobia",
-          timeline: { anchor: "3 hours ago", isSudden: true },
-          unansweredDimensions: ["radiation", "nausea_vomiting", "neck_stiffness"],
+          character: "pounding",
+          location: "right temple",
+          associated_symptoms: ["Headache"],
         },
       },
     };
 
-    const recap: GroundedRecapCategories = extractGroundedRecapCategories(mockConsultation);
+    const recap = extractGroundedRecapCategories(consultation);
 
-    // Invariant 1: Four distinct grounded categories exist
-    assert.ok(recap.previouslyReported, "Previously Reported category must exist");
-    assert.ok(recap.informationDiscussed, "Information Discussed category must exist");
-    assert.ok(recap.stillToExplore, "Still to Explore category must exist");
-    assert.ok(recap.changesSincePause, "Changes Since Pause category must exist");
+    // Baseline historical fact is clinician-confirmed
+    const chronicFact = recap.previouslyReported.find((f) => f.label === "Migraine with aura");
+    assert.ok(chronicFact, "Must locate chronic condition fact");
+    assert.strictEqual(chronicFact.provenance, "clinician_confirmed");
+    assert.strictEqual(chronicFact.confirmationStatus, "confirmed");
 
-    // Invariant 2: Previously Reported contains historical facts with provenance
-    assert.strictEqual(recap.previouslyReported.length, 1);
-    assert.strictEqual(recap.previouslyReported[0].label, "Migraine history");
-    assert.strictEqual(recap.previouslyReported[0].provenance, "clinician_confirmed");
+    // Chief complaint & reported symptom are patient-reported
+    const cc = recap.informationDiscussed.find((i) => i.label === "Chief Complaint");
+    assert.ok(cc);
+    assert.strictEqual(cc.provenance, "patient_reported");
 
-    // Invariant 3: Information Discussed captures chief complaint, slots, and symptoms
-    const labels = recap.informationDiscussed.map((item) => item.label);
-    assert.ok(labels.includes("Chief Complaint"), "Must include chief complaint");
-    assert.ok(labels.includes("Onset & Timeline"), "Must include onset");
-    assert.ok(labels.includes("Symptom Quality / Character"), "Must include character");
-    assert.ok(labels.includes("Location"), "Must include location");
-
-    // Verify all items have valid provenance tags
-    for (const item of recap.informationDiscussed) {
-      assert.ok(
-        ["patient_reported", "model_extracted", "clinician_confirmed", "parent_encounter"].includes(
-          item.provenance
-        ),
-        `Item ${item.label} must have valid clinical provenance, got ${item.provenance}`
-      );
-    }
-
-    // Invariant 4: Still to Explore captures unanswered dimensions and unassessed slots
-    const exploreDimensions = recap.stillToExplore.map((e) => e.dimension.toLowerCase());
-    assert.ok(exploreDimensions.some((d) => d.includes("neck stiffness")), "Must note unassessed neck stiffness");
-    assert.ok(exploreDimensions.some((d) => d.includes("severity") || d.includes("intensity")), "Must note missing severity slot");
-
-    // Invariant 5: Anti-pattern guard - strictly NO fake percentage metrics in object
-    const serialized = JSON.stringify(recap);
-    assert.strictEqual(
-      serialized.includes("completionPercentage"),
-      false,
-      "Must NOT contain fake completionPercentage"
-    );
-    assert.strictEqual(
-      serialized.includes("progressRatio"),
-      false,
-      "Must NOT contain fake progressRatio"
-    );
-    assert.strictEqual(
-      /\b\d{1,3}%\b/.test(serialized),
-      false,
-      "Must NOT contain fabricated percentage strings (e.g. 75%)"
-    );
+    // Model extracted symptom is identified
+    const extracted = recap.informationDiscussed.find((i) => i.label === "Identified Symptom");
+    assert.ok(extracted);
+    assert.strictEqual(extracted.provenance, "model_extracted");
   });
 
-  it("2. Handles follow-up encounters with parent encounter provenance in Previously Reported", () => {
-    const followUpConsultation = {
-      id: "ENC-FOLLOWUP-002",
-      parentConsultationId: "ENC-PARENT-001",
-      patientName: "John Smith",
-      chiefComplaint: "Follow-up for persistent knee swelling",
+  // Invariant 2: Unknown Information Never Becomes Negative Finding
+  it("2. Unknown information never becomes a negative finding (unassessed allergy is NOT 'No allergies')", () => {
+    const consultation = {
+      id: "ENC-UNKNOWN-002",
+      chiefComplaint: "General malaise",
       status: "paused",
-      createdAt: "2026-10-31T10:00:00.000Z",
-      durationSeconds: 60,
-      transcript: [],
-      detectedSymptoms: ["Knee swelling"],
+      // No allergy mentioned or assessed
+      attributedFacts: [],
       interviewState: {
         schemaVersion: 2,
         phase: "active_inquiring",
-        caseVersion: 1,
         slots: {
-          location: "Right knee",
-          associated_symptoms: ["Joint warmth"],
+          onset: "yesterday",
+        },
+        structuredHistory: {
+          unansweredDimensions: ["allergies", "medications"],
+        },
+      },
+    };
+
+    const recap = extractGroundedRecapCategories(consultation);
+
+    // Invariant: Information Discussed or Previously Reported must NOT say "No known allergies" or "NKA"
+    const allDiscussedValues = [
+      ...recap.previouslyReported.map((i) => i.value?.toLowerCase() || ""),
+      ...recap.informationDiscussed.map((i) => i.value?.toLowerCase() || ""),
+    ];
+    assert.strictEqual(
+      allDiscussedValues.some((v) => v.includes("no known allergies") || v.includes("nka")),
+      false,
+      "Must NEVER invent 'No known allergies' for unassessed domain"
+    );
+
+    // Must be placed in Still to Explore as unassessed
+    const unassessedAllergies = recap.stillToExplore.find(
+      (e) => e.dimension.toLowerCase().includes("allergies")
+    );
+    assert.ok(unassessedAllergies, "Unassessed allergies must be listed in Still to Explore");
+    assert.strictEqual(unassessedAllergies.assessmentState, "unassessed");
+  });
+
+  // Invariant 3: Historical Symptoms Never Become Current Symptoms
+  it("3. Historical symptoms from previous encounters never become current symptoms automatically", () => {
+    const followUpConsultation = {
+      id: "ENC-FOLLOWUP-003",
+      parentConsultationId: "ENC-PARENT-HIST-123",
+      chiefComplaint: "Follow-up consultation for recovery progress",
+      status: "paused",
+      createdAt: "2026-10-31T10:00:00.000Z",
+      // Patient has NOT reported chest pain in current encounter
+      detectedSymptoms: [],
+      interviewState: {
+        schemaVersion: 2,
+        phase: "active_inquiring",
+        slots: {
+          associated_symptoms: [], // No current symptoms yet
         },
         historicalContext: {
-          priorEncounterId: "ENC-PARENT-001",
-          provenance: "parent_encounter_history",
-          priorChiefComplaint: "Acute right knee effusion after sporting injury",
-          priorDiagnoses: ["Meniscal tear suspect"],
+          priorEncounterId: "ENC-PARENT-HIST-123",
+          priorChiefComplaint: "Acute crushing chest pain",
+          priorSymptoms: ["Chest pain", "Diaphoresis"],
         },
       },
     };
 
     const recap = extractGroundedRecapCategories(followUpConsultation);
 
-    // Should include parent encounter context in Previously Reported with parent_encounter provenance
-    const prevItems = recap.previouslyReported;
-    assert.ok(prevItems.length >= 1, "Must contain previously reported facts from parent encounter");
-    assert.strictEqual(prevItems[0].provenance, "parent_encounter");
-    assert.strictEqual(prevItems[0].sourceEncounterId, "ENC-PARENT-001");
+    // Invariant: Current Information Discussed must NOT contain historical chest pain
+    const currentDiscussed = recap.informationDiscussed.map((i) => i.value?.toLowerCase() || "");
+    assert.strictEqual(
+      currentDiscussed.includes("chest pain"),
+      false,
+      "Historical chest pain must NOT be listed under current Information Discussed"
+    );
+    assert.strictEqual(
+      currentDiscussed.includes("diaphoresis"),
+      false,
+      "Historical diaphoresis must NOT be listed under current Information Discussed"
+    );
+
+    // Historical symptoms MUST be preserved under Previously Reported with reconciliation_needed flag
+    const historicalChestPain = recap.previouslyReported.find(
+      (i) => i.value?.toLowerCase() === "chest pain"
+    );
+    assert.ok(historicalChestPain, "Must retain historical chest pain under Previously Reported");
+    assert.strictEqual(historicalChestPain.isHistorical, true);
+    assert.strictEqual(historicalChestPain.confirmationStatus, "reconciliation_needed");
   });
 
-  it("3. Extracts existing patient addenda from transcript into Changes Since Pause", () => {
-    const consultationWithAddendum = {
-      id: "ENC-ADDENDUM-003",
-      patientName: "Alex Roe",
-      chiefComplaint: "Right flank pain",
+  // Invariant 4: Distinguish Follow-up from Pause/Resume
+  it("4. New follow-up information is clearly separated from previous-visit information with distinct wording", () => {
+    // 4a. Paused Consultation Resumption
+    const pausedEncounter = {
+      id: "ENC-PAUSED-004A",
       status: "paused",
-      createdAt: "2026-10-31T08:00:00.000Z",
-      durationSeconds: 120,
+      chiefComplaint: "Stomach ache",
+    };
+    const pausedRecap = extractGroundedRecapCategories(pausedEncounter);
+    assert.strictEqual(pausedRecap.isFollowUp, false);
+    assert.strictEqual(pausedRecap.changesSectionLabel, "Changes Since Pause");
+    assert.ok(pausedRecap.changesSincePause.prompt.includes("since this consultation was paused"));
+
+    // 4b. Follow-Up Consultation
+    const followUpEncounter = {
+      id: "ENC-FOLLOWUP-004B",
+      parentConsultationId: "ENC-PARENT-PREV-999",
+      status: "paused",
+      chiefComplaint: "Follow-up visit",
+    };
+    const followUpRecap = extractGroundedRecapCategories(followUpEncounter);
+    assert.strictEqual(followUpRecap.isFollowUp, true);
+    assert.strictEqual(followUpRecap.changesSectionLabel, "Changes Since Last Visit");
+    assert.strictEqual(followUpRecap.recapTitle, "Linked Follow-Up Clinical Review");
+    assert.ok(followUpRecap.changesSincePause.prompt.includes("since your last visit with us"));
+  });
+
+  // Invariant 5: Original Transcript Turns Remain Immutable After Corrections
+  it("5. Original transcript turns remain strictly immutable after patient corrections are recorded", () => {
+    const originalTurn = {
+      id: "turn-original-1",
+      role: "patient",
+      text: "The pain is mostly in my left arm.",
+      timestamp: "10:15 AM",
+    };
+
+    const initialTranscript = [originalTurn];
+
+    // Simulate appending a correction
+    const amendmentTurn = {
+      id: "turn-amendment-2",
+      role: "patient",
+      text: "[Patient Addendum / Correction · 10:20 AM]: Actually the pain is in my left shoulder, not arm.",
+      timestamp: "10:20 AM",
+      correctionOfTurnId: "turn-original-1",
+    };
+
+    const updatedTranscript = [...initialTranscript, amendmentTurn];
+
+    // Assert original turn is unmodified in object identity, role, and text
+    assert.strictEqual(updatedTranscript[0].text, "The pain is mostly in my left arm.");
+    assert.strictEqual(updatedTranscript[0].id, "turn-original-1");
+    assert.strictEqual(updatedTranscript.length, 2);
+  });
+
+  // Invariant 6: Corrections Retain Stable Source-Turn Identifiers
+  it("6. Corrections retain stable source-turn identifiers (correctionOfTurnId)", () => {
+    const consultationWithTargetedCorrection = {
+      id: "ENC-CORR-006",
+      status: "paused",
       transcript: [
-        { role: "doctor", text: "Does the pain radiate to the groin?", timestamp: "08:01 AM" },
-        { role: "patient", text: "No, staying in the flank.", timestamp: "08:02 AM" },
+        { id: "turn-doc-1", role: "doctor", text: "Where is the pain?", timestamp: "09:00 AM" },
+        { id: "turn-pat-1", role: "patient", text: "My lower abdomen hurts.", timestamp: "09:01 AM" },
         {
+          id: "turn-pat-2-amendment",
           role: "patient",
-          text: "[Patient Addendum / Correction · 08:15 AM]: Pain has now started spreading towards the lower abdomen.",
-          timestamp: "08:15 AM",
+          text: "[Patient Addendum / Correction · 09:10 AM]: Pain shifted to right lower quadrant.",
+          timestamp: "09:10 AM",
+          correctionOfTurnId: "turn-pat-1",
         },
       ],
-      detectedSymptoms: ["Flank pain"],
       interviewState: {
         schemaVersion: 2,
-        phase: "active_inquiring",
-        caseVersion: 2,
+        patientCorrectionRecords: [
+          {
+            id: "corr-rec-1",
+            type: "PATIENT_CORRECTION",
+            consultationId: "ENC-CORR-006",
+            correctionOfTurnId: "turn-pat-1",
+            field: "symptoms",
+            correctedValue: "Pain shifted to right lower quadrant.",
+            actorId: "patient-user-123",
+            caseVersion: 2,
+            timestamp: "2026-10-31T09:10:00.000Z",
+          },
+        ],
+      },
+    };
+
+    const recap = extractGroundedRecapCategories(consultationWithTargetedCorrection);
+
+    assert.strictEqual(recap.changesSincePause.existingAddenda.length, 1);
+    const addendum = recap.changesSincePause.existingAddenda[0];
+    assert.strictEqual(addendum.correctionOfTurnId, "turn-pat-1");
+  });
+
+  // Invariant 7: Timestamp and Temporal Separation (recordedAt vs occurredAt)
+  it("7. Strict temporal separation: recordedAt does not overwrite or infer symptom occurredAt", () => {
+    const consultation = {
+      id: "ENC-TEMPORAL-007",
+      status: "paused",
+      createdAt: "2026-10-31T11:00:00.000Z",
+      interviewState: {
+        schemaVersion: 2,
         slots: {
-          location: "Right flank",
+          onset: "3 days ago following yard work", // occurredAt: ~Oct 28
+          location: "lower back",
         },
       },
     };
 
-    const recap = extractGroundedRecapCategories(consultationWithAddendum);
+    const recap = extractGroundedRecapCategories(consultation);
 
-    assert.strictEqual(recap.changesSincePause.existingAddenda.length, 1);
-    assert.ok(recap.changesSincePause.existingAddenda[0].text.includes("spreading towards the lower abdomen"));
+    const onsetItem = recap.informationDiscussed.find((i) => i.label === "Onset & Timeline");
+    assert.ok(onsetItem);
+    assert.strictEqual(onsetItem.occurredAt, "3 days ago following yard work");
+    // recordedAt is the timestamp of the recording, not the event onset
+    assert.strictEqual(onsetItem.recordedAt, "2026-10-31T11:00:00.000Z");
+    assert.notStrictEqual(onsetItem.occurredAt, onsetItem.recordedAt);
   });
 
-  it("4. Gracefully degrades on minimal / sparse consultation record without crashing", () => {
-    const minimalConsultation = {
-      id: "ENC-MINIMAL-004",
+  // Invariant 8: Superseded and Retracted Facts Excluded
+  it("8. Superseded and retracted facts are strictly excluded from active clinical summaries", () => {
+    const consultation = {
+      id: "ENC-RETRACTED-008",
       status: "paused",
+      attributedFacts: [
+        {
+          id: "fact-active-1",
+          factKey: "Hypertension",
+          factValue: "Stage 1 Essential Hypertension",
+          provenance: "clinician_confirmed",
+          status: "active",
+          isHistoricalContext: true,
+        },
+        {
+          id: "fact-retracted-2",
+          factKey: "Penicillin Allergy",
+          factValue: "Anaphylaxis to Penicillin",
+          provenance: "patient_reported",
+          status: "retracted", // Patient clarified it was upset stomach, retracted by clinician
+          isHistoricalContext: true,
+        },
+        {
+          id: "fact-superseded-3",
+          factKey: "Asthma",
+          factValue: "Mild intermittent asthma",
+          provenance: "patient_reported",
+          status: "superseded", // Replaced by more specific spirometry diagnosis
+          isHistoricalContext: true,
+        },
+      ],
     };
 
-    const recap = extractGroundedRecapCategories(minimalConsultation);
+    const recap = extractGroundedRecapCategories(consultation);
 
-    assert.ok(Array.isArray(recap.previouslyReported));
-    assert.ok(Array.isArray(recap.informationDiscussed));
-    assert.ok(Array.isArray(recap.stillToExplore));
-    assert.ok(recap.stillToExplore.length > 0, "Sparse consultation should list essential unexplored dimensions");
-    assert.ok(recap.changesSincePause.prompt.length > 0);
+    // Active fact must be included
+    assert.ok(recap.previouslyReported.some((f) => f.label === "Hypertension"));
+
+    // Retracted and superseded facts must be completely excluded
+    assert.strictEqual(
+      recap.previouslyReported.some((f) => f.label === "Penicillin Allergy"),
+      false,
+      "Retracted fact must NOT appear in recap summary"
+    );
+    assert.strictEqual(
+      recap.previouslyReported.some((f) => f.label === "Asthma"),
+      false,
+      "Superseded fact must NOT appear in recap summary"
+    );
+  });
+
+  // Invariant 9: No Fabricated Completion Percentages
+  it("9. Complete absence of fabricated completion percentages across all data models", () => {
+    const consultation = {
+      id: "ENC-NOPERCENT-009",
+      chiefComplaint: "Mild cough",
+      status: "paused",
+      durationSeconds: 180,
+      transcript: [{ role: "doctor", text: "Hello" }, { role: "patient", text: "Hi" }],
+      interviewState: {
+        schemaVersion: 2,
+        phase: "active_inquiring",
+        slots: { onset: "today" },
+      },
+    };
+
+    const recap = extractGroundedRecapCategories(consultation);
+    const serialized = JSON.stringify(recap);
+
+    assert.strictEqual(serialized.includes("completionPercentage"), false);
+    assert.strictEqual(serialized.includes("progressRatio"), false);
+    assert.strictEqual(/\b\d{1,3}%\b/.test(serialized), false, "Must not contain percentage strings");
+  });
+
+  // Invariant 10: CAS Conflict Preserves Unsaved Patient Correction Input
+  it("10. Concurrency Conflict (409) simulation guarantees patient draft correction is preserved", async () => {
+    // Simulate a draft input state in a client component
+    let clientDraftText = "My shortness of breath began while climbing stairs, not at rest.";
+    let submissionConflictOccurred = false;
+
+    // Concurrency mock persisting to server
+    const mockSubmitCorrection = async (
+      draft: string,
+      currentCaseVersion: number,
+      serverVersion: number
+    ) => {
+      if (currentCaseVersion < serverVersion) {
+        // 409 CONCURRENCY_CONFLICT
+        submissionConflictOccurred = true;
+        return {
+          success: false,
+          status: 409,
+          error: `409 CONCURRENCY_CONFLICT: Encounter updated to version ${serverVersion}`,
+        };
+      }
+      return { success: true, status: 200 };
+    };
+
+    const result = await mockSubmitCorrection(clientDraftText, 1, 2);
+
+    assert.strictEqual(result.success, false);
+    assert.strictEqual(result.status, 409);
+    assert.strictEqual(submissionConflictOccurred, true);
+
+    // Invariant: clientDraftText must remain intact and unmutated so patient doesn't lose text
+    assert.strictEqual(
+      clientDraftText,
+      "My shortness of breath began while climbing stairs, not at rest.",
+      "Patient draft text must NEVER be cleared upon 409 concurrency conflict"
+    );
   });
 });

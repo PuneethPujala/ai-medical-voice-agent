@@ -28,7 +28,7 @@ interface ResumeRecapViewProps {
     doctorName?: string;
     specialty?: string;
     chiefComplaint?: string;
-    transcript?: Array<{ role: string; text: string; timestamp?: string }>;
+    transcript?: Array<{ id?: string; role: string; text: string; timestamp?: string }>;
     durationSeconds?: number;
     createdAt?: string;
     status?: string;
@@ -36,13 +36,17 @@ interface ResumeRecapViewProps {
     interviewState?: any;
     attributedFacts?: any[];
     parentConsultationId?: string;
+    isFollowUp?: boolean;
   };
   doctor: DoctorProfile;
   onContinueWithVoice: () => void;
   onListenToRecap: () => void;
   onStopRecapAudio: () => void;
   isRecapAudioPlaying: boolean;
-  onApplyTextCorrection?: (text: string) => void;
+  onApplyTextCorrection?: (
+    text: string,
+    targetTurnId?: string
+  ) => Promise<{ success: boolean; error?: string } | void> | void;
   onStartNewConsultation: () => void;
 }
 
@@ -114,7 +118,7 @@ export function ResumeRecapView({
               <div className="flex items-center gap-2 mb-0.5">
                 <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200/80">
                   <Clock className="w-3 h-3 text-amber-600" />
-                  Consultation Restored
+                  {categories.isFollowUp ? "Linked Follow-Up Active" : "Consultation Restored"}
                 </span>
                 <span className="text-xs font-mono text-slate-400">· {consultation.id}</span>
               </div>
@@ -142,10 +146,10 @@ export function ResumeRecapView({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div>
               <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-950 tracking-tight">
-                Welcome back
+                {categories.recapTitle}
               </h1>
               <p className="text-sm text-slate-600 mt-0.5">
-                Here is the grounded clinical recap of your intake. Review what was discussed and what remains to be explored.
+                {categories.recapSubtitle}
               </p>
             </div>
 
@@ -155,16 +159,22 @@ export function ResumeRecapView({
               className="self-start sm:self-auto flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/90 shadow-2xs transition-all cursor-pointer"
             >
               <Layers className="w-3.5 h-3.5 text-slate-500" />
-              <span>{showChronology ? "Show 4 Category Cards" : "View Turn Chronology"}</span>
+              <span>{showChronology ? "Show 4 Category Cards" : "View Dialogue Chronology"}</span>
             </button>
           </div>
 
           {/* 3. Visual Recap or Chronology Display */}
           {showChronology ? (
             <SymptomChronology
+              encounterId={consultation.id}
               transcript={consultation.transcript}
               detectedSymptoms={consultation.detectedSymptoms}
               slots={consultation.interviewState?.slots}
+              historicalSymptoms={
+                categories.previouslyReported
+                  .filter((item) => item.domain === "historical_symptom")
+                  .map((item) => item.value || "")
+              }
             />
           ) : (
             <VisualRecap consultation={consultation} categories={categories} />
