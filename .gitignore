@@ -70,3 +70,15 @@ data/test-audio/
 /*.json
 .superpowers/
 docs/superpowers/
+
+# Gate 0 Research Ethics & Data Governance: Raw Datasets and Secret Mappings
+eval/data/raw/
+data/raw/
+data/raw-datasets/
+*.raw.json
+*.raw.csv
+*review-mapping*.json
+*reviewer_mapping_secret.json
+*secret*
+*phi*
+*identifiable*

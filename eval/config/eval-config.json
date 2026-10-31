@@ -1,0 +1,268 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "metadata": {
+    "framework": "MedVoice Clinical Response Evaluation Framework",
+    "version": "1.0.0",
+    "gate": "GATE_0",
+    "auditDate": "2026-10-31",
+    "auditor": "Data Governance & Research Ethics Auditor",
+    "regulatoryFrameworks": [
+      {
+        "id": "ICMR_2017",
+        "name": "ICMR National Ethical Guidelines for Biomedical and Health Research Involving Human Participants (2017)",
+        "applicableClauses": ["Section 5.3", "Section 5.4 (Waiver of Consent)", "Chapter IV (Secondary Use of Data)"],
+        "selfExemptionPermitted": false
+      },
+      {
+        "id": "ICMR_AI_2023",
+        "name": "ICMR Ethical Guidelines for Application of Artificial Intelligence in Biomedical Research and Healthcare (2023)",
+        "applicableClauses": ["Section 3 (Ethical Principles)", "Section 3.4 (Data Privacy)", "Section 4 (Data Governance)"],
+        "selfExemptionPermitted": false
+      },
+      {
+        "id": "DPDPA_2023",
+        "name": "Digital Personal Data Protection Act, 2023 (India)",
+        "applicableClauses": ["Section 8 (Reasonable Security Safeguards)"],
+        "selfExemptionPermitted": false
+      }
+    ],
+    "iecSubmissionProtocol": {
+      "status": "PENDING_FORMAL_REVIEW",
+      "selfDeclaredExemptionForbidden": true,
+      "requiresFormalEthicsCommitteeReview": true,
+      "institutionalEthicsCommittee": "Designated Institutional Ethics Committee (IEC)",
+      "requiredDossierDocuments": [
+        "Clinical Study Protocol (SPEC-2026-10-30-SEMANTIC-EVAL)",
+        "Dataset Governance Audit (DATASET_GOVERNANCE.md)",
+        "PhiScrubber De-identification Verification Plan",
+        "Investigator Undertaking on Data Confidentiality",
+        "Formal Application for Waiver of Informed Consent"
+      ]
+    }
+  },
+  "datasets": {
+    "medvoice_synthetic_fixtures": {
+      "id": "medvoice_synthetic_fixtures",
+      "name": "MedVoice Synthetic Clinical Benchmark Fixtures",
+      "version": "1.0.0",
+      "repositoryUrl": "internal://tests/clinical-eval/cases.json",
+      "upstreamSourceUrl": "internal://tests/fixtures/",
+      "claimedLicense": "Internal Research IP",
+      "actualLegalTerms": "Proprietary internal research fixtures; synthetic clinician-crafted test cases. Permitted for internal engineering and regression testing.",
+      "provenanceChain": [
+        "MedVoice Clinical & Engineering Research Team",
+        "Internal Repository Fixtures (`tests/clinical-eval/cases.json`, `tests/fixtures/`)"
+      ],
+      "status": "APPROVED",
+      "gate0_cleared": true,
+      "dataUseAgreementRequired": false,
+      "requiresIecApproval": false,
+      "isHumanSubjectsData": false,
+      "permittedUses": [
+        "Unit Testing",
+        "Stage 1 Engineering Validation",
+        "Deterministic Emergency Floor Evaluation (Track B)",
+        "Continuous Integration Testing"
+      ],
+      "restrictions": [
+        "Do not publish proprietary internal clinical test vectors without blinding"
+      ],
+      "notes": "Fully synthetic, zero-PHI, zero-human-subjects. Authorized immediately for Stage 1 engineering."
+    },
+    "medlineplus_xml": {
+      "id": "medlineplus_xml",
+      "name": "MedlinePlus Clinical Reference Summaries",
+      "version": "2026-Q1",
+      "repositoryUrl": "https://medlineplus.gov/xml.html",
+      "upstreamSourceUrl": "https://medlineplus.gov/",
+      "claimedLicense": "US Government Public Domain",
+      "actualLegalTerms": "Public domain in the United States under 17 U.S.C. 105. Subject to NLM terms of service and standard attribution.",
+      "provenanceChain": [
+        "National Library of Medicine (NLM)",
+        "National Institutes of Health (NIH)",
+        "MedlinePlus XML Public Feed"
+      ],
+      "status": "APPROVED",
+      "gate0_cleared": true,
+      "dataUseAgreementRequired": false,
+      "requiresIecApproval": false,
+      "isHumanSubjectsData": false,
+      "permittedUses": [
+        "Knowledge Retrieval (RAG)",
+        "Passage Indexing",
+        "Guideline Grounding"
+      ],
+      "restrictions": [
+        "Do not assert NIH/NLM endorsement of algorithmic recommendations",
+        "Preserve NLM copyright notice and metadata attribution"
+      ],
+      "notes": "Medical reference data only; no human subject dialogues."
+    },
+    "mtsamples": {
+      "id": "mtsamples",
+      "name": "MTSamples Medical Transcription Dataset",
+      "version": "1.0.0",
+      "repositoryUrl": "https://www.kaggle.com/datasets/tboyle10/medicaltranscriptions",
+      "upstreamSourceUrl": "https://www.mtsamples.com/",
+      "claimedLicense": "CC0 (Falsely claimed on Kaggle upload)",
+      "actualLegalTerms": "Proprietary website terms: educational sharing with attribution; non-commercial use only. Corpus-scale ingestion, automated scraping, or model ingestion requires express written permission or formal Data Use Agreement (DUA).",
+      "provenanceChain": [
+        "Medical Transcriptionists",
+        "MTSamples.com (Educational Portal Terms of Use)",
+        "Unofficial Third-Party Kaggle Mirror (Unsubstantiated CC0 claim)"
+      ],
+      "status": "CONDITIONALLY_APPROVED",
+      "gate0_cleared": false,
+      "dataUseAgreementRequired": true,
+      "requiresIecApproval": true,
+      "isHumanSubjectsData": true,
+      "permittedUses": [
+        "Pending DUA Execution: Offline schema review only"
+      ],
+      "restrictions": [
+        "Corpus-scale ingestion is prohibited without executed written DUA",
+        "Commercial exploitation strictly prohibited",
+        "Must verify de-identification safeguards prior to pipeline entry"
+      ],
+      "notes": "CRITICAL: Must NOT be treated as CC0. Corpus ingestion blocked until written agreement is secured."
+    },
+    "healthcaremagic_100k": {
+      "id": "healthcaremagic_100k",
+      "name": "HealthCareMagic-100k (ChatDoctor Distribution)",
+      "version": "1.0.0",
+      "repositoryUrl": "https://github.com/Kent0n-Li/ChatDoctor",
+      "upstreamSourceUrl": "https://www.healthcaremagic.com/",
+      "claimedLicense": "Apache-2.0 (Wrapper scripts / research dataset)",
+      "actualLegalTerms": "Upstream teleconsultation portal Terms of Service retain proprietary rights over patient interactions. Academic redistribution by ChatDoctor is restricted strictly to non-commercial academic research.",
+      "provenanceChain": [
+        "Patients and Consulting Physicians",
+        "HealthCareMagic.com (Proprietary Telemedicine Portal)",
+        "ChatDoctor Research Team (Yunxiang Li et al., 2023, arXiv:2303.14070)",
+        "HuggingFace / GitHub Distribution"
+      ],
+      "status": "CONDITIONALLY_APPROVED",
+      "gate0_cleared": false,
+      "dataUseAgreementRequired": true,
+      "requiresIecApproval": true,
+      "isHumanSubjectsData": true,
+      "permittedUses": [
+        "Pending IEC Approval: Retrospective non-commercial research alignment benchmarking only"
+      ],
+      "restrictions": [
+        "Zero commercial usage",
+        "Ingestion blocked until formal IEC Waiver of Consent is granted",
+        "Must undergo automated PhiScrubber pass and manual sampling review before ingestion",
+        "Raw dialogues must never be committed to source code repositories"
+      ],
+      "notes": "Authentic patient-doctor teleconsultations. Ingestion gated by IEC protocol review."
+    },
+    "meddialog_original": {
+      "id": "meddialog_original",
+      "name": "MedDialog Dataset (Original UCSD-AI4H Release)",
+      "version": "1.0.0",
+      "repositoryUrl": "https://github.com/UCSD-AI4H/Medical-Dialogue-System",
+      "upstreamSourceUrl": "https://github.com/UCSD-AI4H/Medical-Dialogue-System",
+      "claimedLicense": "Research Use Only",
+      "actualLegalTerms": "Original authors explicitly specify: 'The copyright of the data remains with the original websites (HealthCareMagic, iCliniq, Haodf). The data is released for research purposes only.'",
+      "provenanceChain": [
+        "Patients and Doctors",
+        "HealthCareMagic.com and iCliniq.com",
+        "UCSD-AI4H Research Team (Guangtao Zeng, Shen Gao et al., 2020, arXiv:2004.03329)"
+      ],
+      "status": "CONDITIONALLY_APPROVED",
+      "gate0_cleared": false,
+      "dataUseAgreementRequired": true,
+      "requiresIecApproval": true,
+      "isHumanSubjectsData": true,
+      "permittedUses": [
+        "Pending IEC Approval: Non-commercial academic research benchmarking"
+      ],
+      "restrictions": [
+        "Non-commercial research only",
+        "Copyright retained by original teleconsultation websites",
+        "Requires IEC review and waiver of consent",
+        "Requires PhiScrubber sanitization"
+      ],
+      "notes": "Original research release with documented provenance. Ingestion gated by Gate 0."
+    },
+    "meddialog_repackaged": {
+      "id": "meddialog_repackaged",
+      "name": "MedDialog Repackaged (OpenMed / Third-Party HF Mirrors)",
+      "version": "unverified",
+      "repositoryUrl": "https://huggingface.co/datasets/bigbio/med_dialog",
+      "upstreamSourceUrl": "https://github.com/UCSD-AI4H/Medical-Dialogue-System",
+      "claimedLicense": "MIT / Apache-2.0 (Unsubstantiated third-party tags)",
+      "actualLegalTerms": "Legally invalid license claims. Third-party aggregators cannot confer MIT/Apache-2.0 licenses on underlying copyrighted patient consultations without authorization from HealthCareMagic/iCliniq.",
+      "provenanceChain": [
+        "Patients and Doctors",
+        "HealthCareMagic & iCliniq",
+        "UCSD-AI4H",
+        "Third-party repackagers / aggregators (OpenMed, Hugging Face community)"
+      ],
+      "status": "BLOCKED",
+      "gate0_cleared": false,
+      "dataUseAgreementRequired": true,
+      "requiresIecApproval": true,
+      "isHumanSubjectsData": true,
+      "permittedUses": [],
+      "restrictions": [
+        "PERMANENTLY BLOCKED from MedVoice evaluation pipelines",
+        "Do not ingest or download repackaged/tainted distributions"
+      ],
+      "notes": "Tainted provenance chain. Repackagers do not own underlying rights."
+    },
+    "mimic_iv_notes": {
+      "id": "mimic_iv_notes",
+      "name": "PhysioNet MIMIC-IV-Note",
+      "version": "2.2",
+      "repositoryUrl": "https://physionet.org/content/mimic-iv-note/2.2/",
+      "upstreamSourceUrl": "https://physionet.org/",
+      "claimedLicense": "PhysioNet Credentialed Health Data License 1.5.0",
+      "actualLegalTerms": "Strict credentialed access; human subjects training (CITI) required; signed Data Use Agreement; individual researcher credentialing; prohibited re-identification; prohibited redistribution.",
+      "provenanceChain": [
+        "Beth Israel Deaconess Medical Center (BIDMC)",
+        "MIT Laboratory for Computational Physiology",
+        "PhysioNet"
+      ],
+      "status": "BLOCKED",
+      "gate0_cleared": false,
+      "dataUseAgreementRequired": true,
+      "requiresIecApproval": true,
+      "isHumanSubjectsData": true,
+      "permittedUses": [],
+      "restrictions": [
+        "BLOCKED until all evaluating investigators complete CITI training and sign PhysioNet DUA",
+        "Strict prohibition of raw data sharing outside certified enclave"
+      ],
+      "notes": "High-standard clinical EHR dataset. Kept blocked until formal credentialing."
+    }
+  },
+  "ingestionGuardrails": {
+    "enforceGate0Check": true,
+    "allowSyntheticFixturesInStage1": true,
+    "blockedActions": [
+      "RAW_CORPUS_INGESTION_WITHOUT_GATE0",
+      "COMMITTING_RAW_PATIENT_DATA_TO_GIT",
+      "COMMITTING_REVIEWER_IDENTITY_MAPPINGS_TO_GIT",
+      "SELF_DECLARED_ETHICS_EXEMPTION"
+    ],
+    "mandatorySanitizers": [
+      "PhiScrubber.scrub()",
+      "DirectIdentifierMasker",
+      "IndirectQuasiIdentifierHasher"
+    ]
+  },
+  "gitExclusionRules": {
+    "requiredGitignorePatterns": [
+      "eval/data/raw/",
+      "data/raw/",
+      "data/raw-datasets/",
+      "*.raw.json",
+      "*.raw.csv",
+      "*review-mapping*.json",
+      "*secret*",
+      "*phi*",
+      "*identifiable*"
+    ]
+  }
+}
