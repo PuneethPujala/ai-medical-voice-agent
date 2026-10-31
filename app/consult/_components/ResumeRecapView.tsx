@@ -19,6 +19,8 @@ import { DoctorProfile } from "@/config/doctors";
 import { VisualRecap } from "./VisualRecap";
 import { SymptomChronology } from "./SymptomChronology";
 import { SymptomUpdateDrawer } from "./SymptomUpdateDrawer";
+import { RecapNarrator } from "./RecapNarrator";
+import { MicrophoneGate } from "./MicrophoneGate";
 import { extractGroundedRecapCategories } from "@/lib/triage/recap-categories";
 
 interface ResumeRecapViewProps {
@@ -40,9 +42,11 @@ interface ResumeRecapViewProps {
   };
   doctor: DoctorProfile;
   onContinueWithVoice: () => void;
-  onListenToRecap: () => void;
-  onStopRecapAudio: () => void;
-  isRecapAudioPlaying: boolean;
+  onMicrophoneActivated?: (stream: MediaStream) => void;
+  onTextOnlyFallback?: () => void;
+  onListenToRecap?: () => void;
+  onStopRecapAudio?: () => void;
+  isRecapAudioPlaying?: boolean;
   onApplyTextCorrection?: (
     text: string,
     targetTurnId?: string
@@ -54,14 +58,17 @@ export function ResumeRecapView({
   consultation,
   doctor,
   onContinueWithVoice,
+  onMicrophoneActivated,
+  onTextOnlyFallback,
   onListenToRecap,
   onStopRecapAudio,
-  isRecapAudioPlaying,
+  isRecapAudioPlaying = false,
   onApplyTextCorrection,
   onStartNewConsultation,
 }: ResumeRecapViewProps) {
   const [isReviewOpen, setIsReviewOpen] = useState(false);
   const [showChronology, setShowChronology] = useState(false);
+  const [isNarrating, setIsNarrating] = useState(isRecapAudioPlaying);
 
   const turnCount = consultation.transcript?.length || 0;
   const categories = React.useMemo(
@@ -91,8 +98,8 @@ export function ResumeRecapView({
     <div className="w-full max-w-4xl mx-auto my-auto px-4 py-8 animate-in fade-in zoom-in-95 duration-200">
       <div className="relative overflow-hidden rounded-3xl bg-[#FAF9F6] border border-slate-200/90 shadow-[0_12px_40px_-8px_rgba(0,0,0,0.08)] p-6 sm:p-10">
         {/* Subtle decorative atmosphere */}
-        <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 rounded-full bg-[#B7FF72]/10 blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-80 h-80 rounded-full bg-slate-200/30 blur-3xl pointer-events-none" />
+        <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 rounded-full bg-emerald-100/25 blur-3xl pointer-events-none" />
+        <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-80 h-80 rounded-full bg-amber-100/25 blur-3xl pointer-events-none" />
 
         {/* 1. Header with Doctor Card & Status */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-200/80 relative z-10">
@@ -109,15 +116,15 @@ export function ResumeRecapView({
                   {doctor.name.charAt(0)}
                 </div>
               )}
-              <span className="absolute -bottom-1 -right-1 p-1 rounded-full bg-[#18251D] text-[#B7FF72] shadow-xs border border-white">
+              <span className="absolute -bottom-1 -right-1 p-1 rounded-full bg-amber-500 text-white shadow-xs">
                 <PauseCircle className="w-3.5 h-3.5" />
               </span>
             </div>
 
             <div>
               <div className="flex items-center gap-2 mb-0.5">
-                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[#18251D] text-white border border-slate-700 shadow-2xs">
-                  <Clock className="w-3 h-3 text-[#B7FF72]" />
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200/80">
+                  <Clock className="w-3 h-3 text-amber-600" />
                   {categories.isFollowUp ? "Linked Follow-Up Active" : "Consultation Restored"}
                 </span>
                 <span className="text-xs font-mono text-slate-400">· {consultation.id}</span>
@@ -163,7 +170,25 @@ export function ResumeRecapView({
             </button>
           </div>
 
-          {/* 3. Visual Recap or Chronology Display */}
+          {/* 3. Kokoro Voice Narration Component */}
+          <RecapNarrator
+            consultation={consultation}
+            doctor={doctor}
+            onNarrationStart={() => {
+              setIsNarrating(true);
+              if (onListenToRecap) onListenToRecap();
+            }}
+            onNarrationComplete={() => {
+              setIsNarrating(false);
+              if (onStopRecapAudio) onStopRecapAudio();
+            }}
+            onNarrationError={() => {
+              setIsNarrating(false);
+              if (onStopRecapAudio) onStopRecapAudio();
+            }}
+          />
+
+          {/* 4. Visual Recap or Chronology Display */}
           {showChronology ? (
             <SymptomChronology
               encounterId={consultation.id}
@@ -180,7 +205,7 @@ export function ResumeRecapView({
             <VisualRecap consultation={consultation} categories={categories} />
           )}
 
-          {/* 4. Symptom Update & Review Drawer */}
+          {/* 5. Symptom Update & Review Drawer */}
           <SymptomUpdateDrawer
             isOpen={isReviewOpen}
             onClose={() => setIsReviewOpen(false)}
@@ -190,60 +215,43 @@ export function ResumeRecapView({
           />
         </div>
 
-        {/* 5. Action Buttons & Mic Protection */}
+        {/* 6. Action Triggers & Explicit Microphone Gate */}
         <div className="pt-2 pb-4 space-y-4 relative z-10 border-t border-slate-200/80">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            {/* Primary Action: Explicit Patient Confirmation to Resume */}
-            <button
-              onClick={onContinueWithVoice}
-              className="sm:col-span-1 flex items-center justify-center gap-2 px-5 py-3.5 rounded-2xl text-xs sm:text-sm font-bold bg-slate-950 hover:bg-slate-800 text-white transition-all shadow-md hover:shadow-lg cursor-pointer group"
-            >
-              <span>Proceed to Consultation</span>
-              <ArrowRight className="w-4 h-4 text-emerald-400 group-hover:translate-x-0.5 transition-transform" />
-            </button>
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+            {/* Explicit Microphone Activation Gate */}
+            <div className="flex-1">
+              <MicrophoneGate
+                isRecapPlaying={isNarrating}
+                onMicrophoneActivated={(stream) => {
+                  if (onMicrophoneActivated) {
+                    onMicrophoneActivated(stream);
+                  } else {
+                    onContinueWithVoice();
+                  }
+                }}
+                onTextOnlyFallback={() => {
+                  if (onTextOnlyFallback) {
+                    onTextOnlyFallback();
+                  } else {
+                    onContinueWithVoice();
+                  }
+                }}
+                onProceedClick={onContinueWithVoice}
+              />
+            </div>
 
-            {/* Action 2: Review Dialogue & Add Addendum */}
+            {/* Review / Add Addendum Drawer Toggle */}
             <button
               onClick={() => setIsReviewOpen(!isReviewOpen)}
-              className="flex items-center justify-center gap-2 px-4 py-3.5 rounded-2xl text-xs sm:text-sm font-semibold bg-white hover:bg-slate-50 text-slate-800 border border-slate-200/90 transition-all cursor-pointer shadow-2xs"
+              className="flex items-center justify-center gap-2 px-5 py-3.5 rounded-2xl text-xs sm:text-sm font-semibold bg-white hover:bg-slate-50 text-slate-800 border border-slate-200/90 transition-all cursor-pointer shadow-2xs shrink-0"
             >
               <MessageSquare className="w-4 h-4 text-slate-500" />
               <span>{isReviewOpen ? "Hide Review" : "Review or Add Addendum"}</span>
             </button>
-
-            {/* Action 3: Listen to Voice Recap via Kokoro */}
-            <button
-              onClick={isRecapAudioPlaying ? onStopRecapAudio : onListenToRecap}
-              className={`flex items-center justify-center gap-2 px-4 py-3.5 rounded-2xl text-xs sm:text-sm font-semibold transition-all cursor-pointer border shadow-2xs ${
-                isRecapAudioPlaying
-                  ? "bg-emerald-50 text-emerald-800 border-emerald-300 animate-pulse"
-                  : "bg-white hover:bg-slate-50 text-slate-800 border-slate-200/90"
-              }`}
-            >
-              {isRecapAudioPlaying ? (
-                <>
-                  <VolumeX className="w-4 h-4 text-emerald-700" />
-                  <span>Stop Voice Recap</span>
-                </>
-              ) : (
-                <>
-                  <Volume2 className="w-4 h-4 text-slate-600" />
-                  <span>Listen to Voice Recap</span>
-                </>
-              )}
-            </button>
-          </div>
-
-          {/* Privacy & Safety Gate Reassurance */}
-          <div className="flex items-center justify-center gap-2 pt-2 text-xs text-slate-500">
-            <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-white text-slate-700 border border-slate-200/80 font-medium shadow-2xs">
-              <MicOff className="w-3.5 h-3.5 text-slate-500" />
-              Microphone is strictly OFF. Audio is only acquired after clicking "Proceed to Consultation".
-            </span>
           </div>
         </div>
 
-        {/* 6. Footer Options */}
+        {/* 7. Footer Options */}
         <div className="pt-6 border-t border-slate-200/80 flex items-center justify-between text-xs text-slate-500">
           <Link
             href="/history"

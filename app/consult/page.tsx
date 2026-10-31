@@ -79,6 +79,7 @@ import { ConsultClinicalContext } from "./_components/ConsultClinicalContext";
 import { AcousticDSPAnalyzer, LiveAudioMetrics } from "@/lib/acoustic/acoustic-dsp-analyzer";
 import { normalizeCompletenessPercent } from "@/lib/triage/clinical-state";
 import { ResumeRecapView } from "./_components/ResumeRecapView";
+import { PreviousConversationsBanner } from "./_components/PreviousConversationsBanner";
 
 
 type AudioState =
@@ -541,7 +542,7 @@ export default function ConsultPage() {
     setIsRecapAudioPlaying(false);
   };
 
-  const handleApplyTextCorrection = (correction: string) => {
+  const handleApplyTextCorrection = (correction: string, targetTurnId?: string) => {
     if (!correction.trim()) return;
     const timeStr = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
     const patientMsg: ChatMessage = {
@@ -557,7 +558,7 @@ export default function ConsultPage() {
       id: correctionId,
       type: "PATIENT_CORRECTION",
       consultationId: stableEncounterIdRef.current || undefined,
-      correctionOfTurnId: patientMsg.id,
+      correctionOfTurnId: targetTurnId || patientMsg.id,
       field: "symptoms",
       correctedValue: correction.trim(),
       // Legacy compatibility
@@ -3082,6 +3083,13 @@ export default function ConsultPage() {
             consultation={resumedConsultation}
             doctor={selectedDoctor}
             onContinueWithVoice={handleContinueResumedVoice}
+            onMicrophoneActivated={(stream) => {
+              mediaStreamRef.current = stream;
+              handleContinueResumedVoice();
+            }}
+            onTextOnlyFallback={() => {
+              handleContinueResumedVoice();
+            }}
             onListenToRecap={handleListenToRecap}
             onStopRecapAudio={handleStopRecapAudio}
             isRecapAudioPlaying={isRecapAudioPlaying}
@@ -3090,6 +3098,9 @@ export default function ConsultPage() {
           />
         ) : (
           <>
+        {/* Subtle ChatGPT-style Previous Conversations Entry Point */}
+        <PreviousConversationsBanner />
+
         {/* 1. TOP HEADER: Clinician status, Timer, Specialists count, SOAP & End consultation */}
         <ConsultHeader
           doctor={selectedDoctor}

@@ -486,11 +486,24 @@ export async function PATCH(
               throw new Error(`Correction record at index ${idx} requires a non-empty correctedValue`);
             }
 
+            const targetTurnId = typeof corr.correctionOfTurnId === "string" ? corr.correctionOfTurnId : undefined;
+            if (targetTurnId) {
+              const availableTurns: any[] = Array.isArray(body.transcript)
+                ? body.transcript
+                : (Array.isArray(record.transcript) ? record.transcript : []);
+              if (availableTurns.length > 0) {
+                const turnExists = availableTurns.some((t: any, i: number) => (t && (t.id === targetTurnId || `turn-${i}` === targetTurnId)));
+                if (!turnExists) {
+                  throw new Error(`Referenced turn '${targetTurnId}' does not belong to consultation ${id}`);
+                }
+              }
+            }
+
             return {
               id: typeof corr.id === "string" ? corr.id : (corr.correctionId || `corr-${Date.now()}-${idx}`),
               type: "PATIENT_CORRECTION" as const,
               consultationId: id,
-              correctionOfTurnId: typeof corr.correctionOfTurnId === "string" ? corr.correctionOfTurnId : undefined,
+              correctionOfTurnId: targetTurnId,
               field,
               originalValue: typeof corr.originalValue === "string" ? corr.originalValue : (corr.originalStatement || undefined),
               correctedValue: correctedVal,
