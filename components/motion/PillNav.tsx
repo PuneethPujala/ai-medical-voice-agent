@@ -98,7 +98,7 @@ export function PillNav({
   glide = 75,
   draggable = true,
 }: PillNavProps) {
-  const pathname = usePathname();
+  const pathname = usePathname() || '';
   const router = useRouter();
   const reduce = useReducedMotion();
 

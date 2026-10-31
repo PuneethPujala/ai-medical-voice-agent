@@ -26,13 +26,13 @@ import { GooeyNav, type GooeyNavItem } from "@/components/GooeyNav";
 const NAV_LINKS: GooeyNavItem[] = [
   { href: "/", label: "Home" },
   { href: "/consult", label: "Consult" },
-  { href: "/dashboard", label: "SOAP" },
+  { href: "/history", label: "History" },
   { href: "/care", label: "Care" },
-  { href: "/privacy", label: "Privacy" },
+  { href: "/profile", label: "Profile" },
 ];
 
 export function Navbar() {
-  const pathname = usePathname();
+  const pathname = usePathname() || '';
   const [mounted, setMounted] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
@@ -272,6 +272,27 @@ export function Navbar() {
                             <span className="truncate">Voice Consultation</span>
                           </div>
                           {pathname === "/consult" && (
+                            <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0" />
+                          )}
+                        </Link>
+                        <Link
+                          href="/history"
+                          role="menuitem"
+                          tabIndex={-1}
+                          ref={(el) => { menuItemRefs.current[3] = el; }}
+                          onClick={() => setDropdownOpen(false)}
+                          aria-current={pathname === "/history" ? "page" : undefined}
+                          className={`flex items-center justify-between px-2.5 py-2 rounded-xl text-xs font-semibold transition-all group cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-900 ${
+                            pathname === "/history"
+                              ? "bg-slate-950 text-white font-bold shadow-xs"
+                              : "text-slate-700 hover:text-slate-950 hover:bg-slate-100"
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <Clock className={`w-4 h-4 shrink-0 ${pathname === "/history" ? "text-white" : "text-slate-700"}`} />
+                            <span className="truncate">Consultation History</span>
+                          </div>
+                          {pathname === "/history" && (
                             <span className="w-1.5 h-1.5 rounded-full bg-white shrink-0" />
                           )}
                         </Link>
@@ -559,6 +580,17 @@ export function Navbar() {
                   <div className="flex items-center gap-2.5">
                     <Stethoscope className="w-4 h-4 text-cyan-600" />
                     <span>Voice Consultation</span>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-400" />
+                </Link>
+                <Link
+                  href="/history"
+                  onClick={() => setDrawerOpen(false)}
+                  className="flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium text-slate-700 hover:text-slate-950 hover:bg-slate-100/70 transition-all"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Clock className="w-4 h-4 text-emerald-600" />
+                    <span>Consultation History</span>
                   </div>
                   <ChevronRight className="w-4 h-4 text-slate-400" />
                 </Link>

@@ -33,7 +33,7 @@ export const GooeyNav: React.FC<GooeyNavProps> = ({
   initialActiveIndex = 0,
   className = ''
 }) => {
-  const pathname = usePathname();
+  const pathname = usePathname() || '';
   const router = useRouter();
 
   // Route-based active index: strictly match current route
