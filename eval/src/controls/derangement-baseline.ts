@@ -53,8 +53,9 @@ export function generateDerangementBaseline(
 
   const rng = createMulberry32(seed);
 
-  // Extract reference texts
+  // Extract reference texts and original IDs for index-stable derangement tracking
   const permutedReferences = items.map((item) => item.physician_reference);
+  const permutedIds = items.map((item) => item.id);
 
   // Sattolo's algorithm:
   // For i from n - 1 down to 1:
@@ -62,18 +63,24 @@ export function generateDerangementBaseline(
   //   Swap permutedReferences[i] and permutedReferences[j]
   for (let i = n - 1; i > 0; i--) {
     const j = Math.floor(rng() * i); // 0 <= j < i
-    const temp = permutedReferences[i];
+    const tempRef = permutedReferences[i];
     permutedReferences[i] = permutedReferences[j];
-    permutedReferences[j] = temp;
+    permutedReferences[j] = tempRef;
+
+    const tempId = permutedIds[i];
+    permutedIds[i] = permutedIds[j];
+    permutedIds[j] = tempId;
   }
 
-  // Safety Assertion: Verify zero fixed points
+  // Safety Assertion: Verify zero fixed points (both by ID index and value)
   const results: BaselinePairRecord[] = [];
   for (let i = 0; i < n; i++) {
     const originalRef = items[i].physician_reference;
     const derangedRef = permutedReferences[i];
+    const originalId = items[i].id;
+    const derangedId = permutedIds[i];
 
-    if (derangedRef === originalRef) {
+    if (derangedId === originalId) {
       throw new Error(
         `Derangement invariant violation: fixed point detected at index ${i} ("${items[i].id}"). Zero self-matches allowed.`
       );

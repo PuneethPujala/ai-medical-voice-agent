@@ -72,7 +72,7 @@ export function extractConsensusCohort(
 
     const sha256 = crypto
       .createHash('sha256')
-      .update(`${sanitizedRefA}::${sanitizedRefB}`)
+      .update(`${sanitizedQuery}::${sanitizedRefA}::${sanitizedRefB}`)
       .digest('hex');
 
     const id = `CONSENSUS-${String(records.length + 1).padStart(4, '0')}`;

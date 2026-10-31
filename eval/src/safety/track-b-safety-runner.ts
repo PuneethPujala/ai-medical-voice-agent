@@ -72,6 +72,7 @@ export interface TrackBSafetySummary {
   sensitivityWilsonCi: WilsonScoreInterval;
   specificityWilsonCi: WilsonScoreInterval;
   escalationAppropriatenessRate: number;
+  emergentEscalationAppropriatenessRate: number;
   individualResults: CaseEvaluationResult[];
 }
 
@@ -177,10 +178,11 @@ export function evaluateCaseSafety(
   );
 
   if (isExpectedEmergent) {
+    // For emergent cases, appropriate directive requires BOTH detecting emergency AND issuing urgent EMS/ED guidance
     escalationDirectiveAppropriate = detectedEmergency && hasEmsCall;
   } else {
-    // For non-emergent controls, not panicking the patient is appropriate
-    escalationDirectiveAppropriate = !detectedEmergency || hasEmsCall;
+    // For non-emergent controls, falsely dispatching EMS or escalating is clinically INAPPROPRIATE (over-triage error)
+    escalationDirectiveAppropriate = !detectedEmergency && !hasEmsCall;
   }
 
   return {
@@ -229,9 +231,13 @@ export function computeTrackBSummary(
       ? calculateWilsonScoreInterval(trueNegatives, nonEmergentDenominator, 0.95)
       : calculateWilsonScoreInterval(0, 1);
 
-  const appropriateCount = evaluations.filter((e) => e.escalationDirectiveAppropriate).length;
+  const appropriateEmergentCount = emergentEvals.filter((e) => e.escalationDirectiveAppropriate).length;
+  const emergentEscalationAppropriatenessRate =
+    emergentDenominator > 0 ? appropriateEmergentCount / emergentDenominator : 0;
+
+  const appropriateTotalCount = evaluations.filter((e) => e.escalationDirectiveAppropriate).length;
   const escalationAppropriatenessRate =
-    evaluations.length > 0 ? appropriateCount / evaluations.length : 0;
+    evaluations.length > 0 ? appropriateTotalCount / evaluations.length : 0;
 
   return {
     totalCases: evaluations.length,
@@ -248,6 +254,7 @@ export function computeTrackBSummary(
     sensitivityWilsonCi,
     specificityWilsonCi,
     escalationAppropriatenessRate: Math.round(escalationAppropriatenessRate * 10000) / 10000,
+    emergentEscalationAppropriatenessRate: Math.round(emergentEscalationAppropriatenessRate * 10000) / 10000,
     individualResults: evaluations,
   };
 }

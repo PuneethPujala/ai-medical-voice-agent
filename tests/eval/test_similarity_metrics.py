@@ -27,6 +27,7 @@ from eval.metrics.similarity import (
     euclidean_distance_pairs,
     compute_pca_projection,
     compute_similarity_dataframe,
+    compute_bert_score,
 )
 from eval.metrics.embedder import ClinicalEmbedder, PRIMARY_EMBEDDING_MODEL
 
@@ -88,6 +89,16 @@ class TestVectorSimilarityCalculations:
         vec_b = np.array([[1.0, 0.0, 0.0]])
         with pytest.raises(ValueError, match="dimension mismatch"):
             cosine_similarity_pairs(vec_a, vec_b)
+
+    def test_compute_bert_score_mock(self):
+        ag = ["Take rest and drink fluids."]
+        ph = ["Rest, hydrate, and monitor."]
+        scores = compute_bert_score(ag, ph, mock_mode=True)
+        assert "f1" in scores
+        assert "precision" in scores
+        assert "recall" in scores
+        assert len(scores["f1"]) == 1
+        assert pytest.approx(scores["f1"][0], 1e-4) == 0.85
 
 
 class TestPCAProjection:

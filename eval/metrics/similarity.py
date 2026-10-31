@@ -67,6 +67,45 @@ def euclidean_distance_pairs(vec_a: np.ndarray, vec_b: np.ndarray) -> np.ndarray
     return np.linalg.norm(diff, axis=1)
 
 
+def compute_bert_score(
+    agent_texts: List[str],
+    physician_texts: List[str],
+    model_type: str = "roberta-large",
+    device: Optional[str] = None,
+    mock_mode: bool = False,
+) -> dict:
+    """
+    Computes BERTScore precision, recall, and F1 between agent and physician texts.
+    Prespecified secondary metric for sensitivity evaluation.
+    """
+    if len(agent_texts) != len(physician_texts):
+        raise ValueError(
+            f"Array length mismatch: agent_texts ({len(agent_texts)}) vs physician_texts ({len(physician_texts)})"
+        )
+
+    if mock_mode or len(agent_texts) == 0:
+        n = len(agent_texts)
+        return {
+            "precision": np.full(n, 0.85, dtype=np.float32),
+            "recall": np.full(n, 0.85, dtype=np.float32),
+            "f1": np.full(n, 0.85, dtype=np.float32),
+        }
+
+    from bert_score import score
+    P, R, F1 = score(
+        agent_texts,
+        physician_texts,
+        model_type=model_type,
+        device=device,
+        verbose=False,
+    )
+    return {
+        "precision": P.numpy().astype(np.float32),
+        "recall": R.numpy().astype(np.float32),
+        "f1": F1.numpy().astype(np.float32),
+    }
+
+
 def compute_pca_projection(
     embeddings: np.ndarray, n_components: int = 2, seed: int = 42
 ) -> np.ndarray:

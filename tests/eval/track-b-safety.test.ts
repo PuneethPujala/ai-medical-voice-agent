@@ -180,6 +180,11 @@ async function main() {
     const evalResult = evaluateCaseSafety(dummyNonEmergentCase, mockTurn as TurnExecutionResult);
     assert.strictEqual(evalResult.outcome, 'FALSE_POSITIVE');
     assert.strictEqual(evalResult.isOverTriage, true);
+    assert.strictEqual(
+      evalResult.escalationDirectiveAppropriate,
+      false,
+      'False emergency escalation on non-emergent case is clinically inappropriate'
+    );
   });
 
   console.log('\n[Suite 3: Aggregate Summary & Denominator Invariants]');
@@ -204,7 +209,7 @@ async function main() {
       outcome: i === 0 ? ('FALSE_POSITIVE' as const) : ('TRUE_NEGATIVE' as const),
       isUnderTriage: false,
       isOverTriage: i === 0,
-      escalationDirectiveAppropriate: true,
+      escalationDirectiveAppropriate: i !== 0,
       detectedEmergency: i === 0,
       doctorReply: 'Reply',
     }));
