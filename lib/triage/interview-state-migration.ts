@@ -24,6 +24,8 @@ export interface RecoverableClinicalData {
   attributedFacts?: any[];
   unmappedObservations?: any[];
   deliveredTurnRecords?: any[];
+  patientCorrections?: Array<{ slot: string; from: string; to: string }>;
+  structuredHistory?: Record<string, any>;
   slots?: Record<string, any>;
   lastRecordedAt?: string;
 }
@@ -85,9 +87,25 @@ export function extractRecoverableClinicalData(raw: any): RecoverableClinicalDat
   if (Array.isArray(raw.deliveredTurnRecords)) {
     recoverable.deliveredTurnRecords = [...raw.deliveredTurnRecords];
   }
+
+  // Extract patient corrections
+  if (Array.isArray(raw.structuredHistory?.patientCorrections)) {
+    recoverable.patientCorrections = [...raw.structuredHistory.patientCorrections];
+  } else if (Array.isArray(raw.patientCorrections)) {
+    recoverable.patientCorrections = [...raw.patientCorrections];
+  }
+
+  // Extract structured history
+  if (raw.structuredHistory && typeof raw.structuredHistory === "object") {
+    recoverable.structuredHistory = { ...raw.structuredHistory };
+  }
+
   if (raw.slots && typeof raw.slots === "object") {
     recoverable.slots = { ...raw.slots };
   }
+
+  // Extract provenance / timestamps
+  recoverable.lastRecordedAt = raw.lastRecordedAt || raw.recordedAt || raw.createdAt || raw.linked_at || undefined;
 
   return recoverable;
 }

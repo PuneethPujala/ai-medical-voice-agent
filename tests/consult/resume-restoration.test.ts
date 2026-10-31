@@ -153,7 +153,7 @@ describe("Consultation Resume & Versioned Interview-State Migration Invariants",
     assert.strictEqual(result.error, "CORRUPTED_INTERVIEW_STATE");
   });
 
-  it("6. Migration failure preserves recoverable clinical data (symptoms, facts, turns)", () => {
+  it("6. Migration failure preserves all recoverable clinical fields (turns, symptoms, facts, corrections, history)", () => {
     const malformedStateWithData = {
       version: 99, // unsupported future
       slots: {
@@ -167,6 +167,20 @@ describe("Consultation Resume & Versioned Interview-State Migration Invariants",
       attributedFacts: [
         { factId: "fact-1", concept: "photophobia", reportedValue: "true" },
       ],
+      unmappedObservations: [
+        { id: "unmapped-1", rawUtterance: "feeling room spinning slightly" },
+      ],
+      deliveredTurnRecords: [
+        { turnId: "turn-1", doctorReplyText: "When did the headache begin?" },
+      ],
+      structuredHistory: {
+        chiefComplaint: "Severe migraine with photophobia",
+        patientCorrections: [
+          { slot: "duration", from: "2 hours", to: "3 hours" },
+        ],
+        turnCount: 2,
+      },
+      recordedAt: "2026-10-31T10:05:00.000Z",
     };
 
     const recoverable = extractRecoverableClinicalData(malformedStateWithData);
@@ -174,6 +188,13 @@ describe("Consultation Resume & Versioned Interview-State Migration Invariants",
     assert.strictEqual(recoverable.detectedSymptoms?.length, 3);
     assert.strictEqual(recoverable.transcript?.length, 2);
     assert.strictEqual(recoverable.attributedFacts?.length, 1);
+    assert.strictEqual(recoverable.unmappedObservations?.length, 1);
+    assert.strictEqual(recoverable.deliveredTurnRecords?.length, 1);
+    assert.strictEqual(recoverable.patientCorrections?.length, 1);
+    assert.strictEqual(recoverable.patientCorrections?.[0].from, "2 hours");
+    assert.strictEqual(recoverable.patientCorrections?.[0].to, "3 hours");
+    assert.strictEqual(recoverable.structuredHistory?.turnCount, 2);
+    assert.strictEqual(recoverable.lastRecordedAt, "2026-10-31T10:05:00.000Z");
   });
 
   // ============================================================================
@@ -331,5 +352,198 @@ describe("Consultation Resume & Versioned Interview-State Migration Invariants",
     assert.strictEqual(session2Res.status, 409, "Session 2 must receive 409 CONCURRENCY_CONFLICT");
     const session2Data = await session2Res.json();
     assert.strictEqual(session2Data.code, "CONCURRENCY_CONFLICT");
+  });
+
+  // ============================================================================
+  // Check C & D: Recovery Preservation & Follow-Up Isolation Invariants
+  // ============================================================================
+  it("12. Recovery Preservation: Corrupted / future interview states preserve all 8 clinical collections and leave encounter paused", async () => {
+    const corruptedEncounterId = `ENC-RECOVERY-${Date.now()}`;
+    const rawMalformedPayload = {
+      id: corruptedEncounterId,
+      patientName: "Recovery Check Patient",
+      doctorId: "dr-sarah-chen",
+      doctorName: "Dr. Sarah Chen, MD",
+      specialty: "Interventional Cardiology",
+      chiefComplaint: "Atypical sharp thoracic pain",
+      status: "paused",
+      durationSeconds: 180,
+      transcript: [
+        { role: "doctor", text: "When did this pain start?", timestamp: "10:15 AM" },
+        { role: "patient", text: "While lifting heavy boxes at work.", timestamp: "10:16 AM" },
+      ],
+      detectedSymptoms: ["Sharp thoracic pain", "Exertional onset"],
+      deliveredTurnRecords: [
+        { turnId: "turn-rec-1", replyText: "When did this pain start?" },
+      ],
+      attributedFacts: [
+        { factId: "fact-rec-1", category: "symptom", value: "sharp pain", provenance: "patient_reported" },
+      ],
+      unmappedObservations: [
+        { id: "obs-rec-1", utterance: "heard clicking in ribcage" },
+      ],
+      interviewState: {
+        schemaVersion: 99, // Future unsupported version
+        futureDimension: "ribcage_biomechanics",
+        structuredHistory: {
+          chiefComplaint: "Atypical sharp thoracic pain",
+          patientCorrections: [
+            { slot: "duration", from: "1 hour", to: "30 minutes" },
+          ],
+        },
+        slots: {
+          associated_symptoms: ["Sharp thoracic pain", "Exertional onset"],
+        },
+        recordedAt: "2026-10-31T10:18:00.000Z",
+      },
+      caseVersion: 1,
+    };
+
+    // 1. Persist the encounter with future/malformed schema
+    const postReq = new Request("http://localhost:3000/api/consultations", {
+      method: "POST",
+      headers: makePatientHeaders(patientA),
+      body: JSON.stringify(rawMalformedPayload),
+    });
+    const postRes = await createConsultation(postReq);
+    assert.strictEqual(postRes.status, 200);
+
+    // 2. Fetch the persisted encounter
+    const getReq = new Request(`http://localhost:3000/api/consultations/${corruptedEncounterId}`, {
+      method: "GET",
+      headers: makePatientHeaders(patientA),
+    });
+    const getRes = await getConsultationById(getReq, { params: Promise.resolve({ id: corruptedEncounterId }) });
+    assert.strictEqual(getRes.status, 200);
+    const getData = await getRes.json();
+    const fetchedRec = getData.consultation;
+
+    // 3. Run authoritative migration check
+    const migration = migrateInterviewState(fetchedRec.interviewState);
+    assert.strictEqual(migration.status, "unsupported_version");
+    assert.strictEqual(migration.state, null, "Must NOT return overwritten or reset state");
+
+    // 4. Assert preservation of all 8 recovery fields
+    const rec = migration.recoverableData!;
+    assert.ok(rec, "Recoverable clinical data must be extracted");
+    assert.strictEqual(rec.chiefComplaint, "Atypical sharp thoracic pain");
+    assert.strictEqual(fetchedRec.transcript.length, 2);
+    assert.strictEqual(fetchedRec.transcript[0].text, "When did this pain start?");
+    assert.strictEqual(fetchedRec.transcript[0].timestamp, "10:15 AM");
+    assert.strictEqual(fetchedRec.deliveredTurnRecords.length, 1);
+    assert.strictEqual(fetchedRec.attributedFacts.length, 1);
+    assert.strictEqual(fetchedRec.unmappedObservations.length, 1);
+    assert.strictEqual(fetchedRec.detectedSymptoms.length, 2);
+    assert.strictEqual(rec.patientCorrections?.length, 1);
+    assert.strictEqual(rec.patientCorrections?.[0].to, "30 minutes");
+    assert.ok(rec.structuredHistory);
+    assert.strictEqual(rec.lastRecordedAt, "2026-10-31T10:18:00.000Z");
+
+    // 5. Confirm persisted status remains paused in datastore
+    assert.strictEqual(fetchedRec.status, "paused", "Persisted status in database must remain paused");
+  });
+
+  it("13. Follow-Up Isolation Invariants: Follow-up is isolated, does not clone transcript/state, and never mutates parent", async () => {
+    // 1. Establish completed parent encounter
+    const parentId = `ENC-PARENT-ISO-${Date.now()}`;
+    const parentPayload = {
+      id: parentId,
+      patientName: "Parent Isolation Test",
+      doctorId: "dr-sarah-chen",
+      doctorName: "Dr. Sarah Chen, MD",
+      specialty: "Interventional Cardiology",
+      chiefComplaint: "Acute anterior chest tightness",
+      status: "completed_pending_review",
+      durationSeconds: 300,
+      transcript: [
+        { role: "doctor", text: "Are you having chest pressure?", timestamp: "09:00 AM" },
+        { role: "patient", text: "Yes, crushing pressure in center of chest.", timestamp: "09:01 AM" },
+      ],
+      detectedSymptoms: ["Chest pressure", "Diaphoresis"],
+      interviewState: {
+        schemaVersion: 2,
+        phase: "completed",
+        slots: { associated_symptoms: ["Chest pressure", "Diaphoresis"] },
+      },
+      caseVersion: 2,
+    };
+
+    const parentReq = new Request("http://localhost:3000/api/consultations", {
+      method: "POST",
+      headers: makePatientHeaders(patientA),
+      body: JSON.stringify(parentPayload),
+    });
+    const parentRes = await createConsultation(parentReq);
+    assert.strictEqual(parentRes.status, 200);
+
+    // 2. Create linked follow-up referencing parentId
+    const followUpId = `ENC-FOLLOWUP-ISO-${Date.now()}`;
+    const followUpPayload = {
+      id: followUpId,
+      parentConsultationId: parentId,
+      patientName: "Parent Isolation Test",
+      doctorId: "dr-sarah-chen",
+      doctorName: "Dr. Sarah Chen, MD",
+      specialty: "Interventional Cardiology",
+      chiefComplaint: "Two-week post-intake follow-up",
+      status: "paused",
+      durationSeconds: 0,
+      // Follow-up starts with its own clean dialogue, NOT parent's transcript
+      transcript: [],
+      // Historical context explicitly tagged with provenance
+      interviewState: {
+        schemaVersion: 2,
+        phase: "active_inquiring",
+        slots: { associated_symptoms: [] },
+        historicalContext: {
+          priorEncounterId: parentId,
+          provenance: "parent_encounter_history",
+          priorChiefComplaint: "Acute anterior chest tightness",
+        },
+      },
+      detectedSymptoms: [], // Empty: historical symptoms are NOT active symptoms
+      caseVersion: 1,
+    };
+
+    const followUpReq = new Request("http://localhost:3000/api/consultations", {
+      method: "POST",
+      headers: makePatientHeaders(patientA),
+      body: JSON.stringify(followUpPayload),
+    });
+    const followUpRes = await createConsultation(followUpReq);
+    assert.strictEqual(followUpRes.status, 200);
+    const followUpData = (await followUpRes.json()).consultation;
+
+    // Invariant A: Follow-up receives distinct ID
+    assert.notStrictEqual(followUpData.id, parentId, "Follow-up must have a distinct consultation ID");
+    assert.strictEqual(followUpData.parentConsultationId, parentId);
+
+    // Invariant B: Follow-up does NOT copy parent's raw transcript
+    assert.strictEqual(followUpData.transcript.length, 0, "Follow-up must NOT clone parent transcript");
+
+    // Invariant C: Follow-up does NOT clone parent's interviewState
+    assert.strictEqual(followUpData.interviewState.phase, "active_inquiring");
+    assert.notStrictEqual(followUpData.interviewState.phase, "completed");
+
+    // Invariant D: Historical symptoms are NOT treated as newly reported active symptoms
+    assert.strictEqual(followUpData.detectedSymptoms.length, 0);
+
+    // Invariant E: Provenance tracking: historical facts are explicitly tagged
+    assert.strictEqual(
+      followUpData.interviewState.historicalContext?.provenance,
+      "parent_encounter_history"
+    );
+
+    // Invariant F: Parent record remains completely unmutated
+    const checkParentReq = new Request(`http://localhost:3000/api/consultations/${parentId}`, {
+      method: "GET",
+      headers: makePatientHeaders(patientA),
+    });
+    const checkParentRes = await getConsultationById(checkParentReq, { params: Promise.resolve({ id: parentId }) });
+    const checkParentData = (await checkParentRes.json()).consultation;
+
+    assert.strictEqual(checkParentData.caseVersion, 2, "Parent caseVersion must remain completely unmutated");
+    assert.strictEqual(checkParentData.status, "completed_pending_review", "Parent status must remain unchanged");
+    assert.strictEqual(checkParentData.transcript.length, 2, "Parent transcript must remain unchanged");
   });
 });

@@ -49,7 +49,8 @@ import { LandingFloatingNavbar } from "../_components/LandingFloatingNavbar";
 import { ArchitecturalBrandLedgerFooter } from "../_components/ArchitecturalBrandLedgerFooter";
 import { SoapReportModal } from "../_components/SoapReportModal";
 import { DOCTOR_PROFILES, DoctorProfile, getDoctorById } from "@/config/doctors";
-import { migrateInterviewState } from "@/lib/triage/interview-state-migration";
+import { migrateInterviewState, InterviewStateMigrationResult } from "@/lib/triage/interview-state-migration";
+import { ResumeStateRestorer, RestoredConsultationPayload } from "./_components/ResumeStateRestorer";
 import { CursorGrid } from "@/components/ui/cursor-grid";
 import RotatingText from "@/components/RotatingText";
 import CountUp from "@/components/CountUp";
@@ -451,89 +452,6 @@ export default function ConsultPage() {
   const recapAudioRef = useRef<HTMLAudioElement | null>(null);
   const isResumingVoiceInProgressRef = useRef<boolean>(false);
 
-  // Hydrate consultation when resuming via /consult/[id]
-  useEffect(() => {
-    if (!initialEncounterId) return;
-
-    let isMounted = true;
-    async function loadEncounterForResume() {
-      try {
-        const res = await fetch(`/api/consultations/${initialEncounterId}`);
-        if (res.ok) {
-          const data = await res.json();
-          const record = data.consultation;
-          if (!record || !isMounted) return;
-
-          if (record.status === "approved") {
-            setIsEncounterSignedLocked(true);
-            setResumedConsultation(record);
-            setIsResumeRecapActive(false);
-            return;
-          }
-
-          setResumedConsultation(record);
-          stableEncounterIdRef.current = record.id;
-          setCurrentEncounterId(record.id);
-          serverEncounterCreatedRef.current = true;
-          if (record.transcript && Array.isArray(record.transcript)) {
-            setMessages(record.transcript);
-          }
-          if (record.durationSeconds) {
-            setCallDuration(record.durationSeconds);
-          }
-          if (record.interviewState) {
-            const migration = migrateInterviewState(record.interviewState);
-            if (migration.status === "unsupported_version" || migration.status === "corrupted") {
-              console.error("[MedVoice] Interview state migration notice on resume:", migration.error);
-              setPersistenceError(`State recovery notice: ${migration.error}. Preserving recorded symptoms and dialogue.`);
-              if (migration.recoverableData?.transcript && (!record.transcript || record.transcript.length === 0)) {
-                setMessages(migration.recoverableData.transcript as any);
-              }
-            } else if (migration.state) {
-              setInterviewState(migration.state);
-            }
-          }
-          if (record.doctorId) {
-            const doc = getDoctorById(record.doctorId);
-            if (doc) {
-              setSelectedDoctor(doc);
-              setActiveSpeaker({
-                id: doc.id,
-                name: doc.name,
-                voiceId: doc.voiceId,
-                specialty: doc.specialty,
-                department: doc.department,
-                avatarUrl: doc.avatarUrl,
-                voiceGender: doc.voiceGender,
-                voiceEngine: "Kokoro",
-              });
-            }
-          }
-          if (record.caseVersion) {
-            encounterVersionRef.current = Number(record.caseVersion);
-          }
-          setIsResumeRecapActive(true);
-        } else {
-          console.warn("[MedVoice] Failed to load encounter for resume:", res.status);
-        }
-      } catch (err) {
-        console.warn("[MedVoice] Error loading encounter for resume:", err);
-      }
-    }
-
-    loadEncounterForResume();
-    return () => {
-      isMounted = false;
-      if (recapAudioRef.current) {
-        try {
-          recapAudioRef.current.pause();
-          recapAudioRef.current.removeAttribute("src");
-          recapAudioRef.current.load();
-        } catch {}
-      }
-    };
-  }, [initialEncounterId]);
-
   // Handler: Continue Resumed Consultation with Voice Mode
   const handleContinueResumedVoice = async () => {
     if (isResumingVoiceInProgressRef.current) return;
@@ -908,6 +826,61 @@ export default function ConsultPage() {
   const [currentEncounterId, setCurrentEncounterId] = useState<string>("");
   const [persistenceStatus, setPersistenceStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [persistenceError, setPersistenceError] = useState<string | null>(null);
+
+  // Unified Consultation Restoration Pipeline Handlers (delegated exclusively to ResumeStateRestorer)
+  const handleEncounterRestored = useCallback((payload: RestoredConsultationPayload) => {
+    setResumedConsultation(payload.rawRecord);
+    stableEncounterIdRef.current = payload.encounterId;
+    setCurrentEncounterId(payload.encounterId);
+    serverEncounterCreatedRef.current = true;
+    const chatMessages: ChatMessage[] = (payload.transcript || []).map((t, idx) => ({
+      id: (t as any).id || `msg-turn-${idx}-${Date.now()}`,
+      role: t.role,
+      text: t.text,
+      timestamp: t.timestamp || new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+    }));
+    setMessages(chatMessages);
+    setCallDuration(payload.durationSeconds);
+    setInterviewState(payload.interviewState);
+    encounterVersionRef.current = payload.caseVersion;
+    if (payload.doctor) {
+      setSelectedDoctor(payload.doctor);
+      setActiveSpeaker({
+        id: payload.doctor.id,
+        name: payload.doctor.name,
+        voiceId: payload.doctor.voiceId,
+        specialty: payload.doctor.specialty,
+        department: payload.doctor.department,
+        avatarUrl: payload.doctor.avatarUrl,
+        voiceGender: payload.doctor.voiceGender,
+        voiceEngine: "Kokoro",
+      });
+    }
+    setIsResumeRecapActive(true);
+  }, []);
+
+  const handleEncounterLocked = useCallback((record: any) => {
+    setIsEncounterSignedLocked(true);
+    setResumedConsultation(record);
+    setIsResumeRecapActive(false);
+    stableEncounterIdRef.current = record.id;
+    setCurrentEncounterId(record.id);
+    serverEncounterCreatedRef.current = true;
+  }, []);
+
+  const handleMigrationFailure = useCallback((result: InterviewStateMigrationResult) => {
+    setPersistenceError(`State recovery notice: ${result.error}. Preserving recorded symptoms and dialogue.`);
+    serverEncounterCreatedRef.current = true; // Prevents fresh encounter fallback!
+    if (result.recoverableData?.transcript && messages.length === 0) {
+      const recoveredMsgs: ChatMessage[] = result.recoverableData.transcript.map((t, idx) => ({
+        id: (t as any).id || `recovered-${idx}`,
+        role: t.role,
+        text: t.text,
+        timestamp: t.timestamp || new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+      }));
+      setMessages(recoveredMsgs);
+    }
+  }, [messages.length]);
 
   // Test harness hook for automated verification in development
   useEffect(() => {
@@ -3019,7 +2992,13 @@ export default function ConsultPage() {
     }
   };
   return (
-    <div className="relative min-h-screen bg-[#FAF9F6] text-[#05070F] flex flex-col font-sans selection:bg-[#B7FF72] selection:text-[#05070F] overflow-x-clip">
+    <ResumeStateRestorer
+      encounterId={initialEncounterId || ""}
+      onRestored={handleEncounterRestored}
+      onLocked={handleEncounterLocked}
+      onMigrationFailure={handleMigrationFailure}
+    >
+      <div className="relative min-h-screen bg-[#FAF9F6] text-[#05070F] flex flex-col font-sans selection:bg-[#B7FF72] selection:text-[#05070F] overflow-x-clip">
       <LandingFloatingNavbar />
 
       <main className="relative z-10 flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-32 sm:pt-36 pb-16 flex flex-col gap-6 consult-room-container">
@@ -3454,5 +3433,6 @@ export default function ConsultPage() {
 
       <ArchitecturalBrandLedgerFooter />
     </div>
+    </ResumeStateRestorer>
   );
 }

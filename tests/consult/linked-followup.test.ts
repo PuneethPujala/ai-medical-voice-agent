@@ -155,6 +155,46 @@ describe("Linked Follow-Up Consultations & Lineage Invariants", () => {
     assert.strictEqual(historicalFact.isHistoricalContext, true, "Must be tagged with isHistoricalContext: true");
   });
 
+  it("4b. Conversation isolation: Follow-up does not inherit parent's full transcript or wholesale interview state", async () => {
+    const parentRes = await getConsultationById(
+      new Request(`http://localhost:3000/api/consultations/${parentId}`, {
+        method: "GET",
+        headers: makePatientHeaders(patientA),
+      }),
+      { params: Promise.resolve({ id: parentId }) }
+    );
+    const parentData = await parentRes.json();
+
+    const followUpRes = await getConsultationById(
+      new Request(`http://localhost:3000/api/consultations/${followUpId}`, {
+        method: "GET",
+        headers: makePatientHeaders(patientA),
+      }),
+      { params: Promise.resolve({ id: followUpId }) }
+    );
+    const followUpData = await followUpRes.json();
+
+    // 1. Transcript isolation: Follow-up has 1 turn, not parent's 2 turns
+    assert.strictEqual(parentData.consultation.transcript.length, 2);
+    assert.strictEqual(followUpData.consultation.transcript.length, 1);
+    assert.notStrictEqual(
+      followUpData.consultation.transcript[0].text,
+      parentData.consultation.transcript[0].text,
+      "Follow-up must start with its own turn, not parent's turn"
+    );
+
+    // 2. Interview state isolation: Follow-up is explicitly tagged with lineage metadata without copying entire parent conversation
+    assert.strictEqual(followUpData.consultation.interviewState.is_follow_up, true);
+    assert.strictEqual(followUpData.consultation.interviewState.parent_consultation_id, parentId);
+
+    // 3. Historical facts are distinguished from newly reported symptoms
+    const newlyDetected = followUpData.consultation.detectedSymptoms || [];
+    assert.ok(
+      !newlyDetected.includes("baseline_chest_tightness"),
+      "Historical baseline facts must not be conflated as active newly reported symptoms"
+    );
+  });
+
   it("5. Rejects follow-up to paused/incomplete parent with 422 PARENT_NOT_COMPLETED", async () => {
     const invalidFollowUp = {
       id: `ENC-INVALID-FOLLOWUP-${Date.now()}`,
