@@ -386,6 +386,18 @@ export async function PATCH(
       );
     }
 
+    // STATE MACHINE RULE 0.6: Lineage Immutability Check
+    if (body.parentConsultationId !== undefined && body.parentConsultationId !== (record.parentConsultationId || null)) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Validation error: Parent consultation lineage is immutable once established and cannot be changed or reassigned.",
+          code: "PARENT_LINEAGE_IMMUTABLE",
+        },
+        { status: 400 }
+      );
+    }
+
     // STATE MACHINE RULE 1: Stale Downgrade Rejection
     // If a consultation is already approved, it can NEVER be downgraded to pending review or draft.
     if (record.status === "approved" && body.status && body.status !== "approved") {
@@ -453,6 +465,9 @@ export async function PATCH(
       caseVersion: nextVersion,
     };
 
+    if (body.transcript !== undefined) updateFields.transcript = body.transcript;
+    if (body.chiefComplaint !== undefined) updateFields.chiefComplaint = body.chiefComplaint;
+    if (body.detectedSymptoms !== undefined) updateFields.detectedSymptoms = body.detectedSymptoms;
     if (body.interviewState !== undefined) updateFields.interviewState = body.interviewState;
     if (body.deliveredTurnRecords !== undefined) updateFields.deliveredTurnRecords = body.deliveredTurnRecords;
     if (body.attributedFacts !== undefined) updateFields.attributedFacts = body.attributedFacts;
@@ -530,6 +545,7 @@ export async function PATCH(
         resourceType: "consultation",
         resourceId: id,
         status: "SUCCESS",
+        requireDurable: true,
         metadata: {
           previousStatus,
           newStatus: nextStatus,

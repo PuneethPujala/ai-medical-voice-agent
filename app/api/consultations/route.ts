@@ -615,7 +615,7 @@ export async function POST(request: Request) {
         validatedParentRecord = memoryConsultations.find((c) => c.id === parentConsultationId);
       }
 
-      if (!validatedParentRecord && process.env.NODE_ENV === "production") {
+      if (!validatedParentRecord) {
         return NextResponse.json(
           {
             success: false,
@@ -623,6 +623,17 @@ export async function POST(request: Request) {
             code: "PARENT_NOT_FOUND",
           },
           { status: 404 }
+        );
+      }
+
+      if (validatedParentRecord.parentConsultationId === id) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Invalid lineage: Mutual circular follow-up lineage detected.",
+            code: "CIRCULAR_LINEAGE_PROHIBITED",
+          },
+          { status: 400 }
         );
       }
 
@@ -1135,7 +1146,19 @@ export async function POST(request: Request) {
       audioMetrics: initialAudioMetrics,
       speechFeatures: initialSpeechFeatures,
       deliveredTurnRecords: body.deliveredTurnRecords || [],
-      attributedFacts: body.attributedFacts || [],
+      attributedFacts: parentConsultationId
+        ? (body.attributedFacts || []).map((fact: any) => {
+            if (fact.sourceConsultationId === parentConsultationId || fact.source === "parent_encounter" || fact.isHistoricalContext) {
+              return {
+                ...fact,
+                source: "parent_encounter",
+                sourceType: "parent_encounter",
+                isHistoricalContext: true,
+              };
+            }
+            return fact;
+          })
+        : (body.attributedFacts || []),
       unmappedObservations: body.unmappedObservations || [],
       idempotencyKey: body.idempotencyKey || null,
       approvedAt: initialStatus === "approved" ? new Date() : null,

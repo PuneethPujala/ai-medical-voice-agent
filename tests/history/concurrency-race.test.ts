@@ -239,4 +239,21 @@ describe("Atomic Optimistic Concurrency & Follow-Up Lineage Invariants", () => {
       "PATIENT_CORRECTION"
     );
   });
+
+  it("8. Rejects mutation attempting to reassign or modify parentConsultationId (400 PARENT_LINEAGE_IMMUTABLE)", async () => {
+    const tamperReq = new Request(`http://localhost:3000/api/consultations/${encounterId}`, {
+      method: "PATCH",
+      headers: makePatientHeaders(patientId),
+      body: JSON.stringify({
+        expectedVersion: 4,
+        caseVersion: 5,
+        parentConsultationId: "ENC-NEW-FAKE-PARENT-999",
+      }),
+    });
+
+    const tamperRes = await patchConsultationById(tamperReq, { params: Promise.resolve({ id: encounterId }) });
+    assert.equal(tamperRes.status, 400);
+    const tamperData = await tamperRes.json();
+    assert.equal(tamperData.code, "PARENT_LINEAGE_IMMUTABLE");
+  });
 });
