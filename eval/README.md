@@ -11,6 +11,19 @@ It evaluates the alignment between MedVoice AI-generated clinical responses and 
 4. **Double-Blinded Human Review**: Provenance-stripped, coin-flip randomized A/B presentation evaluated by independent licensed physicians with Krippendorff's $\alpha$ inter-rater reliability.
 5. **Clustered Statistical Inference**: 10,000 conversation-clustered bootstrap confidence intervals, paired Wilcoxon signed-rank tests, Benjamini-Hochberg FDR multiplicity corrections, and exploratory OLS regression modeling.
 
+### Ten Research Milestones & Deliverables
+The framework encompasses 10 distinct, dependency-aware milestones (Gate 0 pre-flight clearance plus Tasks 1–9):
+1. **Milestone 0 (Gate 0)**: Dataset Governance, Feasibility & Ethics Clearance (`eval/config/DATASET_GOVERNANCE.md`, `eval/src/governance/gate0-feasibility-check.ts`).
+2. **Milestone 1 (Task 1)**: Ingestion, PhiScrubber De-Identification & Manifest Builder (`eval/src/ingestion/manifest-builder.ts`, `eval/src/ingestion/sanitize.ts`).
+3. **Milestone 2 (Task 2)**: Production Runtime Bridge & Isolated State Barriers (`eval/src/harness/runtime-bridge.ts`, `eval/src/harness/session-isolation.ts`).
+4. **Milestone 3 (Task 3)**: Experimental Controls: Sattolo Derangement & Consensus Cohorts (`eval/src/controls/`).
+5. **Milestone 4 (Task 4)**: Multi-Model Embedding & Similarity Engine (`eval/metrics/embedder.py`, `eval/metrics/similarity.py`).
+6. **Milestone 5 (Task 5)**: Track B Exploratory Safety Challenge Runner (`eval/src/safety/track-b-safety-runner.ts`).
+7. **Milestone 6 (Task 6)**: Double-Blinded Multi-Clinician Review Exporter & Importer (`eval/src/harness/human-review-sampler.ts`, `eval/metrics/review_importer.py`).
+8. **Milestone 7 (Task 7)**: Clustered Statistical Inference & Calibrated Thresholds (`eval/metrics/statistics.py`).
+9. **Milestone 8 (Task 8)**: Publication Visualizations & LaTeX Table Exporters (`eval/visual/`).
+10. **Milestone 9 (Task 9)**: Top-Level Pipeline Orchestrator & Operational Telemetry (`eval/run-pipeline.py`, `tests/eval/e2e-pipeline.test.ts`).
+
 ---
 
 ## 2. Directory Structure
