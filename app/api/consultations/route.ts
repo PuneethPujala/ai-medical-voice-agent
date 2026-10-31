@@ -3,7 +3,7 @@ import { getDb } from "@/config/db";
 import { consultationsTable } from "@/config/schema";
 import { and, desc, eq, ne, or } from "drizzle-orm";
 import { getAuthContext, hasPermission } from "@/lib/auth/rbac";
-import { logAuditEventAsync } from "@/lib/audit/audit-logger";
+import { logAuditEventAsync, computeCanonicalConsultationDigest } from "@/lib/audit/audit-logger";
 import { validateAudioMetrics } from "@/lib/acoustic/acoustic-dsp-analyzer";
 import { PatientProfileService } from "@/lib/patient/patient-profile-service";
 import {
@@ -382,8 +382,8 @@ export async function POST(request: Request) {
       specialty = "General Physician",
       chiefComplaint = "",
       transcript = [],
-      triageLevel = (body.status === "incomplete_intake" || body.status === "in_progress") ? "gathering_history" : "routine",
-      triageTitle = (body.status === "incomplete_intake" || body.status === "in_progress") ? "CLINICAL HISTORY GATHERING" : "LEVEL 3: ROUTINE CLINICAL CARE",
+      triageLevel = (body.status === "incomplete_intake" || body.status === "in_progress" || body.status === "paused") ? "gathering_history" : "routine",
+      triageTitle = (body.status === "incomplete_intake" || body.status === "in_progress" || body.status === "paused") ? "CLINICAL HISTORY GATHERING" : "LEVEL 3: ROUTINE CLINICAL CARE",
       icd10Codes = [],
       detectedSymptoms = [],
       soapSubjective = "",
@@ -434,6 +434,91 @@ export async function POST(request: Request) {
       );
     }
 
+    // Follow-up consultation linkage validation (Task D2)
+    const parentConsultationId = typeof body.parentConsultationId === "string" ? body.parentConsultationId.trim() : null;
+    let validatedParentRecord: any = null;
+
+    if (parentConsultationId) {
+      if (parentConsultationId === id) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Invalid lineage: A consultation cannot reference itself as its parent.",
+            code: "CIRCULAR_LINEAGE_PROHIBITED",
+          },
+          { status: 400 }
+        );
+      }
+
+      const dbClientForParent = getDb();
+      if (dbClientForParent) {
+        try {
+          const parentRows = await dbClientForParent
+            .select()
+            .from(consultationsTable)
+            .where(eq(consultationsTable.id, parentConsultationId))
+            .limit(1);
+          if (parentRows.length > 0) {
+            validatedParentRecord = parentRows[0];
+          }
+        } catch (parentErr) {
+          console.warn("Parent consultation lookup notice:", parentErr);
+        }
+      } else {
+        validatedParentRecord = memoryConsultations.find((c) => c.id === parentConsultationId);
+      }
+
+      if (!validatedParentRecord && process.env.NODE_ENV === "production") {
+        return NextResponse.json(
+          {
+            success: false,
+            error: `Parent consultation ${parentConsultationId} not found. Cannot establish follow-up linkage.`,
+            code: "PARENT_NOT_FOUND",
+          },
+          { status: 404 }
+        );
+      }
+
+      if (validatedParentRecord && validatedParentRecord.userId && validatedParentRecord.userId !== effectiveUserId && auth.role !== "admin") {
+        await logAuditEventAsync({
+          actorId: auth.userId,
+          actorRole: auth.role,
+          action: "ACCESS_DENIED",
+          resourceType: "consultation",
+          resourceId: parentConsultationId,
+          status: "DENIED",
+          metadata: { reason: "Attempted cross-tenant follow-up linkage", targetParent: parentConsultationId },
+        });
+
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Forbidden: You cannot link a follow-up consultation to another patient's clinical encounter.",
+            code: "FORBIDDEN",
+          },
+          { status: 403 }
+        );
+      }
+
+      // Profile Scoping: Ensure follow-up matches the same patient profile
+      if (
+        validatedParentRecord &&
+        validatedParentRecord.patientProfileId &&
+        boundProfileId &&
+        validatedParentRecord.patientProfileId !== boundProfileId &&
+        auth.role !== "admin"
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Forbidden: Follow-up consultations must match the patient profile of the parent clinical encounter.",
+            code: "PROFILE_MISMATCH",
+          },
+          { status: 403 }
+        );
+      }
+    }
+
     const dbClient = getDb();
     if (!dbClient && process.env.NODE_ENV === "production") {
       return NextResponse.json(
@@ -452,6 +537,7 @@ export async function POST(request: Request) {
     const isNewIntakeIncomplete =
       requestedStatus === "incomplete_intake" ||
       requestedStatus === "in_progress" ||
+      requestedStatus === "paused" ||
       triageLevel === "gathering_history" ||
       (typeof soapSubjective === "string" && soapSubjective.includes("[INCOMPLETE DRAFT"));
 
@@ -726,10 +812,11 @@ export async function POST(request: Request) {
         updateData.approvedBy = auth.userId;
       }
 
+      let updatedRows: any[] = [];
       if (dbClient) {
         try {
           const { version, audioMetrics, speechFeatures, ...dbUpdateData } = updateData;
-          const updatedRows = await dbClient
+          updatedRows = await dbClient
             .update(consultationsTable)
             .set(dbUpdateData)
             .where(
@@ -739,7 +826,7 @@ export async function POST(request: Request) {
                 auth.role === "admin" ? undefined : eq(consultationsTable.userId, effectiveUserId)
               )
             )
-            .returning({ id: consultationsTable.id, caseVersion: consultationsTable.caseVersion });
+            .returning();
 
           if (updatedRows.length === 0) {
             return NextResponse.json(
@@ -777,6 +864,11 @@ export async function POST(request: Request) {
         }
       }
 
+      // Authoritative post-update record: prioritize database-persisted row
+      const persistedRecord = (dbClient && updatedRows.length > 0)
+        ? { ...existingRecord, ...updatedRows[0] }
+        : { ...existingRecord, ...updateData };
+
       try {
         await logAuditEventAsync({
           actorId: auth.userId,
@@ -789,6 +881,7 @@ export async function POST(request: Request) {
             previousStatus: existingRecord.status,
             newStatus: finalStatus,
             effectiveUserId,
+            recordDigest: computeCanonicalConsultationDigest(persistedRecord),
           },
         });
       } catch (auditErr: any) {
@@ -815,14 +908,9 @@ export async function POST(request: Request) {
         );
       }
 
-      const updatedRecord = {
-        ...existingRecord,
-        ...updateData,
-      };
-
       return NextResponse.json({
         success: true,
-        consultation: updatedRecord,
+        consultation: persistedRecord,
         isExisting: true,
       });
     }
@@ -870,7 +958,15 @@ export async function POST(request: Request) {
       status: initialStatus,
       version: body.version !== undefined ? Number(body.version) : 1,
       caseVersion: body.caseVersion !== undefined ? Number(body.caseVersion) : (body.version !== undefined ? Number(body.version) : 1),
-      interviewState: initialInterviewState,
+      interviewState: parentConsultationId
+        ? {
+            ...(initialInterviewState || {}),
+            parent_consultation_id: parentConsultationId,
+            is_follow_up: true,
+            parent_chief_complaint: validatedParentRecord?.chiefComplaint || null,
+            linked_at: new Date().toISOString(),
+          }
+        : initialInterviewState,
       audioMetrics: initialAudioMetrics,
       speechFeatures: initialSpeechFeatures,
       deliveredTurnRecords: body.deliveredTurnRecords || [],
@@ -882,10 +978,11 @@ export async function POST(request: Request) {
       createdAt: new Date(),
     };
 
+    let insertedRows: any[] = [];
     if (dbClient) {
       try {
         const { version, audioMetrics, speechFeatures, ...dbRecord } = newRecord;
-        await dbClient.insert(consultationsTable).values(dbRecord as any);
+        insertedRows = await dbClient.insert(consultationsTable).values(dbRecord as any).returning();
       } catch (dbErr: any) {
         const isUniqueViolation =
           dbErr?.code === "23505" ||
@@ -975,6 +1072,11 @@ export async function POST(request: Request) {
       memoryConsultations.push(newRecord);
     }
 
+    // Authoritative post-insert record: prioritize database-persisted row
+    const persistedRecord = (dbClient && insertedRows.length > 0)
+      ? { ...newRecord, ...insertedRows[0] }
+      : newRecord;
+
     try {
       await logAuditEventAsync({
         actorId: auth.userId,
@@ -989,6 +1091,7 @@ export async function POST(request: Request) {
           effectiveUserId,
           status: initialStatus,
           icd10Count: icd10Codes.length,
+          recordDigest: computeCanonicalConsultationDigest(persistedRecord),
         },
       });
     } catch (auditErr: any) {
@@ -1010,7 +1113,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       success: true,
-      consultation: newRecord,
+      consultation: persistedRecord,
       isExisting: false,
     });
   } catch (error: any) {

@@ -4,7 +4,7 @@ import { consultationsTable } from "@/config/schema";
 import { and, eq, ne } from "drizzle-orm";
 import { memoryConsultations } from "../route";
 import { getAuthContext, hasPermission } from "@/lib/auth/rbac";
-import { logAuditEventAsync } from "@/lib/audit/audit-logger";
+import { logAuditEventAsync, computeCanonicalConsultationDigest } from "@/lib/audit/audit-logger";
 import {
   evaluateRateLimit,
   buildRateLimit429Response,
@@ -403,10 +403,12 @@ export async function PATCH(
     const isExistingRecordIncomplete =
       record.status === "incomplete_intake" ||
       record.status === "in_progress" ||
+      record.status === "paused" ||
       record.triageLevel === "gathering_history" ||
       (typeof record.soapSubjective === "string" && record.soapSubjective.includes("[INCOMPLETE DRAFT")) ||
       body.status === "incomplete_intake" ||
-      body.status === "in_progress";
+      body.status === "in_progress" ||
+      body.status === "paused";
 
     if (isApproving && isExistingRecordIncomplete) {
       return NextResponse.json(
@@ -467,9 +469,10 @@ export async function PATCH(
     if (body.soapAssessment !== undefined) updateFields.soapAssessment = body.soapAssessment;
     if (body.soapPlan !== undefined) updateFields.soapPlan = body.soapPlan;
 
+    let updated: any[] = [];
     if (dbClient && isDbRecord) {
       try {
-        const updated = await dbClient
+        updated = await dbClient
           .update(consultationsTable)
           .set(updateFields)
           .where(
@@ -479,7 +482,7 @@ export async function PATCH(
               isAdmin || canApprove ? undefined : eq(consultationsTable.userId, record.userId)
             )
           )
-          .returning({ id: consultationsTable.id, caseVersion: consultationsTable.caseVersion });
+          .returning();
 
         if (updated.length === 0) {
           return NextResponse.json(
@@ -512,6 +515,11 @@ export async function PATCH(
       Object.assign(record, updateFields);
     }
 
+    // Authoritative post-update record: prioritize database-persisted row
+    const persistedRecord = (dbClient && isDbRecord && updated.length > 0)
+      ? { ...record, ...updated[0] }
+      : { ...record, ...updateFields };
+
     // 4. Audit ledger consistency:
     // If audit logging fails, rollback mutation so an un-audited approval never commits
     try {
@@ -526,6 +534,7 @@ export async function PATCH(
           previousStatus,
           newStatus: nextStatus,
           actorId: auth.userId,
+          recordDigest: computeCanonicalConsultationDigest(persistedRecord),
         },
       });
     } catch (auditErr: any) {
@@ -609,8 +618,7 @@ export async function PATCH(
       );
     }
 
-    const updated = { ...record, ...updateFields };
-    return NextResponse.json({ success: true, consultation: updated });
+    return NextResponse.json({ success: true, consultation: persistedRecord });
   } catch (error: any) {
     console.error("[ConsultationPatchError]", error);
     return NextResponse.json(
