@@ -14,6 +14,7 @@ export type AuditAction =
   | "PATIENT_PROFILE_ACCESSED"
   | "PATIENT_PROFILE_SAVED"
   | "PATIENT_PROFILE_DELETED"
+  | "LONGITUDINAL_FACTS_ACCESSED"
   | "AUDIO_PLAYBACK_TELEMETRY_RECORDED";
 
 export type AuditActorRole = "patient" | "clinician" | "admin" | "system";
@@ -294,6 +295,7 @@ export async function logAuditEventAsync(params: {
   status?: "SUCCESS" | "DENIED" | "FAILED";
   clientIp?: string;
   metadata?: Record<string, any>;
+  requireDurable?: boolean;
 }): Promise<AuditEvent> {
   if (simulatedAuditFailure) {
     throw new Error("Simulated transient audit ledger datastore failure");
@@ -373,8 +375,12 @@ export async function logAuditEventAsync(params: {
             continue;
           }
 
-          // Non-fatal: fall back to in-memory ledger so audit failures never crash the primary API.
-          // The event is still recorded in-memory for the current process lifetime.
+          if (params.requireDurable || process.env.NODE_ENV === "production") {
+            console.error(`Durable audit persistence failed for event ${id}:`, outerMsg, rootMsg);
+            throw new Error(`Durable audit persistence failed: ${outerMsg || rootMsg || "datastore error"}`);
+          }
+
+          // Non-fatal fallback strictly for offline local test runners without durable requirement
           console.error(`Durable audit persistence failed for event ${id} (falling back to memory):`, outerMsg, rootMsg);
           auditLedger.push(fullEvent);
           return fullEvent;
@@ -733,4 +739,56 @@ export function verifyAuditChain(events: AuditEvent[] = auditLedger): ChainVerif
  */
 export function getAuditEvents(limit: number = 50, offset: number = 0): AuditEvent[] {
   return auditLedger.slice(offset, offset + limit).map((e) => ({ ...e }));
+}
+
+/**
+ * Compute a deterministic SHA-256 digest over all clinically relevant fields of a consultation record.
+ * Used to detect post-hoc tampering: the digest recorded at write-time can be compared against
+ * a freshly computed digest of the current record to verify nothing was altered outside the audit trail.
+ *
+ * The canonical string is versioned (v:1) so future schema additions can produce a v:2 without
+ * breaking verification of records hashed under v:1.
+ */
+export function computeCanonicalConsultationDigest(record: {
+  id?: string;
+  patientName?: string;
+  patientGender?: string;
+  doctorId?: string;
+  doctorName?: string;
+  specialty?: string;
+  chiefComplaint?: string;
+  soapSubjective?: string;
+  soapObjective?: string;
+  soapAssessment?: string;
+  soapPlan?: string;
+  triageLevel?: string;
+  esiScore?: number | null;
+  icd10Codes?: string[];
+  caseVersion?: number;
+  transcript?: Array<{ role: string; text: string; timestamp?: string }>;
+}): string {
+  const canonical = {
+    v: 1,
+    id: record.id ?? "",
+    patientName: record.patientName ?? "",
+    patientGender: record.patientGender ?? "",
+    doctorId: record.doctorId ?? "",
+    doctorName: record.doctorName ?? "",
+    specialty: record.specialty ?? "",
+    chiefComplaint: record.chiefComplaint ?? "",
+    soapSubjective: record.soapSubjective ?? "",
+    soapObjective: record.soapObjective ?? "",
+    soapAssessment: record.soapAssessment ?? "",
+    soapPlan: record.soapPlan ?? "",
+    triageLevel: record.triageLevel ?? "",
+    esiScore: record.esiScore ?? null,
+    icd10Codes: Array.isArray(record.icd10Codes) ? [...record.icd10Codes].sort() : [],
+    caseVersion: record.caseVersion ?? 0,
+    transcript: Array.isArray(record.transcript)
+      ? record.transcript.map((t) => ({ role: t.role, text: t.text }))
+      : [],
+  };
+
+  const payload = JSON.stringify(canonicalizeJson(canonical));
+  return createHash("sha256").update(payload, "utf8").digest("hex");
 }

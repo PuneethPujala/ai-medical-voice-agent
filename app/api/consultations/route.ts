@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/config/db";
 import { consultationsTable } from "@/config/schema";
-import { and, desc, eq, ne, or } from "drizzle-orm";
+import { and, desc, eq, ilike, lt, ne, or } from "drizzle-orm";
 import { getAuthContext, hasPermission } from "@/lib/auth/rbac";
 import { logAuditEventAsync, computeCanonicalConsultationDigest } from "@/lib/audit/audit-logger";
 import { validateAudioMetrics } from "@/lib/acoustic/acoustic-dsp-analyzer";
@@ -162,6 +162,32 @@ export async function GET(request: Request) {
     // Determine target user scope based on verified server-side identity (never trust client userId)
     const targetUserId = canReadAll ? (userIdParam || null) : auth.userId;
 
+    const cursorParam = searchParams.get("cursor");
+    const limitParam = searchParams.get("limit");
+    const searchQuery = (searchParams.get("search") || searchParams.get("query") || searchParams.get("searchQuery") || "").trim();
+    const statusTab = (searchParams.get("statusTab") || searchParams.get("status") || "all").trim();
+
+    const limit = Math.min(Math.max(parseInt(limitParam || "20", 10) || 20, 1), 50);
+
+    let cursorObj: { createdAt: string; id: string } | null = null;
+    if (cursorParam) {
+      try {
+        const decoded = JSON.parse(Buffer.from(cursorParam, "base64").toString("utf-8"));
+        if (!decoded || typeof decoded.createdAt !== "string" || typeof decoded.id !== "string") {
+          return NextResponse.json(
+            { success: false, error: "Invalid cursor payload structure. Expected base64-encoded { createdAt, id }." },
+            { status: 400 }
+          );
+        }
+        cursorObj = { createdAt: decoded.createdAt, id: decoded.id };
+      } catch {
+        return NextResponse.json(
+          { success: false, error: "Malformed cursor encoding. Must be valid base64-encoded JSON." },
+          { status: 400 }
+        );
+      }
+    }
+
     await logAuditEventAsync({
       actorId: auth.userId,
       actorRole: auth.role,
@@ -169,28 +195,89 @@ export async function GET(request: Request) {
       resourceType: "consultation",
       resourceId: targetUserId || "all_records",
       status: "SUCCESS",
-      metadata: { targetUserId: targetUserId || "all", canReadAll },
+      metadata: { targetUserId: targetUserId || "all", canReadAll, hasCursor: Boolean(cursorObj), limit, statusTab },
     });
 
     // 3. Fetch from primary database (Neon PostgreSQL)
     const dbClient = getDb();
     if (dbClient) {
       try {
-        let results;
+        const conditions: any[] = [];
         if (targetUserId) {
-          results = await dbClient
-            .select()
-            .from(consultationsTable)
-            .where(eq(consultationsTable.userId, targetUserId))
-            .orderBy(desc(consultationsTable.createdAt))
-            .limit(50);
-        } else {
-          results = await dbClient
-            .select()
-            .from(consultationsTable)
-            .orderBy(desc(consultationsTable.createdAt))
-            .limit(50);
+          conditions.push(eq(consultationsTable.userId, targetUserId));
         }
+
+        if (statusTab === "resumable") {
+          conditions.push(
+            or(
+              eq(consultationsTable.status, "paused"),
+              eq(consultationsTable.status, "in_progress"),
+              eq(consultationsTable.status, "incomplete_intake")
+            )
+          );
+        } else if (statusTab === "completed") {
+          conditions.push(eq(consultationsTable.status, "completed_pending_review"));
+        } else if (statusTab === "approved") {
+          conditions.push(eq(consultationsTable.status, "approved"));
+        }
+
+        if (searchQuery) {
+          const pattern = `%${searchQuery}%`;
+          conditions.push(
+            or(
+              ilike(consultationsTable.chiefComplaint, pattern),
+              ilike(consultationsTable.doctorName, pattern),
+              ilike(consultationsTable.specialty, pattern),
+              ilike(consultationsTable.patientName, pattern)
+            )
+          );
+        }
+
+        if (cursorObj) {
+          const cursorDate = new Date(cursorObj.createdAt);
+          conditions.push(
+            or(
+              lt(consultationsTable.createdAt, cursorDate),
+              and(
+                eq(consultationsTable.createdAt, cursorDate),
+                lt(consultationsTable.id, cursorObj.id)
+              )
+            )
+          );
+        }
+
+        const whereClause = conditions.length === 0
+          ? undefined
+          : conditions.length === 1
+          ? conditions[0]
+          : and(...conditions);
+
+        let query = dbClient
+          .select()
+          .from(consultationsTable);
+
+        if (whereClause) {
+          query = query.where(whereClause) as any;
+        }
+
+        const rows = await query
+          .orderBy(desc(consultationsTable.createdAt), desc(consultationsTable.id))
+          .limit(limit + 1);
+
+        const hasMore = rows.length > limit;
+        const results = hasMore ? rows.slice(0, limit) : rows;
+
+        let nextCursor: string | null = null;
+        if (hasMore && results.length > 0) {
+          const lastItem = results[results.length - 1];
+          const lastCreatedAt = lastItem.createdAt
+            ? new Date(lastItem.createdAt).toISOString()
+            : new Date().toISOString();
+          nextCursor = Buffer.from(
+            JSON.stringify({ createdAt: lastCreatedAt, id: lastItem.id })
+          ).toString("base64");
+        }
+
         const sanitizedResults = results.map((row: any) => {
           if (
             (row.triageLevel === "gathering_history" || (typeof row.soapSubjective === "string" && row.soapSubjective.includes("[INCOMPLETE"))) &&
@@ -200,11 +287,16 @@ export async function GET(request: Request) {
           }
           return row;
         });
-        return NextResponse.json({
+
+        const response = NextResponse.json({
           success: true,
           consultations: sanitizedResults,
+          nextCursor,
+          hasMore,
           isSyntheticDataset: false,
         });
+        response.headers.set("Cache-Control", "private, no-store, no-cache");
+        return response;
       } catch (dbErr) {
         console.error("Neon DB query error:", dbErr);
         return NextResponse.json(
@@ -232,15 +324,70 @@ export async function GET(request: Request) {
 
     // Fallback strictly for local automated test runners (NODE_ENV === 'test' with test harness secret)
     if (auth.isDemoMode && process.env.NODE_ENV === "test") {
-      const filtered = targetUserId
+      let filtered = targetUserId
         ? memoryConsultations.filter((c) => c.userId === targetUserId)
-        : memoryConsultations;
+        : [...memoryConsultations];
 
-      return NextResponse.json({
+      if (statusTab === "resumable") {
+        filtered = filtered.filter(
+          (c) => c.status === "paused" || c.status === "in_progress" || c.status === "incomplete_intake"
+        );
+      } else if (statusTab === "completed") {
+        filtered = filtered.filter((c) => c.status === "completed_pending_review");
+      } else if (statusTab === "approved") {
+        filtered = filtered.filter((c) => c.status === "approved");
+      }
+
+      if (searchQuery) {
+        const s = searchQuery.toLowerCase();
+        filtered = filtered.filter(
+          (c) =>
+            (c.chiefComplaint && c.chiefComplaint.toLowerCase().includes(s)) ||
+            (c.doctorName && c.doctorName.toLowerCase().includes(s)) ||
+            (c.specialty && c.specialty.toLowerCase().includes(s)) ||
+            (c.patientName && c.patientName.toLowerCase().includes(s))
+        );
+      }
+
+      filtered.sort((a, b) => {
+        const timeA = new Date(a.createdAt).getTime();
+        const timeB = new Date(b.createdAt).getTime();
+        if (timeB !== timeA) return timeB - timeA;
+        return b.id.localeCompare(a.id);
+      });
+
+      if (cursorObj) {
+        const cursorTime = new Date(cursorObj.createdAt).getTime();
+        filtered = filtered.filter((c) => {
+          const cTime = new Date(c.createdAt).getTime();
+          if (cTime < cursorTime) return true;
+          if (cTime === cursorTime && c.id < cursorObj!.id) return true;
+          return false;
+        });
+      }
+
+      const hasMore = filtered.length > limit;
+      const pageItems = hasMore ? filtered.slice(0, limit) : filtered;
+      let nextCursor: string | null = null;
+      if (hasMore && pageItems.length > 0) {
+        const lastItem = pageItems[pageItems.length - 1];
+        const lastCreatedAt = lastItem.createdAt
+          ? new Date(lastItem.createdAt).toISOString()
+          : new Date().toISOString();
+        nextCursor = Buffer.from(
+          JSON.stringify({ createdAt: lastCreatedAt, id: lastItem.id })
+        ).toString("base64");
+      }
+
+      const response = NextResponse.json({
         success: true,
-        consultations: filtered.slice().reverse(),
+        consultations: pageItems,
+        nextCursor,
+        hasMore,
         isSyntheticDataset: false,
       });
+      response.headers.set("Cache-Control", "private, no-store, no-cache");
+      return response;
     }
 
     // When DB is unconfigured in development, return 503 rather than silent fake records
@@ -515,6 +662,22 @@ export async function POST(request: Request) {
             code: "PROFILE_MISMATCH",
           },
           { status: 403 }
+        );
+      }
+
+      // Parent Eligibility: Only completed or signed consultations are eligible to be referenced as parent encounters
+      if (
+        validatedParentRecord &&
+        validatedParentRecord.status !== "completed_pending_review" &&
+        validatedParentRecord.status !== "approved"
+      ) {
+        return NextResponse.json(
+          {
+            success: false,
+            error: "Invalid follow-up: Only completed or signed consultations are eligible to be referenced as parent encounters.",
+            code: "PARENT_NOT_COMPLETED",
+          },
+          { status: 422 }
         );
       }
     }
@@ -877,6 +1040,7 @@ export async function POST(request: Request) {
           resourceType: "consultation",
           resourceId: id,
           status: "SUCCESS",
+          requireDurable: true,
           metadata: {
             previousStatus: existingRecord.status,
             newStatus: finalStatus,
@@ -935,6 +1099,7 @@ export async function POST(request: Request) {
     const newRecord = {
       id,
       patientProfileId: boundProfileId,
+      parentConsultationId: parentConsultationId || null,
       userId: effectiveUserId,
       patientName,
       patientAge: patientAge ? String(patientAge) : undefined,
@@ -1085,6 +1250,7 @@ export async function POST(request: Request) {
         resourceType: "consultation",
         resourceId: id,
         status: "SUCCESS",
+        requireDurable: true,
         metadata: {
           triageLevel,
           specialty,
