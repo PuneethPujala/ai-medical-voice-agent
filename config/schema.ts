@@ -69,7 +69,7 @@ export const consultationsTable = pgTable("consultations", {
   id: varchar("id", { length: 128 }).primaryKey(),
   userId: varchar("user_id", { length: 128 }), // Clerk user ID or anonymous session
   patientProfileId: varchar("patient_profile_id", { length: 128 }), // Bound Patient Profile ID
-  parentConsultationId: varchar("parent_consultation_id", { length: 128 }), // Relational parent reference for follow-ups
+  parentConsultationId: varchar("parent_consultation_id", { length: 128 }).references((): any => consultationsTable.id), // Relational self-referencing foreign key for follow-ups
   patientName: varchar("patient_name", { length: 128 }).default("Anonymous Patient"),
   patientAge: varchar("patient_age", { length: 32 }),
   patientGender: varchar("patient_gender", { length: 32 }),

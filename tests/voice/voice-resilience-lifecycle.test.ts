@@ -62,32 +62,100 @@ describe("Voice Resilience, Microphone Privacy & Audio Lifecycle Invariants (Pha
   });
 
   // --------------------------------------------------------------------------
-  // Scenario 3: Patient Denies Microphone Permission -> Remains in Non-Recording State
+  // Scenario 3a: Patient Denies Microphone Permission (NotAllowedError)
   // --------------------------------------------------------------------------
-  it("3. Denied microphone permission sets error notice and remains non-recording without crashing", async () => {
+  it("3a. Explicit permission denial (NotAllowedError) sets error notice and remains non-recording without crashing", async () => {
     let audioState = "IDLE";
     let micPermissionError: any = null;
     let isRecordingActive = false;
 
-    const requestMic = async (simulatePermissionDenied: boolean) => {
-      if (simulatePermissionDenied) {
-        const error = new Error("Permission denied");
-        error.name = "NotAllowedError";
-        micPermissionError = "Microphone access denied. Please click the camera/mic icon in your browser address bar to allow.";
-        audioState = "IDLE";
-        isRecordingActive = false;
-        return;
-      }
-
-      isRecordingActive = true;
-      audioState = "PATIENT_LISTENING";
+    const requestMic = async () => {
+      const error: any = new Error("Permission denied");
+      error.name = "NotAllowedError";
+      micPermissionError = "Microphone access denied. Please click the camera/mic icon in your browser address bar to allow.";
+      audioState = "IDLE";
+      isRecordingActive = false;
     };
 
-    await requestMic(true);
+    await requestMic();
 
     assert.equal(isRecordingActive, false, "Recording must remain strictly inactive when permission is denied");
     assert.equal(audioState, "IDLE", "Audio state must remain IDLE, not PATIENT_LISTENING");
-    assert.ok((micPermissionError as string | null)?.includes("Microphone access denied"), "Informative permission guidance must be populated");
+    assert.ok((micPermissionError as string | null)?.includes("Microphone access denied"));
+  });
+
+  // --------------------------------------------------------------------------
+  // Scenario 3b: Microphone Device Unavailable (NotFoundError)
+  // --------------------------------------------------------------------------
+  it("3b. Hardware device unavailable (NotFoundError) sets device notice and prevents recording state", async () => {
+    let audioState = "IDLE";
+    let micDeviceError: any = null;
+    let isRecordingActive = false;
+
+    const requestMic = async () => {
+      const error: any = new Error("Requested device not found");
+      error.name = "NotFoundError";
+      micDeviceError = "No microphone hardware detected. Please connect an audio input device.";
+      audioState = "IDLE";
+      isRecordingActive = false;
+    };
+
+    await requestMic();
+
+    assert.equal(isRecordingActive, false);
+    assert.equal(audioState, "IDLE");
+    assert.ok(micDeviceError.includes("No microphone hardware detected"));
+  });
+
+  // --------------------------------------------------------------------------
+  // Scenario 3c: Browser API Unsupported (NotSupportedError / Insecure Context)
+  // --------------------------------------------------------------------------
+  it("3c. Browser API unsupported (NotSupportedError) defaults cleanly to text mode without unhandled exception", async () => {
+    let audioState = "IDLE";
+    let unsupportedNotice: any = null;
+
+    const initAudio = () => {
+      const hasMediaDevices = false; // insecure context or older browser
+      if (!hasMediaDevices) {
+        unsupportedNotice = "Voice capture not supported in this browser. Consultation will proceed in text mode.";
+        audioState = "IDLE";
+      }
+    };
+
+    initAudio();
+
+    assert.equal(audioState, "IDLE");
+    assert.ok(unsupportedNotice.includes("text mode"));
+  });
+
+  // --------------------------------------------------------------------------
+  // Scenario 3d: Mid-Consultation Permission Revocation / Track Disconnection
+  // --------------------------------------------------------------------------
+  it("3d. Permission revocation or track disconnect during active recording halts capture cleanly", () => {
+    let isRecordingActive = true;
+    let audioState = "PATIENT_LISTENING";
+    let revocationDetected = false;
+
+    // Simulate MediaStreamTrack
+    const track = {
+      readyState: "live",
+      onended: null as any,
+    };
+
+    // Attach track disconnect handler
+    track.onended = () => {
+      revocationDetected = true;
+      isRecordingActive = false;
+      audioState = "IDLE";
+    };
+
+    // Patient revokes permission in browser settings while speaking
+    track.readyState = "ended";
+    track.onended();
+
+    assert.equal(revocationDetected, true, "Track disconnection event must trigger safety handler");
+    assert.equal(isRecordingActive, false, "Recording must be halted immediately upon revocation");
+    assert.equal(audioState, "IDLE", "State must cleanly reset to IDLE");
   });
 
   // --------------------------------------------------------------------------

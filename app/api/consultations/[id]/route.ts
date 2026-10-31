@@ -468,7 +468,51 @@ export async function PATCH(
     if (body.transcript !== undefined) updateFields.transcript = body.transcript;
     if (body.chiefComplaint !== undefined) updateFields.chiefComplaint = body.chiefComplaint;
     if (body.detectedSymptoms !== undefined) updateFields.detectedSymptoms = body.detectedSymptoms;
-    if (body.interviewState !== undefined) updateFields.interviewState = body.interviewState;
+    if (body.interviewState !== undefined) {
+      const interviewState = { ...body.interviewState };
+      if (Array.isArray(interviewState.patientCorrectionRecords)) {
+        try {
+          interviewState.patientCorrectionRecords = interviewState.patientCorrectionRecords.map((corr: any, idx: number) => {
+            if (!corr || typeof corr !== "object") {
+              throw new Error(`Invalid patient correction record at index ${idx}`);
+            }
+            const validFields = ["symptoms", "medications", "allergies", "history", "general"];
+            const field = validFields.includes(corr.field) ? corr.field : "general";
+            const correctedVal = typeof corr.correctedValue === "string" && corr.correctedValue.trim().length > 0
+              ? corr.correctedValue.trim()
+              : (typeof corr.correctedStatement === "string" ? corr.correctedStatement.trim() : "");
+
+            if (!correctedVal) {
+              throw new Error(`Correction record at index ${idx} requires a non-empty correctedValue`);
+            }
+
+            return {
+              id: typeof corr.id === "string" ? corr.id : (corr.correctionId || `corr-${Date.now()}-${idx}`),
+              type: "PATIENT_CORRECTION" as const,
+              consultationId: id,
+              correctionOfTurnId: typeof corr.correctionOfTurnId === "string" ? corr.correctionOfTurnId : undefined,
+              field,
+              originalValue: typeof corr.originalValue === "string" ? corr.originalValue : (corr.originalStatement || undefined),
+              correctedValue: correctedVal,
+              // SERVER AUTHORITATIVE: actorId MUST be derived from authenticated server context, NEVER trusted from client input
+              actorId: auth.userId,
+              caseVersion: nextVersion,
+              timestamp: typeof corr.timestamp === "string" ? corr.timestamp : new Date().toISOString(),
+            };
+          });
+        } catch (corrErr: any) {
+          return NextResponse.json(
+            {
+              success: false,
+              error: `Validation error in patient correction records: ${corrErr.message}`,
+              code: "INVALID_CORRECTION_PAYLOAD",
+            },
+            { status: 400 }
+          );
+        }
+      }
+      updateFields.interviewState = interviewState;
+    }
     if (body.deliveredTurnRecords !== undefined) updateFields.deliveredTurnRecords = body.deliveredTurnRecords;
     if (body.attributedFacts !== undefined) updateFields.attributedFacts = body.attributedFacts;
     if (body.unmappedObservations !== undefined) updateFields.unmappedObservations = body.unmappedObservations;

@@ -214,7 +214,7 @@ describe("Atomic Optimistic Concurrency & Follow-Up Lineage Invariants", () => {
               correctionId: `corr-${Date.now()}`,
               originalStatement: "Heart flutter when running.",
               correctedStatement: correctionText,
-              actorId: patientId,
+              actorId: "malicious-spoofed-actor-id", // Attempt to spoof actor
               caseVersion: 4,
               timestamp: new Date().toISOString(),
             },
@@ -237,6 +237,11 @@ describe("Atomic Optimistic Concurrency & Follow-Up Lineage Invariants", () => {
     assert.equal(
       correctionData.consultation.interviewState.patientCorrectionRecords[0].type,
       "PATIENT_CORRECTION"
+    );
+    // Server-authoritative actorId: derived from authenticated session, not spoofed client body
+    assert.equal(
+      correctionData.consultation.interviewState.patientCorrectionRecords[0].actorId,
+      patientId
     );
   });
 

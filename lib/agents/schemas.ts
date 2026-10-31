@@ -453,3 +453,23 @@ export interface DeliveredTurnRecord {
   audioDeliveryResult?: { playedDurationMs?: number; confirmedAt?: string };
   cachedResponsePayload?: any;
 }
+
+/**
+ * STRUCTURED PATIENT CORRECTION RECORD (Task D2)
+ * Distinguishes retroactive patient corrections and symptom amendments from newly presenting symptoms.
+ */
+export interface PatientCorrectionRecord {
+  id: string;
+  type: "PATIENT_CORRECTION";
+  consultationId?: string;
+  correctionOfTurnId?: string;
+  field?: "symptoms" | "medications" | "allergies" | "history" | "general";
+  originalValue?: string;
+  correctedValue: string;
+  // Legacy aliases for backward compatibility across existing tests
+  correctionId?: string;
+  correctedStatement?: string;
+  actorId: string;
+  caseVersion: number;
+  timestamp: string;
+}
