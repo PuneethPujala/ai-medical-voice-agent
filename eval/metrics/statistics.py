@@ -241,12 +241,22 @@ def fit_exploratory_ols_regression(
             "ci_upper": float(fitted.conf_int().loc[var_name, 1]),
         }
 
+    try:
+        f_stat = float(fitted.fvalue) if not np.isnan(fitted.fvalue) else 0.0
+    except Exception:
+        f_stat = 0.0
+
+    try:
+        f_p = float(fitted.f_pvalue) if not np.isnan(fitted.f_pvalue) else 1.0
+    except Exception:
+        f_p = 1.0
+
     return {
         "dependent_variable": dependent_var,
         "r_squared": float(fitted.rsquared),
         "adj_r_squared": float(fitted.rsquared_adj),
-        "f_statistic": float(fitted.fvalue) if not np.isnan(fitted.fvalue) else 0.0,
-        "f_pvalue": float(fitted.f_pvalue) if not np.isnan(fitted.f_pvalue) else 1.0,
+        "f_statistic": f_stat,
+        "f_pvalue": f_p,
         "n_observations": int(fitted.nobs),
         "coefficients": coefficients,
         "interpretation_note": (
