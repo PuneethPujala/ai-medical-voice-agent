@@ -43,13 +43,13 @@ export function ResumeStateRestorer({
   onMigrationFailure,
   children,
 }: ResumeStateRestorerProps) {
-  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const [isLoading, setIsLoading] = useState<boolean>(Boolean(encounterId));
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [isLocked, setIsLocked] = useState<boolean>(false);
   const [lockedRecord, setLockedRecord] = useState<any>(null);
   const [migrationFailure, setMigrationFailure] = useState<InterviewStateMigrationResult | null>(null);
 
-  const hasFetchedRef = useRef<string | null>(null);
+  const successfullyFetchedRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (!encounterId) {
@@ -57,10 +57,9 @@ export function ResumeStateRestorer({
       return;
     }
 
-    if (hasFetchedRef.current === encounterId) {
+    if (successfullyFetchedRef.current === encounterId) {
       return;
     }
-    hasFetchedRef.current = encounterId;
 
     const controller = new AbortController();
     let isMounted = true;
@@ -149,6 +148,7 @@ export function ResumeStateRestorer({
           rawRecord: record,
         };
 
+        successfullyFetchedRef.current = record.id;
         setIsLoading(false);
         onRestored(payload);
       } catch (err: any) {
@@ -168,6 +168,10 @@ export function ResumeStateRestorer({
       controller.abort();
     };
   }, [encounterId, onRestored, onLocked, onMigrationFailure]);
+
+  if (!encounterId) {
+    return <>{children}</>;
+  }
 
   // Loading Screen
   if (isLoading) {
@@ -199,7 +203,7 @@ export function ResumeStateRestorer({
           </Link>
           <button
             onClick={() => {
-              hasFetchedRef.current = null;
+              successfullyFetchedRef.current = null;
               setIsLoading(true);
             }}
             className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-rose-700 text-white hover:bg-rose-800 transition-colors"

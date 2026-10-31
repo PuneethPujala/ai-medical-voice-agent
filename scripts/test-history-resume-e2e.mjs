@@ -30,7 +30,34 @@ async function runBrowserAcceptanceTests() {
       { role: "doctor", text: "Does this pressure spread anywhere, or do you have any cold sweats?", timestamp: "10:02 AM" }
     ],
     detectedSymptoms: ["Substernal Chest Pressure", "Exertional Dyspnea"],
-    caseVersion: 1
+    caseVersion: 1,
+    interviewState: {
+      schemaVersion: 2,
+      phase: "active_inquiring",
+      informationState: "partial",
+      caseVersion: 1,
+      slots: {
+        onset: "2 hours ago",
+        associated_symptoms: ["Substernal Chest Pressure", "Exertional Dyspnea"],
+        known_facts: ["Chest pressure occurs when walking uphill"]
+      },
+      structuredHistory: {
+        unansweredDimensions: ["radiation", "severity"]
+      },
+      attributedFacts: [],
+      unmappedObservations: [],
+      deliveredTurnRecords: []
+    },
+    attributedFacts: [
+      {
+        id: "fact-substernal-pressure",
+        factKey: "Substernal Chest Pressure",
+        factValue: "Center of chest when walking uphill",
+        category: "symptom",
+        provenance: "patient_reported",
+        recordedAt: new Date().toISOString()
+      }
+    ]
   };
 
   const seedRes = await fetch(`${BASE_URL}/api/consultations`, {
@@ -111,8 +138,8 @@ async function runBrowserAcceptanceTests() {
     await page.goto(`${BASE_URL}/consult/${TEST_ENC_ID}`, { waitUntil: "networkidle" });
 
     // Wait for the ResumeRecapView container
-    await page.waitForSelector("text=Welcome back!", { timeout: 10000 });
-    console.log("✓ 'Welcome back!' headline rendered.");
+    await page.waitForSelector("text=Consultation Recap", { timeout: 10000 });
+    console.log("✓ 'Consultation Recap' headline rendered.");
 
     // Verify Consultation Restored pill & Doctor name
     const doctorNameVisible = await page.isVisible("text=Dr. Sarah Chen");
@@ -123,38 +150,39 @@ async function runBrowserAcceptanceTests() {
     if (!restoredPillVisible) throw new Error("'Consultation Restored' badge not visible");
     console.log("✓ 'Consultation Restored' badge verified.");
 
-    // Verify Chief Complaint
+    // Verify Grounded Clinical Categories
     const pageContent = await page.textContent("body");
-    if (!pageContent.includes("Substernal chest pressure")) {
-      throw new Error("Chief complaint text not visible in recap");
+    if (!pageContent.includes("Previously Reported") || !pageContent.includes("Information Discussed") || !pageContent.includes("Still to Explore")) {
+      throw new Error("4 Grounded Clinical Category cards missing from recap");
     }
-    console.log("✓ Saved chief complaint verified in recap card.");
+    console.log("✓ Grounded Clinical Categories (Previously Reported, Information Discussed, Still to Explore, Changes Since Pause) verified.");
 
-    // Verify Safety Question & Privacy Guarantee
-    if (!pageContent.includes("Before we continue") || !pageContent.includes("Has anything changed since we last spoke?")) {
-      throw new Error("Clinical safety checkpoint prompt missing");
+    // Verify Provenance Badges
+    if (!pageContent.includes("Patient Reported") && !pageContent.includes("Model Extracted")) {
+      throw new Error("Provenance badges missing from recap");
     }
-    console.log("✓ Safety prompt: 'Before we continue: Has anything changed since we last spoke?' verified.");
+    console.log("✓ Explicit provenance badges (Patient Reported, Model Extracted) verified.");
 
-    const micOffVisible = await page.isVisible("text=Microphone is off. Nothing is being recorded.");
-    if (!micOffVisible) throw new Error("Privacy badge 'Microphone is off' not visible");
-    console.log("✓ Privacy badge: 'Microphone is off. Nothing is being recorded.' verified.");
+    // Verify Privacy Reassurance
+    const micOffVisible = await page.isVisible("text=Microphone is strictly OFF");
+    if (!micOffVisible) throw new Error("Privacy badge 'Microphone is strictly OFF' not visible");
+    console.log("✓ Privacy badge: 'Microphone is strictly OFF' verified.");
 
     // Verify the 3 action buttons
-    const voiceBtnVisible = await page.isVisible("button:has-text('Continue with voice')");
-    const reviewBtnVisible = await page.isVisible("button:has-text('Review or update')");
-    const recapAudioBtnVisible = await page.isVisible("button:has-text('Listen to recap')");
+    const proceedBtnVisible = await page.isVisible("button:has-text('Proceed to Consultation')");
+    const reviewBtnVisible = await page.isVisible("button:has-text('Review or Add Addendum')");
+    const recapAudioBtnVisible = await page.isVisible("button:has-text('Listen to Voice Recap')");
 
-    if (!voiceBtnVisible || !reviewBtnVisible || !recapAudioBtnVisible) {
+    if (!proceedBtnVisible || !reviewBtnVisible || !recapAudioBtnVisible) {
       throw new Error("Missing one or more required action buttons on recap screen");
     }
-    console.log("✓ Tri-action buttons (Voice, Review/Update, Listen to Recap) verified.");
+    console.log("✓ Tri-action buttons (Proceed to Consultation, Review/Add Addendum, Listen to Voice Recap) verified.");
 
     // -------------------------------------------------------------
-    // Test 3: Interactive Review & Correction Drawer
+    // Test 3: Interactive Review & Correction Drawer + Chronology
     // -------------------------------------------------------------
     console.log("\n[Test 3] Testing Review & Correction Drawer interaction...");
-    await page.click("button:has-text('Review or update')");
+    await page.click("button:has-text('Review or Add Addendum')");
     await page.waitForSelector("#symptom-update-input", { timeout: 5000 });
     console.log("✓ Review drawer expanded with input field.");
 
@@ -167,11 +195,25 @@ async function runBrowserAcceptanceTests() {
 
     // Type symptom correction
     await page.fill("#symptom-update-input", "The chest tightness has eased, but I feel slightly fatigued today.");
-    await page.click("button:has-text('Update')");
+    await page.click("button:has-text('Append Addendum')");
 
     // Verify confirmation toast / message
     await page.waitForSelector("text=Provenance-tracked addendum appended", { timeout: 5000 });
     console.log("✓ Provenance-tracked addendum confirmation verified.");
+
+    // Close review drawer
+    await page.click("button:has-text('Hide Review')");
+    await page.waitForTimeout(300);
+
+    // Switch to Turn Chronology view
+    console.log("Testing Symptom Chronology toggle...");
+    await page.click("button:has-text('View Dialogue Chronology')");
+    await page.waitForSelector("text=Dialogue Chronology & Temporal Separation", { timeout: 5000 });
+    console.log("✓ Symptom Chronology timeline with onset/recording distinction rendered.");
+
+    // Switch back to 4 category cards
+    await page.click("button:has-text('Show 4 Category Cards')");
+    await page.waitForTimeout(300);
 
     const recapScreenshotPath = path.join(ARTIFACTS_DIR, "browser-resume-recap-desktop.png");
     await page.screenshot({ path: recapScreenshotPath });
@@ -211,10 +253,10 @@ async function runBrowserAcceptanceTests() {
     });
     const restrictedPage = await restrictedContext.newPage();
     await restrictedPage.goto(`${BASE_URL}/consult/${TEST_ENC_ID}`, { waitUntil: "networkidle" });
-    await restrictedPage.waitForSelector("button:has-text('Continue with voice')", { timeout: 10000 });
+    await restrictedPage.waitForSelector("button:has-text('Proceed to Consultation')", { timeout: 10000 });
     
-    // Click Continue with voice - switches to consultation room
-    await restrictedPage.click("button:has-text('Continue with voice')");
+    // Click Proceed to Consultation - switches to consultation room
+    await restrictedPage.click("button:has-text('Proceed to Consultation')");
     await restrictedPage.waitForTimeout(800);
 
     // Verify microphone is NOT automatically recording (privacy invariant)
