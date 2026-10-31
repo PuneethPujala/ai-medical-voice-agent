@@ -209,11 +209,11 @@ export function SymptomUpdateDrawer({
 
               {/* Conflict / Error State with preserved input */}
               {conflictError && (
-                <div className="flex items-start gap-2 text-xs font-medium text-amber-900 bg-amber-50 border border-amber-200 p-3 rounded-xl animate-in fade-in">
-                  <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div className="flex items-start gap-2 text-xs font-medium text-rose-900 bg-rose-50 border border-rose-200 p-3 rounded-xl animate-in fade-in">
+                  <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
                   <div className="flex-1">
                     <p>{conflictError}</p>
-                    <p className="text-[11px] text-amber-800/80 mt-1">
+                    <p className="text-[11px] text-rose-800/80 mt-1">
                       Your draft is safe above. Click "Append Addendum" again to retry.
                     </p>
                   </div>

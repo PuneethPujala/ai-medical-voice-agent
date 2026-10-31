@@ -253,28 +253,28 @@ export function ResumeStateRestorer({
     const turnsCount = recoverable.transcript?.length || 0;
 
     return (
-      <div className="max-w-xl mx-auto my-12 p-8 rounded-3xl bg-amber-50/80 border border-amber-200 shadow-lg">
+      <div className="max-w-xl mx-auto my-12 p-8 rounded-3xl bg-white border border-slate-200 shadow-xl">
         <div className="flex items-center gap-3 mb-4">
-          <ShieldAlert className="w-7 h-7 text-amber-700 shrink-0" />
+          <ShieldAlert className="w-7 h-7 text-slate-800 shrink-0" />
           <div>
-            <h3 className="text-base font-bold text-amber-950">
+            <h3 className="text-base font-bold text-slate-950">
               Encounter Schema Recovery Mode
             </h3>
-            <p className="text-xs text-amber-800">
+            <p className="text-xs text-slate-500">
               Encounter state requires review ({migrationFailure.status})
             </p>
           </div>
         </div>
 
-        <p className="text-xs sm:text-sm text-amber-900 leading-relaxed mb-4">
+        <p className="text-xs sm:text-sm text-slate-600 leading-relaxed mb-4">
           The internal state schema for this consultation cannot be automatically migrated to the
           current system version. To protect your medical record,{" "}
-          <strong>no data has been cleared or overwritten</strong>. All recorded symptoms and dialogue
+          <strong className="text-slate-900">no data has been cleared or overwritten</strong>. All recorded symptoms and dialogue
           turns are securely preserved below.
         </p>
 
         {/* Recoverable clinical summary */}
-        <div className="p-4 rounded-2xl bg-white/90 border border-amber-200/80 text-xs text-slate-700 space-y-2 mb-6">
+        <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 text-xs text-slate-700 space-y-2 mb-6">
           <div>
             <strong className="text-slate-900">Chief Complaint:</strong>{" "}
             {recoverable.chiefComplaint || "Not specified"}
@@ -293,13 +293,13 @@ export function ResumeStateRestorer({
         <div className="flex flex-col sm:flex-row items-center justify-end gap-3">
           <Link
             href="/history"
-            className="w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-semibold bg-white border border-amber-300 text-amber-900 hover:bg-amber-100/50 text-center transition-colors"
+            className="w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-semibold bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 text-center transition-colors"
           >
             Return to History
           </Link>
           <Link
             href={`/consult?followUpFrom=${encounterId}`}
-            className="w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-bold bg-amber-700 text-white hover:bg-amber-800 text-center transition-colors"
+            className="w-full sm:w-auto px-4 py-2 rounded-xl text-xs font-bold bg-[#18251D] text-white hover:bg-slate-800 text-center transition-colors"
           >
             Start Linked Follow-Up
           </Link>

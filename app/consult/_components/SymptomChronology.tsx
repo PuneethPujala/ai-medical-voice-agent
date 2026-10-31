@@ -124,8 +124,8 @@ export function SymptomChronology({
                 <span>{establishedOnsetText}</span>
               </div>
             ) : (
-              <div className="flex items-center gap-1.5 text-amber-900 font-medium bg-amber-50/80 px-2.5 py-1 rounded-lg border border-amber-200/60">
-                <HelpCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+              <div className="flex items-center gap-1.5 text-slate-700 font-medium bg-slate-100 px-2.5 py-1 rounded-lg border border-slate-200">
+                <HelpCircle className="w-3.5 h-3.5 text-slate-500 shrink-0" />
                 <span>Unknown / Not specified</span>
               </div>
             )}
@@ -170,17 +170,17 @@ export function SymptomChronology({
                 <span
                   className={`absolute -left-6 top-1 w-3 h-3 rounded-full border-2 border-white shadow-2xs ${
                     event.isAddendum
-                      ? "bg-amber-500 ring-2 ring-amber-200"
+                      ? "bg-[#18251D] ring-2 ring-[#B7FF72]"
                       : event.role === "doctor"
                       ? "bg-slate-900"
-                      : "bg-emerald-500"
+                      : "bg-[#18251D]"
                   }`}
                 />
 
                 <div
                   className={`p-3 rounded-xl border text-xs leading-relaxed ${
                     event.isAddendum
-                      ? "bg-amber-50/70 border-amber-200/80 text-amber-950 font-medium"
+                      ? "bg-slate-100/90 border-slate-300 text-slate-950 font-medium"
                       : event.role === "doctor"
                       ? "bg-slate-50/70 border-slate-200/70 text-slate-700"
                       : "bg-white border-slate-200/90 text-slate-900 font-medium shadow-2xs"
@@ -207,7 +207,7 @@ export function SymptomChronology({
                       <span
                         className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-md font-bold border ${
                           event.isHistorical
-                            ? "bg-amber-50 text-amber-800 border-amber-200/60"
+                            ? "bg-slate-100 text-slate-700 border-slate-300"
                             : "bg-emerald-50 text-emerald-800 border-emerald-200/60"
                         }`}
                       >

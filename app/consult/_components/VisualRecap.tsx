@@ -53,9 +53,9 @@ function ProvenanceBadge({
     },
     parent_encounter: {
       label: "Prior Visit Baseline",
-      bg: "bg-amber-50/80",
-      text: "text-amber-800",
-      border: "border-amber-200/60",
+      bg: "bg-slate-100",
+      text: "text-slate-800",
+      border: "border-slate-300",
     },
     historical_record: {
       label: "Longitudinal Record",
@@ -75,7 +75,7 @@ function ProvenanceBadge({
         {c.label}
       </span>
       {confirmationStatus === "reconciliation_needed" && (
-        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-amber-100 text-amber-800 border border-amber-300">
+        <span className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-[9px] font-bold bg-slate-100 text-slate-800 border border-slate-300">
           Reconfirm Needed
         </span>
       )}
@@ -204,7 +204,7 @@ export function VisualRecap({ consultation, categories }: VisualRecapProps) {
                       <span className="font-bold text-slate-900 block">
                         {item.dimension}
                       </span>
-                      <span className="text-[9px] font-bold text-amber-800 bg-amber-50 px-1.5 py-0.2 rounded border border-amber-200/60 uppercase">
+                      <span className="text-[9px] font-bold text-slate-700 bg-slate-100 px-1.5 py-0.5 rounded border border-slate-300 uppercase">
                         Unassessed
                       </span>
                     </div>
@@ -228,8 +228,8 @@ export function VisualRecap({ consultation, categories }: VisualRecapProps) {
         <div className="rounded-2xl bg-white border border-slate-200/90 p-4 shadow-2xs flex flex-col justify-between">
           <div>
             <div className="flex items-center justify-between pb-2 border-b border-slate-100">
-              <span className="text-xs font-bold uppercase tracking-wider text-slate-500 flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-amber-600" />
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-slate-700" />
                 {recap.changesSectionLabel}
               </span>
               {recap.changesSincePause.existingAddenda.length > 0 && (
@@ -240,8 +240,8 @@ export function VisualRecap({ consultation, categories }: VisualRecapProps) {
             </div>
 
             <div className="pt-3 space-y-2.5">
-              <div className="p-2.5 rounded-xl bg-amber-50/60 border border-amber-200/60 text-xs">
-                <p className="text-amber-950 font-medium leading-relaxed">
+              <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 text-xs">
+                <p className="text-slate-800 font-medium leading-relaxed">
                   {recap.changesSincePause.prompt}
                 </p>
               </div>

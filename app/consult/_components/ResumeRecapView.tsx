@@ -91,8 +91,8 @@ export function ResumeRecapView({
     <div className="w-full max-w-4xl mx-auto my-auto px-4 py-8 animate-in fade-in zoom-in-95 duration-200">
       <div className="relative overflow-hidden rounded-3xl bg-[#FAF9F6] border border-slate-200/90 shadow-[0_12px_40px_-8px_rgba(0,0,0,0.08)] p-6 sm:p-10">
         {/* Subtle decorative atmosphere */}
-        <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 rounded-full bg-emerald-100/25 blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-80 h-80 rounded-full bg-amber-100/25 blur-3xl pointer-events-none" />
+        <div className="absolute top-0 right-0 -mr-20 -mt-20 w-80 h-80 rounded-full bg-[#B7FF72]/10 blur-3xl pointer-events-none" />
+        <div className="absolute bottom-0 left-0 -ml-20 -mb-20 w-80 h-80 rounded-full bg-slate-200/30 blur-3xl pointer-events-none" />
 
         {/* 1. Header with Doctor Card & Status */}
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-6 border-b border-slate-200/80 relative z-10">
@@ -109,15 +109,15 @@ export function ResumeRecapView({
                   {doctor.name.charAt(0)}
                 </div>
               )}
-              <span className="absolute -bottom-1 -right-1 p-1 rounded-full bg-amber-500 text-white shadow-xs">
+              <span className="absolute -bottom-1 -right-1 p-1 rounded-full bg-[#18251D] text-[#B7FF72] shadow-xs border border-white">
                 <PauseCircle className="w-3.5 h-3.5" />
               </span>
             </div>
 
             <div>
               <div className="flex items-center gap-2 mb-0.5">
-                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-50 text-amber-800 border border-amber-200/80">
-                  <Clock className="w-3 h-3 text-amber-600" />
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-[#18251D] text-white border border-slate-700 shadow-2xs">
+                  <Clock className="w-3 h-3 text-[#B7FF72]" />
                   {categories.isFollowUp ? "Linked Follow-Up Active" : "Consultation Restored"}
                 </span>
                 <span className="text-xs font-mono text-slate-400">· {consultation.id}</span>

@@ -55,14 +55,18 @@ export function ConsultClinicalContext({
           </div>
           <span
             className={`px-2.5 py-0.5 rounded-full font-mono text-[10px] font-extrabold uppercase tracking-wider border ${
-              isEmergency || (esiScore && esiScore <= 2)
+              isEmergency || (typeof esiScore === "number" && esiScore <= 2)
                 ? "bg-rose-50 text-rose-700 border-rose-300"
-                : "bg-emerald-50 text-emerald-800 border-emerald-300"
+                : typeof esiScore === "number"
+                ? "bg-emerald-50 text-emerald-800 border-emerald-300"
+                : "bg-slate-100 text-slate-600 border-slate-300"
             }`}
           >
-            {isEmergency || (esiScore && esiScore <= 2)
-              ? `ESI-${esiScore || 2} EMERGENCY`
-              : `ESI-${esiScore || 4} ${triageLevel.toUpperCase()}`}
+            {isEmergency || (typeof esiScore === "number" && esiScore <= 2)
+              ? `ESI-${esiScore ?? 2} EMERGENCY`
+              : typeof esiScore === "number"
+              ? `ESI-${esiScore} ${(triageLevel || "routine").toUpperCase()}`
+              : "GATHERING HISTORY"}
           </span>
         </div>
 
