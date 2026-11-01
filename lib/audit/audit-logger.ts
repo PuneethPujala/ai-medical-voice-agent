@@ -460,7 +460,8 @@ export function isLegacyPreMigrationPermitted(): boolean {
   }
   return (
     process.env.ALLOW_LEGACY_AUDIT_WRITER === "true" ||
-    process.env.NODE_ENV === "test"
+    process.env.NODE_ENV === "test" ||
+    process.env.NODE_ENV === "development"
   );
 }
 
