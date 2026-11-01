@@ -86,15 +86,15 @@ export function ArtifactTimeline({
           </div>
           <div className="flex-1 space-y-1">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="font-bold text-xs text-slate-900 font-serif">Original Clinical Record</span>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+              <span className="font-bold text-xs text-slate-900 font-sans">Original Clinical Record</span>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-sans font-medium bg-emerald-50 text-emerald-700 border border-emerald-200">
                 Legacy Attestation
               </span>
             </div>
             <p className="text-xs text-slate-600 leading-relaxed">
               Approved prior to Milestone 6 artifact versioning migration. Recorded with clinician attestation.
             </p>
-            <div className="text-[11px] text-slate-500 font-mono pt-1">
+            <div className="text-[11px] text-slate-500 font-sans pt-1">
               <span>Attested by: {legacyApproved.approvedBy || "Attending Physician"}</span>
               {legacyApproved.approvedAt && (
                 <span className="ml-3">· {formatDate(legacyApproved.approvedAt)}</span>
@@ -108,10 +108,10 @@ export function ArtifactTimeline({
 
   if (visibleArtifacts.length === 0) {
     return (
-      <div className={`p-5 rounded-2xl bg-slate-50/70 border border-slate-200/80 text-center ${className}`}>
+      <div className={`p-6 rounded-2xl bg-slate-50 border border-slate-200 text-center ${className}`}>
         <FileText className="w-6 h-6 text-slate-400 mx-auto mb-2" />
-        <p className="text-xs font-medium text-slate-600">
-          {isPhysician ? "No clinical artifact versions on record." : "Clinical documentation pending physician certification."}
+        <p className="text-xs font-medium text-slate-500">
+          {isPhysician ? "No clinical artifact versions on record." : "No finalized clinical records on record."}
         </p>
       </div>
     );
@@ -123,17 +123,17 @@ export function ArtifactTimeline({
       <div className="flex items-center justify-between pb-2 border-b border-slate-200/80">
         <div className="flex items-center gap-2">
           <GitBranch className="w-4 h-4 text-emerald-600" />
-          <h3 className="text-xs font-bold uppercase tracking-wider text-slate-700 font-mono">
+          <h3 className="text-xs font-semibold text-slate-800 tracking-normal font-sans">
             Document Version Timeline
           </h3>
         </div>
-        <span className="text-[11px] font-mono text-slate-500 font-bold bg-slate-100 px-2 py-0.5 rounded-full">
+        <span className="text-[11px] font-sans text-slate-500 font-medium bg-slate-100 px-2.5 py-0.5 rounded-full">
           {visibleArtifacts.length} {visibleArtifacts.length === 1 ? "Version" : "Versions"}
         </span>
       </div>
 
       {/* Stepper Node List */}
-      <div className="relative pl-6 space-y-6 before:absolute before:left-2.5 before:top-3 before:bottom-3 before:w-0.5 before:bg-slate-200">
+      <div className="relative pl-6 space-y-5 before:absolute before:left-2.5 before:top-3 before:bottom-3 before:w-0.5 before:bg-slate-200">
         {visibleArtifacts.map((art, idx) => {
           const isSelected = selectedArtifactId === art.id;
           const isSigned = art.status === "signed";
@@ -150,7 +150,7 @@ export function ArtifactTimeline({
             <div
               key={art.id}
               className={`relative transition-all ${
-                isSelected ? "ring-2 ring-emerald-500/40 rounded-xl" : ""
+                isSelected ? "ring-2 ring-emerald-500/30 rounded-xl" : ""
               }`}
             >
               {/* Node Bullet Icon */}
@@ -180,52 +180,52 @@ export function ArtifactTimeline({
 
               {/* Node Content Card */}
               <div
-                className={`p-3.5 rounded-xl border text-xs transition-colors ${
+                className={`p-4 rounded-xl border text-xs transition-colors ${
                   isSelected
-                    ? "bg-emerald-50/50 border-emerald-300 shadow-xs"
-                    : "bg-white border-slate-200/90 hover:border-slate-300"
+                    ? "bg-emerald-50/40 border-emerald-300 shadow-xs"
+                    : "bg-white border-slate-200 hover:border-slate-300"
                 }`}
               >
                 {/* Top Row: Version Badge & Status */}
-                <div className="flex flex-wrap items-center justify-between gap-2 mb-1.5">
+                <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
                   <div className="flex items-center gap-2">
-                    <span className="font-mono font-bold text-slate-900 text-xs">
+                    <span className="font-bold text-slate-900 text-xs sm:text-sm font-sans">
                       Version {art.version}
                     </span>
                     {art.amendsArtifactId && (
-                      <span className="text-[10px] font-mono text-slate-500 bg-slate-100 px-1.5 py-0.5 rounded flex items-center gap-1">
-                        <ArrowRight className="w-2.5 h-2.5 text-slate-400" />
+                      <span className="text-[11px] font-sans text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md flex items-center gap-1 font-medium">
+                        <ArrowRight className="w-3 h-3 text-slate-400" />
                         <span>Amendment</span>
                       </span>
                     )}
                   </div>
 
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 font-sans">
                     {isLatestSigned && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100/80 text-emerald-800 border border-emerald-300">
-                        <CheckCircle2 className="w-3 h-3" />
-                        Latest Signed Version
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                        <CheckCircle2 className="w-3 h-3 text-emerald-600" />
+                        Latest signed
                       </span>
                     )}
                     {isSuperseded && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-600 border border-slate-200">
                         Superseded by v{latestSignedVersion}
                       </span>
                     )}
                     {isPending && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                        <Clock className="w-3 h-3" />
-                        Pending Review
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-700 border border-amber-200">
+                        <Clock className="w-3 h-3 text-amber-600" />
+                        Pending review
                       </span>
                     )}
                     {isDraft && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-50 text-cyan-700 border border-cyan-200">
-                        {art.amendsArtifactId ? "Draft Amendment" : "Draft (In Progress)"}
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-cyan-50 text-cyan-700 border border-cyan-200">
+                        {art.amendsArtifactId ? "Draft amendment" : "Draft"}
                       </span>
                     )}
                     {isCancelled && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200 line-through">
-                        Cancelled Revision
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-rose-50 text-rose-700 border border-rose-200 line-through">
+                        Cancelled
                       </span>
                     )}
                   </div>
@@ -233,23 +233,23 @@ export function ArtifactTimeline({
 
                 {/* Amendment Reason Callout */}
                 {art.amendmentReason && (
-                  <div className="mt-1.5 p-2 rounded-lg bg-amber-50/70 border border-amber-200/80 text-amber-950 text-[11px] leading-relaxed">
-                    <span className="font-bold">Amendment Justification: </span>
-                    <span>{art.amendmentReason}</span>
+                  <div className="mt-2 p-2.5 rounded-lg bg-amber-50/60 border border-amber-200/70 text-amber-950 text-xs leading-relaxed font-sans">
+                    <span className="font-semibold">Amendment justification: </span>
+                    <span className="text-amber-900">{art.amendmentReason}</span>
                   </div>
                 )}
 
                 {/* Attestation & Integrity Meta */}
-                <div className="mt-2 text-[11px] text-slate-500 font-mono flex flex-wrap items-center gap-x-3 gap-y-1">
+                <div className="mt-2.5 text-[11px] text-slate-500 font-sans flex flex-wrap items-center gap-x-3 gap-y-1">
                   {art.signedBy && (
-                    <span>Signed by: {art.signedBy}</span>
+                    <span>Signed by {art.signedBy}</span>
                   )}
                   {art.signedAt && (
                     <span>· {formatDate(art.signedAt)}</span>
                   )}
                   {isSigned && (
-                    <span className="inline-flex items-center gap-1 text-emerald-700 font-sans font-medium">
-                      <Lock className="w-2.5 h-2.5" />
+                    <span className="inline-flex items-center gap-1 text-emerald-700 font-medium">
+                      <Lock className="w-3 h-3" />
                       <span>Integrity verified (SHA-256)</span>
                     </span>
                   )}

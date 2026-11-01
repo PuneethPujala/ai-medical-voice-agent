@@ -53,6 +53,29 @@ async function run() {
     ALTER TABLE "consultations" ADD COLUMN IF NOT EXISTS "delivered_turn_records" jsonb;
     ALTER TABLE "consultations" ADD COLUMN IF NOT EXISTS "attributed_facts" jsonb;
     ALTER TABLE "consultations" ADD COLUMN IF NOT EXISTS "unmapped_observations" jsonb;
+
+    CREATE TABLE IF NOT EXISTS "patient_longitudinal_facts" (
+      id varchar(128) PRIMARY KEY,
+      user_id varchar(128) NOT NULL,
+      patient_profile_id varchar(128) NOT NULL,
+      category varchar(64) NOT NULL,
+      concept varchar(128) NOT NULL,
+      reported_value text NOT NULL,
+      numeric_value double precision,
+      unit varchar(32),
+      temporal_scope varchar(32) NOT NULL DEFAULT 'baseline',
+      lifecycle varchar(32) NOT NULL DEFAULT 'active',
+      verification varchar(32) NOT NULL DEFAULT 'unverified',
+      source_type varchar(32) NOT NULL DEFAULT 'patient',
+      source_consultation_id varchar(128) NOT NULL,
+      source_turn_id varchar(128) NOT NULL,
+      reported_at timestamptz NOT NULL,
+      recorded_at timestamptz NOT NULL DEFAULT NOW(),
+      last_reviewed_at timestamptz,
+      supersedes_fact_id varchar(128),
+      superseded_by_fact_id varchar(128),
+      superseded_at timestamptz
+    );
   `);
 
   const RUN_ID = Date.now().toString(36);
@@ -224,101 +247,75 @@ async function run() {
   const browser = await chromium.launch({ headless: true });
 
   // --------------------------------------------------------------------------
-  // Scenario 1: Patient Desktop View (1440px)
+  // Scenario 1: Physician Desktop View (1440px)
   // --------------------------------------------------------------------------
-  console.log("\n--- Scenario 1: Patient Desktop (Timeline & Signed Version Only) ---");
-  const patientContext = await browser.newContext({
-    viewport: { width: 1440, height: 900 },
-    extraHTTPHeaders: patientHeaders,
-  });
-  const patientPage = await patientContext.newPage();
-  await patientPage.goto(`http://localhost:3000/history?search=${multiVersionId}`, { waitUntil: "domcontentloaded" });
-  await patientPage.waitForTimeout(1200);
-
-  // Click SOAP Report on Multi-Version Card
-  const multiCard = patientPage.locator('button:has-text("SOAP Report")').first();
-  await multiCard.click();
-  await patientPage.waitForSelector('h2:has-text("SOAP NOTE")');
-  await patientPage.waitForTimeout(1000);
-
-  // Click "Timeline" tab
-  await patientPage.locator('button:has-text("Timeline")').first().click();
-  await patientPage.waitForTimeout(800);
-
-  // Capture Patient Timeline View
-  await patientPage.screenshot({
-    path: "scripts/m6-stage4-patient-timeline-desktop.png",
-    fullPage: false,
-  });
-  console.log("Captured: scripts/m6-stage4-patient-timeline-desktop.png");
-
-  // Click "Compare" tab or "Compare with v1"
-  const compareTab = patientPage.locator('button:has-text("Compare")').first();
-  if (await compareTab.isVisible()) {
-    await compareTab.click();
-  } else {
-    const compareBtn = patientPage.locator('button:has-text("Compare with v1")').first();
-    await compareBtn.click();
-  }
-  await patientPage.waitForSelector('h3:has-text("SOAP Revision Comparison")');
-  await patientPage.waitForTimeout(800);
-
-  // Capture SOAP Diff View
-  await patientPage.screenshot({
-    path: "scripts/m6-stage4-soap-diff-desktop.png",
-    fullPage: false,
-  });
-  console.log("Captured: scripts/m6-stage4-soap-diff-desktop.png");
-
-  await patientContext.close();
-
-  // --------------------------------------------------------------------------
-  // Scenario 2: Physician Desktop View (1440px)
-  // --------------------------------------------------------------------------
-  console.log("\n--- Scenario 2: Physician Desktop (Full Audit Lineage & Amendment Drawer) ---");
+  console.log("\n--- Scenario 1: Physician Desktop (Document, Timeline, Comparison & Amendment) ---");
   const docContext = await browser.newContext({
     viewport: { width: 1440, height: 900 },
-    extraHTTPHeaders: clinicianHeaders,
   });
   const docPage = await docContext.newPage();
-  await docPage.goto(`http://localhost:3000/history?search=${multiVersionId}`, { waitUntil: "domcontentloaded" });
-  await docPage.waitForTimeout(1200);
 
-  // Open SOAP Report on Multi-Version Card
-  const docMultiCard = docPage.locator('button:has-text("SOAP Report")').first();
-  await docMultiCard.click();
-  await docPage.waitForSelector('h2:has-text("SOAP NOTE")');
-  await docPage.waitForTimeout(1000);
+  // Attach mock headers strictly to localhost
+  await docPage.route("http://localhost:3000/**", async (route) => {
+    const headers = { ...route.request().headers(), ...clinicianHeaders };
+    await route.continue({ headers });
+  });
 
-  // Click "Timeline" tab
-  await docPage.locator('button:has-text("Timeline")').first().click();
+  await docPage.goto(`http://localhost:3000/history?search=${multiVersionId}`, { waitUntil: "networkidle" });
   await docPage.waitForTimeout(800);
 
-  // Capture Physician Timeline View (shows v1 signed, v2 signed, v3 draft!)
+  // Open SOAP Report
+  const docMultiCard = docPage.locator('button:has-text("SOAP Report")').first();
+  await docMultiCard.click();
+  await docPage.waitForSelector('h2:has-text("SOAP Note")');
+  await docPage.waitForTimeout(600);
+
+  // 1. Desktop SOAP Document View
+  await docPage.screenshot({
+    path: "scripts/m6-stage4-soap-document-desktop.png",
+    fullPage: false,
+  });
+  console.log("Captured: scripts/m6-stage4-soap-document-desktop.png");
+
+  // 2. Desktop Timeline View
+  await docPage.locator('button:has-text("Timeline")').first().click();
+  await docPage.waitForSelector('text=Document Version Timeline');
+  await docPage.waitForTimeout(600);
   await docPage.screenshot({
     path: "scripts/m6-stage4-physician-timeline-desktop.png",
     fullPage: false,
   });
   console.log("Captured: scripts/m6-stage4-physician-timeline-desktop.png");
 
-  // In timeline, click "Inspect Version" on Version 2 (which is signed) to enable amendment
+  // 3. Desktop Comparison View
+  const compareTab = docPage.locator('button:has-text("Compare")').first();
+  if (await compareTab.isVisible()) {
+    await compareTab.click();
+  } else {
+    await docPage.locator('button:has-text("Compare with")').first().click();
+  }
+  await docPage.waitForSelector('h3:has-text("SOAP Revision Comparison")');
+  await docPage.waitForTimeout(600);
+  await docPage.screenshot({
+    path: "scripts/m6-stage4-soap-diff-desktop.png",
+    fullPage: false,
+  });
+  console.log("Captured: scripts/m6-stage4-soap-diff-desktop.png");
+
+  // 4. Amendment Dialog View
+  await docPage.locator('button:has-text("Timeline")').first().click();
+  await docPage.waitForTimeout(400);
   const inspectV2Btn = docPage.locator('div:has-text("Version 2")').locator('button:has-text("Inspect Version")').first();
   if (await inspectV2Btn.isVisible()) {
     await inspectV2Btn.click();
-    await docPage.waitForTimeout(600);
-  } else {
-    await docPage.locator('button:has-text("SOAP Note")').click();
-    await docPage.waitForTimeout(500);
+    await docPage.waitForTimeout(400);
   }
-
   const amendBtn = docPage.locator('button:has-text("Create Amendment")');
   await amendBtn.waitFor({ state: "visible", timeout: 4000 }).catch(() => {});
   if (await amendBtn.isVisible()) {
     await amendBtn.click();
     await docPage.waitForSelector('text=Clinical Justification');
-    await docPage.waitForTimeout(600);
-
-    // Capture Amendment Creation Drawer
+    await docPage.waitForTimeout(500);
     await docPage.screenshot({
       path: "scripts/m6-stage4-amendment-drawer-desktop.png",
       fullPage: false,
@@ -326,25 +323,18 @@ async function run() {
     console.log("Captured: scripts/m6-stage4-amendment-drawer-desktop.png");
   }
 
-  // Close modal via Escape key
+  // Close modal via Escape
   await docPage.keyboard.press("Escape");
+  await docPage.waitForTimeout(400);
+
+  // 5. Legacy Approved Record View
+  await docPage.goto(`http://localhost:3000/history?search=${legacyId}`, { waitUntil: "networkidle" });
   await docPage.waitForTimeout(600);
-
-  // Navigate to legacy encounter via search param to guarantee single matching card
-  await docPage.goto(`http://localhost:3000/history?search=${legacyId}`, { waitUntil: "domcontentloaded" });
-  await docPage.waitForTimeout(1200);
-
-  // Open Legacy Encounter Modal
   const legacyCard = docPage.locator('button:has-text("SOAP Report")').first();
   await legacyCard.click();
-  await docPage.waitForSelector('h2:has-text("SOAP NOTE")');
-  await docPage.waitForTimeout(800);
-
-  // Click Timeline on Legacy Encounter
+  await docPage.waitForSelector('h2:has-text("SOAP Note")');
   await docPage.locator('button:has-text("Timeline")').first().click();
-  await docPage.waitForTimeout(600);
-
-  // Capture Legacy Approved Record View
+  await docPage.waitForTimeout(500);
   await docPage.screenshot({
     path: "scripts/m6-stage4-legacy-approved-desktop.png",
     fullPage: false,
@@ -354,37 +344,73 @@ async function run() {
   await docContext.close();
 
   // --------------------------------------------------------------------------
-  // Scenario 3: Mobile Viewport (375px)
+  // Scenario 2: Patient Desktop View (1440px) — Privacy & Signed-Only Check
   // --------------------------------------------------------------------------
-  console.log("\n--- Scenario 3: Mobile Viewport (375px Timeline & Diff) ---");
+  console.log("\n--- Scenario 2: Patient Desktop (Signed-Only Privacy Verification) ---");
+  const patientContext = await browser.newContext({
+    viewport: { width: 1440, height: 900 },
+  });
+  const patientPage = await patientContext.newPage();
+  await patientPage.route("http://localhost:3000/**", async (route) => {
+    const headers = { ...route.request().headers(), ...patientHeaders };
+    await route.continue({ headers });
+  });
+
+  await patientPage.goto(`http://localhost:3000/history?search=${multiVersionId}`, { waitUntil: "networkidle" });
+  await patientPage.waitForTimeout(800);
+  const patientMultiCard = patientPage.locator('button:has-text("SOAP Report")').first();
+  await patientMultiCard.click();
+  await patientPage.waitForSelector('h2:has-text("SOAP Note")');
+  await patientPage.locator('button:has-text("Timeline")').first().click();
+  await patientPage.waitForTimeout(600);
+  await patientPage.screenshot({
+    path: "scripts/m6-stage4-patient-timeline-desktop.png",
+    fullPage: false,
+  });
+  console.log("Captured: scripts/m6-stage4-patient-timeline-desktop.png");
+  await patientContext.close();
+
+  // --------------------------------------------------------------------------
+  // Scenario 3: Mobile Viewport (375px) — Document, Timeline & Diff
+  // --------------------------------------------------------------------------
+  console.log("\n--- Scenario 3: Mobile Viewport (375px) ---");
   const mobileContext = await browser.newContext({
     viewport: { width: 375, height: 812 },
-    extraHTTPHeaders: clinicianHeaders,
   });
   const mobilePage = await mobileContext.newPage();
-  await mobilePage.goto(`http://localhost:3000/history?search=${multiVersionId}`, { waitUntil: "domcontentloaded" });
-  await mobilePage.waitForTimeout(1200);
+  await mobilePage.route("http://localhost:3000/**", async (route) => {
+    const headers = { ...route.request().headers(), ...clinicianHeaders };
+    await route.continue({ headers });
+  });
+
+  await mobilePage.goto(`http://localhost:3000/history?search=${multiVersionId}`, { waitUntil: "networkidle" });
+  await mobilePage.waitForTimeout(800);
 
   const mobileSoapBtn = mobilePage.locator('button:has-text("SOAP Report")').first();
   await mobileSoapBtn.click();
-  await mobilePage.waitForSelector('h2:has-text("SOAP NOTE")');
-  await mobilePage.waitForTimeout(800);
-
-  // Timeline on mobile
-  await mobilePage.locator('button:has-text("Timeline")').first().click();
+  await mobilePage.waitForSelector('h2:has-text("SOAP Note")');
   await mobilePage.waitForTimeout(600);
 
+  // 6. Mobile SOAP Document View
+  await mobilePage.screenshot({
+    path: "scripts/m6-stage4-soap-document-mobile-375.png",
+    fullPage: false,
+  });
+  console.log("Captured: scripts/m6-stage4-soap-document-mobile-375.png");
+
+  // 7. Mobile Timeline View
+  await mobilePage.locator('button:has-text("Timeline")').first().click();
+  await mobilePage.waitForTimeout(600);
   await mobilePage.screenshot({
     path: "scripts/m6-stage4-timeline-mobile-375.png",
     fullPage: false,
   });
   console.log("Captured: scripts/m6-stage4-timeline-mobile-375.png");
 
-  // Diff on mobile
+  // 8. Mobile Diff View
   await mobilePage.locator('button:has-text("Compare")').first().click();
   await mobilePage.waitForSelector('h3:has-text("SOAP Revision Comparison")');
   await mobilePage.waitForTimeout(600);
-
   await mobilePage.screenshot({
     path: "scripts/m6-stage4-diff-mobile-375.png",
     fullPage: false,
@@ -395,11 +421,13 @@ async function run() {
   await browser.close();
 
   console.log("\n=== Step 3: Copying screenshots to artifacts directory ===");
-  await copyToArtifacts("m6-stage4-patient-timeline-desktop.png");
+  await copyToArtifacts("m6-stage4-soap-document-desktop.png");
   await copyToArtifacts("m6-stage4-physician-timeline-desktop.png");
   await copyToArtifacts("m6-stage4-soap-diff-desktop.png");
   await copyToArtifacts("m6-stage4-amendment-drawer-desktop.png");
   await copyToArtifacts("m6-stage4-legacy-approved-desktop.png");
+  await copyToArtifacts("m6-stage4-patient-timeline-desktop.png");
+  await copyToArtifacts("m6-stage4-soap-document-mobile-375.png");
   await copyToArtifacts("m6-stage4-timeline-mobile-375.png");
   await copyToArtifacts("m6-stage4-diff-mobile-375.png");
 
