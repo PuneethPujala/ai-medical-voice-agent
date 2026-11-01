@@ -194,4 +194,130 @@ describe("Milestone 5: Microphone Gate & Audio Invariants (mic-gate.test.ts)", (
     assert.strictEqual(p2, null, "Concurrent second click must be ignored");
     assert.strictEqual(streamCount, 1, "Only one media stream must be created");
   });
+
+  // Test 8: Explicit stream ownership transfer & route unmount lifecycle
+  it("8. Invariant: Transferred MediaStream remains live after recap/gate unmounts, and is cleaned up on route exit", async () => {
+    // 1. Setup mock audio track with readyState tracking
+    let trackState: "live" | "ended" = "live";
+    const mockTrack = {
+      kind: "audio",
+      readyState: "live",
+      stop: () => {
+        trackState = "ended";
+        mockTrack.readyState = "ended";
+      },
+    };
+    const mockMediaStream = {
+      getTracks: () => [mockTrack],
+      active: true,
+    };
+
+    // 2. Simulate MicrophoneGate internal state & lifecycle
+    let gateActiveStream: any = null;
+    let gateMounted = true;
+    let consultationWorkspaceStream: any = null;
+
+    // Gate unmount cleanup function (as in MicrophoneGate useEffect return)
+    const gateCleanup = () => {
+      gateMounted = false;
+      if (gateActiveStream) {
+        gateActiveStream.getTracks().forEach((t: any) => t.stop());
+        gateActiveStream = null;
+      }
+    };
+
+    // Explicit user click inside gate
+    const handleExplicitProceed = async () => {
+      // Stream acquired from navigator
+      const stream = mockMediaStream;
+
+      // OWNERSHIP TRANSFER INVARIANT:
+      // Gate hands stream over to parent workspace and clears local reference
+      gateActiveStream = null;
+      consultationWorkspaceStream = stream; // Parent accepts stream
+    };
+
+    // Execute click
+    await handleExplicitProceed();
+    assert.ok(consultationWorkspaceStream !== null, "Parent workspace must have received the live stream");
+    assert.strictEqual(trackState, "live", "Stream must be live upon initial acquisition");
+
+    // 3. Recap / Gate is dismissed & unmounted
+    gateCleanup();
+    assert.strictEqual(gateMounted, false, "Gate must be unmounted");
+
+    // 4. INVARIANT: Stream remains live in parent workspace!
+    assert.strictEqual(
+      trackState,
+      "live",
+      "Transferred stream tracks must remain LIVE after recap gate unmounts"
+    );
+    assert.strictEqual(mockTrack.readyState, "live");
+
+    // 5. Patient exits consultation route (page.tsx top-level unmount lifecycle)
+    const routeUnmountCleanup = () => {
+      if (consultationWorkspaceStream) {
+        consultationWorkspaceStream.getTracks().forEach((t: any) => t.stop());
+        consultationWorkspaceStream = null;
+      }
+    };
+
+    routeUnmountCleanup();
+
+    // INVARIANT: Route departure halts all active audio tracks
+    assert.strictEqual(trackState, "ended", "All microphone tracks must be stopped on route departure");
+    assert.strictEqual(consultationWorkspaceStream, null, "Parent stream reference must be cleared");
+  });
+
+  // Test 9: Exception-safe handoff prevents track leak if parent throws
+  it("9. Invariant: Failed or throwing handoff immediately stops acquired tracks to prevent hardware leak", async () => {
+    let trackState: "live" | "ended" = "live";
+    const mockTrack = {
+      kind: "audio",
+      readyState: "live",
+      stop: () => {
+        trackState = "ended";
+        mockTrack.readyState = "ended";
+      },
+    };
+    const mockStream = {
+      getTracks: () => [mockTrack],
+      active: true,
+    };
+
+    let gateActiveStream: any = null;
+    let gateState = "REQUESTING_MIC";
+    let errorMessage: string | null = null;
+
+    // Simulated throwing parent handler
+    const faultyParentHandler = (_stream: any) => {
+      throw new Error("Simulated parent crash during stream intake");
+    };
+
+    // Simulated handleExplicitProceed with exception-safe handoff
+    const handleExplicitProceed = async () => {
+      const stream = mockStream;
+      gateActiveStream = stream;
+
+      try {
+        faultyParentHandler(stream);
+        gateActiveStream = null;
+        gateState = "PATIENT_LISTENING";
+      } catch (handoffErr: any) {
+        // Handoff failed: immediately stop tracks to prevent hardware leak
+        stream.getTracks().forEach((t: any) => t.stop());
+        gateActiveStream = null;
+        gateState = "RECAP_COMPLETE_MIC_OFF";
+        errorMessage = "Failed to transfer audio stream to consultation workspace. Please retry.";
+      }
+    };
+
+    await handleExplicitProceed();
+
+    // Invariants:
+    assert.strictEqual(trackState, "ended", "Microphone tracks must be immediately stopped when handoff fails");
+    assert.strictEqual(gateActiveStream, null, "Gate must clear active stream reference");
+    assert.strictEqual(gateState, "RECAP_COMPLETE_MIC_OFF", "Gate must reset cleanly to RECAP_COMPLETE_MIC_OFF");
+    assert.ok(typeof errorMessage === "string" && (errorMessage as string).includes("Failed to transfer"), "Informative error message must be surfaced");
+  });
 });

@@ -236,7 +236,6 @@ export function ResumeRecapView({
                     onContinueWithVoice();
                   }
                 }}
-                onProceedClick={onContinueWithVoice}
               />
             </div>
 

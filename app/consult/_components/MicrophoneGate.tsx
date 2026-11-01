@@ -114,10 +114,33 @@ export function MicrophoneGate({
         return;
       }
 
+      // Temporary custody while attempting handoff
       activeStreamRef.current = stream;
-      setGateState("PATIENT_LISTENING");
-      isRequestingRef.current = false;
-      onMicrophoneActivated(stream);
+
+      // Invariant: Exception-safe stream ownership handoff.
+      // 1. Deliver stream to parent consultation workspace.
+      // 2. If parent accepts without error, release gate custody (activeStreamRef = null)
+      //    so subsequent unmount of the recap view does not stop the parent's active tracks.
+      // 3. If handoff throws, catch error, immediately stop all tracks to prevent hardware leak,
+      //    and reset gate state cleanly.
+      try {
+        onMicrophoneActivated(stream);
+        activeStreamRef.current = null;
+        setGateState("PATIENT_LISTENING");
+        isRequestingRef.current = false;
+      } catch (handoffErr: any) {
+        console.error("[MicrophoneGate] Parent handoff failed; stopping acquired tracks to prevent hardware leak:", handoffErr);
+        stream.getTracks().forEach((t) => {
+          try {
+            t.stop();
+          } catch {}
+        });
+        activeStreamRef.current = null;
+        isRequestingRef.current = false;
+        setGateState("RECAP_COMPLETE_MIC_OFF");
+        setErrorMessage("Failed to transfer audio stream to consultation workspace. Please retry.");
+        return;
+      }
     } catch (err: any) {
       console.warn("[MicrophoneGate] getUserMedia rejected or denied:", err?.name, err?.message);
       if (!isMountedRef.current) return;
