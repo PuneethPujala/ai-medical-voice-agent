@@ -7,6 +7,7 @@ export type Permission =
   | "consultations:create"
   | "consultations:read:own"
   | "consultations:approve"
+  | "clinical_artifacts:sign:any" // Explicit administrative clinical signing override permission
   | "emergency:dispatch"
   | "health:export:own"
   | "analytics:read"
@@ -43,12 +44,21 @@ export interface AuthContext {
   name: string;
   email: string;
   isDemoMode: boolean;
+  doctorId?: string;
+  permissions?: Permission[];
 }
 
 /**
- * Checks whether a role possesses a specific permission.
+ * Checks whether a role or user possesses a specific permission.
  */
-export function hasPermission(role: Role, permission: Permission): boolean {
+export function hasPermission(
+  role: Role,
+  permission: Permission,
+  userPermissions?: Permission[]
+): boolean {
+  if (userPermissions && userPermissions.includes(permission)) {
+    return true;
+  }
   return ROLE_PERMISSIONS[role]?.includes(permission) ?? false;
 }
 
@@ -83,12 +93,20 @@ export async function getAuthContext(request?: Request): Promise<AuthContext> {
       const simulatePatient = request?.headers.get("x-simulate-patient-view") === "true";
       const effectiveRole: Role = verifiedRole === "admin" && simulatePatient ? "patient" : verifiedRole;
 
+      const permissions = (user.publicMetadata?.permissions as Permission[]) || [];
+      const doctorId =
+        (user.publicMetadata?.doctorId as string) ||
+        (user.publicMetadata?.doctorProfileId as string) ||
+        undefined;
+
       return {
         userId: user.id,
         role: effectiveRole,
         name: user.fullName || user.firstName || user.username || "Authenticated User",
         email: user.primaryEmailAddress?.emailAddress || "",
         isDemoMode: false,
+        doctorId,
+        permissions,
       };
     }
   } catch {
@@ -102,7 +120,22 @@ export async function getAuthContext(request?: Request): Promise<AuthContext> {
   //   Missing or weak secret strictly FAILS CLOSED with NO fallback.
   // - Request must include an authoritative internal test secret (x-test-harness-secret)
   //   matching process.env.INTERNAL_TEST_SECRET.
-  const isTestHarness = process.env.NODE_ENV === "test";
+  const isCloudEnvironment = Boolean(
+    process.env.VERCEL ||
+    process.env.VERCEL_ENV ||
+    process.env.AWS_EXECUTION_ENV ||
+    process.env.AWS_REGION ||
+    process.env.K_SERVICE ||
+    process.env.RENDER ||
+    process.env.FLY_APP_NAME ||
+    process.env.NETLIFY ||
+    process.env.HEROKU_APP_NAME ||
+    process.env.RAILWAY_ENVIRONMENT ||
+    process.env.CONTAINER ||
+    process.env.KUBERNETES_SERVICE_HOST ||
+    process.env.MEDVOICE_DEPLOYMENT_ENV
+  );
+  const isTestHarness = (process.env.NODE_ENV === "test" || process.env.NODE_ENV === "development") && !isCloudEnvironment;
   const configuredSecret = process.env.INTERNAL_TEST_SECRET;
   const isSecretValid = typeof configuredSecret === "string" && configuredSecret.trim().length >= 32;
   const providedSecret = request?.headers.get(INTERNAL_TEST_SECRET_HEADER);
@@ -119,12 +152,20 @@ export async function getAuthContext(request?: Request): Promise<AuthContext> {
     const simulatePatient = request?.headers.get("x-simulate-patient-view") === "true";
     const effectiveRole: Role = testRoleHeader === "admin" && simulatePatient ? "patient" : testRoleHeader;
 
+    const testDoctorId = request?.headers.get("x-mock-doctor-id") || undefined;
+    const testPermissionsHeader = request?.headers.get("x-mock-permissions");
+    const testPermissions: Permission[] = testPermissionsHeader
+      ? (testPermissionsHeader.split(",").map((p) => p.trim()) as Permission[])
+      : [];
+
     return {
       userId: testUserHeader || `test-${testRoleHeader}-01`,
       role: effectiveRole,
       name: `Test ${testRoleHeader.toUpperCase()}`,
       email: `${testRoleHeader}@test.internal`,
       isDemoMode: true,
+      doctorId: testDoctorId,
+      permissions: testPermissions,
     };
   }
 
@@ -149,7 +190,7 @@ export async function authorizeRequest(
 ): Promise<{ authorized: true; auth: AuthContext } | { authorized: false; errorResponse: Response; auth: AuthContext }> {
   const auth = await getAuthContext(request);
 
-  if (!hasPermission(auth.role, requiredPermission)) {
+  if (!hasPermission(auth.role, requiredPermission, auth.permissions)) {
     await logAuditEventAsync({
       actorId: auth.userId,
       actorRole: auth.role as AuditActorRole,

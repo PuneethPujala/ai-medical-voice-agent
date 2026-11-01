@@ -51,6 +51,7 @@ export interface ClinicalArtifact {
   signedAt?: Date | string | null;
   signingAttestationDigest?: string | null;
   amendsArtifactId?: string | null;
+  parentArtifactId?: string | null;
   amendmentReason?: string | null;
   createdAt: Date | string;
   updatedAt: Date | string;
@@ -109,6 +110,9 @@ export interface SignArtifactParams {
   artifactId: string;
   clinicianId: string;
   clinicianRole: "clinician" | "admin";
+  clinicianDoctorId?: string; // Mapped doctor profile ID (e.g. "dr-sarah-chen")
+  hasOverridePermission?: boolean; // Must possess explicit 'clinical_artifacts:sign:any' permission
+  overrideReason?: string; // Auditable justification when an admin signs (minimum 10 characters)
   idempotencyKey: string;
   expectedCaseVersion: number;
   signatureAttestation?: string;
@@ -392,6 +396,7 @@ function normalizeArtifactRow(row: any): ClinicalArtifact {
     signingAttestationDigest:
       row.signing_attestation_digest ?? row.signingAttestationDigest ?? null,
     amendsArtifactId: row.amends_artifact_id ?? row.amendsArtifactId ?? null,
+    parentArtifactId: row.amends_artifact_id ?? row.amendsArtifactId ?? row.parent_artifact_id ?? row.parentArtifactId ?? null,
     amendmentReason: row.amendment_reason ?? row.amendmentReason ?? null,
     createdAt: row.created_at ?? row.createdAt,
     updatedAt: row.updated_at ?? row.updatedAt,
@@ -843,10 +848,29 @@ export async function signArtifactInTransaction(
   let isAdministrativeOverride = false;
 
   if (params.clinicianRole === "admin") {
-    // Explicit administrative authorization; recorded in audit trail
+    // Explicit administrative authorization; requires explicit override permission & clinical justification
+    if (!params.hasOverridePermission) {
+      throw new ClinicianAuthorizationError(
+        `Administrative clinical signing override requires explicit 'clinical_artifacts:sign:any' permission`
+      );
+    }
+    if (!params.overrideReason || params.overrideReason.trim().length < 10) {
+      throw new ClinicianAuthorizationError(
+        `Administrative override requires an auditable justification/reason (minimum 10 characters)`
+      );
+    }
     isAdministrativeOverride = true;
   } else if (params.clinicianRole === "clinician") {
-    if (!assignedDoctorId || assignedDoctorId !== params.clinicianId) {
+    const effectiveDoctorId = params.clinicianDoctorId || params.clinicianId;
+    const isCareRelationshipValid = Boolean(
+      assignedDoctorId &&
+        (assignedDoctorId === effectiveDoctorId ||
+          assignedDoctorId.toLowerCase() === effectiveDoctorId.toLowerCase() ||
+          assignedDoctorId === params.clinicianId ||
+          assignedDoctorId.toLowerCase() === params.clinicianId.toLowerCase())
+    );
+
+    if (!isCareRelationshipValid) {
       throw new ClinicianAuthorizationError(
         `Clinician '${params.clinicianId}' is not the assigned physician for consultation '${params.consultationId}' (assigned: '${assignedDoctorId || "none"}')`
       );
@@ -1025,6 +1049,9 @@ export async function signArtifactInTransaction(
       idempotencyKey: params.idempotencyKey,
       assignedDoctorId: assignedDoctorId || null,
       isAdministrativeOverride,
+      ...(isAdministrativeOverride && params.overrideReason
+        ? { overrideReason: params.overrideReason.trim() }
+        : {}),
     },
   });
 
@@ -1034,4 +1061,49 @@ export async function signArtifactInTransaction(
     idempotentReplay: false,
     auditEvent,
   };
+}
+
+/**
+ * Authoritative query helpers for clinical artifacts
+ */
+export async function getArtifactsForConsultation(
+  txOrDb: any,
+  consultationId: string
+): Promise<ClinicalArtifact[]> {
+  const res = await txOrDb.execute(
+    sql`SELECT * FROM clinical_artifacts
+        WHERE consultation_id = ${consultationId}
+        ORDER BY version ASC`
+  );
+  const rows = res.rows || res;
+  return (rows || []).map(normalizeArtifactRow);
+}
+
+export async function getArtifactById(
+  txOrDb: any,
+  artifactId: string
+): Promise<ClinicalArtifact | null> {
+  const res = await txOrDb.execute(
+    sql`SELECT * FROM clinical_artifacts
+        WHERE id = ${artifactId}
+        LIMIT 1`
+  );
+  const rows = res.rows || res;
+  if (!rows || rows.length === 0) return null;
+  return normalizeArtifactRow(rows[0]);
+}
+
+export async function getLatestSignedArtifact(
+  txOrDb: any,
+  consultationId: string
+): Promise<ClinicalArtifact | null> {
+  const res = await txOrDb.execute(
+    sql`SELECT * FROM clinical_artifacts
+        WHERE consultation_id = ${consultationId} AND status = 'signed'
+        ORDER BY version DESC
+        LIMIT 1`
+  );
+  const rows = res.rows || res;
+  if (!rows || rows.length === 0) return null;
+  return normalizeArtifactRow(rows[0]);
 }

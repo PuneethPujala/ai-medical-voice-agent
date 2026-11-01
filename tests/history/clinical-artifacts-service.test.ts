@@ -1035,13 +1035,15 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
       return await submitForReview(tx, { artifactId: d.id, actorId: "dr-sarah-chen", actorRole: "clinician" });
     });
 
-    // Medical Director / Administrator signs with explicit admin role
+    // Medical Director / Administrator signs with explicit admin role, override permission and reason
     const adminSigned = await drizzleDb.transaction(async (tx: any) => {
       return await signArtifactInTransaction(tx, {
         consultationId: consultId,
         artifactId: draft.id,
         clinicianId: "admin-chief-medical-officer",
         clinicianRole: "admin",
+        hasOverridePermission: true,
+        overrideReason: "Chief Medical Officer emergency escalation review override",
         idempotencyKey: "key-admin-override-test",
         expectedCaseVersion: 1,
       });
@@ -1058,6 +1060,7 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
     );
     assert.strictEqual(auditRes.rows.length, 1);
     assert.strictEqual(auditRes.rows[0].metadata.isAdministrativeOverride, true);
+    assert.strictEqual(auditRes.rows[0].metadata.overrideReason, "Chief Medical Officer emergency escalation review override");
     assert.strictEqual(auditRes.rows[0].metadata.assignedDoctorId, "dr-sarah-chen");
   });
 

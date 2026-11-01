@@ -3,6 +3,7 @@ import { getDb } from "@/config/db";
 import { consultationsTable } from "@/config/schema";
 import { eq } from "drizzle-orm";
 import { generateFHIRBundle, ConsultationRecordFHIR, validateFhirR4Bundle } from "@/lib/fhir/bundle";
+import { getLatestSignedArtifact } from "@/lib/consultation/clinical-artifact-service";
 import { memoryConsultations } from "../../route";
 import { getAuthContext, hasPermission } from "@/lib/auth/rbac";
 import { logAuditEventAsync } from "@/lib/audit/audit-logger";
@@ -190,16 +191,34 @@ export async function GET(
     }
 
     // 4. Generate valid HL7 FHIR R4 Bundle (preferring canonical server-authoritative encounter aggregate)
+    // 4. Query authoritative signed clinical artifact if available
+    let signedArtifact = null;
+    if (dbClient) {
+      try {
+        signedArtifact = await getLatestSignedArtifact(dbClient, id);
+      } catch (err) {
+        console.warn("[FHIR Export] Could not query signed artifact, falling back to consultation record:", err);
+      }
+    }
+
+    const isRecordApproved = Boolean(signedArtifact || record.status === "approved");
+
     const consultationRecord: ConsultationRecordFHIR = {
       ...record,
+      soapSubjective: signedArtifact ? signedArtifact.soapSubjective : record.soapSubjective,
+      soapObjective: signedArtifact ? signedArtifact.soapObjective : record.soapObjective,
+      soapAssessment: signedArtifact ? signedArtifact.soapAssessment : record.soapAssessment,
+      soapPlan: signedArtifact ? signedArtifact.soapPlan : record.soapPlan,
+
       audioMetrics: record.interviewState?.audio_metrics || record.audioMetrics,
       audioMetricsHistory: record.interviewState?.audio_metrics_history,
       speechFeatures: record.interviewState?.speech_features || record.speechFeatures,
       deliveredTurnRecords: record.deliveredTurnRecords || record.interviewState?.deliveredTurnRecords,
       attributedFacts: record.attributedFacts || record.interviewState?.attributedFacts,
       unmappedObservations: record.unmappedObservations || record.interviewState?.unmappedObservations,
-      approvedAt: record.approvedAt,
-      status: record.status,
+      approvedAt: signedArtifact ? signedArtifact.signedAt : record.approvedAt,
+      approvedBy: signedArtifact ? signedArtifact.signedBy : record.approvedBy,
+      status: isRecordApproved ? "approved" : record.status,
     };
     const bundle = generateFHIRBundle(consultationRecord);
 

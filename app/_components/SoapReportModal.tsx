@@ -13,7 +13,13 @@ import {
   X,
   ChevronDown,
   ChevronUp,
-  ExternalLink
+  ExternalLink,
+  ShieldCheck,
+  GitBranch,
+  Lock,
+  Send,
+  AlertCircle,
+  Loader2,
 } from "lucide-react";
 import Link from "next/link";
 import PremiumButton from "@/components/PremiumButton";
@@ -21,31 +27,34 @@ import { generateFHIRBundle } from "@/lib/fhir/bundle";
 
 export interface SoapEncounterData {
   id?: string;
-  patientName: string;
+  patientName?: string;
   patientAge?: string;
   patientGender?: string;
-  doctorId: string;
-  doctorName: string;
-  specialty: string;
-  callDuration: number;
-  transcript: Array<{ role: string; text: string; timestamp?: string }>;
-  triageLevel: string;
-  triageTitle: string;
+  doctorId?: string;
+  doctorName?: string;
+  specialty?: string;
+  callDuration?: number;
+  transcript?: Array<{ role: string; text: string; timestamp?: string }>;
+  triageLevel?: string;
+  triageTitle?: string;
   esiScore?: number | null;
-  detectedSymptoms: string[];
-  icdCodes: string[];
-  recommendedAction: string;
-  soap: {
-    subjective: string;
-    objective: string;
-    assessment: string;
-    plan: string;
+  detectedSymptoms?: string[];
+  icdCodes?: string[];
+  recommendedAction?: string;
+  soap?: {
+    subjective?: string;
+    objective?: string;
+    assessment?: string;
+    plan?: string;
   };
   auditSha256?: string;
   boardConsensusCount?: string;
   userId?: string;
   userRole?: string;
   caseVersion?: number;
+  status?: string;
+  approvedAt?: string | Date;
+  approvedBy?: string;
 }
 
 interface SoapReportModalProps {
@@ -55,7 +64,7 @@ interface SoapReportModalProps {
   onSaveSuccess?: (savedRecord: any) => void;
 }
 
-function formatNaturalDuration(seconds: number): string {
+function formatNaturalDuration(seconds?: number): string {
   const total = Math.max(1, Math.round(seconds || 0));
   const mins = Math.floor(total / 60);
   const secs = total % 60;
@@ -80,18 +89,29 @@ export function SoapReportModal({
   const [assessment, setAssessment] = useState("");
   const [plan, setPlan] = useState("");
   const [isSaving, setIsSaving] = useState(false);
-  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [copiedNote, setCopiedNote] = useState(false);
   const [showTranscript, setShowTranscript] = useState(false);
 
+  // Artifact Architecture State
+  const [artifacts, setArtifacts] = useState<any[]>([]);
+  const [activeArtifact, setActiveArtifact] = useState<any | null>(null);
+  const [isLoadingArtifacts, setIsLoadingArtifacts] = useState(false);
+  const [showAmendmentPrompt, setShowAmendmentPrompt] = useState(false);
+  const [amendmentReason, setAmendmentReason] = useState("");
+
+  const encounterId = encounter?.id || "";
+  const isClinicianOrAdmin = encounter?.userRole === "clinician" || encounter?.userRole === "admin";
+
   // Derive chief concern from patient's dialogue or symptoms
   const patientUtterances = encounter?.transcript?.filter((t) => t.role === "patient") || [];
-  const chiefConcern = patientUtterances.length > 0
-    ? patientUtterances[0].text.replace(/^"|"$/g, "")
-    : encounter?.detectedSymptoms?.length > 0
-    ? encounter.detectedSymptoms.join(", ")
-    : "Clinical intake consultation";
+  const chiefConcern =
+    patientUtterances.length > 0
+      ? patientUtterances[0].text.replace(/^"|"$/g, "")
+      : (encounter?.detectedSymptoms && encounter.detectedSymptoms.length > 0)
+      ? encounter.detectedSymptoms.join(", ")
+      : "Clinical intake consultation";
 
   const cleanDoctorName = encounter?.doctorName
     ? encounter.doctorName
@@ -102,43 +122,69 @@ export function SoapReportModal({
         .replace(", MD", "")
     : "Dr. Sarah Chen";
 
-  // Initialize and format text values when encounter changes
+  // Fetch or initialize clinical artifact history
   useEffect(() => {
-    if (isOpen && encounter) {
-      if (encounter.soap?.subjective && encounter.soap?.assessment) {
-        setSubjective(encounter.soap.subjective);
-        setObjective(encounter.soap.objective || "");
-        setAssessment(encounter.soap.assessment);
-        setPlan(encounter.soap.plan || "");
-      } else {
-        // Synthesize clinically valid draft note from transcript
-        const patientSummary =
-          patientUtterances.length > 0
-            ? patientUtterances.map((u) => `• "${u.text.replace(/^"|"$/g, "")}"`).join("\n")
-            : "• Presenting symptoms discussed during clinical intake dialogue.";
+    if (isOpen && encounterId) {
+      setIsLoadingArtifacts(true);
+      fetch(`/api/consultations/${encodeURIComponent(encounterId)}/artifacts`)
+        .then((res) => (res.ok ? res.json() : null))
+        .then((data) => {
+          if (data && data.success && Array.isArray(data.artifacts) && data.artifacts.length > 0) {
+            setArtifacts(data.artifacts);
+            const latest = data.artifacts[data.artifacts.length - 1];
+            setActiveArtifact(latest);
+            setSubjective(latest.soapSubjective || "");
+            setObjective(latest.soapObjective || "");
+            setAssessment(latest.soapAssessment || "");
+            setPlan(latest.soapPlan || "");
+          } else {
+            setArtifacts([]);
+            setActiveArtifact(null);
+            // Initialize from encounter props or synthesize initial note
+            if (encounter.soap?.subjective && encounter.soap?.assessment) {
+              setSubjective(encounter.soap.subjective);
+              setObjective(encounter.soap.objective || "");
+              setAssessment(encounter.soap.assessment);
+              setPlan(encounter.soap.plan || "");
+            } else {
+              const patientSummary =
+                patientUtterances.length > 0
+                  ? patientUtterances.map((u) => `• "${u.text.replace(/^"|"$/g, "")}"`).join("\n")
+                  : "• Presenting symptoms discussed during clinical intake dialogue.";
 
-        setSubjective(
-          `Patient presented via voice consultation with ${cleanDoctorName}.\nChief concern: ${chiefConcern}\n\nReported symptoms:\n${patientSummary}\n\nPatient denies additional acute symptoms or severe distress during intake.`
-        );
-
-        setObjective(
-          `Physical observation & conversational intake completed.\n• Vital signs: Not assessed (no device telemetry recorded)\n• Speech & responsiveness: Alert, responsive`
-        );
-
-        setAssessment(
-          `${encounter.triageTitle || "Clinical intake completed."} Symptoms reviewed against primary care clinical safety protocols. Presentation assessed as non-emergent at current intake stage.`
-        );
-
-        setPlan(
-          `1. Follow-up: Clinical evaluation recommended if symptoms persist beyond 48 hours or worsen.\n2. Symptomatic care: Rest and hydration as clinically indicated.\n3. Safety precautions: Seek immediate urgent care or dial emergency dispatch (108/112) if experiencing acute chest discomfort, shortness of breath, or sudden weakness.`
-        );
-      }
-
-      setIsEditing(false);
-      setSaveSuccess(false);
-      setSaveError(null);
+              setSubjective(
+                `Patient presented via voice consultation with ${cleanDoctorName}.\nChief concern: ${chiefConcern}\n\nReported symptoms:\n${patientSummary}\n\nPatient denies additional acute symptoms or severe distress during intake.`
+              );
+              setObjective(
+                `Physical observation & conversational intake completed.\n• Vital signs: Not assessed (no device telemetry recorded)\n• Speech & responsiveness: Alert, responsive`
+              );
+              setAssessment(
+                `${encounter.triageTitle || "Clinical intake completed."} Symptoms reviewed against primary care clinical safety protocols. Presentation assessed as non-emergent at current intake stage.`
+              );
+              setPlan(
+                `1. Follow-up: Clinical evaluation recommended if symptoms persist beyond 48 hours or worsen.\n2. Symptomatic care: Rest and hydration as clinically indicated.\n3. Safety precautions: Seek immediate urgent care or dial emergency dispatch (108/112) if experiencing acute chest discomfort, shortness of breath, or sudden weakness.`
+              );
+            }
+          }
+        })
+        .catch(() => {
+          // If artifacts route is unavailable (e.g. legacy), use encounter fields
+          if (encounter.soap?.subjective) {
+            setSubjective(encounter.soap.subjective);
+            setObjective(encounter.soap.objective || "");
+            setAssessment(encounter.soap.assessment || "");
+            setPlan(encounter.soap.plan || "");
+          }
+        })
+        .finally(() => {
+          setIsLoadingArtifacts(false);
+          setIsEditing(false);
+          setSaveSuccess(null);
+          setSaveError(null);
+          setShowAmendmentPrompt(false);
+        });
     }
-  }, [isOpen, encounter, chiefConcern, cleanDoctorName]);
+  }, [isOpen, encounterId, chiefConcern, cleanDoctorName]);
 
   // Handle escape key to close
   useEffect(() => {
@@ -153,7 +199,6 @@ export function SoapReportModal({
 
   if (!isOpen || !encounter) return null;
 
-  const encounterId = encounter.id || `ENC-${Date.now().toString().slice(-6)}`;
   const encounterDate = new Date().toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
@@ -165,6 +210,13 @@ export function SoapReportModal({
     hour12: true,
   });
 
+  const isSigned = Boolean(
+    activeArtifact?.status === "signed" ||
+    (!activeArtifact && encounter.status === "approved")
+  );
+  const isPendingReview = Boolean(activeArtifact?.status === "pending_review");
+  const isDraft = !isSigned && !isPendingReview;
+
   // Copy standard clinical note to clipboard
   const handleCopyNote = async () => {
     const formattedNote = `==============================================================================
@@ -175,6 +227,7 @@ Duration:        ${formatNaturalDuration(encounter.callDuration)}
 Patient:         ${encounter.patientName || "Patient"}
 Clinician:       ${cleanDoctorName} (${encounter.specialty || "General Clinician"})
 Chief Concern:   ${chiefConcern}
+Status:          ${isSigned ? "SIGNED & CERTIFIED" : isPendingReview ? "PENDING REVIEW" : "DRAFT"}
 ==============================================================================
 
 [S] SUBJECTIVE:
@@ -224,6 +277,8 @@ Information Sources: Patient-reported · AI-inferred · Zero fabricated vitals
       soapPlan: plan,
       recommendedAction: encounter.recommendedAction,
       createdAt: new Date().toISOString(),
+      status: isSigned ? "approved" : "completed_pending_review",
+      approvedAt: activeArtifact?.signedAt || encounter.approvedAt,
       transcript: (encounter.transcript || []).map((t) => ({
         role: t.role,
         text: t.text,
@@ -244,94 +299,186 @@ Information Sources: Patient-reported · AI-inferred · Zero fabricated vitals
     URL.revokeObjectURL(url);
   };
 
-  // Commit / Save Encounter to Database
-  const isClinicianOrAdmin = encounter?.userRole === "clinician" || encounter?.userRole === "admin";
-  const preferredStatus = isClinicianOrAdmin ? "approved" : "completed_pending_review";
-
-  const handleApproveAndSave = async () => {
+  // 1. Save Draft (Authoritative Artifact Service)
+  const handleSaveDraft = async () => {
     setIsSaving(true);
     setSaveError(null);
     try {
-      const basePayload = {
-        id: encounterId,
-        userId: encounter.userId || undefined,
-        patientName: encounter.patientName || "Patient",
-        patientAge: encounter.patientAge,
-        patientGender: encounter.patientGender,
-        doctorId: encounter.doctorId,
-        doctorName: cleanDoctorName,
-        specialty: encounter.specialty,
-        chiefComplaint: chiefConcern,
-        transcript: encounter.transcript,
-        triageLevel: encounter.triageLevel,
-        triageTitle: encounter.triageTitle,
-        esiScore: encounter.esiScore ?? (encounter.triageLevel === "emergency" ? 2 : 3),
-        icd10Codes: encounter.icdCodes || [],
-        detectedSymptoms: encounter.detectedSymptoms || [],
-        soapSubjective: subjective,
-        soapObjective: objective,
-        soapAssessment: assessment,
-        soapPlan: plan,
-        recommendedAction: encounter.recommendedAction,
-        durationSeconds: encounter.callDuration,
-        caseVersion: encounter.caseVersion,
-      };
-
-      let payload: any = {
-        ...basePayload,
-        status: preferredStatus,
-      };
-
-      let res = await fetch("/api/consultations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-
-      // If approval fails due to signing authority (patient role), gracefully fallback to completed_pending_review
-      if (!res.ok && res.status === 403) {
-        const errorData = await res.clone().json().catch(() => ({}));
-        if (errorData.code === "FORBIDDEN_SIGNING_AUTHORITY") {
-          console.warn("[MedVoice] Signing authority restricted for role; saving note as completed_pending_review...");
-          payload = { ...basePayload, status: "completed_pending_review" };
-          res = await fetch("/api/consultations", {
-            method: "POST",
+      if (activeArtifact) {
+        // Update existing draft or downgrade pending_review
+        const res = await fetch(
+          `/api/consultations/${encodeURIComponent(encounterId)}/artifacts/${encodeURIComponent(activeArtifact.id)}`,
+          {
+            method: "PATCH",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          });
-        }
-      }
-
-      // If concurrency conflict (409), synchronize with datastore version and retry once
-      if (!res.ok && res.status === 409) {
-        const conflictData = await res.clone().json().catch(() => ({}));
-        if (conflictData.currentVersion !== undefined) {
-          const retryVersion = Number(conflictData.currentVersion) + 1;
-          payload = { ...payload, caseVersion: retryVersion };
-          res = await fetch("/api/consultations", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          });
-        }
-      }
-
-      if (res.ok) {
-        const data = await res.json().catch(() => ({}));
-        setSaveSuccess(true);
+            body: JSON.stringify({
+              chiefComplaint: chiefConcern,
+              soapSubjective: subjective,
+              soapObjective: objective,
+              soapAssessment: assessment,
+              soapPlan: plan,
+            }),
+          }
+        );
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Failed to update draft artifact");
+        setActiveArtifact(data.artifact);
+        setSaveSuccess("Draft updated successfully.");
         setIsEditing(false);
-        if (onSaveSuccess) {
-          onSaveSuccess(data.consultation || payload);
-        }
       } else {
-        const errJson = await res.json().catch(() => ({}));
-        const errMsg = errJson.error || errJson.message || `Failed to save consultation (HTTP ${res.status})`;
-        console.error("[MedVoice] Encounter save error:", errMsg);
-        setSaveError(errMsg);
+        // Create initial draft artifact
+        const res = await fetch(
+          `/api/consultations/${encodeURIComponent(encounterId)}/artifacts`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chiefComplaint: chiefConcern,
+              soapSubjective: subjective,
+              soapObjective: objective,
+              soapAssessment: assessment,
+              soapPlan: plan,
+            }),
+          }
+        );
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Failed to create draft artifact");
+        setActiveArtifact(data.artifact);
+        setArtifacts([data.artifact]);
+        setSaveSuccess("Initial draft created.");
+        setIsEditing(false);
       }
     } catch (err: any) {
-      console.error("Error approving encounter:", err);
-      setSaveError(err?.message || "Network error saving consultation.");
+      setSaveError(err?.message || "Error saving draft note");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // 2. Submit for Physician Review
+  const handleSubmitForReview = async () => {
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      let targetArtifact = activeArtifact;
+      if (!targetArtifact) {
+        // First create the draft if none exists
+        const createRes = await fetch(
+          `/api/consultations/${encodeURIComponent(encounterId)}/artifacts`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chiefComplaint: chiefConcern,
+              soapSubjective: subjective,
+              soapObjective: objective,
+              soapAssessment: assessment,
+              soapPlan: plan,
+            }),
+          }
+        );
+        const createData = await createRes.json();
+        if (!createRes.ok) throw new Error(createData.error || "Failed to create draft");
+        targetArtifact = createData.artifact;
+        setActiveArtifact(targetArtifact);
+      }
+
+      const res = await fetch(
+        `/api/consultations/${encodeURIComponent(encounterId)}/artifacts/${encodeURIComponent(targetArtifact.id)}/submit`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+        }
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to submit for review");
+      setActiveArtifact(data.artifact);
+      setSaveSuccess("Artifact locked and submitted for physician review.");
+      setIsEditing(false);
+    } catch (err: any) {
+      setSaveError(err?.message || "Error submitting note for review");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // 3. Sign Artifact (Atomic Transaction & Durable Audit)
+  const handleSignArtifact = async () => {
+    if (!activeArtifact) return;
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      const idempotencyKey = `sign-${activeArtifact.id}-${Date.now()}`;
+      const res = await fetch(
+        `/api/consultations/${encodeURIComponent(encounterId)}/artifacts/${encodeURIComponent(activeArtifact.id)}/sign`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            idempotencyKey,
+            expectedCaseVersion: encounter.caseVersion || 1,
+            signatureAttestation: "Clinician Attestation Verified",
+          }),
+        }
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Signing transaction failed");
+
+      setActiveArtifact(data.artifact);
+      setSaveSuccess("Encounter certified and permanently sealed.");
+      setIsEditing(false);
+      if (onSaveSuccess) {
+        onSaveSuccess(data.consultation || data.artifact);
+      }
+    } catch (err: any) {
+      setSaveError(err?.message || "Error signing clinical artifact");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // 4. Create Linked Amendment
+  const handleCreateAmendment = async () => {
+    if (!amendmentReason || amendmentReason.trim().length < 10) {
+      setSaveError("Clinical amendment justification must be at least 10 characters.");
+      return;
+    }
+    const parent = artifacts.find((a) => a.status === "signed") || activeArtifact;
+    if (!parent) {
+      setSaveError("Cannot create an amendment without a previously signed artifact.");
+      return;
+    }
+
+    setIsSaving(true);
+    setSaveError(null);
+    try {
+      const res = await fetch(
+        `/api/consultations/${encodeURIComponent(encounterId)}/artifacts`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            parentArtifactId: parent.id,
+            amendmentReason: amendmentReason.trim(),
+            chiefComplaint: chiefConcern,
+            soapSubjective: subjective,
+            soapObjective: objective,
+            soapAssessment: assessment,
+            soapPlan: plan,
+          }),
+        }
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to create amendment draft");
+
+      setArtifacts((prev) => [...prev, data.artifact]);
+      setActiveArtifact(data.artifact);
+      setShowAmendmentPrompt(false);
+      setAmendmentReason("");
+      setIsEditing(true);
+      setSaveSuccess(`Amendment v${data.artifact.version} draft created. You can now edit.`);
+    } catch (err: any) {
+      setSaveError(err?.message || "Error creating amendment");
     } finally {
       setIsSaving(false);
     }
@@ -360,6 +507,11 @@ Information Sources: Patient-reported · AI-inferred · Zero fabricated vitals
               >
                 SOAP NOTE
               </h2>
+              {activeArtifact && (
+                <span className="text-[11px] font-mono px-2 py-0.5 rounded-full bg-slate-100 border border-slate-200 text-slate-600 font-bold">
+                  v{activeArtifact.version} {activeArtifact.parentArtifactId ? "Amendment" : "Original"}
+                </span>
+              )}
             </div>
             <p className="text-xs sm:text-sm text-slate-500 font-mono">
               {encounterDate} · {encounterTime} · {formatNaturalDuration(encounter.callDuration)}
@@ -391,26 +543,113 @@ Information Sources: Patient-reported · AI-inferred · Zero fabricated vitals
 
         {/* ============================================================ Scrollable Document Body */}
         <div className="flex-1 overflow-y-auto px-6 sm:px-8 py-6 space-y-6 text-sm leading-relaxed text-slate-800">
-          {/* Save Success Banner */}
-          {saveSuccess && (
+          {/* Status Banners */}
+          {isSigned && (
             <motion.div
               initial={{ opacity: 0, y: -6 }}
               animate={{ opacity: 1, y: 0 }}
-              className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-950 flex items-center justify-between text-xs"
+              className="p-3.5 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-950 flex flex-col gap-1.5 text-xs"
             >
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
-                <span className="font-bold">
-                  ✓ Encounter Saved to Clinical Record
-                </span>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span className="font-bold">
+                    ✓ Certified & Immutable Clinical Record (v{activeArtifact?.version || 1})
+                  </span>
+                </div>
+                <div className="flex items-center gap-1 font-mono text-[11px] text-emerald-800">
+                  <Lock className="w-3 h-3" />
+                  <span>Sealed</span>
+                </div>
               </div>
-              <Link
-                href="/dashboard"
-                className="px-2.5 py-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-[11px] font-mono transition-colors flex items-center gap-1 shrink-0"
-              >
-                <span>View Dashboard</span>
-                <ExternalLink className="w-3 h-3" />
-              </Link>
+              <div className="text-[11px] text-emerald-800/90 flex flex-wrap items-center gap-x-4 gap-y-1">
+                <span>Signed by: {activeArtifact?.signedBy || encounter.approvedBy || cleanDoctorName}</span>
+                {activeArtifact?.signedAt && (
+                  <span>Signed at: {new Date(activeArtifact.signedAt).toLocaleString()}</span>
+                )}
+                {activeArtifact?.canonicalDigest && (
+                  <span className="font-mono text-[10px] bg-emerald-100/70 px-1.5 py-0.5 rounded border border-emerald-200">
+                    SHA-256: {activeArtifact.canonicalDigest.slice(0, 16)}...
+                  </span>
+                )}
+              </div>
+            </motion.div>
+          )}
+
+          {isPendingReview && (
+            <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200 text-amber-950 flex items-center justify-between text-xs">
+              <div className="flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                <div>
+                  <span className="font-bold">⏳ Pending Physician Review (v{activeArtifact?.version})</span>
+                  <p className="text-[11px] text-amber-800 mt-0.5">
+                    Document is locked for clinical review. Any edits will return it to Draft status.
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {isDraft && activeArtifact && (
+            <div className="p-3 rounded-xl bg-cyan-50/60 border border-cyan-200/80 text-cyan-950 flex items-center gap-2 text-xs">
+              <Edit3 className="w-4 h-4 text-cyan-700 shrink-0" />
+              <span>
+                <strong>Clinical Draft (v{activeArtifact.version})</strong> — Unsigned draft note. Must be submitted for review before signing.
+              </span>
+            </div>
+          )}
+
+          {/* Success / Feedback Banner */}
+          {saveSuccess && (
+            <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-950 text-xs flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+              <span>{saveSuccess}</span>
+            </div>
+          )}
+
+          {/* Amendment Creation Drawer */}
+          {showAmendmentPrompt && (
+            <motion.div
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              className="p-4 rounded-2xl bg-amber-50/80 border border-amber-300 space-y-3 text-xs"
+            >
+              <div className="flex items-center gap-2 font-bold text-amber-950">
+                <GitBranch className="w-4 h-4 text-amber-700" />
+                <span>Create Clinical Amendment (v{(activeArtifact?.version || 1) + 1})</span>
+              </div>
+              <p className="text-amber-800 text-[11px]">
+                Under clinical integrity rules, signed records cannot be directly edited. Providing a clinical justification will create a new linked amendment draft while preserving the original signed record.
+              </p>
+              <div className="space-y-1">
+                <label className="text-[11px] font-mono font-bold uppercase text-amber-900">
+                  Clinical Justification / Amendment Reason (min 10 chars):
+                </label>
+                <textarea
+                  value={amendmentReason}
+                  onChange={(e) => setAmendmentReason(e.target.value)}
+                  placeholder="e.g., Follow-up lab results received; correcting medication dosage instructions."
+                  rows={2}
+                  className="w-full p-2.5 rounded-xl border border-amber-300 bg-white text-xs focus:ring-2 focus:ring-amber-500/20"
+                />
+              </div>
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setShowAmendmentPrompt(false)}
+                  className="px-3 py-1.5 rounded-lg text-slate-600 hover:bg-amber-100 font-medium cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleCreateAmendment}
+                  disabled={isSaving || amendmentReason.trim().length < 10}
+                  className="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold cursor-pointer"
+                >
+                  {isSaving ? "Creating Amendment..." : "Confirm & Create Amendment"}
+                </button>
+              </div>
             </motion.div>
           )}
 
@@ -438,7 +677,7 @@ Information Sources: Patient-reported · AI-inferred · Zero fabricated vitals
               </span>
             </div>
 
-            {isEditing ? (
+            {isEditing && !isSigned ? (
               <textarea
                 value={subjective}
                 onChange={(e) => setSubjective(e.target.value)}
@@ -491,7 +730,7 @@ Information Sources: Patient-reported · AI-inferred · Zero fabricated vitals
               </div>
             </div>
 
-            {isEditing ? (
+            {isEditing && !isSigned ? (
               <textarea
                 value={objective}
                 onChange={(e) => setObjective(e.target.value)}
@@ -504,7 +743,7 @@ Information Sources: Patient-reported · AI-inferred · Zero fabricated vitals
               </div>
             ) : null}
 
-            {/* Verified Clinical Tags (only if genuine from clinical state) */}
+            {/* Verified Clinical Tags */}
             {encounter.icdCodes && encounter.icdCodes.length > 0 && !isEditing && (
               <div className="pt-1 flex items-center gap-1.5 flex-wrap">
                 <span className="text-[10px] font-mono font-bold text-slate-400 uppercase">
@@ -536,7 +775,7 @@ Information Sources: Patient-reported · AI-inferred · Zero fabricated vitals
               </span>
             </div>
 
-            {isEditing ? (
+            {isEditing && !isSigned ? (
               <textarea
                 value={assessment}
                 onChange={(e) => setAssessment(e.target.value)}
@@ -564,7 +803,7 @@ Information Sources: Patient-reported · AI-inferred · Zero fabricated vitals
               </span>
             </div>
 
-            {isEditing ? (
+            {isEditing && !isSigned ? (
               <textarea
                 value={plan}
                 onChange={(e) => setPlan(e.target.value)}
@@ -638,18 +877,20 @@ Information Sources: Patient-reported · AI-inferred · Zero fabricated vitals
         {/* ============================================================ Fixed Bottom Action Bar */}
         <div className="px-6 sm:px-8 py-4 border-t border-slate-200 bg-white/95 backdrop-blur-md flex flex-wrap items-center justify-between gap-3 shrink-0">
           <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setIsEditing(!isEditing)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 border ${
-                isEditing
-                  ? "bg-slate-900 text-white border-slate-900 cursor-pointer"
-                  : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200 cursor-pointer"
-              }`}
-            >
-              <Edit3 className="w-3.5 h-3.5" />
-              <span>{isEditing ? "Lock & Preview" : "Edit Note"}</span>
-            </button>
+            {!isSigned && isClinicianOrAdmin && (
+              <button
+                type="button"
+                onClick={() => setIsEditing(!isEditing)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 border ${
+                  isEditing
+                    ? "bg-slate-900 text-white border-slate-900 cursor-pointer"
+                    : "bg-white hover:bg-slate-50 text-slate-700 border-slate-200 cursor-pointer"
+                }`}
+              >
+                <Edit3 className="w-3.5 h-3.5" />
+                <span>{isEditing ? "Lock & Preview" : "Edit Note"}</span>
+              </button>
+            )}
 
             <button
               type="button"
@@ -679,19 +920,54 @@ Information Sources: Patient-reported · AI-inferred · Zero fabricated vitals
               Close
             </button>
 
-            <PremiumButton
-              variant="primary"
-              size="md"
-              onClick={handleApproveAndSave}
-              disabled={isSaving || saveSuccess}
-              icon={saveSuccess ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <Save className="w-4 h-4" />}
-            >
-              {isSaving
-                ? "Saving..."
-                : saveSuccess
-                ? (isClinicianOrAdmin ? "Clinician Approved" : "Consultation Saved")
-                : (isClinicianOrAdmin ? "Approve & Sign Note" : "Save Consultation Note")}
-            </PremiumButton>
+            {/* Mode-Specific Actions */}
+            {isSigned && isClinicianOrAdmin && (
+              <PremiumButton
+                variant="primary"
+                size="md"
+                onClick={() => setShowAmendmentPrompt(true)}
+                disabled={isSaving}
+                icon={<GitBranch className="w-4 h-4" />}
+              >
+                Create Amendment
+              </PremiumButton>
+            )}
+
+            {isPendingReview && isClinicianOrAdmin && (
+              <PremiumButton
+                variant="primary"
+                size="md"
+                onClick={handleSignArtifact}
+                disabled={isSaving}
+                icon={<ShieldCheck className="w-4 h-4 text-emerald-400" />}
+              >
+                {isSaving ? "Signing..." : "Approve & Sign Note"}
+              </PremiumButton>
+            )}
+
+            {isDraft && isClinicianOrAdmin && (
+              <>
+                <button
+                  type="button"
+                  onClick={handleSaveDraft}
+                  disabled={isSaving}
+                  className="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-800 font-bold text-xs flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Save className="w-3.5 h-3.5" />
+                  <span>{isSaving ? "Saving..." : "Save Draft"}</span>
+                </button>
+
+                <PremiumButton
+                  variant="primary"
+                  size="md"
+                  onClick={handleSubmitForReview}
+                  disabled={isSaving}
+                  icon={<Send className="w-4 h-4" />}
+                >
+                  {isSaving ? "Submitting..." : "Submit for Review"}
+                </PremiumButton>
+              </>
+            )}
           </div>
         </div>
       </div>

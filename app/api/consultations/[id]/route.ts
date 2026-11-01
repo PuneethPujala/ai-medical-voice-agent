@@ -295,6 +295,26 @@ export async function PATCH(
     }
 
     const body = await request.json();
+
+    // Direct mutation of SOAP fields via generic PATCH is strictly prohibited.
+    // Clinical documentation must be updated through authoritative clinical artifact endpoints.
+    const hasDirectSoapMutation =
+      body.soapSubjective !== undefined ||
+      body.soapObjective !== undefined ||
+      body.soapAssessment !== undefined ||
+      body.soapPlan !== undefined;
+
+    if (hasDirectSoapMutation) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Direct mutation of SOAP fields via generic PATCH is prohibited. Clinical documentation must be updated through authoritative clinical artifact endpoints (/api/consultations/[id]/artifacts).",
+          code: "SOAP_DIRECT_MUTATION_PROHIBITED",
+        },
+        { status: 400 }
+      );
+    }
+
     const action = body.action || "update";
     const isApproving = action === "approve" || body.status === "approved";
 
@@ -535,11 +555,6 @@ export async function PATCH(
       updateFields.approvedAt = new Date();
       updateFields.approvedBy = auth.userId;
     }
-
-    if (body.soapSubjective !== undefined) updateFields.soapSubjective = body.soapSubjective;
-    if (body.soapObjective !== undefined) updateFields.soapObjective = body.soapObjective;
-    if (body.soapAssessment !== undefined) updateFields.soapAssessment = body.soapAssessment;
-    if (body.soapPlan !== undefined) updateFields.soapPlan = body.soapPlan;
 
     let updated: any[] = [];
     if (dbClient && isDbRecord) {
