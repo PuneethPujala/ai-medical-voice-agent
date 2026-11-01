@@ -138,17 +138,17 @@ export function LongitudinalSidebar() {
         </div>
 
         {consentNotice || !profileSummary?.consentGiven ? (
-          <div className="rounded-2xl bg-amber-50/80 border border-amber-200/70 p-3.5 space-y-2">
-            <div className="flex items-center gap-2 text-amber-900">
-              <ShieldAlert className="w-4 h-4 text-amber-700 shrink-0" />
+          <div className="rounded-2xl bg-slate-50 border border-slate-200/90 p-3.5 space-y-2">
+            <div className="flex items-center gap-2 text-slate-900">
+              <ShieldAlert className="w-4 h-4 text-slate-700 shrink-0" />
               <span className="text-xs font-bold">DPDP Consent Required</span>
             </div>
-            <p className="text-[11px] text-amber-800 leading-relaxed">
+            <p className="text-[11px] text-slate-600 leading-relaxed">
               Longitudinal tracking and cross-consultation continuity require active patient consent under healthcare regulations.
             </p>
             <Link
               href="/profile"
-              className="inline-flex items-center gap-1 text-xs font-bold text-amber-950 underline hover:no-underline pt-1"
+              className="inline-flex items-center gap-1 text-xs font-bold text-[#18251D] hover:text-black underline hover:no-underline pt-1"
             >
               <span>Enable Longitudinal Consent</span>
               <ArrowRight className="w-3 h-3" />
@@ -216,7 +216,7 @@ export function LongitudinalSidebar() {
           {/* Allergies */}
           <div className="pt-3 border-t border-slate-100">
             <div className="flex items-center gap-2 text-slate-700 mb-2">
-              <AlertTriangle className="w-4 h-4 text-amber-500" />
+              <AlertTriangle className="w-4 h-4 text-slate-500" />
               <span className="text-xs font-bold uppercase tracking-wider text-slate-600">
                 Allergy Status
               </span>
@@ -226,7 +226,7 @@ export function LongitudinalSidebar() {
                 {profileSummary.drugAllergies.map((alg, idx) => (
                   <span
                     key={idx}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-amber-50 text-amber-800 border border-amber-200/60"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold bg-rose-50 text-rose-800 border border-rose-200/60"
                   >
                     {alg}
                   </span>
@@ -338,18 +338,18 @@ export function LongitudinalSidebar() {
           {/* Uncollected / Unrecorded Domains */}
           {categorized.uncollected.length > 0 && (
             <div className="space-y-1.5 pt-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500">
                 Uncollected Domains
               </span>
               <div className="space-y-1">
                 {categorized.uncollected.map((item, idx) => (
                   <div
                     key={idx}
-                    className="text-[11px] text-amber-800/90 flex items-center gap-1.5"
+                    className="text-[11px] text-slate-600 flex items-center gap-1.5"
                   >
-                    <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-slate-400 shrink-0" />
                     <span>
-                      <strong className="font-semibold">{item.domain}:</strong> {item.reason}
+                      <strong className="font-semibold text-slate-800">{item.domain}:</strong> {item.reason}
                     </span>
                   </div>
                 ))}

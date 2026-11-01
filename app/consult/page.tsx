@@ -3002,7 +3002,14 @@ export default function ConsultPage() {
       <div className="relative min-h-screen bg-[#FAF9F6] text-[#05070F] flex flex-col font-sans selection:bg-[#B7FF72] selection:text-[#05070F] overflow-x-clip">
       <LandingFloatingNavbar />
 
-      <main className="relative z-10 flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-32 sm:pt-36 pb-16 flex flex-col gap-6 consult-room-container">
+      {/* Directly below the navbar, immediately above the consultation container */}
+      {!consultationStarted && !isEncounterSignedLocked && (
+        <div className="relative z-20 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-24 sm:pt-28 pb-0">
+          <PreviousConversationsBanner />
+        </div>
+      )}
+
+      <main className={`relative z-10 flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 ${!consultationStarted && !isEncounterSignedLocked ? "pt-4" : "pt-32 sm:pt-36"} pb-16 flex flex-col gap-6 consult-room-container`}>
         {isEncounterSignedLocked && resumedConsultation ? (
           <div className="w-full max-w-3xl mx-auto my-auto px-4 py-8 animate-in fade-in duration-200">
             <div className="rounded-3xl bg-white border border-slate-200/90 shadow-[0_12px_40px_-8px_rgba(0,0,0,0.08)] p-6 sm:p-10 space-y-6">
@@ -3098,9 +3105,6 @@ export default function ConsultPage() {
           />
         ) : (
           <>
-        {/* Subtle ChatGPT-style Previous Conversations Entry Point */}
-        <PreviousConversationsBanner />
-
         {/* 1. TOP HEADER: Clinician status, Timer, Specialists count, SOAP & End consultation */}
         <ConsultHeader
           doctor={selectedDoctor}

@@ -48,15 +48,15 @@ export function ConsultDialogueFeed({
     <div className="flex flex-col gap-3">
       {/* Active Interruption Bar */}
       {isDoctorSpeaking && (
-        <div className="flex items-center justify-between px-4 py-2.5 rounded-xl bg-amber-50 border border-amber-200 text-xs sm:text-sm text-amber-950 shadow-2xs">
+        <div className="flex items-center justify-between px-4 py-2.5 rounded-xl bg-slate-900 border border-slate-800 text-xs sm:text-sm text-white shadow-2xs">
           <div className="flex items-center gap-2 font-medium">
-            <Volume2 className="w-4 h-4 text-amber-600 animate-pulse" />
+            <Volume2 className="w-4 h-4 text-[#B7FF72] animate-pulse" />
             <span>Doctor is speaking. Click Interrupt to speak immediately</span>
           </div>
           <button
             type="button"
             onClick={onInterrupt}
-            className="px-3 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold transition-colors cursor-pointer"
+            className="px-3 py-1 rounded-lg bg-[#18251D] hover:bg-black text-[#B7FF72] border border-slate-700 text-xs font-bold transition-colors cursor-pointer"
           >
             Interrupt
           </button>

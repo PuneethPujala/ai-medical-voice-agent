@@ -256,7 +256,7 @@ export default function ConsultationHistoryPage() {
     if (item.status === "completed_pending_review") {
       return {
         label: "SOAP Draft Available · Pending Review",
-        colorClass: "bg-amber-50 text-amber-700 border-amber-200",
+        colorClass: "bg-slate-50 text-slate-700 border-slate-200",
         badge: "Draft Available",
         hasReport: true,
       };
@@ -282,7 +282,7 @@ export default function ConsultationHistoryPage() {
       case "incomplete_intake":
         return {
           label: "Paused",
-          badgeClass: "bg-amber-50 text-amber-800 border-amber-200",
+          badgeClass: "bg-slate-100 text-slate-800 border-slate-200",
           icon: PauseCircle,
         };
       case "completed_pending_review":
@@ -407,10 +407,10 @@ export default function ConsultationHistoryPage() {
             {isResumable ? (
               <Link
                 href={`/consult/${item.id}`}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white transition-all shadow-xs cursor-pointer group"
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-[#18251D] hover:bg-black text-white transition-all shadow-xs cursor-pointer group"
               >
                 <span>Resume</span>
-                <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-0.5 transition-transform" />
+                <ArrowRight className="w-3.5 h-3.5 text-[#B7FF72] group-hover:translate-x-0.5 transition-transform" />
               </Link>
             ) : null}
 
@@ -474,14 +474,14 @@ export default function ConsultationHistoryPage() {
         {/* ============================================================ HERO: PAUSED CONSULTATION BANNER */}
         {primaryPausedConsultation && (
           <section aria-labelledby="paused-consultation-heading" className="mb-12">
-            <div className="relative overflow-hidden rounded-3xl bg-linear-to-b from-amber-50/70 via-white to-white border border-amber-200/80 p-6 sm:p-8 shadow-[0_8px_30px_-6px_rgba(217,119,6,0.08)]">
-              <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 rounded-full bg-amber-200/20 blur-3xl pointer-events-none" />
+            <div className="relative overflow-hidden rounded-3xl bg-[#FAF9F6] border border-slate-200/90 p-6 sm:p-8 shadow-[0_8px_30px_-6px_rgba(0,0,0,0.06)]">
+              <div className="absolute top-0 right-0 -mr-16 -mt-16 w-64 h-64 rounded-full bg-emerald-100/20 blur-3xl pointer-events-none" />
 
               <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-6 relative z-10">
                 <div className="flex-1">
                   <div className="flex flex-wrap items-center gap-2.5 mb-3">
-                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-amber-100 text-amber-900 border border-amber-300/80 shadow-xs">
-                      <PauseCircle className="w-3.5 h-3.5 text-amber-700 animate-pulse" />
+                    <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-slate-100 text-slate-800 border border-slate-200 shadow-2xs">
+                      <PauseCircle className="w-3.5 h-3.5 text-slate-700" />
                       Paused Intake
                     </span>
                     <span className="text-xs text-slate-500 font-medium">
@@ -523,10 +523,10 @@ export default function ConsultationHistoryPage() {
                 <div className="flex flex-col sm:flex-row lg:flex-col gap-3 shrink-0 lg:min-w-[200px]">
                   <Link
                     href={`/consult/${primaryPausedConsultation.id}`}
-                    className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-2xl text-xs sm:text-sm font-bold bg-amber-600 hover:bg-amber-700 text-white transition-all shadow-md hover:shadow-lg cursor-pointer group"
+                    className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-2xl text-xs sm:text-sm font-bold bg-[#18251D] hover:bg-black text-white transition-all shadow-md hover:shadow-lg cursor-pointer group"
                   >
                     <span>Resume Consultation</span>
-                    <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                    <ArrowRight className="w-4 h-4 text-[#B7FF72] group-hover:translate-x-1 transition-transform" />
                   </Link>
 
                   <Link
@@ -571,7 +571,7 @@ export default function ConsultationHistoryPage() {
                   onClick={() => setActiveTab("resumable")}
                   className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer ${
                     activeTab === "resumable"
-                      ? "bg-white text-amber-800 shadow-xs"
+                      ? "bg-white text-slate-950 shadow-xs"
                       : "text-slate-600 hover:text-slate-950"
                   }`}
                 >
@@ -793,9 +793,10 @@ export default function ConsultationHistoryPage() {
                     inspectingTranscript.status === "in_progress") && (
                     <Link
                       href={`/consult/${inspectingTranscript.id}`}
-                      className="px-4 py-2 rounded-xl text-xs font-bold bg-amber-600 hover:bg-amber-700 text-white transition-all"
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-[#18251D] hover:bg-black text-white transition-all shadow-xs"
                     >
-                      Resume Now
+                      <span>Resume Now</span>
+                      <ArrowRight className="w-3.5 h-3.5 text-[#B7FF72]" />
                     </Link>
                   )}
                   <button
