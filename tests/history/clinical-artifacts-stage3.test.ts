@@ -22,6 +22,13 @@
  * 18. Legacy approved consultation compatibility
  */
 
+const TEST_DB_URL =
+  process.env.TEST_DATABASE_URL ||
+  "postgresql://postgres:testpass@localhost:5433/medvoice_test";
+
+(process.env as any).NODE_ENV = "test";
+(process.env as any).TEST_DATABASE_URL = TEST_DB_URL;
+
 import { describe, it, before, after, beforeEach } from "node:test";
 import assert from "node:assert";
 import fs from "node:fs";
@@ -42,11 +49,6 @@ import { GET as getConsultationFhirHandler } from "../../app/api/consultations/[
 
 (process.env as any).NODE_ENV = "test";
 (process.env as any).INTERNAL_TEST_SECRET = DEFAULT_INTERNAL_TEST_SECRET;
-
-const TEST_DB_URL =
-  process.env.TEST_DATABASE_URL ||
-  process.env.DATABASE_URL ||
-  "postgresql://postgres:testpass@localhost:5433/medvoice_test";
 
 const RUN_ID = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
 function cid(base: string): string {
