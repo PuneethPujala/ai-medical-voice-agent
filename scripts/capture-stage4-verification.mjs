@@ -241,8 +241,8 @@ async function run() {
   await patientPage.waitForSelector('h2:has-text("SOAP NOTE")');
   await patientPage.waitForTimeout(1000);
 
-  // Click "Version Timeline" tab
-  await patientPage.locator('button:has-text("Version Timeline")').click();
+  // Click "Timeline" tab
+  await patientPage.locator('button:has-text("Timeline")').first().click();
   await patientPage.waitForTimeout(800);
 
   // Capture Patient Timeline View
@@ -252,8 +252,8 @@ async function run() {
   });
   console.log("Captured: scripts/m6-stage4-patient-timeline-desktop.png");
 
-  // Click "Compare Revisions" tab or "Compare with v1"
-  const compareTab = patientPage.locator('button:has-text("Compare Revisions")');
+  // Click "Compare" tab or "Compare with v1"
+  const compareTab = patientPage.locator('button:has-text("Compare")').first();
   if (await compareTab.isVisible()) {
     await compareTab.click();
   } else {
@@ -290,8 +290,8 @@ async function run() {
   await docPage.waitForSelector('h2:has-text("SOAP NOTE")');
   await docPage.waitForTimeout(1000);
 
-  // Click "Version Timeline" tab
-  await docPage.locator('button:has-text("Version Timeline")').click();
+  // Click "Timeline" tab
+  await docPage.locator('button:has-text("Timeline")').first().click();
   await docPage.waitForTimeout(800);
 
   // Capture Physician Timeline View (shows v1 signed, v2 signed, v3 draft!)
@@ -341,7 +341,7 @@ async function run() {
   await docPage.waitForTimeout(800);
 
   // Click Timeline on Legacy Encounter
-  await docPage.locator('button:has-text("Version Timeline")').click();
+  await docPage.locator('button:has-text("Timeline")').first().click();
   await docPage.waitForTimeout(600);
 
   // Capture Legacy Approved Record View
@@ -371,7 +371,7 @@ async function run() {
   await mobilePage.waitForTimeout(800);
 
   // Timeline on mobile
-  await mobilePage.locator('button:has-text("Version Timeline")').click();
+  await mobilePage.locator('button:has-text("Timeline")').first().click();
   await mobilePage.waitForTimeout(600);
 
   await mobilePage.screenshot({
@@ -381,7 +381,7 @@ async function run() {
   console.log("Captured: scripts/m6-stage4-timeline-mobile-375.png");
 
   // Diff on mobile
-  await mobilePage.locator('button:has-text("Compare Revisions")').click();
+  await mobilePage.locator('button:has-text("Compare")').first().click();
   await mobilePage.waitForSelector('h3:has-text("SOAP Revision Comparison")');
   await mobilePage.waitForTimeout(600);
 

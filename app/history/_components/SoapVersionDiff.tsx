@@ -36,6 +36,12 @@ export function SoapVersionDiff({
 }: SoapVersionDiffProps) {
   const [diffMode, setDiffMode] = useState<"side-by-side" | "unified">("side-by-side");
 
+  React.useEffect(() => {
+    if (typeof window !== "undefined" && window.innerWidth < 768) {
+      setDiffMode("unified");
+    }
+  }, []);
+
   const diffReport: ArtifactDiffReport = useMemo(() => {
     return computeArtifactDiff(baseArtifact, targetArtifact);
   }, [baseArtifact, targetArtifact]);
@@ -215,45 +221,39 @@ export function SoapVersionDiff({
 
       {/* Amendment Reason Callout */}
       {diffReport.amendmentReason && (
-        <div className="p-3.5 rounded-xl bg-amber-50 border border-amber-200/90 text-amber-950 space-y-1">
-          <div className="flex items-center gap-1.5 text-xs font-mono font-bold uppercase tracking-wider text-amber-900">
-            <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
-            <span>Clinical Amendment Justification</span>
+        <div className="p-3 rounded-xl bg-amber-50/80 border border-amber-200/90 text-amber-950 flex items-start gap-2 text-xs">
+          <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+          <div className="leading-relaxed">
+            <span className="font-bold text-amber-900">Amendment Justification: </span>
+            <span className="text-amber-800">{diffReport.amendmentReason}</span>
           </div>
-          <p className="text-xs text-amber-900 leading-relaxed font-sans">
-            {diffReport.amendmentReason}
-          </p>
         </div>
       )}
 
-      {/* Version Metadata Summary Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-xs font-mono">
-        {/* Base Version Meta */}
-        <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1">
-          <div className="flex items-center justify-between">
-            <span className="font-bold text-slate-900">Version {baseArtifact.version}</span>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-200 text-slate-700">
-              {baseArtifact.status}
-            </span>
-          </div>
-          <div className="text-[11px] text-slate-500 space-y-0.5">
-            <div>Signed: {formatDate(baseArtifact.signedAt || baseArtifact.createdAt)}</div>
-            <div>Clinician: {baseArtifact.signedBy || "Attending Physician"}</div>
-          </div>
+      {/* Version Summary Strip */}
+      <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs font-mono">
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="font-bold text-slate-900">v{baseArtifact.version}</span>
+          <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-200 text-slate-700 font-medium">
+            {baseArtifact.status}
+          </span>
+          <span className="text-slate-400">·</span>
+          <span className="text-slate-500 text-[11px]">
+            {baseArtifact.signedBy ? `Signed by ${baseArtifact.signedBy}` : `Created ${formatDate(baseArtifact.createdAt)}`}
+          </span>
         </div>
 
-        {/* Target Version Meta */}
-        <div className="p-3 rounded-xl bg-emerald-50/40 border border-emerald-200 space-y-1">
-          <div className="flex items-center justify-between">
-            <span className="font-bold text-emerald-950">Version {targetArtifact.version}</span>
-            <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 font-bold">
-              {targetArtifact.status}
-            </span>
-          </div>
-          <div className="text-[11px] text-slate-600 space-y-0.5">
-            <div>Updated: {formatDate(targetArtifact.signedAt || targetArtifact.updatedAt || targetArtifact.createdAt)}</div>
-            <div>Clinician: {targetArtifact.signedBy || "Reviewing Clinician"}</div>
-          </div>
+        <ArrowRight className="w-3.5 h-3.5 text-slate-400 hidden sm:block" />
+
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <span className="font-bold text-emerald-900">v{targetArtifact.version}</span>
+          <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 font-bold">
+            {targetArtifact.status}
+          </span>
+          <span className="text-slate-400">·</span>
+          <span className="text-slate-600 text-[11px]">
+            {targetArtifact.signedBy ? `Signed by ${targetArtifact.signedBy}` : `Updated ${formatDate(targetArtifact.updatedAt || targetArtifact.createdAt)}`}
+          </span>
         </div>
       </div>
 

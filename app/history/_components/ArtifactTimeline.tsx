@@ -204,7 +204,7 @@ export function ArtifactTimeline({
                     {isLatestSigned && (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100/80 text-emerald-800 border border-emerald-300">
                         <CheckCircle2 className="w-3 h-3" />
-                        Active Record
+                        Latest Signed Version
                       </span>
                     )}
                     {isSuperseded && (
@@ -220,7 +220,7 @@ export function ArtifactTimeline({
                     )}
                     {isDraft && (
                       <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-50 text-cyan-700 border border-cyan-200">
-                        Draft (In Progress)
+                        {art.amendsArtifactId ? "Draft Amendment" : "Draft (In Progress)"}
                       </span>
                     )}
                     {isCancelled && (
@@ -242,7 +242,7 @@ export function ArtifactTimeline({
                 {/* Attestation & Integrity Meta */}
                 <div className="mt-2 text-[11px] text-slate-500 font-mono flex flex-wrap items-center gap-x-3 gap-y-1">
                   {art.signedBy && (
-                    <span>Certified by: {art.signedBy}</span>
+                    <span>Signed by: {art.signedBy}</span>
                   )}
                   {art.signedAt && (
                     <span>· {formatDate(art.signedAt)}</span>

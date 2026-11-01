@@ -849,6 +849,7 @@ export default function ConsultationHistoryPage() {
               plan: selectedConsultationForSoap.soapPlan || "",
             },
             userId: selectedConsultationForSoap.userId,
+            createdAt: selectedConsultationForSoap.createdAt,
           }}
         />
       )}
