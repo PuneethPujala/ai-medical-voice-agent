@@ -1,9 +1,20 @@
 import { NextResponse } from "next/server";
 import { getDb } from "@/config/db";
-import { consultationsTable } from "@/config/schema";
-import { and, desc, eq, ilike, lt, ne, or } from "drizzle-orm";
+import { consultationsTable, clinicalArtifactsTable } from "@/config/schema";
+import { and, desc, eq, ilike, inArray, lt, ne, or } from "drizzle-orm";
 import { getAuthContext, hasPermission } from "@/lib/auth/rbac";
 import { logAuditEventAsync, computeCanonicalConsultationDigest } from "@/lib/audit/audit-logger";
+
+export interface SoapAvailabilitySummary {
+  hasSignedArtifact: boolean;
+  status: "none" | "awaiting_review" | "signed";
+  latestSignedArtifactId?: string | null;
+  latestSignedVersion?: number | null;
+  signedAt?: string | null;
+  signedBy?: string | null;
+  signedByRole?: string | null;
+  totalSignedVersions?: number;
+}
 import { validateAudioMetrics } from "@/lib/acoustic/acoustic-dsp-analyzer";
 import { PatientProfileService } from "@/lib/patient/patient-profile-service";
 import {
@@ -129,6 +140,29 @@ export async function GET(request: Request) {
           ...c,
           isSynthetic: true,
           syntheticWatermark: "DEMO / SYNTHETIC",
+          soapSummary: c.status === "approved"
+            ? {
+                hasSignedArtifact: true,
+                status: "signed",
+                latestSignedArtifactId: `art-${c.id}-v1`,
+                latestSignedVersion: 1,
+                totalSignedVersions: 1,
+              }
+            : c.status === "completed_pending_review"
+            ? {
+                hasSignedArtifact: false,
+                status: "awaiting_review",
+                latestSignedArtifactId: null,
+                latestSignedVersion: null,
+                totalSignedVersions: 0,
+              }
+            : {
+                hasSignedArtifact: false,
+                status: "none",
+                latestSignedArtifactId: null,
+                latestSignedVersion: null,
+                totalSignedVersions: 0,
+              },
         })),
       });
     }
@@ -286,14 +320,85 @@ export async function GET(request: Request) {
           ).toString("base64");
         }
 
+        const consultIds = results.map((r: any) => r.id);
+        const artifactMap = new Map<string, any[]>();
+
+        if (consultIds.length > 0) {
+          try {
+            const artifactRows = await dbClient
+              .select({
+                id: clinicalArtifactsTable.id,
+                consultationId: clinicalArtifactsTable.consultationId,
+                version: clinicalArtifactsTable.version,
+                status: clinicalArtifactsTable.status,
+                signedAt: clinicalArtifactsTable.signedAt,
+                signedBy: clinicalArtifactsTable.signedBy,
+                signedByRole: clinicalArtifactsTable.signedByRole,
+              })
+              .from(clinicalArtifactsTable)
+              .where(inArray(clinicalArtifactsTable.consultationId, consultIds))
+              .orderBy(desc(clinicalArtifactsTable.version));
+
+            for (const row of artifactRows) {
+              const list = artifactMap.get(row.consultationId) || [];
+              list.push(row);
+              artifactMap.set(row.consultationId, list);
+            }
+          } catch (artifactLookupErr) {
+            console.warn("[Consultations] Artifact bulk lookup warning:", artifactLookupErr);
+          }
+        }
+
         const sanitizedResults = results.map((row: any) => {
+          let effectiveStatus = row.status;
           if (
             (row.triageLevel === "gathering_history" || (typeof row.soapSubjective === "string" && row.soapSubjective.includes("[INCOMPLETE"))) &&
             row.status === "approved"
           ) {
-            return { ...row, status: "incomplete_intake" };
+            effectiveStatus = "incomplete_intake";
           }
-          return row;
+
+          // Authoritative SOAP Availability derivation from clinical_artifacts
+          const consultArtifacts = artifactMap.get(row.id) || [];
+          const signedArtifacts = consultArtifacts.filter((a) => a.status === "signed");
+          const hasPendingArtifact = consultArtifacts.some((a) => a.status === "pending_review");
+
+          let soapSummary: SoapAvailabilitySummary;
+          if (signedArtifacts.length > 0) {
+            const latestSigned = signedArtifacts[0]; // Ordered by version DESC
+            soapSummary = {
+              hasSignedArtifact: true,
+              status: "signed",
+              latestSignedArtifactId: latestSigned.id,
+              latestSignedVersion: latestSigned.version,
+              signedAt: latestSigned.signedAt ? new Date(latestSigned.signedAt).toISOString() : null,
+              signedBy: latestSigned.signedBy || null,
+              signedByRole: latestSigned.signedByRole || null,
+              totalSignedVersions: signedArtifacts.length,
+            };
+          } else if (effectiveStatus === "completed_pending_review" || hasPendingArtifact) {
+            soapSummary = {
+              hasSignedArtifact: false,
+              status: "awaiting_review",
+              latestSignedArtifactId: null,
+              latestSignedVersion: null,
+              totalSignedVersions: 0,
+            };
+          } else {
+            soapSummary = {
+              hasSignedArtifact: false,
+              status: "none",
+              latestSignedArtifactId: null,
+              latestSignedVersion: null,
+              totalSignedVersions: 0,
+            };
+          }
+
+          return {
+            ...row,
+            status: effectiveStatus,
+            soapSummary,
+          };
         });
 
         const response = NextResponse.json({
@@ -387,9 +492,25 @@ export async function GET(request: Request) {
         ).toString("base64");
       }
 
+      const sanitizedPageItems = pageItems.map((c) => {
+        if (c.soapSummary) return c;
+        const hasSigned = c.status === "approved";
+        const isAwaiting = c.status === "completed_pending_review";
+        return {
+          ...c,
+          soapSummary: {
+            hasSignedArtifact: hasSigned,
+            status: hasSigned ? "signed" : isAwaiting ? "awaiting_review" : "none",
+            latestSignedArtifactId: hasSigned ? `art-${c.id}-v1` : null,
+            latestSignedVersion: hasSigned ? 1 : null,
+            totalSignedVersions: hasSigned ? 1 : 0,
+          },
+        };
+      });
+
       const response = NextResponse.json({
         success: true,
-        consultations: pageItems,
+        consultations: sanitizedPageItems,
         nextCursor,
         hasMore,
         isSyntheticDataset: false,

@@ -41,6 +41,7 @@ import { DOCTOR_PROFILES, getDoctorById } from "@/config/doctors";
 import { TimelineGroup, groupConsultationsByPeriod } from "./_components/TimelineGroup";
 import { PaginationControls } from "./_components/PaginationControls";
 import { LongitudinalSidebar } from "./_components/LongitudinalSidebar";
+import type { SoapAvailabilitySummary } from "../api/consultations/route";
 
 export interface ConsultationItem {
   id: string;
@@ -70,6 +71,7 @@ export interface ConsultationItem {
   transcript?: Array<{ role: "patient" | "doctor" | "system"; text: string; timestamp: string }>;
   interviewState?: any;
   caseVersion?: number;
+  soapSummary?: SoapAvailabilitySummary;
 }
 
 type FilterTab = "all" | "resumable" | "completed" | "approved";
@@ -245,29 +247,53 @@ export default function ConsultationHistoryPage() {
     }
   };
 
-  // Helper: Get SOAP document status label and badge
+  // Helper: Get authoritative SOAP document status label and badge
   const getSoapStatusMeta = (item: ConsultationItem) => {
-    if (item.status === "approved") {
+    const summary = item.soapSummary;
+
+    // 1. Authoritative check via server-derived clinical_artifacts
+    if (summary?.hasSignedArtifact) {
       return {
-        label: "Signed · Clinician Approved",
-        colorClass: "bg-emerald-50 text-emerald-700 border-emerald-200",
+        label: `Signed · Certified Clinical Record${summary.latestSignedVersion ? ` (v${summary.latestSignedVersion})` : ""}`,
+        colorClass: "bg-emerald-50 text-emerald-800 border-emerald-200",
         badge: "Signed",
         hasReport: true,
+        canViewSoap: true,
+        soapUrl: `/history/${item.id}/soap`,
       };
     }
-    if (item.status === "completed_pending_review") {
+
+    // 2. Pending review check
+    if (summary?.status === "awaiting_review" || item.status === "completed_pending_review") {
       return {
-        label: "SOAP Draft Available · Pending Review",
-        colorClass: "bg-slate-50 text-slate-700 border-slate-200",
-        badge: "Draft Available",
-        hasReport: true,
+        label: "Awaiting physician review",
+        colorClass: "bg-slate-100 text-slate-700 border-slate-200",
+        badge: "Awaiting Review",
+        hasReport: false,
+        canViewSoap: false,
+        soapUrl: null,
       };
     }
+
+    // 3. Fallback check for legacy approved consultations if summary unpopulated
+    if (!summary && item.status === "approved") {
+      return {
+        label: "Signed · Clinician Approved",
+        colorClass: "bg-emerald-50 text-emerald-800 border-emerald-200",
+        badge: "Signed",
+        hasReport: true,
+        canViewSoap: true,
+        soapUrl: `/history/${item.id}/soap`,
+      };
+    }
+
     return {
-      label: "No SOAP report yet",
-      colorClass: "bg-slate-50 text-slate-600 border-slate-200",
-      badge: "Not Generated",
+      label: "No SOAP report generated yet",
+      colorClass: "bg-slate-50 text-slate-500 border-slate-200",
+      badge: "No SOAP",
       hasReport: false,
+      canViewSoap: false,
+      soapUrl: null,
     };
   };
 
@@ -431,15 +457,16 @@ export default function ConsultationHistoryPage() {
               <span>View Dialogue</span>
             </button>
 
-            {soapMeta.hasReport && (
-              <button
-                onClick={() => setSelectedConsultationForSoap(item)}
-                className="inline-flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-semibold bg-slate-900 hover:bg-slate-800 text-white transition-all cursor-pointer"
+            {soapMeta.canViewSoap && soapMeta.soapUrl ? (
+              <Link
+                href={soapMeta.soapUrl}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-[#18251D] hover:bg-black text-white transition-all shadow-xs cursor-pointer group"
               >
-                <FileText className="w-3.5 h-3.5 text-emerald-400" />
-                <span>SOAP Report</span>
-              </button>
-            )}
+                <FileText className="w-3.5 h-3.5 text-[#B7FF72]" />
+                <span>View SOAP Report</span>
+                <ArrowRight className="w-3 h-3 text-[#B7FF72] group-hover:translate-x-0.5 transition-transform" />
+              </Link>
+            ) : null}
           </div>
         </div>
       </div>
