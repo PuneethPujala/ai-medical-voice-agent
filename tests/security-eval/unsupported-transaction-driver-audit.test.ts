@@ -259,7 +259,7 @@ describe("Milestone 6: Audit Chain Integrity on Drivers Lacking Interactive Tran
     const prevAllowLegacy = process.env.ALLOW_LEGACY_AUDIT_WRITER;
 
     try {
-      process.env.NODE_ENV = "production";
+      (process.env as any).NODE_ENV = "production";
       process.env.ALLOW_LEGACY_AUDIT_WRITER = "false";
 
       assert.strictEqual(
@@ -288,7 +288,7 @@ describe("Milestone 6: Audit Chain Integrity on Drivers Lacking Interactive Tran
 
       assert.strictEqual(failedClosed, true, "Must fail closed in production when audit_chain_heads is missing");
     } finally {
-      process.env.NODE_ENV = prevNodeEnv;
+      (process.env as any).NODE_ENV = prevNodeEnv;
       process.env.ALLOW_LEGACY_AUDIT_WRITER = prevAllowLegacy;
     }
   });
@@ -296,7 +296,7 @@ describe("Milestone 6: Audit Chain Integrity on Drivers Lacking Interactive Tran
   it("Test 6: Production strictly forbids in-memory audit fallback", () => {
     const prevEnv = process.env.NODE_ENV;
     try {
-      process.env.NODE_ENV = "production";
+      (process.env as any).NODE_ENV = "production";
       assert.strictEqual(
         isMemoryAuditFallbackPermitted(false),
         false,
@@ -308,7 +308,7 @@ describe("Milestone 6: Audit Chain Integrity on Drivers Lacking Interactive Tran
         "Production must never allow memory fallback when requireDurable is true"
       );
     } finally {
-      process.env.NODE_ENV = prevEnv;
+      (process.env as any).NODE_ENV = prevEnv;
     }
   });
 });
