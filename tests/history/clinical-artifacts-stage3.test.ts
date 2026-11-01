@@ -29,7 +29,7 @@ import path from "node:path";
 import { Pool } from "pg";
 import { assertSafeTestDatabase, validateTestDatabaseTarget } from "../../lib/security/test-db-guard";
 import { getDb, closeDbPool } from "../../config/db";
-import { DEFAULT_INTERNAL_TEST_SECRET, INTERNAL_TEST_SECRET_HEADER } from "../../lib/auth/rbac";
+import { DEFAULT_INTERNAL_TEST_SECRET, INTERNAL_TEST_SECRET_HEADER, getAuthContext } from "../../lib/auth/rbac";
 import { clearAuditLedger } from "../../lib/audit/audit-logger";
 
 // Route handlers under test
@@ -786,7 +786,44 @@ describe("Milestone 6 Stage 3: Clinical Artifact APIs & Physician Review Battery
     assert.strictEqual(patchRes.status, 400);
     const patchJson = await patchRes.json();
     assert.strictEqual(patchJson.code, "SOAP_DIRECT_MUTATION_PROHIBITED");
-    assert.ok(patchJson.error.includes("SOAP fields via generic PATCH is prohibited"));
+    assert.ok(patchJson.error.includes("Direct mutation of clinical artifact fields"));
+  });
+
+  // --------------------------------------------------------------------------
+  // Test 16b: Generic PATCH Rejection Across ALL Artifact-Managed Clinical Fields
+  // --------------------------------------------------------------------------
+  it("Test 16b: generic PATCH rejects independent mutations for every artifact-managed field", async () => {
+    const id = cid("c-patch-all-fields");
+    await seedConsultation(id, { doctorId: "dr-sarah-chen" });
+
+    const blockedPayloads: Array<{ field: string; body: any }> = [
+      { field: "soapSubjective", body: { soapSubjective: "Injected subjective narrative" } },
+      { field: "soapObjective", body: { soapObjective: "Injected objective narrative" } },
+      { field: "soapAssessment", body: { soapAssessment: "Injected assessment narrative" } },
+      { field: "soapPlan", body: { soapPlan: "Injected plan narrative" } },
+      { field: "soap", body: { soap: { subjective: "Nested SOAP injection" } } },
+      { field: "chiefComplaint", body: { chiefComplaint: "Direct mutation of chief complaint" } },
+      { field: "icd10Codes", body: { icd10Codes: ["I10", "E11.9"] } },
+      { field: "icdCodes", body: { icdCodes: ["I10"] } },
+      { field: "esiScore", body: { esiScore: 1 } },
+    ];
+
+    for (const testCase of blockedPayloads) {
+      const patchReq = makeRequest(
+        `http://localhost/api/consultations/${id}`,
+        "PATCH",
+        testCase.body,
+        { role: "clinician", userId: "dr-sarah-chen" }
+      );
+      const patchRes = await patchConsultationHandler(patchReq, { params: Promise.resolve({ id }) });
+      assert.strictEqual(
+        patchRes.status,
+        400,
+        `Expected field '${testCase.field}' to be rejected with 400 from generic PATCH`
+      );
+      const json = await patchRes.json();
+      assert.strictEqual(json.code, "SOAP_DIRECT_MUTATION_PROHIBITED");
+    }
   });
 
   // --------------------------------------------------------------------------
@@ -864,5 +901,179 @@ describe("Milestone 6 Stage 3: Clinical Artifact APIs & Physician Review Battery
     assert.ok(composition);
     assert.strictEqual(composition.status, "final");
     assert.ok(composition.section[0].text.div.includes("Legacy approved patient narrative"));
+  });
+
+  // --------------------------------------------------------------------------
+  // Test 19: Individual Artifact Read Authorization (GET /.../artifacts/[artifactId])
+  // --------------------------------------------------------------------------
+  it("Test 19: individual artifact read endpoint enforces strict patient unsigned-note blocking and care relationship", async () => {
+    const id = cid("c-single-art-auth");
+    await seedConsultation(id, { userId: "patient-alice-01", doctorId: "dr-sarah-chen" });
+
+    // 1. Create Draft Artifact
+    const postReq = makeRequest(
+      `http://localhost/api/consultations/${id}/artifacts`,
+      "POST",
+      {
+        chiefComplaint: "Severe migraine",
+        soapSubjective: "Throbbing unilateral headache with photophobia",
+        soapObjective: "Neurological exam grossly intact",
+        soapAssessment: "Acute migraine without aura",
+        soapPlan: "Sumatriptan 50mg, dark quiet room",
+      },
+      { role: "clinician", userId: "dr-sarah-chen" }
+    );
+    const draftArtifact = (await (await postArtifactsHandler(postReq, { params: Promise.resolve({ id }) })).json()).artifact;
+    const artifactId = draftArtifact.id;
+
+    // Subtest A: Patient requesting their OWN draft artifact -> MUST be rejected with 403
+    const patDraftReq = makeRequest(
+      `http://localhost/api/consultations/${id}/artifacts/${artifactId}`,
+      "GET",
+      undefined,
+      { role: "patient", userId: "patient-alice-01" }
+    );
+    const patDraftRes = await getArtifactByIdHandler(patDraftReq, { params: Promise.resolve({ id, artifactId }) });
+    assert.strictEqual(patDraftRes.status, 403, "Patient must not access draft clinical artifact");
+    const patDraftJson = await patDraftRes.json();
+    assert.ok(patDraftJson.error.includes("visible"), "Error must explain clinical notes are only visible once signed");
+
+    // Subtest B: Assigned Clinician requesting draft artifact -> 200
+    const docDraftReq = makeRequest(
+      `http://localhost/api/consultations/${id}/artifacts/${artifactId}`,
+      "GET",
+      undefined,
+      { role: "clinician", userId: "dr-sarah-chen" }
+    );
+    const docDraftRes = await getArtifactByIdHandler(docDraftReq, { params: Promise.resolve({ id, artifactId }) });
+    assert.strictEqual(docDraftRes.status, 200);
+
+    // Subtest C: Unassigned clinician requesting artifact -> 403
+    const unassignedReq = makeRequest(
+      `http://localhost/api/consultations/${id}/artifacts/${artifactId}`,
+      "GET",
+      undefined,
+      { role: "clinician", userId: "dr-unassigned-stranger" }
+    );
+    const unassignedRes = await getArtifactByIdHandler(unassignedReq, { params: Promise.resolve({ id, artifactId }) });
+    assert.strictEqual(unassignedRes.status, 403, "Unassigned clinician must be rejected with 403");
+
+    // Subtest D: Transition to pending_review
+    await submitArtifactHandler(
+      makeRequest(`http://localhost/api/consultations/${id}/artifacts/${artifactId}/submit`, "POST", {}, { role: "clinician", userId: "dr-sarah-chen" }),
+      { params: Promise.resolve({ id, artifactId }) }
+    );
+
+    // Patient requesting pending_review artifact -> MUST still be rejected with 403
+    const patPendingReq = makeRequest(
+      `http://localhost/api/consultations/${id}/artifacts/${artifactId}`,
+      "GET",
+      undefined,
+      { role: "patient", userId: "patient-alice-01" }
+    );
+    const patPendingRes = await getArtifactByIdHandler(patPendingReq, { params: Promise.resolve({ id, artifactId }) });
+    assert.strictEqual(patPendingRes.status, 403, "Patient must not access pending_review clinical artifact");
+
+    // Subtest E: Sign artifact
+    await signArtifactHandler(
+      makeRequest(
+        `http://localhost/api/consultations/${id}/artifacts/${artifactId}/sign`,
+        "POST",
+        { idempotencyKey: "key-single-art-sign", expectedCaseVersion: 1 },
+        { role: "clinician", userId: "dr-sarah-chen" }
+      ),
+      { params: Promise.resolve({ id, artifactId }) }
+    );
+
+    // Subtest F: Patient requesting their SIGNED artifact -> MUST succeed with 200
+    const patSignedReq = makeRequest(
+      `http://localhost/api/consultations/${id}/artifacts/${artifactId}`,
+      "GET",
+      undefined,
+      { role: "patient", userId: "patient-alice-01" }
+    );
+    const patSignedRes = await getArtifactByIdHandler(patSignedReq, { params: Promise.resolve({ id, artifactId }) });
+    assert.strictEqual(patSignedRes.status, 200, "Patient must be able to view their own signed clinical artifact");
+    const patSignedJson = await patSignedRes.json();
+    assert.strictEqual(patSignedJson.artifact.status, "signed");
+    assert.strictEqual(patSignedJson.artifact.id, artifactId);
+
+    // Subtest G: Another patient requesting Alice's signed artifact -> MUST be rejected with 403 IDOR
+    const strangerPatReq = makeRequest(
+      `http://localhost/api/consultations/${id}/artifacts/${artifactId}`,
+      "GET",
+      undefined,
+      { role: "patient", userId: "patient-bob-intruder" }
+    );
+    const strangerPatRes = await getArtifactByIdHandler(strangerPatReq, { params: Promise.resolve({ id, artifactId }) });
+    assert.strictEqual(strangerPatRes.status, 403, "Stranger patient accessing another encounter must receive 403");
+  });
+
+  // --------------------------------------------------------------------------
+  // Test 20: Doctor Identity Mapping & Production Mock Header Isolation
+  // --------------------------------------------------------------------------
+  it("Test 20: verifies doctor identity mapping semantics and that mock headers cannot grant permissions in production", async () => {
+    const id = cid("c-doctor-id-mapping");
+    await seedConsultation(id, { doctorId: "dr-sarah-chen" });
+
+    // 1. Clinician with matching doctorId in metadata is accepted
+    const matchedReq = makeRequest(
+      `http://localhost/api/consultations/${id}/artifacts`,
+      "GET",
+      undefined,
+      { role: "clinician", userId: "clerk-user-001", doctorId: "dr-sarah-chen" }
+    );
+    const matchedRes = await getArtifactsHandler(matchedReq, { params: Promise.resolve({ id }) });
+    assert.strictEqual(matchedRes.status, 200, "Clinician with matching doctorId must be authorized");
+
+    // 2. Clinician with mismatched doctorId in metadata is rejected
+    const mismatchedReq = makeRequest(
+      `http://localhost/api/consultations/${id}/artifacts`,
+      "GET",
+      undefined,
+      { role: "clinician", userId: "clerk-user-002", doctorId: "dr-marcus-vance" }
+    );
+    const mismatchedRes = await getArtifactsHandler(mismatchedReq, { params: Promise.resolve({ id }) });
+    assert.strictEqual(mismatchedRes.status, 403, "Clinician with mismatched doctorId must be rejected with 403");
+
+    // 3. Strict production security invariant: In NODE_ENV === 'production', mock identity headers fail closed
+    const originalEnv = process.env.NODE_ENV;
+    try {
+      (process.env as any).NODE_ENV = "production";
+
+      const mockSpoofReq = new Request("http://localhost/api/test-secure", {
+        headers: {
+          [INTERNAL_TEST_SECRET_HEADER]: DEFAULT_INTERNAL_TEST_SECRET,
+          "x-mock-role": "admin",
+          "x-mock-user-id": "evil-attacker",
+          "x-mock-doctor-id": "dr-sarah-chen",
+          "x-mock-permissions": "clinical_artifacts:sign:any",
+        },
+      });
+
+      const prodAuth = await getAuthContext(mockSpoofReq);
+      assert.strictEqual(
+        prodAuth.userId,
+        "unauthenticated",
+        "In production mode, mock headers must never establish an authenticated user"
+      );
+      assert.strictEqual(
+        prodAuth.role,
+        "patient",
+        "In production mode, mock role headers must fail closed to default guest role"
+      );
+      assert.strictEqual(
+        prodAuth.doctorId,
+        undefined,
+        "In production mode, mock doctorId must be ignored"
+      );
+      assert.deepStrictEqual(
+        prodAuth.permissions,
+        undefined,
+        "In production mode, mock permissions must be completely ignored"
+      );
+    } finally {
+      (process.env as any).NODE_ENV = originalEnv;
+    }
   });
 });

@@ -102,7 +102,12 @@ export function SoapReportModal({
   const [amendmentReason, setAmendmentReason] = useState("");
 
   const encounterId = encounter?.id || "";
-  const isClinicianOrAdmin = encounter?.userRole === "clinician" || encounter?.userRole === "admin";
+  const [callerRole, setCallerRole] = useState<string>(encounter?.userRole || "");
+  const isClinicianOrAdmin =
+    callerRole === "clinician" ||
+    callerRole === "admin" ||
+    encounter?.userRole === "clinician" ||
+    encounter?.userRole === "admin";
 
   // Derive chief concern from patient's dialogue or symptoms
   const patientUtterances = encounter?.transcript?.filter((t) => t.role === "patient") || [];
@@ -129,6 +134,9 @@ export function SoapReportModal({
       fetch(`/api/consultations/${encodeURIComponent(encounterId)}/artifacts`)
         .then((res) => (res.ok ? res.json() : null))
         .then((data) => {
+          if (data && data.userRole) {
+            setCallerRole(data.userRole);
+          }
           if (data && data.success && Array.isArray(data.artifacts) && data.artifacts.length > 0) {
             setArtifacts(data.artifacts);
             const latest = data.artifacts[data.artifacts.length - 1];

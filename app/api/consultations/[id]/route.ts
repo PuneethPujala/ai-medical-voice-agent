@@ -296,19 +296,24 @@ export async function PATCH(
 
     const body = await request.json();
 
-    // Direct mutation of SOAP fields via generic PATCH is strictly prohibited.
+    // Direct mutation of clinical artifact fields via generic PATCH is strictly prohibited.
     // Clinical documentation must be updated through authoritative clinical artifact endpoints.
-    const hasDirectSoapMutation =
+    const hasDirectClinicalArtifactMutation =
       body.soapSubjective !== undefined ||
       body.soapObjective !== undefined ||
       body.soapAssessment !== undefined ||
-      body.soapPlan !== undefined;
+      body.soapPlan !== undefined ||
+      body.soap !== undefined ||
+      body.chiefComplaint !== undefined ||
+      body.icd10Codes !== undefined ||
+      body.icdCodes !== undefined ||
+      body.esiScore !== undefined;
 
-    if (hasDirectSoapMutation) {
+    if (hasDirectClinicalArtifactMutation) {
       return NextResponse.json(
         {
           success: false,
-          error: "Direct mutation of SOAP fields via generic PATCH is prohibited. Clinical documentation must be updated through authoritative clinical artifact endpoints (/api/consultations/[id]/artifacts).",
+          error: "Direct mutation of clinical artifact fields (SOAP narrative, chiefComplaint, icd10Codes, esiScore) via generic PATCH is prohibited. Clinical documentation must be updated through authoritative clinical artifact endpoints (/api/consultations/[id]/artifacts).",
           code: "SOAP_DIRECT_MUTATION_PROHIBITED",
         },
         { status: 400 }
@@ -486,7 +491,6 @@ export async function PATCH(
     };
 
     if (body.transcript !== undefined) updateFields.transcript = body.transcript;
-    if (body.chiefComplaint !== undefined) updateFields.chiefComplaint = body.chiefComplaint;
     if (body.detectedSymptoms !== undefined) updateFields.detectedSymptoms = body.detectedSymptoms;
     if (body.interviewState !== undefined) {
       const interviewState = { ...body.interviewState };

@@ -13,14 +13,19 @@ function isAssignedClinician(
   consultationDoctorId: string | null | undefined,
   auth: AuthContext
 ): boolean {
-  if (!consultationDoctorId) return false;
-  const effectiveDoctorId = auth.doctorId || auth.userId;
-  return (
-    consultationDoctorId === effectiveDoctorId ||
-    consultationDoctorId.toLowerCase() === effectiveDoctorId.toLowerCase() ||
-    consultationDoctorId === auth.userId ||
-    consultationDoctorId.toLowerCase() === auth.userId.toLowerCase()
-  );
+  if (!consultationDoctorId || typeof consultationDoctorId !== "string" || consultationDoctorId.trim().length === 0) {
+    return false;
+  }
+  const targetId = consultationDoctorId.trim().toLowerCase();
+  // 1. Match against doctorId from Clerk publicMetadata (e.g. "dr-sarah-chen")
+  if (auth.doctorId && typeof auth.doctorId === "string" && auth.doctorId.trim().toLowerCase() === targetId) {
+    return true;
+  }
+  // 2. Direct match against Clerk userId if consultation was assigned by userId
+  if (auth.userId && typeof auth.userId === "string" && auth.userId.trim().toLowerCase() === targetId) {
+    return true;
+  }
+  return false;
 }
 
 const NO_CACHE_HEADERS = {

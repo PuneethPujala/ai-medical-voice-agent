@@ -203,7 +203,15 @@ export async function GET(request: Request) {
     if (dbClient) {
       try {
         const conditions: any[] = [];
-        if (targetUserId) {
+        if (auth.role === "clinician") {
+          const docId = auth.doctorId || auth.userId;
+          conditions.push(
+            or(
+              eq(consultationsTable.doctorId, docId),
+              ilike(consultationsTable.doctorId, docId)
+            )
+          );
+        } else if (targetUserId) {
           conditions.push(eq(consultationsTable.userId, targetUserId));
         }
 

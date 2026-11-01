@@ -861,13 +861,11 @@ export async function signArtifactInTransaction(
     }
     isAdministrativeOverride = true;
   } else if (params.clinicianRole === "clinician") {
-    const effectiveDoctorId = params.clinicianDoctorId || params.clinicianId;
     const isCareRelationshipValid = Boolean(
       assignedDoctorId &&
-        (assignedDoctorId === effectiveDoctorId ||
-          assignedDoctorId.toLowerCase() === effectiveDoctorId.toLowerCase() ||
-          assignedDoctorId === params.clinicianId ||
-          assignedDoctorId.toLowerCase() === params.clinicianId.toLowerCase())
+        assignedDoctorId.trim().length > 0 &&
+        ((params.clinicianDoctorId && params.clinicianDoctorId.trim().toLowerCase() === assignedDoctorId.trim().toLowerCase()) ||
+          (params.clinicianId && params.clinicianId.trim().toLowerCase() === assignedDoctorId.trim().toLowerCase()))
     );
 
     if (!isCareRelationshipValid) {
