@@ -144,6 +144,10 @@ import { asc, eq, sql } from "drizzle-orm";
 // In-memory append-only ledger for rapid access & fallback
 let auditLedger: AuditEvent[] = [];
 
+export function getAuditLedger(): AuditEvent[] {
+  return [...auditLedger];
+}
+
 // Mutex queue to serialize in-process append operations and eliminate concurrency races
 let writeLock: Promise<any> = Promise.resolve();
 
@@ -442,6 +446,171 @@ export function isMemoryAuditFallbackPermitted(requireDurable?: boolean): boolea
 }
 
 /**
+ * Strict Safety Boundary for Pre-M6 Legacy Audit Writer.
+ *
+ * Gating Invariant:
+ * The pre-M6 legacy writer (which writes directly to audit_events without locking or updating
+ * audit_chain_heads) is strictly quarantined. It is permitted ONLY in explicitly controlled
+ * pre-migration environments where audit_chain_heads has not yet been applied, and NEVER
+ * as a silent workaround for HTTP drivers or missing transactions.
+ */
+export function isLegacyPreMigrationPermitted(): boolean {
+  if (process.env.NODE_ENV === "production") {
+    return false;
+  }
+  return (
+    process.env.ALLOW_LEGACY_AUDIT_WRITER === "true" ||
+    process.env.NODE_ENV === "test"
+  );
+}
+
+/**
+ * Atomic Single-Request Chain Append for Drivers Lacking Interactive Transactions.
+ *
+ * When using drivers that do not support interactive multi-statement transactions (e.g. neon-http),
+ * this function performs the entire M6 audit-chain operation atomically inside a single compound
+ * PostgreSQL statement with Common Table Expressions (CTEs):
+ * 1. Locks audit_chain_heads FOR UPDATE (chain_id = 'main')
+ * 2. Reads latest index and hash
+ * 3. Computes the canonical V2 SHA-256 event hash directly in PostgreSQL via sha256()
+ * 4. Inserts the event row into audit_events
+ * 5. Advances audit_chain_heads to the new index and hash
+ * 6. Returns the allocated index, previousHash, and eventHash
+ *
+ * All operations execute within a single engine transaction: if any part fails, neither the event
+ * nor the head is committed.
+ */
+export async function logAuditEventViaAtomicStatement(
+  dbClient: any,
+  params: {
+    actorId: string;
+    actorRole: AuditActorRole;
+    action: AuditAction;
+    resourceType: AuditResourceType;
+    resourceId: string;
+    status?: "SUCCESS" | "DENIED" | "FAILED";
+    clientIp?: string;
+    metadata?: Record<string, any>;
+    requireDurable?: boolean;
+  }
+): Promise<AuditEvent> {
+  if (simulatedAuditFailure) {
+    throw new Error("Simulated transient audit ledger datastore failure");
+  }
+
+  // 1. Ensure the singleton 'main' row in audit_chain_heads exists without advancing it
+  await dbClient.execute(sql`
+    INSERT INTO audit_chain_heads (chain_id, last_event_index, last_event_hash)
+    SELECT 'main', COALESCE(MAX(index), -1), COALESCE(
+      (SELECT event_hash FROM audit_events ORDER BY index DESC LIMIT 1),
+      ${GENESIS_HASH}
+    )
+    FROM audit_events
+    ON CONFLICT (chain_id) DO NOTHING;
+  `);
+
+  const id = `AUD-${Date.now()}-${randomUUID().slice(0, 8).toUpperCase()}`;
+  const timestamp = new Date().toISOString();
+  const status = params.status || "SUCCESS";
+  const clientIp = params.clientIp || null;
+
+  const canonicalMetadata = params.metadata ? canonicalizeJson(params.metadata) : {};
+  const canonicalMetadataJson = JSON.stringify(canonicalMetadata);
+  const metadataSql = params.metadata ? sql`${JSON.stringify(params.metadata)}::jsonb` : sql`NULL`;
+
+  const query = sql`
+    WITH locked_head AS (
+      SELECT last_event_index, last_event_hash
+      FROM audit_chain_heads
+      WHERE chain_id = 'main'
+      FOR UPDATE
+    ),
+    computed AS (
+      SELECT
+        (h.last_event_index + 1) AS new_index,
+        h.last_event_hash AS prev_hash,
+        encode(sha256(
+          convert_to(
+            ((h.last_event_index + 1)::text || '|' ||
+             ${id} || '|' ||
+             ${timestamp} || '|' ||
+             ${params.actorId} || '|' ||
+             ${params.actorRole} || '|' ||
+             ${params.action} || '|' ||
+             ${params.resourceType} || '|' ||
+             ${params.resourceId} || '|' ||
+             ${status} || '|' ||
+             h.last_event_hash || '|' ||
+             ${canonicalMetadataJson}
+            ),
+            'UTF8'
+          )
+        ), 'hex') AS new_event_hash
+      FROM locked_head h
+    ),
+    ins_event AS (
+      INSERT INTO audit_events (
+        index, id, timestamp, actor_id, actor_role, action,
+        resource_type, resource_id, status, client_ip, metadata,
+        previous_hash, event_hash
+      )
+      SELECT
+        c.new_index, ${id}, ${timestamp}, ${params.actorId}, ${params.actorRole}, ${params.action},
+        ${params.resourceType}, ${params.resourceId}, ${status}, ${clientIp}, ${metadataSql},
+        c.prev_hash, c.new_event_hash
+      FROM computed c
+      RETURNING index, event_hash, previous_hash
+    ),
+    upd_head AS (
+      UPDATE audit_chain_heads
+      SET
+        last_event_index = c.new_index,
+        last_event_hash = c.new_event_hash,
+        updated_at = NOW()
+      FROM computed c
+      WHERE audit_chain_heads.chain_id = 'main'
+      RETURNING last_event_index, last_event_hash
+    )
+    SELECT
+      c.new_index AS "index",
+      c.new_event_hash AS "eventHash",
+      c.prev_hash AS "previousHash"
+    FROM computed c;
+  `;
+
+  const res = await dbClient.execute(query);
+  const rows = res.rows || res;
+  if (!rows || rows.length === 0) {
+    throw new Error("Atomic audit chain append returned no rows from PostgreSQL");
+  }
+
+  const row = rows[0];
+  const allocatedIndex = Number(row.index ?? row.new_index);
+  const allocatedHash = String(row.eventHash ?? row.new_event_hash ?? row.event_hash);
+  const allocatedPrevHash = String(row.previousHash ?? row.prev_hash ?? row.previous_hash);
+
+  const fullEvent: AuditEvent = {
+    index: allocatedIndex,
+    id,
+    timestamp,
+    actorId: params.actorId,
+    actorRole: params.actorRole,
+    action: params.action,
+    resourceType: params.resourceType,
+    resourceId: params.resourceId,
+    status,
+    clientIp: params.clientIp,
+    metadata: params.metadata,
+    previousHash: allocatedPrevHash,
+    eventHash: allocatedHash,
+    hashVersion: "v2",
+  };
+
+  auditLedger.push(fullEvent);
+  return fullEvent;
+}
+
+/**
  * Legacy audit persistence logic for environments where audit_chain_heads is not yet migrated,
  * or for offline test runners.
  */
@@ -565,25 +734,64 @@ export async function logAuditEventAsync(params: {
   return serializeWrite(async () => {
     const dbClient = getDb();
     if (dbClient) {
+      // Path 1: Driver supports interactive transactions (e.g. node-postgres, websocket Neon pool)
+      if (typeof dbClient.transaction === "function") {
+        try {
+          const committedEvent = await dbClient.transaction(async (tx: any) => {
+            return await logAuditEventInTransaction(tx, params);
+          });
+          auditLedger.push(committedEvent);
+          return committedEvent;
+        } catch (err: any) {
+          const rootCause = err?.cause ?? err;
+          const rootMsg = String(rootCause?.message ?? "");
+          const outerMsg = String(err?.message ?? "");
+
+          const isNoTransactionSupport =
+            outerMsg.includes("No transactions support") ||
+            rootMsg.includes("No transactions support");
+
+          if (!isNoTransactionSupport) {
+            const isMissingChainHeads =
+              rootMsg.includes("audit_chain_heads") && rootMsg.includes("does not exist");
+
+            if (isMissingChainHeads) {
+              if (isLegacyPreMigrationPermitted()) {
+                console.warn("audit_chain_heads unmigrated; routing through gated pre-migration legacy writer");
+                return await legacyLogAuditEventAsync(params);
+              }
+              throw new Error("Audit chain head table (audit_chain_heads) does not exist; legacy writer not permitted in this environment");
+            }
+
+            if (!isMemoryAuditFallbackPermitted(params.requireDurable)) {
+              throw new Error(`Durable audit persistence failed: ${outerMsg || rootMsg || "datastore error"}`);
+            }
+
+            return await legacyLogAuditEventAsync(params);
+          }
+          // Driver explicitly lacked interactive transaction capability: fall through to Path 2
+        }
+      }
+
+      // Path 2: Driver lacks interactive transactions (e.g. neon-http stateless HTTP).
+      // Execute the PostgreSQL-side atomic chain append operation via single database request.
+      // This strictly locks audit_chain_heads, computes canonical V2 hash, inserts, and advances the head atomically.
       try {
-        const committedEvent = await dbClient.transaction(async (tx) => {
-          return await logAuditEventInTransaction(tx, params);
-        });
-        auditLedger.push(committedEvent);
-        return committedEvent;
+        return await logAuditEventViaAtomicStatement(dbClient, params);
       } catch (err: any) {
         const rootCause = err?.cause ?? err;
         const rootMsg = String(rootCause?.message ?? "");
         const outerMsg = String(err?.message ?? "");
+
         const isMissingChainHeads =
           rootMsg.includes("audit_chain_heads") && rootMsg.includes("does not exist");
-        const isNoTransactionSupport =
-          outerMsg.includes("No transactions support") ||
-          rootMsg.includes("No transactions support");
 
-        if (isMissingChainHeads || isNoTransactionSupport) {
-          // Fallback for unmigrated environments or HTTP-only drivers (neon-http) without interactive transactions
-          return await legacyLogAuditEventAsync(params);
+        if (isMissingChainHeads) {
+          if (isLegacyPreMigrationPermitted()) {
+            console.warn("audit_chain_heads unmigrated; routing through gated pre-migration legacy writer");
+            return await legacyLogAuditEventAsync(params);
+          }
+          throw new Error("Audit chain head table (audit_chain_heads) does not exist; legacy writer not permitted in this environment");
         }
 
         if (!isMemoryAuditFallbackPermitted(params.requireDurable)) {
