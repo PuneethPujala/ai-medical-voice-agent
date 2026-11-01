@@ -1,4 +1,4 @@
-import { createHash } from "crypto";
+import { createHash, randomUUID } from "crypto";
 
 export type AuditAction =
   | "CONSULTATION_CREATED"
@@ -15,9 +15,25 @@ export type AuditAction =
   | "PATIENT_PROFILE_SAVED"
   | "PATIENT_PROFILE_DELETED"
   | "LONGITUDINAL_FACTS_ACCESSED"
-  | "AUDIO_PLAYBACK_TELEMETRY_RECORDED";
+  | "AUDIO_PLAYBACK_TELEMETRY_RECORDED"
+  | "CLINICAL_ARTIFACT_DRAFT_CREATED"
+  | "CLINICAL_ARTIFACT_DRAFT_UPDATED"
+  | "CLINICAL_ARTIFACT_SUBMITTED_FOR_REVIEW"
+  | "CLINICAL_ARTIFACT_AMENDMENT_CREATED"
+  | "CLINICAL_ARTIFACT_SIGNED"
+  | "CLINICAL_ARTIFACT_CANCELLED"
+  | "CLINICAL_ARTIFACT_REJECTED";
 
 export type AuditActorRole = "patient" | "clinician" | "admin" | "system";
+
+export type AuditResourceType =
+  | "consultation"
+  | "dispatch"
+  | "patient"
+  | "audit"
+  | "auth"
+  | "system"
+  | "clinical_artifact";
 
 export interface AuditEvent {
   index: number;
@@ -26,7 +42,7 @@ export interface AuditEvent {
   actorId: string;
   actorRole: AuditActorRole;
   action: AuditAction;
-  resourceType: "consultation" | "dispatch" | "patient" | "audit" | "auth" | "system";
+  resourceType: AuditResourceType;
   resourceId: string;
   status: "SUCCESS" | "DENIED" | "FAILED";
   clientIp?: string;
@@ -122,8 +138,8 @@ export function computeEventHash(
 }
 
 import { getDb } from "@/config/db";
-import { auditEventsTable } from "@/config/schema";
-import { asc } from "drizzle-orm";
+import { auditEventsTable, auditChainHeadsTable } from "@/config/schema";
+import { asc, eq, sql } from "drizzle-orm";
 
 // In-memory append-only ledger for rapid access & fallback
 let auditLedger: AuditEvent[] = [];
@@ -286,11 +302,233 @@ export function __setSimulatedAuditFailure(val: boolean) {
   simulatedAuditFailure = val;
 }
 
+/**
+ * Log an audit event within an existing database transaction, serializing via PostgreSQL
+ * row-level lock on the singleton audit chain head (chain_id = 'main').
+ *
+ * Guarantees:
+ * - Strict monotonic event index ordering across concurrent processes.
+ * - Previous-hash cryptographic continuity.
+ * - Atomic rollback if caller's transaction aborts.
+ */
+export async function logAuditEventInTransaction(
+  tx: any,
+  params: {
+    actorId: string;
+    actorRole: AuditActorRole;
+    action: AuditAction;
+    resourceType: AuditResourceType;
+    resourceId: string;
+    status?: "SUCCESS" | "DENIED" | "FAILED";
+    clientIp?: string;
+    metadata?: Record<string, any>;
+  }
+): Promise<AuditEvent> {
+  if (simulatedAuditFailure) {
+    throw new Error("Simulated transient audit ledger datastore failure");
+  }
+
+  // 1. Lock the singleton audit chain head (chain_id = 'main')
+  // Strict lock ordering: consultation -> artifact -> idempotency record -> audit chain head
+  const headRowsRes = await tx.execute(
+    sql`SELECT chain_id, last_event_index, last_event_hash FROM audit_chain_heads WHERE chain_id = 'main' FOR UPDATE`
+  );
+
+  let nextIndex: number;
+  let previousHash: string;
+
+  const rows = headRowsRes.rows || headRowsRes;
+  if (rows && rows.length > 0) {
+    const head = rows[0];
+    const lastIndex = Number(head.last_event_index ?? head.lastEventIndex);
+    const lastHash = String(head.last_event_hash ?? head.lastEventHash);
+    nextIndex = lastIndex + 1;
+    previousHash = lastHash;
+  } else {
+    // If audit_chain_heads exists but 'main' row is missing, check audit_events
+    const countRes = await tx.execute(
+      sql`SELECT COUNT(*)::int as count, COALESCE(MAX(index), -1)::int as max_index FROM audit_events`
+    );
+    const countRows = countRes.rows || countRes;
+    const maxIdx = Number(countRows[0]?.max_index ?? -1);
+    if (maxIdx >= 0) {
+      const lastEventRes = await tx.execute(
+        sql`SELECT event_hash FROM audit_events WHERE index = ${maxIdx}`
+      );
+      const lastEventRows = lastEventRes.rows || lastEventRes;
+      nextIndex = maxIdx + 1;
+      previousHash = String(lastEventRows[0]?.event_hash);
+    } else {
+      nextIndex = 0;
+      previousHash = GENESIS_HASH;
+    }
+    // Initialize audit_chain_heads for 'main'
+    await tx.execute(
+      sql`INSERT INTO audit_chain_heads (chain_id, last_event_index, last_event_hash, updated_at)
+          VALUES ('main', ${nextIndex - 1}, ${previousHash}, NOW())
+          ON CONFLICT (chain_id) DO UPDATE SET updated_at = NOW()`
+    );
+  }
+
+  const id = `AUD-${Date.now()}-${randomUUID().slice(0, 8).toUpperCase()}`;
+  const timestamp = new Date().toISOString();
+  const status = params.status || "SUCCESS";
+
+  const partialEvent: Omit<AuditEvent, "eventHash"> = {
+    index: nextIndex,
+    id,
+    timestamp,
+    actorId: params.actorId,
+    actorRole: params.actorRole,
+    action: params.action,
+    resourceType: params.resourceType,
+    resourceId: params.resourceId,
+    status,
+    clientIp: params.clientIp,
+    metadata: params.metadata,
+    previousHash,
+  };
+
+  const eventHash = computeEventHashV2(partialEvent);
+  const fullEvent: AuditEvent = { ...partialEvent, eventHash, hashVersion: "v2" };
+
+  // Insert event into audit_events
+  await tx.insert(auditEventsTable).values({
+    index: fullEvent.index,
+    id: fullEvent.id,
+    timestamp: fullEvent.timestamp,
+    actorId: fullEvent.actorId,
+    actorRole: fullEvent.actorRole,
+    action: fullEvent.action,
+    resourceType: fullEvent.resourceType,
+    resourceId: fullEvent.resourceId,
+    status: fullEvent.status,
+    clientIp: fullEvent.clientIp,
+    metadata: fullEvent.metadata,
+    previousHash: fullEvent.previousHash,
+    eventHash: fullEvent.eventHash,
+  });
+
+  // Advance audit_chain_heads
+  await tx.execute(
+    sql`UPDATE audit_chain_heads
+        SET last_event_index = ${nextIndex},
+            last_event_hash = ${eventHash},
+            updated_at = NOW()
+        WHERE chain_id = 'main'`
+  );
+
+  return fullEvent;
+}
+
+/**
+ * Legacy audit persistence logic for environments where audit_chain_heads is not yet migrated,
+ * or for offline test runners.
+ */
+async function legacyLogAuditEventAsync(params: {
+  actorId: string;
+  actorRole: AuditActorRole;
+  action: AuditAction;
+  resourceType: AuditResourceType;
+  resourceId: string;
+  status?: "SUCCESS" | "DENIED" | "FAILED";
+  clientIp?: string;
+  metadata?: Record<string, any>;
+  requireDurable?: boolean;
+}): Promise<AuditEvent> {
+  let attempts = 0;
+  const maxAttempts = 3;
+
+  while (attempts < maxAttempts) {
+    attempts++;
+
+    if (auditLedger.length === 0) {
+      await syncAuditLedgerFromDb();
+    }
+
+    const index = auditLedger.length;
+    const previousHash = index === 0 ? GENESIS_HASH : auditLedger[index - 1].eventHash;
+    const id = `AUD-${Date.now()}-${randomUUID().slice(0, 8).toUpperCase()}`;
+    const timestamp = new Date().toISOString();
+    const status = params.status || "SUCCESS";
+
+    const partialEvent: Omit<AuditEvent, "eventHash"> = {
+      index,
+      id,
+      timestamp,
+      actorId: params.actorId,
+      actorRole: params.actorRole,
+      action: params.action,
+      resourceType: params.resourceType,
+      resourceId: params.resourceId,
+      status,
+      clientIp: params.clientIp,
+      metadata: params.metadata,
+      previousHash,
+    };
+
+    const eventHash = computeEventHash(partialEvent);
+    const fullEvent: AuditEvent = { ...partialEvent, eventHash };
+
+    const dbClient = getDb();
+    if (dbClient) {
+      try {
+        await dbClient.insert(auditEventsTable).values({
+          index: fullEvent.index,
+          id: fullEvent.id,
+          timestamp: fullEvent.timestamp,
+          actorId: fullEvent.actorId,
+          actorRole: fullEvent.actorRole,
+          action: fullEvent.action,
+          resourceType: fullEvent.resourceType,
+          resourceId: fullEvent.resourceId,
+          status: fullEvent.status,
+          clientIp: fullEvent.clientIp,
+          metadata: fullEvent.metadata,
+          previousHash: fullEvent.previousHash,
+          eventHash: fullEvent.eventHash,
+        });
+
+        auditLedger.push(fullEvent);
+        return fullEvent;
+      } catch (dbErr: any) {
+        const rootCause = dbErr?.cause ?? dbErr;
+        const rootCode = rootCause?.code ?? dbErr?.code;
+        const rootMsg = rootCause?.message ?? "";
+        const outerMsg = dbErr?.message ?? "";
+        const isUniqueViolation =
+          rootCode === "23505" ||
+          outerMsg.includes("unique constraint") || outerMsg.includes("duplicate key") ||
+          rootMsg.includes("unique constraint") || rootMsg.includes("duplicate key");
+        if (isUniqueViolation) {
+          console.warn(`Concurrent audit collision on index ${index}. Re-syncing and retrying (attempt ${attempts}/${maxAttempts})...`);
+          await syncAuditLedgerFromDb();
+          continue;
+        }
+
+        if (params.requireDurable || process.env.NODE_ENV === "production") {
+          console.error(`Durable audit persistence failed for event ${id}:`, outerMsg, rootMsg);
+          throw new Error(`Durable audit persistence failed: ${outerMsg || rootMsg || "datastore error"}`);
+        }
+
+        console.error(`Durable audit persistence failed for event ${id} (falling back to memory):`, outerMsg, rootMsg);
+        auditLedger.push(fullEvent);
+        return fullEvent;
+      }
+    } else {
+      auditLedger.push(fullEvent);
+      return fullEvent;
+    }
+  }
+
+  throw new Error(`Failed to commit audit event after ${maxAttempts} concurrency retries.`);
+}
+
 export async function logAuditEventAsync(params: {
   actorId: string;
   actorRole: AuditActorRole;
   action: AuditAction;
-  resourceType: AuditEvent["resourceType"];
+  resourceType: AuditResourceType;
   resourceId: string;
   status?: "SUCCESS" | "DENIED" | "FAILED";
   clientIp?: string;
@@ -300,99 +538,38 @@ export async function logAuditEventAsync(params: {
   if (simulatedAuditFailure) {
     throw new Error("Simulated transient audit ledger datastore failure");
   }
+
   return serializeWrite(async () => {
-    let attempts = 0;
-    const maxAttempts = 3;
+    const dbClient = getDb();
+    if (dbClient) {
+      try {
+        const committedEvent = await dbClient.transaction(async (tx) => {
+          return await logAuditEventInTransaction(tx, params);
+        });
+        auditLedger.push(committedEvent);
+        return committedEvent;
+      } catch (err: any) {
+        const rootCause = err?.cause ?? err;
+        const rootMsg = String(rootCause?.message ?? "");
+        const outerMsg = String(err?.message ?? "");
+        const isMissingChainHeads =
+          rootMsg.includes("audit_chain_heads") && rootMsg.includes("does not exist");
 
-    while (attempts < maxAttempts) {
-      attempts++;
-
-      // 1. Ensure in-memory cache is hydrated from DB on first write or if stale
-      if (auditLedger.length === 0) {
-        await syncAuditLedgerFromDb();
-      }
-
-      const index = auditLedger.length;
-      const previousHash = index === 0 ? GENESIS_HASH : auditLedger[index - 1].eventHash;
-      const id = `AUD-${Date.now()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
-      const timestamp = new Date().toISOString();
-      const status = params.status || "SUCCESS";
-
-      const partialEvent: Omit<AuditEvent, "eventHash"> = {
-        index,
-        id,
-        timestamp,
-        actorId: params.actorId,
-        actorRole: params.actorRole,
-        action: params.action,
-        resourceType: params.resourceType,
-        resourceId: params.resourceId,
-        status,
-        clientIp: params.clientIp,
-        metadata: params.metadata,
-        previousHash,
-      };
-
-      const eventHash = computeEventHash(partialEvent);
-      const fullEvent: AuditEvent = { ...partialEvent, eventHash };
-
-      const dbClient = getDb();
-      if (dbClient) {
-        try {
-          await dbClient.insert(auditEventsTable).values({
-            index: fullEvent.index,
-            id: fullEvent.id,
-            timestamp: fullEvent.timestamp,
-            actorId: fullEvent.actorId,
-            actorRole: fullEvent.actorRole,
-            action: fullEvent.action,
-            resourceType: fullEvent.resourceType,
-            resourceId: fullEvent.resourceId,
-            status: fullEvent.status,
-            clientIp: fullEvent.clientIp,
-            metadata: fullEvent.metadata,
-            previousHash: fullEvent.previousHash,
-            eventHash: fullEvent.eventHash,
-          });
-
-          // DB write succeeded: commit to in-memory ledger
-          auditLedger.push(fullEvent);
-          return fullEvent;
-        } catch (dbErr: any) {
-          // If conflict on index (concurrent insert from another process/lambda), re-sync and retry.
-          // Drizzle wraps the underlying Postgres error — check both wrapper and cause.
-          const rootCause = dbErr?.cause ?? dbErr;
-          const rootCode = rootCause?.code ?? dbErr?.code;
-          const rootMsg = rootCause?.message ?? "";
-          const outerMsg = dbErr?.message ?? "";
-          const isUniqueViolation =
-            rootCode === "23505" ||
-            outerMsg.includes("unique constraint") || outerMsg.includes("duplicate key") ||
-            rootMsg.includes("unique constraint") || rootMsg.includes("duplicate key");
-          if (isUniqueViolation) {
-            console.warn(`Concurrent audit collision on index ${index}. Re-syncing and retrying (attempt ${attempts}/${maxAttempts})...`);
-            await syncAuditLedgerFromDb();
-            continue;
-          }
-
-          if (params.requireDurable || process.env.NODE_ENV === "production") {
-            console.error(`Durable audit persistence failed for event ${id}:`, outerMsg, rootMsg);
-            throw new Error(`Durable audit persistence failed: ${outerMsg || rootMsg || "datastore error"}`);
-          }
-
-          // Non-fatal fallback strictly for offline local test runners without durable requirement
-          console.error(`Durable audit persistence failed for event ${id} (falling back to memory):`, outerMsg, rootMsg);
-          auditLedger.push(fullEvent);
-          return fullEvent;
+        if (isMissingChainHeads) {
+          // Fallback for unmigrated environments (e.g. before 0006 cutover)
+          return await legacyLogAuditEventAsync(params);
         }
-      } else {
-        // In environments without DB (e.g. offline unit testing), commit to memory ledger
-        auditLedger.push(fullEvent);
-        return fullEvent;
+
+        if (params.requireDurable || process.env.NODE_ENV === "production" || simulatedAuditFailure) {
+          throw new Error(`Durable audit persistence failed: ${outerMsg || rootMsg || "datastore error"}`);
+        }
+
+        return await legacyLogAuditEventAsync(params);
       }
     }
 
-    throw new Error(`Failed to commit audit event after ${maxAttempts} concurrency retries.`);
+    // Offline / no-db mode
+    return await legacyLogAuditEventAsync(params);
   });
 }
 

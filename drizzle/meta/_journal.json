@@ -1,0 +1,48 @@
+{
+  "version": "7",
+  "dialect": "postgresql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "7",
+      "when": 1729010000000,
+      "tag": "0001_add_consultation_durable_state",
+      "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1729011000000,
+      "tag": "0002_add_unique_idempotency_key",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1729870000000,
+      "tag": "0003_add_turn_idempotency_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1730410000000,
+      "tag": "0004_add_consultation_keyset_pagination_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1730412000000,
+      "tag": "0005_add_parent_consultation_fk",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1730458000000,
+      "tag": "0006_add_clinical_artifacts",
+      "breakpoints": true
+    }
+  ]
+}
