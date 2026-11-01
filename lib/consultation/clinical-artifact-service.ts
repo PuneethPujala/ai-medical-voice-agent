@@ -838,15 +838,22 @@ export async function signArtifactInTransaction(
   const consultation = consultRows[0];
   const currentCaseVersion = Number(consultation.case_version ?? consultation.caseVersion);
 
-  // Encounter assignment & care relationship verification
+  // Encounter assignment & care relationship verification (Strict Fail-Closed)
   const assignedDoctorId = consultation.doctor_id ?? consultation.doctorId;
-  if (
-    assignedDoctorId &&
-    params.clinicianRole !== "admin" &&
-    assignedDoctorId !== params.clinicianId
-  ) {
+  let isAdministrativeOverride = false;
+
+  if (params.clinicianRole === "admin") {
+    // Explicit administrative authorization; recorded in audit trail
+    isAdministrativeOverride = true;
+  } else if (params.clinicianRole === "clinician") {
+    if (!assignedDoctorId || assignedDoctorId !== params.clinicianId) {
+      throw new ClinicianAuthorizationError(
+        `Clinician '${params.clinicianId}' is not the assigned physician for consultation '${params.consultationId}' (assigned: '${assignedDoctorId || "none"}')`
+      );
+    }
+  } else {
     throw new ClinicianAuthorizationError(
-      `Clinician '${params.clinicianId}' is not the assigned physician for consultation '${params.consultationId}' (assigned: '${assignedDoctorId}')`
+      `Role '${params.clinicianRole}' is not authorized to sign clinical artifacts`
     );
   }
 
@@ -1016,6 +1023,8 @@ export async function signArtifactInTransaction(
       previousCaseVersion: currentCaseVersion,
       newCaseVersion,
       idempotencyKey: params.idempotencyKey,
+      assignedDoctorId: assignedDoctorId || null,
+      isAdministrativeOverride,
     },
   });
 

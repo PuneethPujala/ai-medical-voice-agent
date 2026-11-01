@@ -103,8 +103,8 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
       CREATE TABLE IF NOT EXISTS "consultations" (
         "id" varchar(128) PRIMARY KEY,
         "user_id" varchar(128),
-        "doctor_id" varchar(64) NOT NULL DEFAULT 'dr-sarah-chen',
-        "doctor_name" varchar(128) NOT NULL DEFAULT 'Dr. Sarah Chen, MD',
+        "doctor_id" varchar(64),
+        "doctor_name" varchar(128) DEFAULT 'Dr. Sarah Chen, MD',
         "specialty" varchar(128) NOT NULL DEFAULT 'General Medicine',
         "chief_complaint" text,
         "transcript" jsonb,
@@ -162,7 +162,7 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
   });
 
   // Helper to seed a clean consultation
-  async function seedConsultation(id: string, caseVersion = 1, doctorId = "dr-sarah-chen"): Promise<void> {
+  async function seedConsultation(id: string, caseVersion = 1, doctorId: string | null = "dr-sarah-chen"): Promise<void> {
     await pool.query(
       `INSERT INTO consultations (id, user_id, doctor_id, doctor_name, case_version, status, chief_complaint, created_at)
        VALUES ($1, 'user-stage2-test', $3, 'Dr. Sarah Chen, MD', $2, 'completed_pending_review', 'Chest tightness and shortness of breath', NOW())
@@ -853,11 +853,47 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
   });
 
   // --------------------------------------------------------------------------
-  // Test 15: Unassigned Clinician Care Relationship Rejection (403)
+  // Test 15a: Correctly Assigned Clinician Signing
   // --------------------------------------------------------------------------
-  it("Test 15: rejects signing by unassigned clinician without encounter care relationship", async () => {
-    const consultId = "c-care-relationship-test";
-    await seedConsultation(consultId, 1, "dr-sarah-chen"); // Assigned specifically to dr-sarah-chen
+  it("Test 15a: allows correctly assigned clinician to sign their consultation", async () => {
+    const consultId = "c-assigned-doc-ok";
+    await seedConsultation(consultId, 1, "dr-sarah-chen");
+
+    const draft = await drizzleDb.transaction(async (tx: any) => {
+      const d = await createDraftArtifact(tx, {
+        consultationId: consultId,
+        chiefComplaint: "Follow-up hypertension",
+        soapSubjective: "No headaches, tolerating medication well",
+        soapObjective: "BP 122/78 sitting, HR 70 regular",
+        soapAssessment: "Essential hypertension well controlled",
+        soapPlan: "Continue Lisinopril 10mg daily",
+        actorId: "dr-sarah-chen",
+        actorRole: "clinician",
+      });
+      return await submitForReview(tx, { artifactId: d.id, actorId: "dr-sarah-chen", actorRole: "clinician" });
+    });
+
+    const signed = await drizzleDb.transaction(async (tx: any) => {
+      return await signArtifactInTransaction(tx, {
+        consultationId: consultId,
+        artifactId: draft.id,
+        clinicianId: "dr-sarah-chen",
+        clinicianRole: "clinician",
+        idempotencyKey: "key-assigned-ok",
+        expectedCaseVersion: 1,
+      });
+    });
+
+    assert.strictEqual(signed.artifact.status, "signed");
+    assert.strictEqual(signed.artifact.signedBy, "dr-sarah-chen");
+  });
+
+  // --------------------------------------------------------------------------
+  // Test 15b: Clinician Assigned to Another Doctor (403)
+  // --------------------------------------------------------------------------
+  it("Test 15b: rejects signing when clinician is assigned to another doctor", async () => {
+    const consultId = "c-other-doc-fail";
+    await seedConsultation(consultId, 1, "dr-sarah-chen"); // Assigned to dr-sarah-chen
 
     const draft = await drizzleDb.transaction(async (tx: any) => {
       const d = await createDraftArtifact(tx, {
@@ -873,7 +909,7 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
       return await submitForReview(tx, { artifactId: d.id, actorId: "dr-sarah-chen", actorRole: "clinician" });
     });
 
-    // dr-alex-carter is NOT the assigned doctor and role is 'clinician' (not admin) -> must be rejected
+    // dr-alex-carter is NOT dr-sarah-chen
     await assert.rejects(
       async () => {
         await drizzleDb.transaction(async (tx: any) => {
@@ -882,7 +918,7 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
             artifactId: draft.id,
             clinicianId: "dr-alex-carter",
             clinicianRole: "clinician",
-            idempotencyKey: "key-unassigned-clinician",
+            idempotencyKey: "key-other-doc-fail",
             expectedCaseVersion: 1,
           });
         });
@@ -892,19 +928,137 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
         err.statusCode === 403 &&
         err.message.includes("not the assigned physician")
     );
+  });
 
-    // However, an administrator CAN sign with administrative override
+  // --------------------------------------------------------------------------
+  // Test 15c: No Assigned Physician (null) - Fail-Closed Rejection (403)
+  // --------------------------------------------------------------------------
+  it("Test 15c: rejects signing when consultation has NO assigned physician (null) - strict fail-closed", async () => {
+    const consultId = "c-null-doc-fail";
+    await seedConsultation(consultId, 1, null); // Unassigned encounter (null doctor_id)
+
+    const draft = await drizzleDb.transaction(async (tx: any) => {
+      const d = await createDraftArtifact(tx, {
+        consultationId: consultId,
+        chiefComplaint: "Unassigned triage check",
+        soapSubjective: "Patient self-reported cough",
+        soapObjective: "Vitals unrecorded",
+        soapAssessment: "Upper respiratory infection",
+        soapPlan: "Supportive care",
+        actorId: "dr-sarah-chen",
+        actorRole: "clinician",
+      });
+      return await submitForReview(tx, { artifactId: d.id, actorId: "dr-sarah-chen", actorRole: "clinician" });
+    });
+
+    // Even though dr-sarah-chen is a valid clinician, the encounter lacks an assigned care relationship
+    await assert.rejects(
+      async () => {
+        await drizzleDb.transaction(async (tx: any) => {
+          await signArtifactInTransaction(tx, {
+            consultationId: consultId,
+            artifactId: draft.id,
+            clinicianId: "dr-sarah-chen",
+            clinicianRole: "clinician",
+            idempotencyKey: "key-null-doc-fail",
+            expectedCaseVersion: 1,
+          });
+        });
+      },
+      (err: any) =>
+        err instanceof ClinicianAuthorizationError &&
+        err.statusCode === 403 &&
+        err.message.includes("not the assigned physician") &&
+        err.message.includes("assigned: 'none'")
+    );
+  });
+
+  // --------------------------------------------------------------------------
+  // Test 15d: Missing / Empty Assignment Field - Fail-Closed Rejection (403)
+  // --------------------------------------------------------------------------
+  it("Test 15d: rejects signing when consultation assignment field is empty string - fail-closed", async () => {
+    const consultId = "c-empty-doc-fail";
+    await seedConsultation(consultId, 1, ""); // Empty string doctor_id
+
+    const draft = await drizzleDb.transaction(async (tx: any) => {
+      const d = await createDraftArtifact(tx, {
+        consultationId: consultId,
+        chiefComplaint: "Triage check empty assignment",
+        soapSubjective: "Sore throat",
+        soapObjective: "Pharyngeal erythema",
+        soapAssessment: "Viral pharyngitis",
+        soapPlan: "Warm gargle",
+        actorId: "dr-sarah-chen",
+        actorRole: "clinician",
+      });
+      return await submitForReview(tx, { artifactId: d.id, actorId: "dr-sarah-chen", actorRole: "clinician" });
+    });
+
+    await assert.rejects(
+      async () => {
+        await drizzleDb.transaction(async (tx: any) => {
+          await signArtifactInTransaction(tx, {
+            consultationId: consultId,
+            artifactId: draft.id,
+            clinicianId: "dr-sarah-chen",
+            clinicianRole: "clinician",
+            idempotencyKey: "key-empty-doc-fail",
+            expectedCaseVersion: 1,
+          });
+        });
+      },
+      (err: any) =>
+        err instanceof ClinicianAuthorizationError &&
+        err.statusCode === 403 &&
+        err.message.includes("not the assigned physician")
+    );
+  });
+
+  // --------------------------------------------------------------------------
+  // Test 15e: Explicit Admin Override with Audit Trail
+  // --------------------------------------------------------------------------
+  it("Test 15e: allows administrator to sign unassigned or other doctor's encounter with explicit audit override flag", async () => {
+    const consultId = "c-admin-override";
+    await seedConsultation(consultId, 1, "dr-sarah-chen"); // Assigned to dr-sarah-chen
+
+    const draft = await drizzleDb.transaction(async (tx: any) => {
+      const d = await createDraftArtifact(tx, {
+        consultationId: consultId,
+        chiefComplaint: "Emergency escalation",
+        soapSubjective: "Patient transferred to ICU",
+        soapObjective: "Intubated and sedated",
+        soapAssessment: "Septic shock secondary to pneumonia",
+        soapPlan: "Broad spectrum IV antibiotics, vasopressors",
+        actorId: "dr-sarah-chen",
+        actorRole: "clinician",
+      });
+      return await submitForReview(tx, { artifactId: d.id, actorId: "dr-sarah-chen", actorRole: "clinician" });
+    });
+
+    // Medical Director / Administrator signs with explicit admin role
     const adminSigned = await drizzleDb.transaction(async (tx: any) => {
       return await signArtifactInTransaction(tx, {
         consultationId: consultId,
         artifactId: draft.id,
         clinicianId: "admin-chief-medical-officer",
         clinicianRole: "admin",
-        idempotencyKey: "key-admin-override",
+        idempotencyKey: "key-admin-override-test",
         expectedCaseVersion: 1,
       });
     });
+
     assert.strictEqual(adminSigned.artifact.status, "signed");
+    assert.strictEqual(adminSigned.artifact.signedBy, "admin-chief-medical-officer");
+    assert.strictEqual(adminSigned.artifact.signedByRole, "admin");
+
+    // Verify audit event reflects administrative override
+    const auditRes = await pool.query(
+      `SELECT metadata FROM audit_events WHERE resource_id = $1 AND action = 'CLINICAL_ARTIFACT_SIGNED'`,
+      [draft.id]
+    );
+    assert.strictEqual(auditRes.rows.length, 1);
+    assert.strictEqual(auditRes.rows[0].metadata.isAdministrativeOverride, true);
+    assert.strictEqual(auditRes.rows[0].metadata.assignedDoctorId, "dr-sarah-chen");
   });
 
   // --------------------------------------------------------------------------
