@@ -16,6 +16,7 @@ import {
   ExternalLink,
   ShieldCheck,
   GitBranch,
+  GitCompare,
   Lock,
   Send,
   AlertCircle,
@@ -24,6 +25,8 @@ import {
 import Link from "next/link";
 import PremiumButton from "@/components/PremiumButton";
 import { generateFHIRBundle } from "@/lib/fhir/bundle";
+import { ArtifactTimeline } from "@/app/history/_components/ArtifactTimeline";
+import { SoapVersionDiff } from "@/app/history/_components/SoapVersionDiff";
 
 export interface SoapEncounterData {
   id?: string;
@@ -100,6 +103,25 @@ export function SoapReportModal({
   const [isLoadingArtifacts, setIsLoadingArtifacts] = useState(false);
   const [showAmendmentPrompt, setShowAmendmentPrompt] = useState(false);
   const [amendmentReason, setAmendmentReason] = useState("");
+  const [activeModalTab, setActiveModalTab] = useState<"document" | "timeline" | "diff">("document");
+  const [diffBaseArtifact, setDiffBaseArtifact] = useState<any | null>(null);
+  const [diffTargetArtifact, setDiffTargetArtifact] = useState<any | null>(null);
+
+  const handleSelectArtifact = (art: any) => {
+    setActiveArtifact(art);
+    setSubjective(art.soapSubjective || "");
+    setObjective(art.soapObjective || "");
+    setAssessment(art.soapAssessment || "");
+    setPlan(art.soapPlan || "");
+    setIsEditing(false);
+    setActiveModalTab("document");
+  };
+
+  const handleCompareVersions = (baseArt: any, targetArt: any) => {
+    setDiffBaseArtifact(baseArt);
+    setDiffTargetArtifact(targetArt);
+    setActiveModalTab("diff");
+  };
 
   const encounterId = encounter?.id || "";
   const [callerRole, setCallerRole] = useState<string>(encounter?.userRole || "");
@@ -549,8 +571,135 @@ Information Sources: Patient-reported · AI-inferred · Zero fabricated vitals
           </div>
         </div>
 
+        {/* ============================================================ Document / Timeline / Diff Tabs */}
+        <div className="px-6 sm:px-8 py-2 bg-slate-50/80 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setActiveModalTab("document")}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                activeModalTab === "document"
+                  ? "bg-white text-slate-950 shadow-xs border border-slate-200/90 font-bold"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <FileText className="w-3.5 h-3.5 text-cyan-600" />
+              <span>SOAP Note</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setActiveModalTab("timeline")}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                activeModalTab === "timeline"
+                  ? "bg-white text-slate-950 shadow-xs border border-slate-200/90 font-bold"
+                  : "text-slate-600 hover:text-slate-900"
+              }`}
+            >
+              <GitBranch className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Version Timeline</span>
+              {artifacts.length > 0 && (
+                <span className="ml-0.5 px-1.5 py-0.2 rounded-full text-[10px] font-mono bg-slate-100 text-slate-700 font-bold">
+                  {artifacts.length}
+                </span>
+              )}
+            </button>
+
+            {artifacts.length >= 2 && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (!diffBaseArtifact || !diffTargetArtifact) {
+                    setDiffBaseArtifact(artifacts[artifacts.length - 2]);
+                    setDiffTargetArtifact(artifacts[artifacts.length - 1]);
+                  }
+                  setActiveModalTab("diff");
+                }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                  activeModalTab === "diff"
+                    ? "bg-white text-slate-950 shadow-xs border border-slate-200/90 font-bold"
+                    : "text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <GitCompare className="w-3.5 h-3.5 text-purple-600" />
+                <span>Compare Revisions</span>
+              </button>
+            )}
+          </div>
+
+          {activeArtifact && activeModalTab === "document" && (
+            <div className="hidden sm:flex items-center gap-1.5 text-[11px] font-mono text-slate-500">
+              <span>Active: v{activeArtifact.version}</span>
+              {activeArtifact.status === "signed" ? (
+                <span className="text-emerald-700 font-bold flex items-center gap-0.5">
+                  <ShieldCheck className="w-3 h-3" /> Sealed
+                </span>
+              ) : (
+                <span className="text-amber-700 font-bold capitalize">
+                  · {activeArtifact.status}
+                </span>
+              )}
+            </div>
+          )}
+        </div>
+
         {/* ============================================================ Scrollable Document Body */}
         <div className="flex-1 overflow-y-auto px-6 sm:px-8 py-6 space-y-6 text-sm leading-relaxed text-slate-800">
+          {activeModalTab === "timeline" ? (
+            <ArtifactTimeline
+              consultationId={encounterId}
+              artifacts={artifacts}
+              selectedArtifactId={activeArtifact?.id}
+              onSelectArtifact={handleSelectArtifact}
+              onCompareVersions={handleCompareVersions}
+              userRole={isClinicianOrAdmin ? (callerRole as any || "clinician") : "patient"}
+              legacyApproved={{
+                isLegacy: artifacts.length === 0 && encounter.status === "approved",
+                approvedAt: encounter.approvedAt,
+                approvedBy: encounter.approvedBy,
+              }}
+            />
+          ) : activeModalTab === "diff" ? (
+            <SoapVersionDiff
+              baseArtifact={diffBaseArtifact || artifacts[0]}
+              targetArtifact={diffTargetArtifact || artifacts[artifacts.length - 1]}
+              onBack={() => setActiveModalTab("document")}
+            />
+          ) : (
+            <>
+              {/* Revision Notice Banner */}
+              {artifacts.length > 1 && (
+                <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs">
+                  <div className="flex items-center gap-1.5 text-slate-700">
+                    <GitBranch className="w-3.5 h-3.5 text-emerald-600" />
+                    <span>
+                      Viewing Version {activeArtifact?.version || 1} of {artifacts.length}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const currentIndex = artifacts.findIndex((a) => a.id === activeArtifact?.id);
+                        const prevArt = currentIndex > 0 ? artifacts[currentIndex - 1] : artifacts[0];
+                        handleCompareVersions(prevArt, activeArtifact);
+                      }}
+                      className="text-[11px] font-bold text-slate-700 hover:text-slate-900 underline flex items-center gap-1 cursor-pointer"
+                    >
+                      <GitCompare className="w-3 h-3 text-purple-600" />
+                      <span>Compare with previous</span>
+                    </button>
+                    <span className="text-slate-300">·</span>
+                    <button
+                      type="button"
+                      onClick={() => setActiveModalTab("timeline")}
+                      className="text-[11px] font-bold text-emerald-700 hover:text-emerald-800 cursor-pointer"
+                    >
+                      View full timeline →
+                    </button>
+                  </div>
+                </div>
+              )}
           {/* Status Banners */}
           {isSigned && (
             <motion.div
@@ -867,7 +1016,11 @@ Information Sources: Patient-reported · AI-inferred · Zero fabricated vitals
               )}
             </div>
           )}
-        </div>
+
+          {/* End of Document Tab Content */}
+        </>
+      )}
+    </div>
 
         {saveError && (
           <div className="px-6 sm:px-8 py-2.5 bg-rose-50 border-t border-rose-200 text-xs text-rose-700 flex items-center justify-between">

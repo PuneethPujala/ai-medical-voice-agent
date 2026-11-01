@@ -31,6 +31,7 @@ import {
   PauseCircle,
   X,
   FileCheck,
+  GitBranch,
 } from "lucide-react";
 
 import { LandingFloatingNavbar } from "../_components/LandingFloatingNavbar";
@@ -68,6 +69,7 @@ export interface ConsultationItem {
   createdAt: string;
   transcript?: Array<{ role: "patient" | "doctor" | "system"; text: string; timestamp: string }>;
   interviewState?: any;
+  caseVersion?: number;
 }
 
 type FilterTab = "all" | "resumable" | "completed" | "approved";
@@ -340,6 +342,13 @@ export default function ConsultationHistoryPage() {
                 <FileText className="w-3 h-3" />
                 {soapMeta.label}
               </span>
+
+              {item.caseVersion && item.caseVersion > 1 && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-mono font-bold border bg-purple-50 text-purple-700 border-purple-200">
+                  <GitBranch className="w-3 h-3" />
+                  v{item.caseVersion} ({item.caseVersion - 1} {item.caseVersion - 1 === 1 ? "Amendment" : "Amendments"})
+                </span>
+              )}
 
               <span className="text-xs text-slate-400">·</span>
               <span className="text-xs text-slate-500 font-medium">
