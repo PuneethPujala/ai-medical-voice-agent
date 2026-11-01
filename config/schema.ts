@@ -1,4 +1,4 @@
-import { integer, serial, pgTable, varchar, text, doublePrecision, boolean, timestamp, jsonb, json, uniqueIndex, index } from "drizzle-orm/pg-core";
+import { integer, serial, pgTable, varchar, text, doublePrecision, boolean, timestamp, jsonb, json, uniqueIndex, index, foreignKey, primaryKey, check } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 import type { AttributedClinicalFactV3, UnmappedObservation, DeliveredTurnRecord } from "@/lib/agents/schemas";
 import type { ClinicalInterviewState } from "@/lib/triage/conversation-manager";
@@ -257,4 +257,126 @@ export const patientLongitudinalFactsTable = pgTable("patient_longitudinal_facts
   uniqueIndex("idx_one_active_baseline")
     .on(table.patientProfileId, table.concept)
     .where(sql`${table.temporalScope} = 'baseline' AND ${table.lifecycle} = 'active'`),
+]);
+
+/**
+ * Singleton Audit Chain Heads Table
+ * Provides database-level atomic serialization across multi-instance audit writers.
+ */
+export const auditChainHeadsTable = pgTable("audit_chain_heads", {
+  chainId: varchar("chain_id", { length: 64 }).primaryKey(),
+  lastEventIndex: integer("last_event_index").notNull(),
+  lastEventHash: varchar("last_event_hash", { length: 64 }).notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+/**
+ * Consultation Snapshots Table (Append-Only Checkpoints)
+ */
+export const consultationSnapshotsTable = pgTable("consultation_snapshots", {
+  id: varchar("id", { length: 128 }).primaryKey(),
+  consultationId: varchar("consultation_id", { length: 128 })
+    .notNull()
+    .references(() => consultationsTable.id, { onDelete: "restrict" }),
+  caseVersion: integer("case_version").notNull(),
+  snapshotSchemaVersion: integer("snapshot_schema_version").notNull().default(2),
+  triggerReason: varchar("trigger_reason", { length: 64 }).notNull(),
+  interviewState: jsonb("interview_state").$type<ClinicalInterviewState>().notNull(),
+  transcriptTurnCount: integer("transcript_turn_count").notNull(),
+  transcriptHashBoundary: varchar("transcript_hash_boundary", { length: 64 }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("idx_consultation_snapshot_case_version_unique")
+    .on(table.consultationId, table.caseVersion),
+  index("idx_snapshots_consultation_lookup")
+    .on(table.consultationId, table.caseVersion.desc()),
+]);
+
+/**
+ * Clinical Artifacts Table (Formal Medico-Legal Documentation)
+ */
+export const clinicalArtifactsTable = pgTable("clinical_artifacts", {
+  id: varchar("id", { length: 128 }).primaryKey(),
+  consultationId: varchar("consultation_id", { length: 128 })
+    .notNull()
+    .references(() => consultationsTable.id, { onDelete: "restrict" }),
+  artifactType: varchar("artifact_type", { length: 64 }).notNull().default("soap_note"),
+  version: integer("version").notNull().default(1),
+  status: varchar("status", { length: 32 }).notNull().default("draft"), // draft | pending_review | signed | cancelled
+
+  // Clinical Content
+  chiefComplaint: text("chief_complaint").notNull(),
+  soapSubjective: text("soap_subjective").notNull(),
+  soapObjective: text("soap_objective").notNull(),
+  soapAssessment: text("soap_assessment").notNull(),
+  soapPlan: text("soap_plan").notNull(),
+  icd10Codes: jsonb("icd10_codes").$type<string[]>().default([]).notNull(),
+  esiScore: integer("esi_score"),
+
+  // Integrity & Attestation
+  payloadSha256: varchar("payload_sha256", { length: 64 }),
+  signedBy: varchar("signed_by", { length: 128 }),
+  signedByRole: varchar("signed_by_role", { length: 64 }),
+  signedAt: timestamp("signed_at", { withTimezone: true }),
+  signingAttestationDigest: varchar("signing_attestation_digest", { length: 64 }),
+
+  // Amendment Lineage
+  amendsArtifactId: varchar("amends_artifact_id", { length: 128 }),
+  amendmentReason: text("amendment_reason"),
+
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("idx_clinical_artifacts_id_consultation")
+    .on(table.id, table.consultationId),
+  uniqueIndex("idx_clinical_artifacts_composite_identity")
+    .on(table.id, table.consultationId, table.artifactType),
+  uniqueIndex("idx_clinical_artifacts_active_version")
+    .on(table.consultationId, table.artifactType, table.version)
+    .where(sql`${table.status} <> 'cancelled'`),
+  uniqueIndex("idx_one_active_amendment_successor")
+    .on(table.amendsArtifactId)
+    .where(sql`${table.status} IN ('draft', 'pending_review', 'signed') AND ${table.amendsArtifactId} IS NOT NULL`),
+  index("idx_clinical_artifacts_lookup")
+    .on(table.consultationId, table.artifactType, table.version.desc()),
+  foreignKey({
+    columns: [table.amendsArtifactId, table.consultationId, table.artifactType],
+    foreignColumns: [table.id, table.consultationId, table.artifactType],
+    name: "fk_clinical_artifacts_amendment_lineage",
+  }).onDelete("restrict"),
+  check("chk_clinical_artifacts_status", sql`${table.status} IN ('draft', 'pending_review', 'signed', 'cancelled')`),
+  check("chk_clinical_artifacts_type", sql`${table.artifactType} = 'soap_note'`),
+  check("chk_signed_artifact_metadata_complete", sql`${table.status} != 'signed' OR (${table.signedBy} IS NOT NULL AND ${table.signedByRole} IS NOT NULL AND ${table.signedAt} IS NOT NULL AND ${table.payloadSha256} IS NOT NULL AND ${table.signingAttestationDigest} IS NOT NULL)`),
+  check("chk_draft_unsealed", sql`${table.status} != 'draft' OR (${table.signedAt} IS NULL AND ${table.signingAttestationDigest} IS NULL)`),
+  check("chk_digest_lengths", sql`(${table.payloadSha256} IS NULL OR (length(${table.payloadSha256}) = 64 AND ${table.payloadSha256} ~ '^[0-9a-f]{64}$')) AND (${table.signingAttestationDigest} IS NULL OR (length(${table.signingAttestationDigest}) = 64 AND ${table.signingAttestationDigest} ~ '^[0-9a-f]{64}$'))`),
+]);
+
+/**
+ * Durable Signing Idempotency Keys Table
+ */
+export const signingIdempotencyKeysTable = pgTable("signing_idempotency_keys", {
+  idempotencyKey: varchar("idempotency_key", { length: 128 }).notNull(),
+  consultationId: varchar("consultation_id", { length: 128 })
+    .notNull()
+    .references(() => consultationsTable.id, { onDelete: "restrict" }),
+  artifactId: varchar("artifact_id", { length: 128 }).notNull(),
+  actorId: varchar("actor_id", { length: 128 }).notNull(),
+  requestHash: varchar("request_hash", { length: 64 }).notNull(),
+  resultArtifactId: varchar("result_artifact_id", { length: 128 })
+    .notNull()
+    .references(() => clinicalArtifactsTable.id, { onDelete: "restrict" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  primaryKey({
+    columns: [table.consultationId, table.artifactId, table.actorId, table.idempotencyKey],
+    name: "pk_signing_idempotency_keys",
+  }),
+  foreignKey({
+    columns: [table.artifactId, table.consultationId],
+    foreignColumns: [clinicalArtifactsTable.id, clinicalArtifactsTable.consultationId],
+    name: "fk_signing_idempotency_artifact_consultation",
+  }).onDelete("restrict"),
+  index("idx_signing_idempotency_lookup")
+    .on(table.consultationId, table.artifactId, table.actorId, table.idempotencyKey),
+  check("chk_request_hash_sha256", sql`length(${table.requestHash}) = 64 AND ${table.requestHash} ~ '^[0-9a-f]{64}$'`),
 ]);
