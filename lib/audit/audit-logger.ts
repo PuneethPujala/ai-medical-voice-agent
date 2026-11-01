@@ -577,9 +577,12 @@ export async function logAuditEventAsync(params: {
         const outerMsg = String(err?.message ?? "");
         const isMissingChainHeads =
           rootMsg.includes("audit_chain_heads") && rootMsg.includes("does not exist");
+        const isNoTransactionSupport =
+          outerMsg.includes("No transactions support") ||
+          rootMsg.includes("No transactions support");
 
-        if (isMissingChainHeads) {
-          // Fallback for unmigrated environments (e.g. before 0006 cutover)
+        if (isMissingChainHeads || isNoTransactionSupport) {
+          // Fallback for unmigrated environments or HTTP-only drivers (neon-http) without interactive transactions
           return await legacyLogAuditEventAsync(params);
         }
 
