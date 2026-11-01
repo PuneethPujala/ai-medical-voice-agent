@@ -1,24 +1,26 @@
 /**
  * Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing Integration Battery
  *
- * Verifies all 16 clinical artifact lifecycle and transactional invariants against
+ * Verifies all clinical artifact lifecycle and transactional invariants against
  * isolated PostgreSQL (localhost:5433/medvoice_test):
- * 1. Multiple concurrent audit writers serializing on audit_chain_heads
+ * 1. Concurrent audit writers serializing on audit_chain_heads
  * 2. Cryptographic audit-chain index and hash continuity
  * 3. Audit write rollback on transaction abort
- * 4. Artifact draft creation and editing
- * 5. Automatic pending_review downgrade to draft on content modification
- * 6. Amendment lineage validation (parent signed, reason >= 10 chars, version increment)
- * 7. Amendment cancellation and replacement versioning
+ * 4. In-memory audit fallback safety boundary (production fail-closed)
+ * 5. Artifact draft creation and editing
+ * 6. Automatic pending_review downgrade to draft on content modification
+ * 7. Amendment lineage validation (parent signed, reason >= 10 chars, version increment)
  * 8. Competing amendment rejection (only one active successor permitted)
- * 9. Concurrent signing serialization
- * 10. Lost-response signing retry (idempotent replay without duplicate audit event)
- * 11. Idempotency-key payload mismatch (409 IDEMPOTENCY_KEY_PAYLOAD_MISMATCH)
- * 12. Incorrect consultation/artifact associations (400 ARTIFACT_CONSULTATION_MISMATCH)
- * 13. Unauthorized clinician signing (403 UNAUTHORIZED_CLINICIAN)
- * 14. CAS version conflicts (409 CAS_CONFLICT)
- * 15. Audit datastore failure rolling back entire signing operation
- * 16. Legacy SOAP compatibility mirror updated only after signing
+ * 9. Amendment cancellation and replacement versioning
+ * 10. Concurrent signing serialization (exactly one signature commits)
+ * 11. Lost-response signing retry (idempotent replay without duplicate audit event)
+ * 12. Idempotency-key payload mismatch (409 IDEMPOTENCY_KEY_PAYLOAD_MISMATCH)
+ * 13. Consultation & artifact association mismatch (400 ARTIFACT_CONSULTATION_MISMATCH)
+ * 14. Unauthorized clinician role rejection (403 UNAUTHORIZED_CLINICIAN)
+ * 15. Unassigned clinician care relationship rejection (403 UNAUTHORIZED_CLINICIAN)
+ * 16. CAS version conflicts (409 CAS_CONFLICT)
+ * 17. Audit datastore failure rolling back entire signing operation
+ * 18. Consultation status transitions to 'approved' and legacy SOAP mirror updated only after signing
  */
 
 import { describe, it, before, after, beforeEach } from "node:test";
@@ -56,6 +58,7 @@ import {
   logAuditEventAsync,
   logAuditEventInTransaction,
   verifyAuditChain,
+  isMemoryAuditFallbackPermitted,
   __setSimulatedAuditFailure,
   clearAuditLedger,
 } from "../../lib/audit/audit-logger";
@@ -159,19 +162,19 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
   });
 
   // Helper to seed a clean consultation
-  async function seedConsultation(id: string, caseVersion = 1): Promise<void> {
+  async function seedConsultation(id: string, caseVersion = 1, doctorId = "dr-sarah-chen"): Promise<void> {
     await pool.query(
       `INSERT INTO consultations (id, user_id, doctor_id, doctor_name, case_version, status, chief_complaint, created_at)
-       VALUES ($1, 'user-stage2-test', 'dr-sarah-chen', 'Dr. Sarah Chen, MD', $2, 'active', 'Chest tightness and shortness of breath', NOW())
-       ON CONFLICT (id) DO UPDATE SET case_version = $2, status = 'active', soap_subjective = NULL, soap_objective = NULL, soap_assessment = NULL, soap_plan = NULL`,
-      [id, caseVersion]
+       VALUES ($1, 'user-stage2-test', $3, 'Dr. Sarah Chen, MD', $2, 'completed_pending_review', 'Chest tightness and shortness of breath', NOW())
+       ON CONFLICT (id) DO UPDATE SET case_version = $2, doctor_id = $3, status = 'completed_pending_review', soap_subjective = NULL, soap_objective = NULL, soap_assessment = NULL, soap_plan = NULL`,
+      [id, caseVersion, doctorId]
     );
   }
 
   // --------------------------------------------------------------------------
-  // Test 1 & 2: Concurrent Audit Writers & Cryptographic Hash Continuity
+  // Test 1: Concurrent Audit Writers
   // --------------------------------------------------------------------------
-  it("Test 1 & 2: serializes concurrent audit writes and maintains unbroken hash chain", async () => {
+  it("Test 1: serializes concurrent audit writes via audit_chain_heads FOR UPDATE", async () => {
     const writeCount = 8;
     const writePromises = Array.from({ length: writeCount }).map((_, i) =>
       logAuditEventAsync({
@@ -187,7 +190,17 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
     const results = await Promise.all(writePromises);
     assert.strictEqual(results.length, writeCount);
 
-    // Verify database rows and continuity
+    const res = await pool.query(`SELECT * FROM audit_events ORDER BY index ASC`);
+    assert.strictEqual(res.rows.length, writeCount);
+    for (let i = 0; i < res.rows.length; i++) {
+      assert.strictEqual(res.rows[i].index, i, `Event ${i} must have index ${i}`);
+    }
+  });
+
+  // --------------------------------------------------------------------------
+  // Test 2: Cryptographic Audit-Chain Continuity
+  // --------------------------------------------------------------------------
+  it("Test 2: verifies cryptographic previous-hash continuity across all logged events", async () => {
     const res = await pool.query(`SELECT * FROM audit_events ORDER BY index ASC`);
     const events = res.rows.map((r) => ({
       index: r.index,
@@ -205,25 +218,10 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
       eventHash: r.event_hash,
     }));
 
-    // Indices must be strictly contiguous
-    for (let i = 0; i < events.length; i++) {
-      assert.strictEqual(events[i].index, i, `Event at position ${i} must have index ${i}`);
-      if (i > 0) {
-        assert.strictEqual(
-          events[i].previousHash,
-          events[i - 1].eventHash,
-          `Event ${i} previousHash must match event ${i - 1} eventHash`
-        );
-      }
-    }
-
-    // Cryptographic chain verification
     const verification = verifyAuditChain(events);
     assert.strictEqual(verification.valid, true, `Audit chain must be cryptographically valid: ${verification.reason}`);
 
-    // Verify audit_chain_heads reflects last event
     const headRes = await pool.query(`SELECT * FROM audit_chain_heads WHERE chain_id = 'main'`);
-    assert.strictEqual(headRes.rows.length, 1);
     const lastEvent = events[events.length - 1];
     assert.strictEqual(headRes.rows[0].last_event_index, lastEvent.index);
     assert.strictEqual(headRes.rows[0].last_event_hash, lastEvent.eventHash);
@@ -237,7 +235,6 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
     const initialIndex = headBefore.last_event_index;
     const initialHash = headBefore.last_event_hash;
 
-    // Execute an aborted transaction
     await assert.rejects(
       async () => {
         await drizzleDb.transaction(async (tx: any) => {
@@ -254,16 +251,13 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
       /FORCED_TRANSACTION_ABORT/
     );
 
-    // Verify audit_chain_heads was NOT modified
     const headAfter = (await pool.query(`SELECT * FROM audit_chain_heads WHERE chain_id = 'main'`)).rows[0];
     assert.strictEqual(headAfter.last_event_index, initialIndex);
     assert.strictEqual(headAfter.last_event_hash, initialHash);
 
-    // Verify event was not persisted
     const eventCheck = await pool.query(`SELECT * FROM audit_events WHERE resource_id = 'art-will-abort'`);
     assert.strictEqual(eventCheck.rows.length, 0);
 
-    // A subsequent transaction must proceed cleanly with no index gap
     const validEvent = await logAuditEventAsync({
       actorId: "dr-success",
       actorRole: "clinician",
@@ -277,13 +271,31 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
   });
 
   // --------------------------------------------------------------------------
-  // Test 4: Draft Creation and Editing
+  // Test 4: In-Memory Audit Fallback Safety Boundary
   // --------------------------------------------------------------------------
-  it("Test 4: creates and updates draft artifact cleanly", async () => {
+  it("Test 4: strictly enforces that production or durable-required audit events fail closed without memory fallback", () => {
+    const origEnv = process.env.NODE_ENV;
+    try {
+      // In production, fallback must always be false
+      (process.env as any).NODE_ENV = "production";
+      assert.strictEqual(isMemoryAuditFallbackPermitted(false), false, "Production must never permit in-memory audit fallback");
+      assert.strictEqual(isMemoryAuditFallbackPermitted(true), false, "Production with requireDurable must never permit in-memory fallback");
+
+      // In non-production with requireDurable=true, fallback must be false
+      (process.env as any).NODE_ENV = "development";
+      assert.strictEqual(isMemoryAuditFallbackPermitted(true), false, "requireDurable=true must never permit in-memory fallback");
+    } finally {
+      (process.env as any).NODE_ENV = origEnv;
+    }
+  });
+
+  // --------------------------------------------------------------------------
+  // Test 5: Draft Creation and Editing
+  // --------------------------------------------------------------------------
+  it("Test 5: creates and updates draft artifact cleanly", async () => {
     const consultId = "c-draft-test-1";
     await seedConsultation(consultId, 1);
 
-    // 1. Create draft
     const draft = await drizzleDb.transaction(async (tx: any) => {
       return await createDraftArtifact(tx, {
         consultationId: consultId,
@@ -304,7 +316,6 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
     assert.strictEqual(draft.payloadSha256, null);
     assert.strictEqual(draft.signingAttestationDigest, null);
 
-    // 2. Update draft
     const updated = await drizzleDb.transaction(async (tx: any) => {
       return await updateDraftArtifact(tx, {
         artifactId: draft.id,
@@ -323,9 +334,9 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
   });
 
   // --------------------------------------------------------------------------
-  // Test 5: Automatic Pending_Review Downgrade to Draft on Content Modification
+  // Test 6: Automatic Pending_Review Downgrade to Draft on Content Modification
   // --------------------------------------------------------------------------
-  it("Test 5: automatically downgrades pending_review to draft on content modification", async () => {
+  it("Test 6: automatically downgrades pending_review to draft on content modification", async () => {
     const consultId = "c-downgrade-test";
     await seedConsultation(consultId, 1);
 
@@ -342,7 +353,6 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
       });
     });
 
-    // Submit for review -> transitions to pending_review
     const pendingReview = await drizzleDb.transaction(async (tx: any) => {
       return await submitForReview(tx, {
         artifactId: draft.id,
@@ -394,13 +404,12 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
   });
 
   // --------------------------------------------------------------------------
-  // Test 6: Amendment Lineage Validation
+  // Test 7: Amendment Lineage Validation
   // --------------------------------------------------------------------------
-  it("Test 6: enforces amendment lineage rules (parent signed, reason >= 10 chars, version increment)", async () => {
+  it("Test 7: enforces amendment lineage rules (parent signed, reason >= 10 chars, version increment)", async () => {
     const consultId = "c-amend-lineage";
     await seedConsultation(consultId, 1);
 
-    // Create and sign Version 1
     const v1Draft = await drizzleDb.transaction(async (tx: any) => {
       return await createDraftArtifact(tx, {
         consultationId: consultId,
@@ -475,17 +484,16 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
     assert.strictEqual(v2Amendment.amendsArtifactId, v1Draft.id);
     assert.strictEqual(v2Amendment.status, "draft");
     assert.strictEqual(v2Amendment.soapObjective, "BP 138/88 average from home log");
-    assert.strictEqual(v2Amendment.soapPlan, "Start Lisinopril 10mg daily"); // Inherited from parent
+    assert.strictEqual(v2Amendment.soapPlan, "Start Lisinopril 10mg daily");
   });
 
   // --------------------------------------------------------------------------
-  // Test 7 & 8: Competing Amendments Rejection & Cancellation Replacement
+  // Test 8: Competing Amendments Rejection
   // --------------------------------------------------------------------------
-  it("Test 7 & 8: rejects competing active amendments and allows replacement after cancellation", async () => {
-    const consultId = "c-compete-cancel";
+  it("Test 8: rejects competing active amendments against the same parent artifact", async () => {
+    const consultId = "c-compete-test";
     await seedConsultation(consultId, 1);
 
-    // 1. Create and sign v1
     const v1 = await drizzleDb.transaction(async (tx: any) => {
       const draft = await createDraftArtifact(tx, {
         consultationId: consultId,
@@ -509,8 +517,8 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
       return signed.artifact;
     });
 
-    // 2. Create first active amendment (v2)
-    const v2a = await drizzleDb.transaction(async (tx: any) => {
+    // Create first active amendment (v2)
+    await drizzleDb.transaction(async (tx: any) => {
       return await createAmendment(tx, {
         consultationId: consultId,
         amendsArtifactId: v1.id,
@@ -520,7 +528,7 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
       });
     });
 
-    // 3. Attempting to create a competing active amendment must be rejected
+    // Competing active amendment attempt must be rejected
     await assert.rejects(
       async () => {
         await drizzleDb.transaction(async (tx: any) => {
@@ -528,32 +536,73 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
             consultationId: consultId,
             amendsArtifactId: v1.id,
             amendmentReason: "Competing simultaneous amendment attempt",
-            actorId: "dr-alex-carter",
+            actorId: "dr-sarah-chen",
             actorRole: "clinician",
           });
         });
       },
       (err: any) => err instanceof CompetingAmendmentError || err.code === "23505"
     );
+  });
 
-    // 4. Cancel the active amendment v2a
+  // --------------------------------------------------------------------------
+  // Test 9: Amendment Cancellation and Replacement
+  // --------------------------------------------------------------------------
+  it("Test 9: allows replacement amendment version after cancelling previous draft", async () => {
+    const consultId = "c-cancel-replace";
+    await seedConsultation(consultId, 1);
+
+    const v1 = await drizzleDb.transaction(async (tx: any) => {
+      const draft = await createDraftArtifact(tx, {
+        consultationId: consultId,
+        chiefComplaint: "Ankle sprain",
+        soapSubjective: "Inversion injury",
+        soapObjective: "Lateral malleolus tenderness, weight-bearing tolerated",
+        soapAssessment: "Grade 1 lateral ankle sprain",
+        soapPlan: "Ankle brace, ice, elevation",
+        actorId: "dr-sarah-chen",
+        actorRole: "clinician",
+      });
+      await submitForReview(tx, { artifactId: draft.id, actorId: "dr-sarah-chen", actorRole: "clinician" });
+      const signed = await signArtifactInTransaction(tx, {
+        consultationId: consultId,
+        artifactId: draft.id,
+        clinicianId: "dr-sarah-chen",
+        clinicianRole: "clinician",
+        idempotencyKey: "key-sign-v1-ankle",
+        expectedCaseVersion: 1,
+      });
+      return signed.artifact;
+    });
+
+    const v2a = await drizzleDb.transaction(async (tx: any) => {
+      return await createAmendment(tx, {
+        consultationId: consultId,
+        amendsArtifactId: v1.id,
+        amendmentReason: "Initial amendment before imaging",
+        actorId: "dr-sarah-chen",
+        actorRole: "clinician",
+      });
+    });
+
+    // Cancel v2a
     const cancelled = await drizzleDb.transaction(async (tx: any) => {
       return await cancelArtifact(tx, {
         artifactId: v2a.id,
         actorId: "dr-sarah-chen",
         actorRole: "clinician",
-        cancellationReason: "Discarding draft in favor of comprehensive MRI report",
+        cancellationReason: "Cancelling to incorporate full X-ray findings",
       });
     });
     assert.strictEqual(cancelled.status, "cancelled");
 
-    // 5. Now, creating replacement amendment MUST succeed
+    // Creating replacement amendment MUST succeed
     const v2Replacement = await drizzleDb.transaction(async (tx: any) => {
       return await createAmendment(tx, {
         consultationId: consultId,
         amendsArtifactId: v1.id,
-        amendmentReason: "Replacement amendment including MRI findings: complex posterior horn tear",
-        soapObjective: "MRI confirmed complex posterior horn medial meniscus tear",
+        amendmentReason: "Replacement amendment: X-ray confirmed negative for fracture",
+        soapObjective: "X-ray negative for acute osseous abnormality",
         actorId: "dr-sarah-chen",
         actorRole: "clinician",
       });
@@ -565,9 +614,9 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
   });
 
   // --------------------------------------------------------------------------
-  // Test 9: Concurrent Signing Serialization
+  // Test 10: Concurrent Signing Serialization
   // --------------------------------------------------------------------------
-  it("Test 9: serializes concurrent signing transactions and allows exactly one signature", async () => {
+  it("Test 10: serializes concurrent signing transactions and allows exactly one signature", async () => {
     const consultId = "c-concurrent-sign";
     await seedConsultation(consultId, 1);
 
@@ -585,7 +634,6 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
       return await submitForReview(tx, { artifactId: d.id, actorId: "dr-sarah-chen", actorRole: "clinician" });
     });
 
-    // Launch two simultaneous signing transactions with different idempotency keys
     const p1 = drizzleDb.transaction((tx: any) =>
       signArtifactInTransaction(tx, {
         consultationId: consultId,
@@ -601,7 +649,7 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
       signArtifactInTransaction(tx, {
         consultationId: consultId,
         artifactId: draft.id,
-        clinicianId: "dr-alex-carter",
+        clinicianId: "dr-sarah-chen",
         clinicianRole: "clinician",
         idempotencyKey: "key-concurrent-2",
         expectedCaseVersion: 1,
@@ -615,15 +663,14 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
     assert.strictEqual(fulfilled.length, 1, "Exactly one signing transaction must succeed");
     assert.strictEqual(rejected.length, 1, "The competing transaction must be rejected");
 
-    // Verify artifact is signed exactly once
     const finalArt = (await pool.query(`SELECT * FROM clinical_artifacts WHERE id = $1`, [draft.id])).rows[0];
     assert.strictEqual(finalArt.status, "signed");
   });
 
   // --------------------------------------------------------------------------
-  // Test 10: Lost-Response Idempotent Replay
+  // Test 11: Lost-Response Idempotent Replay
   // --------------------------------------------------------------------------
-  it("Test 10: returns original signed artifact on lost-response retry without duplicate audit events", async () => {
+  it("Test 11: returns original signed artifact on lost-response retry without duplicate audit events", async () => {
     const consultId = "c-idemp-replay";
     await seedConsultation(consultId, 1);
 
@@ -643,7 +690,6 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
 
     const headBefore = (await pool.query(`SELECT * FROM audit_chain_heads WHERE chain_id = 'main'`)).rows[0];
 
-    // First attempt: signs successfully
     const firstResult = await drizzleDb.transaction(async (tx: any) => {
       return await signArtifactInTransaction(tx, {
         consultationId: consultId,
@@ -661,7 +707,6 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
     const headAfterFirst = (await pool.query(`SELECT * FROM audit_chain_heads WHERE chain_id = 'main'`)).rows[0];
     assert.strictEqual(headAfterFirst.last_event_index, headBefore.last_event_index + 1);
 
-    // Second attempt (simulating client retry after lost network response)
     const replayResult = await drizzleDb.transaction(async (tx: any) => {
       return await signArtifactInTransaction(tx, {
         consultationId: consultId,
@@ -677,16 +722,15 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
     assert.strictEqual(replayResult.artifact.id, firstResult.artifact.id);
     assert.strictEqual(replayResult.artifact.payloadSha256, firstResult.artifact.payloadSha256);
 
-    // Invariant: Chain head must NOT advance on idempotent replay (no duplicate audit events)
     const headAfterReplay = (await pool.query(`SELECT * FROM audit_chain_heads WHERE chain_id = 'main'`)).rows[0];
     assert.strictEqual(headAfterReplay.last_event_index, headAfterFirst.last_event_index);
     assert.strictEqual(headAfterReplay.last_event_hash, headAfterFirst.last_event_hash);
   });
 
   // --------------------------------------------------------------------------
-  // Test 11: Idempotency Key Payload Mismatch (409)
+  // Test 12: Idempotency Key Payload Mismatch (409)
   // --------------------------------------------------------------------------
-  it("Test 11: throws 409 IDEMPOTENCY_KEY_PAYLOAD_MISMATCH when same key reused with different payload", async () => {
+  it("Test 12: throws 409 IDEMPOTENCY_KEY_PAYLOAD_MISMATCH when same key reused with different payload", async () => {
     const consultId = "c-idemp-mismatch";
     await seedConsultation(consultId, 1);
 
@@ -704,7 +748,6 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
       return await submitForReview(tx, { artifactId: d.id, actorId: "dr-sarah-chen", actorRole: "clinician" });
     });
 
-    // Sign with key
     await drizzleDb.transaction(async (tx: any) => {
       await signArtifactInTransaction(tx, {
         consultationId: consultId,
@@ -716,7 +759,6 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
       });
     });
 
-    // Replay with DIFFERENT expectedCaseVersion
     await assert.rejects(
       async () => {
         await drizzleDb.transaction(async (tx: any) => {
@@ -726,7 +768,7 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
             clinicianId: "dr-sarah-chen",
             clinicianRole: "clinician",
             idempotencyKey: "reused-key-mismatch-test",
-            expectedCaseVersion: 99, // Mismatched parameter
+            expectedCaseVersion: 99,
           });
         });
       },
@@ -735,9 +777,9 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
   });
 
   // --------------------------------------------------------------------------
-  // Test 12: Consultation & Artifact Association Mismatch (400)
+  // Test 13: Consultation & Artifact Association Mismatch (400)
   // --------------------------------------------------------------------------
-  it("Test 12: rejects signing when artifact does not belong to the consultation", async () => {
+  it("Test 13: rejects signing when artifact does not belong to the consultation", async () => {
     await seedConsultation("c-owner-1", 1);
     await seedConsultation("c-owner-2", 1);
 
@@ -759,7 +801,7 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
       async () => {
         await drizzleDb.transaction(async (tx: any) => {
           await signArtifactInTransaction(tx, {
-            consultationId: "c-owner-2", // Mismatched consultation!
+            consultationId: "c-owner-2",
             artifactId: draft.id,
             clinicianId: "dr-sarah-chen",
             clinicianRole: "clinician",
@@ -773,9 +815,9 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
   });
 
   // --------------------------------------------------------------------------
-  // Test 13: Unauthorized Clinician Signing (403)
+  // Test 14: Unauthorized Clinician Role Rejection (403)
   // --------------------------------------------------------------------------
-  it("Test 13: rejects signing by non-clinician roles with 403", async () => {
+  it("Test 14: rejects signing by non-clinician roles with 403", async () => {
     const consultId = "c-unauth-test";
     await seedConsultation(consultId, 1);
 
@@ -800,7 +842,7 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
             consultationId: consultId,
             artifactId: draft.id,
             clinicianId: "patient-123",
-            clinicianRole: "patient" as any, // Unauthorized role
+            clinicianRole: "patient" as any,
             idempotencyKey: "key-unauth",
             expectedCaseVersion: 1,
           });
@@ -811,9 +853,64 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
   });
 
   // --------------------------------------------------------------------------
-  // Test 14: CAS Version Conflicts (409)
+  // Test 15: Unassigned Clinician Care Relationship Rejection (403)
   // --------------------------------------------------------------------------
-  it("Test 14: rejects signing with 409 CAS_CONFLICT when case_version has drifted", async () => {
+  it("Test 15: rejects signing by unassigned clinician without encounter care relationship", async () => {
+    const consultId = "c-care-relationship-test";
+    await seedConsultation(consultId, 1, "dr-sarah-chen"); // Assigned specifically to dr-sarah-chen
+
+    const draft = await drizzleDb.transaction(async (tx: any) => {
+      const d = await createDraftArtifact(tx, {
+        consultationId: consultId,
+        chiefComplaint: "Dizziness",
+        soapSubjective: "Lightheaded on standing",
+        soapObjective: "Orthostatic vitals positive",
+        soapAssessment: "Orthostatic hypotension",
+        soapPlan: "Hydration, compression stockings",
+        actorId: "dr-sarah-chen",
+        actorRole: "clinician",
+      });
+      return await submitForReview(tx, { artifactId: d.id, actorId: "dr-sarah-chen", actorRole: "clinician" });
+    });
+
+    // dr-alex-carter is NOT the assigned doctor and role is 'clinician' (not admin) -> must be rejected
+    await assert.rejects(
+      async () => {
+        await drizzleDb.transaction(async (tx: any) => {
+          await signArtifactInTransaction(tx, {
+            consultationId: consultId,
+            artifactId: draft.id,
+            clinicianId: "dr-alex-carter",
+            clinicianRole: "clinician",
+            idempotencyKey: "key-unassigned-clinician",
+            expectedCaseVersion: 1,
+          });
+        });
+      },
+      (err: any) =>
+        err instanceof ClinicianAuthorizationError &&
+        err.statusCode === 403 &&
+        err.message.includes("not the assigned physician")
+    );
+
+    // However, an administrator CAN sign with administrative override
+    const adminSigned = await drizzleDb.transaction(async (tx: any) => {
+      return await signArtifactInTransaction(tx, {
+        consultationId: consultId,
+        artifactId: draft.id,
+        clinicianId: "admin-chief-medical-officer",
+        clinicianRole: "admin",
+        idempotencyKey: "key-admin-override",
+        expectedCaseVersion: 1,
+      });
+    });
+    assert.strictEqual(adminSigned.artifact.status, "signed");
+  });
+
+  // --------------------------------------------------------------------------
+  // Test 16: CAS Version Conflicts (409)
+  // --------------------------------------------------------------------------
+  it("Test 16: rejects signing with 409 CAS_CONFLICT when case_version has drifted", async () => {
     const consultId = "c-cas-test";
     await seedConsultation(consultId, 3); // Consultation is at version 3
 
@@ -849,9 +946,9 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
   });
 
   // --------------------------------------------------------------------------
-  // Test 15: Audit Failure Rolling Back Entire Signing Operation
+  // Test 17: Audit Failure Rolling Back Entire Signing Operation
   // --------------------------------------------------------------------------
-  it("Test 15: rolls back entire signing transaction if audit persistence fails", async () => {
+  it("Test 17: rolls back entire signing transaction if audit persistence fails", async () => {
     const consultId = "c-audit-fail-test";
     await seedConsultation(consultId, 1);
 
@@ -869,7 +966,6 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
       return await submitForReview(tx, { artifactId: d.id, actorId: "dr-sarah-chen", actorRole: "clinician" });
     });
 
-    // Simulate transient audit datastore failure
     __setSimulatedAuditFailure(true);
 
     await assert.rejects(
@@ -890,7 +986,6 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
 
     __setSimulatedAuditFailure(false);
 
-    // Invariants: Entire transaction must have rolled back
     const artCheck = (await pool.query(`SELECT * FROM clinical_artifacts WHERE id = $1`, [draft.id])).rows[0];
     assert.strictEqual(artCheck.status, "pending_review", "Artifact must remain pending_review");
     assert.strictEqual(artCheck.signed_at, null, "signed_at must remain NULL");
@@ -901,11 +996,16 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
   });
 
   // --------------------------------------------------------------------------
-  // Test 16: Legacy SOAP Mirror Updated Exclusively on Signing
+  // Test 18: Established Status 'approved' and Legacy SOAP Mirror Updated Exclusively on Signing
   // --------------------------------------------------------------------------
-  it("Test 16: updates legacy SOAP mirror only after signing, keeping it unpopulated during draft/review", async () => {
+  it("Test 18: transitions consultation status to 'approved' and updates legacy SOAP mirror only after signing", async () => {
     const consultId = "c-soap-mirror";
     await seedConsultation(consultId, 1);
+
+    // Initial state is 'completed_pending_review'
+    let cRow = (await pool.query(`SELECT status, soap_subjective FROM consultations WHERE id = $1`, [consultId])).rows[0];
+    assert.strictEqual(cRow.status, "completed_pending_review");
+    assert.strictEqual(cRow.soap_subjective, null);
 
     // 1. Create Draft
     const draft = await drizzleDb.transaction(async (tx: any) => {
@@ -921,8 +1021,8 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
       });
     });
 
-    // Consult SOAP mirror must be NULL
-    let cRow = (await pool.query(`SELECT soap_subjective FROM consultations WHERE id = $1`, [consultId])).rows[0];
+    cRow = (await pool.query(`SELECT status, soap_subjective FROM consultations WHERE id = $1`, [consultId])).rows[0];
+    assert.strictEqual(cRow.status, "completed_pending_review", "Status must remain completed_pending_review during draft");
     assert.strictEqual(cRow.soap_subjective, null);
 
     // 2. Submit for review
@@ -930,8 +1030,8 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
       await submitForReview(tx, { artifactId: draft.id, actorId: "dr-sarah-chen", actorRole: "clinician" });
     });
 
-    // Consult SOAP mirror must STILL be NULL
-    cRow = (await pool.query(`SELECT soap_subjective FROM consultations WHERE id = $1`, [consultId])).rows[0];
+    cRow = (await pool.query(`SELECT status, soap_subjective FROM consultations WHERE id = $1`, [consultId])).rows[0];
+    assert.strictEqual(cRow.status, "completed_pending_review", "Status must remain completed_pending_review while pending review");
     assert.strictEqual(cRow.soap_subjective, null);
 
     // 3. Sign artifact
@@ -946,10 +1046,12 @@ describe("Milestone 6 Stage 2: Clinical Artifact Service & Transactional Signing
       });
     });
 
-    // 4. NOW consultation's legacy SOAP mirror must match the signed artifact exactly
+    // 4. Invariant: consultation status MUST transition to established 'approved' status (NOT 'completed')
     cRow = (await pool.query(`SELECT * FROM consultations WHERE id = $1`, [consultId])).rows[0];
     assert.strictEqual(cRow.case_version, 2);
-    assert.strictEqual(cRow.status, "completed");
+    assert.strictEqual(cRow.status, "approved", "Status MUST be 'approved' in accordance with MedVoice lifecycle semantics");
+    assert.strictEqual(cRow.approved_by, "dr-sarah-chen");
+    assert(cRow.approved_at !== null, "approved_at must be populated on signing");
     assert.strictEqual(cRow.soap_subjective, "Left ear pain and pressure");
     assert.strictEqual(cRow.soap_objective, "Erythematous bulging left tympanic membrane");
     assert.strictEqual(cRow.soap_assessment, "Acute otitis media");

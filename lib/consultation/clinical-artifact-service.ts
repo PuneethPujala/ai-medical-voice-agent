@@ -838,6 +838,18 @@ export async function signArtifactInTransaction(
   const consultation = consultRows[0];
   const currentCaseVersion = Number(consultation.case_version ?? consultation.caseVersion);
 
+  // Encounter assignment & care relationship verification
+  const assignedDoctorId = consultation.doctor_id ?? consultation.doctorId;
+  if (
+    assignedDoctorId &&
+    params.clinicianRole !== "admin" &&
+    assignedDoctorId !== params.clinicianId
+  ) {
+    throw new ClinicianAuthorizationError(
+      `Clinician '${params.clinicianId}' is not the assigned physician for consultation '${params.consultationId}' (assigned: '${assignedDoctorId}')`
+    );
+  }
+
   // 3. Lock artifact (Lock order: 2)
   const artRes = await tx.execute(
     sql`SELECT * FROM clinical_artifacts
@@ -959,7 +971,7 @@ export async function signArtifactInTransaction(
   const updateConsultRes = await tx.execute(
     sql`UPDATE consultations
         SET case_version = ${newCaseVersion},
-            status = 'completed',
+            status = 'approved',
             soap_subjective = ${artifact.soapSubjective},
             soap_objective = ${artifact.soapObjective},
             soap_assessment = ${artifact.soapAssessment},

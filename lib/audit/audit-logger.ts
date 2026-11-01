@@ -422,6 +422,26 @@ export async function logAuditEventInTransaction(
 }
 
 /**
+ * Strict Safety Boundary for In-Memory Audit Fallback.
+ *
+ * Invariants:
+ * 1. Production audit events must NEVER silently become in-memory-only records.
+ * 2. requireDurable=true must NEVER fall back to memory.
+ * 3. In-memory fallback is restricted strictly to explicitly permitted test or offline environments
+ *    where no database is configured.
+ */
+export function isMemoryAuditFallbackPermitted(requireDurable?: boolean): boolean {
+  if (process.env.NODE_ENV === "production" || requireDurable) {
+    return false;
+  }
+  return (
+    process.env.NODE_ENV === "test" ||
+    process.env.ALLOW_IN_MEMORY_AUDIT_FALLBACK === "true" ||
+    (!process.env.DATABASE_URL && !process.env.TEST_DATABASE_URL)
+  );
+}
+
+/**
  * Legacy audit persistence logic for environments where audit_chain_heads is not yet migrated,
  * or for offline test runners.
  */
@@ -506,16 +526,19 @@ async function legacyLogAuditEventAsync(params: {
           continue;
         }
 
-        if (params.requireDurable || process.env.NODE_ENV === "production") {
+        if (!isMemoryAuditFallbackPermitted(params.requireDurable)) {
           console.error(`Durable audit persistence failed for event ${id}:`, outerMsg, rootMsg);
           throw new Error(`Durable audit persistence failed: ${outerMsg || rootMsg || "datastore error"}`);
         }
 
-        console.error(`Durable audit persistence failed for event ${id} (falling back to memory):`, outerMsg, rootMsg);
+        console.warn(`Durable audit persistence failed for event ${id} (permitted non-production fallback to memory):`, outerMsg, rootMsg);
         auditLedger.push(fullEvent);
         return fullEvent;
       }
     } else {
+      if (!isMemoryAuditFallbackPermitted(params.requireDurable)) {
+        throw new Error("Durable audit persistence failed: No database configured in environment requiring durable audit logging");
+      }
       auditLedger.push(fullEvent);
       return fullEvent;
     }
@@ -560,7 +583,7 @@ export async function logAuditEventAsync(params: {
           return await legacyLogAuditEventAsync(params);
         }
 
-        if (params.requireDurable || process.env.NODE_ENV === "production" || simulatedAuditFailure) {
+        if (!isMemoryAuditFallbackPermitted(params.requireDurable)) {
           throw new Error(`Durable audit persistence failed: ${outerMsg || rootMsg || "datastore error"}`);
         }
 
@@ -568,7 +591,11 @@ export async function logAuditEventAsync(params: {
       }
     }
 
-    // Offline / no-db mode
+    if (!isMemoryAuditFallbackPermitted(params.requireDurable)) {
+      throw new Error("Durable audit persistence failed: No database client available in environment requiring durable audit");
+    }
+
+    // Explicitly permitted offline / unit-test mode
     return await legacyLogAuditEventAsync(params);
   });
 }
