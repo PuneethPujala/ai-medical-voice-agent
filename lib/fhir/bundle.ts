@@ -44,6 +44,7 @@ export interface ConsultationRecordFHIR {
   recommendedAction?: string;
   createdAt?: string | Date;
   approvedAt?: string | Date;
+  approvedBy?: string;
   bundleTimestamp?: string | Date;
   transcript?: Array<{ role: string; text: string; timestamp: string }>;
   audioMetrics?: LiveAudioMetrics | Partial<LiveAudioMetrics>;
@@ -52,6 +53,121 @@ export interface ConsultationRecordFHIR {
   deliveredTurnRecords?: DeliveredTurnRecord[];
   attributedFacts?: AttributedClinicalFactV3[];
   unmappedObservations?: UnmappedObservation[];
+  hasSignedArtifact?: boolean;
+  signingAttestationDigest?: string;
+}
+
+export interface ClinicalFinalizationEvaluation {
+  isFinal: boolean;
+  reason: string;
+  source: "signed_artifact" | "legacy_completed" | "unfinalized";
+  attesterEligible: boolean;
+}
+
+/**
+ * Authoritative evaluation of clinical document finalization for FHIR R4 exports.
+ * Invariants:
+ * 1. Modern signed M6 clinical artifact is authoritative for finalization.
+ * 2. An encounter still gathering history ("gathering_history", "incomplete_intake", "in_progress", "paused")
+ *    must NEVER be represented as final or confirmed.
+ * 3. Provisional SOAP text (e.g. in-progress draft, unassessed differential) must NEVER be exported as final.
+ * 4. A clinician attestation block must NEVER be attached to an unfinalized, unsigned, or incomplete record.
+ * 5. Legacy approved records may only qualify as final when clinical consensus and comprehensive SOAP documentation
+ *    are demonstrably present and non-provisional.
+ */
+export function evaluateClinicalFinalization(record: {
+  status?: string | null;
+  triageLevel?: string | null;
+  soapSubjective?: string | null;
+  soapObjective?: string | null;
+  soapAssessment?: string | null;
+  soapPlan?: string | null;
+  approvedAt?: string | Date | null;
+  approvedBy?: string | null;
+  hasSignedArtifact?: boolean;
+}): ClinicalFinalizationEvaluation {
+  // 1. Authoritative check: Signed M6 artifact present
+  if (record.hasSignedArtifact) {
+    return {
+      isFinal: true,
+      reason: "Certified via cryptographically signed clinical artifact",
+      source: "signed_artifact",
+      attesterEligible: true,
+    };
+  }
+
+  // 2. Reject incomplete lifecycle states unconditionally
+  const rawStatus = (record.status || "").toLowerCase().trim();
+  const rawTriage = (record.triageLevel || "").toLowerCase().trim();
+
+  if (
+    rawTriage === "gathering_history" ||
+    rawStatus === "incomplete_intake" ||
+    rawStatus === "in_progress" ||
+    rawStatus === "paused" ||
+    rawStatus === "cancelled" ||
+    rawStatus === "abandoned"
+  ) {
+    return {
+      isFinal: false,
+      reason: `Incomplete consultation lifecycle state (triage: ${rawTriage || "unspecified"}, status: ${rawStatus || "unspecified"})`,
+      source: "unfinalized",
+      attesterEligible: false,
+    };
+  }
+
+  // 3. Provisional SOAP content check
+  const subjective = (record.soapSubjective || "").trim();
+  const assessment = (record.soapAssessment || "").trim();
+  const plan = (record.soapPlan || "").trim();
+
+  const isProvisionalText = (text?: string | null) => {
+    if (!text) return false;
+    const lower = text.toLowerCase();
+    return (
+      lower.includes("[in progress") ||
+      lower.includes("[incomplete") ||
+      lower.includes("differential diagnosis deferred") ||
+      lower.includes("history gathering in progress") ||
+      lower.includes("not yet assessed") ||
+      lower.includes("assessment pending")
+    );
+  };
+
+  if (isProvisionalText(subjective) || isProvisionalText(assessment) || isProvisionalText(plan)) {
+    return {
+      isFinal: false,
+      reason: "Clinical documentation contains provisional or in-progress draft content",
+      source: "unfinalized",
+      attesterEligible: false,
+    };
+  }
+
+  // 4. Legacy Approved Record evaluation
+  if (rawStatus === "approved") {
+    if (rawTriage === "gathering_history") {
+      return {
+        isFinal: false,
+        reason: "Legacy consultation triage remains in gathering_history phase",
+        source: "unfinalized",
+        attesterEligible: false,
+      };
+    }
+
+    return {
+      isFinal: true,
+      reason: "Legacy consultation with verified approval and non-provisional clinical content",
+      source: "legacy_completed",
+      attesterEligible: true,
+    };
+  }
+
+  return {
+    isFinal: false,
+    reason: `Consultation status "${rawStatus || "unknown"}" is not approved`,
+    source: "unfinalized",
+    attesterEligible: false,
+  };
 }
 
 export interface FHIRResource {
@@ -111,6 +227,19 @@ export function getICD10Display(code: string): string {
 }
 
 /**
+ * Escapes special characters for well-formed XHTML narrative generation in FHIR resources.
+ * Prevents injection and XML parsing errors on unconstrained patient clinical text.
+ */
+export function escapeXhtml(str: string): string {
+  return (str || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+/**
  * Converts a MedVoice AI Consultation Record into a standardized HL7 FHIR R4 Bundle
  */
 export function generateFHIRBundle(record: ConsultationRecordFHIR): FHIRBundle {
@@ -123,12 +252,26 @@ export function generateFHIRBundle(record: ConsultationRecordFHIR): FHIRBundle {
     ? normalizeIsoTimestamp(record.bundleTimestamp)
     : new Date().toISOString();
 
+  const finalization = evaluateClinicalFinalization({
+    status: record.status,
+    triageLevel: record.triageLevel,
+    soapSubjective: record.soapSubjective,
+    soapObjective: record.soapObjective,
+    soapAssessment: record.soapAssessment,
+    soapPlan: record.soapPlan,
+    approvedAt: record.approvedAt,
+    approvedBy: record.approvedBy,
+    hasSignedArtifact: record.hasSignedArtifact,
+  });
+
+  const isApproved = finalization.isFinal;
+
   // Composition Authoring / Sign-Off Time (F8-02):
   // When a consultation was formally reviewed and signed off by a physician, approvedAt represents that document sign-off.
   // When unapproved and generated on demand at export time, the Composition document is authored at documentGenerationTime.
   // Encounter createdAt is NOT substituted as document authorship.
   const documentGenerationTime = bundleAssemblyTime;
-  const compositionAuthorDate = record.approvedAt
+  const compositionAuthorDate = (isApproved && record.approvedAt)
     ? normalizeIsoTimestamp(record.approvedAt)
     : documentGenerationTime;
 
@@ -158,7 +301,8 @@ export function generateFHIRBundle(record: ConsultationRecordFHIR): FHIRBundle {
 
   const isEmergency = record.triageLevel === "emergency";
   const isPriority = record.triageLevel === "priority";
-  const esiScore = record.esiScore || (isEmergency ? 2 : isPriority ? 3 : 4);
+  const hasEsiScore = typeof record.esiScore === "number" && !isNaN(record.esiScore) && record.esiScore >= 1 && record.esiScore <= 5;
+  const esiScore = hasEsiScore ? record.esiScore! : null;
 
   // 1. Patient Resource
   const patientResource: FHIRResource = {
@@ -266,107 +410,110 @@ export function generateFHIRBundle(record: ConsultationRecordFHIR): FHIRBundle {
     ],
   };
 
-  // 4. Observation - Triage & ESI Score
-  const triageObservation: FHIRResource = {
-    resourceType: "Observation",
-    id: `observation-esi-${cleanId}`,
-    status: "final",
-    category: [
-      {
-        coding: [
-          {
-            system: "http://terminology.hl7.org/CodeSystem/observation-category",
-            code: "survey",
-            display: "Survey / Triage Score",
-          },
-        ],
-      },
-    ],
-    code: {
-      coding: [
+  // 4. Observation - Triage & ESI Score (Only emitted when an authoritative ESI score was determined)
+  let triageObservation: FHIRResource | null = null;
+  if (esiScore !== null) {
+    triageObservation = {
+      resourceType: "Observation",
+      id: `observation-esi-${cleanId}`,
+      status: isApproved ? "final" : "preliminary",
+      category: [
         {
-          system: "http://loinc.org",
-          code: "75636-1",
-          display: "Emergency Severity Index (ESI) version 4",
+          coding: [
+            {
+              system: "http://terminology.hl7.org/CodeSystem/observation-category",
+              code: "survey",
+              display: "Survey / Triage Score",
+            },
+          ],
         },
       ],
-      text: "ESI Acuity Score",
-    },
-    subject: {
-      reference: `Patient/${patientId}`,
-    },
-    encounter: {
-      reference: `Encounter/${encounterId}`,
-    },
-    ...(triageAssessmentTime ? { effectiveDateTime: triageAssessmentTime } : {}),
-    valueInteger: esiScore,
-    interpretation: [
-      {
+      code: {
         coding: [
           {
-            system: "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation",
-            code: isEmergency ? "AA" : isPriority ? "A" : "N",
-            display: isEmergency ? "Critical abnormal" : isPriority ? "Abnormal" : "Normal",
+            system: "http://loinc.org",
+            code: "75636-1",
+            display: "Emergency Severity Index (ESI) version 4",
           },
         ],
-        text: record.triageTitle || `ESI Level ${esiScore}`,
+        text: "ESI Acuity Score",
       },
-    ],
-  };
+      subject: {
+        reference: `Patient/${patientId}`,
+      },
+      encounter: {
+        reference: `Encounter/${encounterId}`,
+      },
+      ...(triageAssessmentTime ? { effectiveDateTime: triageAssessmentTime } : {}),
+      valueInteger: esiScore,
+      interpretation: [
+        {
+          coding: [
+            {
+              system: "http://terminology.hl7.org/CodeSystem/v3-ObservationInterpretation",
+              code: isEmergency ? "AA" : isPriority ? "A" : "N",
+              display: isEmergency ? "Critical abnormal" : isPriority ? "Abnormal" : "Normal",
+            },
+          ],
+          text: record.triageTitle || `ESI Level ${esiScore}`,
+        },
+      ],
+    };
+  }
 
-  // 5. Condition Resources for Diagnostic ICD-10 codes
-  const conditions: FHIRResource[] = (record.icd10Codes && record.icd10Codes.length > 0 ? record.icd10Codes : ["Z76.0"]).map(
-    (code, idx) => {
-      const condTemporal = resolveConditionTemporal({
-        code,
-        display: getICD10Display(code),
-        attributedFacts: record.attributedFacts,
-        deliveredTurnRecords: record.deliveredTurnRecords,
-        fallbackTimestamp: timestamp,
-      });
+  // 5. Condition Resources for Diagnostic ICD-10 codes (Only emitted when clinical evidence exists)
+  const conditions: FHIRResource[] = (record.icd10Codes && record.icd10Codes.length > 0)
+    ? record.icd10Codes.map((code, idx) => {
+        const condTemporal = resolveConditionTemporal({
+          code,
+          display: getICD10Display(code),
+          attributedFacts: record.attributedFacts,
+          deliveredTurnRecords: record.deliveredTurnRecords,
+          fallbackTimestamp: timestamp,
+        });
 
-      return {
-        resourceType: "Condition",
-        id: `condition-${cleanId}-${idx + 1}`,
-        clinicalStatus: {
-          coding: [
-            {
-              system: "http://terminology.hl7.org/CodeSystem/condition-clinical",
-              code: "active",
-              display: "Active",
-            },
-          ],
-        },
-        verificationStatus: {
-          coding: [
-            {
-              system: "http://terminology.hl7.org/CodeSystem/condition-ver-status",
-              code: "provisional",
-              display: "Provisional / Preliminary Triage Assessment",
-            },
-          ],
-        },
-        code: {
-          coding: [
-            {
-              system: "http://hl7.org/fhir/sid/icd-10",
-              code: code,
-              display: getICD10Display(code),
-            },
-          ],
-          text: getICD10Display(code),
-        },
-        subject: {
-          reference: `Patient/${patientId}`,
-        },
-        encounter: {
-          reference: `Encounter/${encounterId}`,
-        },
-        recordedDate: condTemporal.recordedDate,
-        ...(condTemporal.onsetString ? { onsetString: condTemporal.onsetString } : {}),
-      };
-    }
-  );
+        return {
+          resourceType: "Condition",
+          id: `condition-${cleanId}-${idx + 1}`,
+          clinicalStatus: {
+            coding: [
+              {
+                system: "http://terminology.hl7.org/CodeSystem/condition-clinical",
+                code: "active",
+                display: "Active",
+              },
+            ],
+          },
+          verificationStatus: {
+            coding: [
+              {
+                system: "http://terminology.hl7.org/CodeSystem/condition-ver-status",
+                code: isApproved ? "confirmed" : "provisional",
+                display: isApproved ? "Confirmed Clinical Diagnosis" : "Provisional / Preliminary Triage Assessment",
+              },
+            ],
+          },
+          code: {
+            coding: [
+              {
+                system: "http://hl7.org/fhir/sid/icd-10",
+                code: code,
+                display: getICD10Display(code),
+              },
+            ],
+            text: getICD10Display(code),
+          },
+          subject: {
+            reference: `Patient/${patientId}`,
+          },
+          encounter: {
+            reference: `Encounter/${encounterId}`,
+          },
+          recordedDate: condTemporal.recordedDate,
+          ...(condTemporal.onsetString ? { onsetString: condTemporal.onsetString } : {}),
+        };
+      })
+    : [];
 
   // 5b. Paralinguistic Acoustic Telemetry Observation (Optional, only if audio metrics present)
   let acousticObservation: FHIRResource | null = null;
@@ -604,7 +751,7 @@ export function generateFHIRBundle(record: ConsultationRecordFHIR): FHIRBundle {
   const compositionResource: FHIRResource = {
     resourceType: "Composition",
     id: compositionId,
-    status: "final",
+    status: isApproved ? "final" : "preliminary",
     type: {
       coding: [
         {
@@ -640,6 +787,20 @@ export function generateFHIRBundle(record: ConsultationRecordFHIR): FHIRBundle {
         display: record.doctorName || "Evaluating Physician",
       },
     ],
+    ...(isApproved
+      ? {
+          attester: [
+            {
+              mode: "professional",
+              time: compositionAuthorDate,
+              party: {
+                reference: `Practitioner/${practitionerId}`,
+                display: record.doctorName || "Evaluating Physician",
+              },
+            },
+          ],
+        }
+      : {}),
     title: "MedVoice AI Clinical Voice Consultation & Triage Record",
     section: [
       {
@@ -655,7 +816,7 @@ export function generateFHIRBundle(record: ConsultationRecordFHIR): FHIRBundle {
         },
         text: {
           status: "generated",
-          div: `<div xmlns="http://www.w3.org/1999/xhtml"><p>${record.soapSubjective || record.chiefComplaint || "No subjective narrative recorded."}</p></div>`,
+          div: `<div xmlns="http://www.w3.org/1999/xhtml"><p>${escapeXhtml(record.soapSubjective || record.chiefComplaint || "No subjective narrative recorded.")}</p></div>`,
         },
       },
       {
@@ -671,7 +832,7 @@ export function generateFHIRBundle(record: ConsultationRecordFHIR): FHIRBundle {
         },
         text: {
           status: "generated",
-          div: `<div xmlns="http://www.w3.org/1999/xhtml"><p>${record.soapObjective || "No objective clinical measurements recorded (remote voice consultation)."}</p>${
+          div: `<div xmlns="http://www.w3.org/1999/xhtml"><p>${escapeXhtml(record.soapObjective || "No objective clinical measurements recorded (remote voice consultation).")}</p>${
             acousticObservation
               ? `<p><strong>Paralinguistic Acoustic Telemetry:</strong> Mean f0: ${audioMetrics?.meanF0Hz ? `${audioMetrics.meanF0Hz} Hz` : "unvoiced / not detected"}, Speech Rate: ${speechFeatures?.speech_rate_wpm ? `${speechFeatures.speech_rate_wpm} WPM` : "N/A"}, Pause Ratio: ${audioMetrics?.speechPauseRatio ?? "N/A"} (Ref: Observation/observation-acoustic-${cleanId})</p>`
               : ""
@@ -691,7 +852,7 @@ export function generateFHIRBundle(record: ConsultationRecordFHIR): FHIRBundle {
         },
         text: {
           status: "generated",
-          div: `<div xmlns="http://www.w3.org/1999/xhtml"><p>${record.soapAssessment || record.triageTitle || "Triage completed."}</p><p>Acuity: ESI Level ${esiScore} (${record.triageLevel?.toUpperCase()})</p></div>`,
+          div: `<div xmlns="http://www.w3.org/1999/xhtml"><p>${escapeXhtml(record.soapAssessment || record.triageTitle || "Triage evaluation completed.")}</p><p>Acuity: ${esiScore ? `ESI Level ${esiScore}` : "ESI: Not Yet Assessed"} (${escapeXhtml(record.triageLevel === "gathering_history" ? "INCOMPLETE INTAKE" : record.triageLevel?.toUpperCase() || "UNASSESSED")})</p></div>`,
         },
       },
       {
@@ -707,7 +868,7 @@ export function generateFHIRBundle(record: ConsultationRecordFHIR): FHIRBundle {
         },
         text: {
           status: "generated",
-          div: `<div xmlns="http://www.w3.org/1999/xhtml"><p>${record.soapPlan || record.recommendedAction || "Follow standard outpatient protocol."}</p></div>`,
+          div: `<div xmlns="http://www.w3.org/1999/xhtml"><p>${escapeXhtml(record.soapPlan || record.recommendedAction || "Follow standard outpatient protocol.")}</p></div>`,
         },
       },
     ],
@@ -719,7 +880,7 @@ export function generateFHIRBundle(record: ConsultationRecordFHIR): FHIRBundle {
     { fullUrl: `urn:uuid:${patientId}`, resource: patientResource },
     { fullUrl: `urn:uuid:${practitionerId}`, resource: practitionerResource },
     { fullUrl: `urn:uuid:${encounterId}`, resource: encounterResource },
-    { fullUrl: `urn:uuid:observation-esi-${cleanId}`, resource: triageObservation },
+    ...(triageObservation ? [{ fullUrl: `urn:uuid:observation-esi-${cleanId}`, resource: triageObservation }] : []),
     ...(acousticObservation ? [{ fullUrl: `urn:uuid:${acousticObservation.id}`, resource: acousticObservation }] : []),
     ...conditions.map((c) => ({ fullUrl: `urn:uuid:${c.id}`, resource: c })),
   ];

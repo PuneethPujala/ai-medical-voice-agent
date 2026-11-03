@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getDb } from "@/config/db";
 import { consultationsTable } from "@/config/schema";
 import { eq } from "drizzle-orm";
-import { generateFHIRBundle, ConsultationRecordFHIR, validateFhirR4Bundle } from "@/lib/fhir/bundle";
+import { generateFHIRBundle, ConsultationRecordFHIR, validateFhirR4Bundle, evaluateClinicalFinalization } from "@/lib/fhir/bundle";
 import { getLatestSignedArtifact } from "@/lib/consultation/clinical-artifact-service";
 import { memoryConsultations } from "../../route";
 import { getAuthContext, hasPermission } from "@/lib/auth/rbac";
@@ -201,7 +201,19 @@ export async function GET(
       }
     }
 
-    const isRecordApproved = Boolean(signedArtifact || record.status === "approved");
+    const finalization = evaluateClinicalFinalization({
+      status: record.status,
+      triageLevel: record.triageLevel,
+      soapSubjective: signedArtifact ? signedArtifact.soapSubjective : record.soapSubjective,
+      soapObjective: signedArtifact ? signedArtifact.soapObjective : record.soapObjective,
+      soapAssessment: signedArtifact ? signedArtifact.soapAssessment : record.soapAssessment,
+      soapPlan: signedArtifact ? signedArtifact.soapPlan : record.soapPlan,
+      approvedAt: signedArtifact ? signedArtifact.signedAt : record.approvedAt,
+      approvedBy: signedArtifact ? signedArtifact.signedBy : record.approvedBy,
+      hasSignedArtifact: Boolean(signedArtifact),
+    });
+
+    const isRecordApproved = finalization.isFinal;
 
     const consultationRecord: ConsultationRecordFHIR = {
       ...record,
@@ -216,9 +228,11 @@ export async function GET(
       deliveredTurnRecords: record.deliveredTurnRecords || record.interviewState?.deliveredTurnRecords,
       attributedFacts: record.attributedFacts || record.interviewState?.attributedFacts,
       unmappedObservations: record.unmappedObservations || record.interviewState?.unmappedObservations,
-      approvedAt: signedArtifact ? signedArtifact.signedAt : record.approvedAt,
-      approvedBy: signedArtifact ? signedArtifact.signedBy : record.approvedBy,
-      status: isRecordApproved ? "approved" : record.status,
+      approvedAt: signedArtifact ? signedArtifact.signedAt : (isRecordApproved ? record.approvedAt : undefined),
+      approvedBy: signedArtifact ? signedArtifact.signedBy : (isRecordApproved ? record.approvedBy : undefined),
+      hasSignedArtifact: Boolean(signedArtifact),
+      signingAttestationDigest: signedArtifact?.signingAttestationDigest,
+      status: isRecordApproved ? "approved" : (record.triageLevel === "gathering_history" ? "incomplete_intake" : record.status),
     };
     const bundle = generateFHIRBundle(consultationRecord);
 
