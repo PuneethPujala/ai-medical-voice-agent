@@ -222,6 +222,20 @@ export async function GET(request: Request) {
       }
     }
 
+    const dbClient = getDb();
+
+    // In production, database absence must return 503 Service Unavailable immediately (never synthetic fallback)
+    if (!dbClient && process.env.NODE_ENV === "production") {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Clinical records service unavailable. Primary database connection could not be established.",
+          code: "SERVICE_UNAVAILABLE",
+        },
+        { status: 503 }
+      );
+    }
+
     await logAuditEventAsync({
       actorId: auth.userId,
       actorRole: auth.role,
@@ -233,7 +247,6 @@ export async function GET(request: Request) {
     });
 
     // 3. Fetch from primary database (Neon PostgreSQL)
-    const dbClient = getDb();
     if (dbClient) {
       try {
         const conditions: any[] = [];

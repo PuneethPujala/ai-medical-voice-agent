@@ -27,12 +27,23 @@ import { POST as postVoiceChat } from "../../app/api/voice/chat/route";
 import { POST as postVoiceTTS } from "../../app/api/voice/tts/route";
 import { POST as postVoiceSTT } from "../../app/api/voice/stt/route";
 import { checkRateLimit, resetRateLimitStore } from "../../lib/security/rate-limiter";
-import { setCustomDbClient } from "../../config/db";
+import { setCustomDbClient, getDb } from "../../config/db";
+import { auditEventsTable } from "../../config/schema";
+import { eq, desc } from "drizzle-orm";
 import nextConfig from "../../next.config";
 
 // Ensure test environment is explicitly set for test runner
 (process.env as Record<string, string | undefined>).NODE_ENV = "test";
 (process.env as Record<string, string | undefined>).INTERNAL_TEST_SECRET = DEFAULT_INTERNAL_TEST_SECRET;
+
+const TEST_DB_URL =
+  process.env.TEST_DATABASE_URL ||
+  process.env.DATABASE_URL ||
+  (!process.env.CI ? "postgresql://postgres:testpass@localhost:5433/medvoice_test" : undefined);
+
+if (TEST_DB_URL && !process.env.TEST_DATABASE_URL) {
+  (process.env as Record<string, string | undefined>).TEST_DATABASE_URL = TEST_DB_URL;
+}
 
 function createTestHeaders(role: string, userId?: string, extra?: Record<string, string>): Record<string, string> {
   return {
@@ -103,11 +114,47 @@ async function runSecurityAndAuditTestSuite() {
       assert(spoofedContext.role === "patient", "Client-controlled 'x-mock-role: admin' is strictly rejected in production even with test secret");
       assert(spoofedContext.userId === "unauthenticated", "Spoofed client remains unauthenticated in production");
 
+      // Ensure isolated test database client is available before simulating production
+      const dbClient = getDb();
+      assert(dbClient !== null, "Isolated test database client must be available for durable audit verification");
+
       // Verify authorizeRequest returns 401 Unauthorized for unauthenticated callers
       const authResult = await authorizeRequest(spoofAttemptReq, "analytics:read");
       assert(authResult.authorized === false, "Access correctly denied for spoof attempt in production");
       if (!authResult.authorized) {
         assert(authResult.errorResponse.status === 401, "Unauthenticated spoof attempt returns 401 Unauthorized in production");
+      }
+
+      // Assert that the denied access event was actually persisted in the test database
+      if (dbClient) {
+        const rows = await dbClient
+          .select()
+          .from(auditEventsTable)
+          .where(eq(auditEventsTable.action, "ACCESS_DENIED"))
+          .orderBy(desc(auditEventsTable.index))
+          .limit(1);
+
+        assert(rows.length > 0, "ACCESS_DENIED audit event must be persisted to database");
+        const deniedEvent = rows[0];
+        assert(deniedEvent.actorId === "unauthenticated", "Persisted audit event actorId matches unauthenticated");
+        assert(deniedEvent.actorRole === "patient", "Persisted audit event actorRole matches non-privileged patient");
+        assert(deniedEvent.status === "DENIED", "Persisted audit event status matches DENIED");
+        assert(deniedEvent.eventHash.length === 64, "Persisted audit event hash is valid 64-char SHA-256");
+      }
+
+      // Assert that a failed audit write cannot accidentally grant authorization (fails closed)
+      setCustomDbClient(false);
+      try {
+        let grantedOnAuditFailure = false;
+        try {
+          const deniedResult = await authorizeRequest(spoofAttemptReq, "analytics:read");
+          grantedOnAuditFailure = deniedResult.authorized;
+        } catch {
+          // Expected: fails closed with error when audit persistence fails
+        }
+        assert(!grantedOnAuditFailure, "Failed audit write must NEVER grant authorization (must fail closed)");
+      } finally {
+        setCustomDbClient(null); // Restore real DB client
       }
     } finally {
       (process.env as Record<string, string | undefined>).NODE_ENV = prevEnv;
@@ -548,6 +595,9 @@ async function runSecurityAndAuditTestSuite() {
       assert(prodListRes.status === 503, "Production consultation list returns 503 Service Unavailable when DB is absent");
       const prodListJson = await prodListRes.json();
       assert(prodListJson.code === "SERVICE_UNAVAILABLE", "Returns SERVICE_UNAVAILABLE error code");
+
+      // Restore active database client for subsequent production authentication wall tests so durable audit succeeds
+      setCustomDbClient(null);
 
       // 2. In production, unauthenticated single consultation access returns 401 (blocks synthetic data access)
       const prodSingleReq = new Request("https://medvoice.org/api/consultations/MED-2026-ACS-8841");
