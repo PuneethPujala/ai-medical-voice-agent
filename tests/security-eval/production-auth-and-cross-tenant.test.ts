@@ -17,7 +17,19 @@ import { Role, DEFAULT_INTERNAL_TEST_SECRET, INTERNAL_TEST_SECRET_HEADER } from 
 import { memoryConsultations } from "../../app/api/consultations/route";
 import { PatientProfileService } from "../../lib/patient/patient-profile-service";
 import { PatientProfile } from "../../lib/clinical-knowledge/types";
-import { setCustomDbClient } from "../../config/db";
+import { setCustomDbClient, getDb } from "../../config/db";
+import { consultationsTable, auditEventsTable } from "../../config/schema";
+import { eq, or, desc } from "drizzle-orm";
+import { assertSafeTestDatabase, resolveTestDatabaseUrl } from "../../lib/security/test-db-guard";
+
+const TEST_DB_URL =
+  process.env.TEST_DATABASE_URL ||
+  process.env.DATABASE_URL ||
+  (!process.env.CI ? "postgresql://postgres:testpass@localhost:5433/medvoice_test" : undefined);
+
+if (TEST_DB_URL && !process.env.TEST_DATABASE_URL) {
+  (process.env as Record<string, string | undefined>).TEST_DATABASE_URL = TEST_DB_URL;
+}
 
 function createTestHeaders(role: Role, userId: string, extra: Record<string, string> = {}) {
   return {
@@ -35,7 +47,14 @@ async function runProductionAuthorizationSuite() {
   console.log("================================================================================");
 
   // Enforce suite-level in-memory isolation for pure mock evaluation
-  setCustomDbClient(false);
+  // Enforce isolated test database
+  const safeDbUrl = resolveTestDatabaseUrl() || process.env.DATABASE_URL;
+  assertSafeTestDatabase(safeDbUrl);
+  const dbClient = getDb();
+  if (!dbClient) {
+    throw new Error("Isolated test database client could not be initialized");
+  }
+  setCustomDbClient(null);
 
   // ---------------------------------------------------------------------------
   // PART A: PRODUCTION-MODE ENFORCEMENT (NODE_ENV === "production")
@@ -70,6 +89,27 @@ async function runProductionAuthorizationSuite() {
       const res = await ep.call();
       assert.strictEqual(res.status, 401, `${ep.name} without session must return 401`);
     }
+    // Verify durable audit persistence in database for ACCESS_DENIED event
+    const deniedAuditEvents = await dbClient
+      .select()
+      .from(auditEventsTable)
+      .where(eq(auditEventsTable.action, "ACCESS_DENIED"))
+      .orderBy(desc(auditEventsTable.timestamp))
+      .limit(1);
+    assert(deniedAuditEvents.length > 0, "ACCESS_DENIED event must be persisted to database");
+    const persistedDenied = deniedAuditEvents[0];
+    assert.strictEqual(persistedDenied.actorId, "unauthenticated", "Persisted audit event actorId matches unauthenticated");
+    assert.strictEqual(persistedDenied.status, "DENIED", "Persisted audit event status matches DENIED");
+    assert(typeof persistedDenied.eventHash === "string" && persistedDenied.eventHash.length === 64, "Persisted audit event hash is valid 64-char SHA-256");
+
+    // Fail-closed defense: when durable audit persistence fails in production, access must never be granted
+    try {
+      setCustomDbClient(false);
+      const failAuditRes = await getAudit(new Request("https://medvoice.org/api/audit"));
+      assert.notStrictEqual(failAuditRes.status, 200, "Failed audit write must NEVER grant authorization (must fail closed)");
+    } finally {
+      setCustomDbClient(null);
+    }
     console.log("  ✓ Test 1 Passed: All protected endpoints enforce 401 Unauthorized when session is absent in production.");
 
     // 2. Forged Test Headers in Production (x-mock-role, x-test-harness-secret) -> MUST FAIL (401)
@@ -101,15 +141,18 @@ async function runProductionAuthorizationSuite() {
   (process.env as any).NODE_ENV = "test";
   (process.env as any).INTERNAL_TEST_SECRET = DEFAULT_INTERNAL_TEST_SECRET;
 
-  // Set up dedicated test fixtures in memoryConsultations
+  // Set up dedicated test fixtures in isolated database and memoryConsultations
+  const now = new Date();
   const testRecordA: any = {
     id: `ENC-ALICE-${Date.now()}`,
     userId: "patient-alice-123",
     patientName: "Alice Tenant",
     doctorId: "dr-sarah-chen",
+    doctorName: "Dr. Sarah Chen, MD",
+    specialty: "Emergency Medicine",
     status: "approved",
     caseVersion: 1,
-    createdAt: new Date().toISOString(),
+    createdAt: now,
     chiefComplaint: "Alice confidential health data",
     triageLevel: "routine",
     transcript: [],
@@ -119,14 +162,48 @@ async function runProductionAuthorizationSuite() {
     userId: "patient-bob-456",
     patientName: "Bob Tenant",
     doctorId: "dr-sarah-chen",
+    doctorName: "Dr. Sarah Chen, MD",
+    specialty: "Cardiology",
     status: "approved",
     caseVersion: 1,
-    createdAt: new Date().toISOString(),
+    createdAt: now,
     chiefComplaint: "Bob confidential heart condition",
     triageLevel: "emergency",
     transcript: [],
   };
+  await dbClient.insert(consultationsTable).values([
+    {
+      id: testRecordA.id,
+      userId: testRecordA.userId,
+      patientName: testRecordA.patientName,
+      doctorId: testRecordA.doctorId,
+      doctorName: testRecordA.doctorName,
+      specialty: testRecordA.specialty,
+      status: testRecordA.status,
+      caseVersion: testRecordA.caseVersion,
+      createdAt: testRecordA.createdAt,
+      chiefComplaint: testRecordA.chiefComplaint,
+      triageLevel: testRecordA.triageLevel,
+      transcript: testRecordA.transcript,
+    },
+    {
+      id: testRecordB.id,
+      userId: testRecordB.userId,
+      patientName: testRecordB.patientName,
+      doctorId: testRecordB.doctorId,
+      doctorName: testRecordB.doctorName,
+      specialty: testRecordB.specialty,
+      status: testRecordB.status,
+      caseVersion: testRecordB.caseVersion,
+      createdAt: testRecordB.createdAt,
+      chiefComplaint: testRecordB.chiefComplaint,
+      triageLevel: testRecordB.triageLevel,
+      transcript: testRecordB.transcript,
+    },
+  ]);
   memoryConsultations.push(testRecordA as any, testRecordB as any);
+
+  try {
 
   // 3. Patient Alice accessing her own consultation -> 200 OK
   console.log("\n[Test 3] Patient Alice accesses her own consultation (200 OK)");
@@ -246,6 +323,11 @@ async function runProductionAuthorizationSuite() {
     testRecordB.soapSubjective = initialBobSoapSubjective;
     const initialBobVersion = testRecordB.caseVersion;
 
+    await dbClient
+      .update(consultationsTable)
+      .set({ soapSubjective: initialBobSoapSubjective })
+      .where(eq(consultationsTable.id, testRecordB.id));
+
     const alicePatchBobRes = await patchConsultationById(
       new Request(`https://medvoice.org/api/consultations/${testRecordB.id}`, {
         method: "PATCH",
@@ -264,9 +346,17 @@ async function runProductionAuthorizationSuite() {
 
     // STATE VERIFICATION: Bob's consultation MUST remain untouched in datastore
     const bobRecordInStore = memoryConsultations.find((c) => c.id === testRecordB.id);
-    assert.strictEqual(bobRecordInStore?.soapSubjective, initialBobSoapSubjective, "Bob's subjective notes remain 100% untouched");
-    assert.strictEqual(bobRecordInStore?.status, "approved", "Bob's status remains approved");
-    assert.strictEqual(bobRecordInStore?.caseVersion, initialBobVersion, "Bob's version remains unchanged");
+    assert.strictEqual(bobRecordInStore?.soapSubjective, initialBobSoapSubjective, "Bob's subjective notes in memory remain 100% untouched");
+    assert.strictEqual(bobRecordInStore?.status, "approved", "Bob's status in memory remains approved");
+    assert.strictEqual(bobRecordInStore?.caseVersion, initialBobVersion, "Bob's version in memory remains unchanged");
+
+    const [bobDbRecord] = await dbClient
+      .select()
+      .from(consultationsTable)
+      .where(eq(consultationsTable.id, testRecordB.id));
+    assert.strictEqual(bobDbRecord.soapSubjective, initialBobSoapSubjective, "Bob's subjective notes in DB remain 100% untouched");
+    assert.strictEqual(bobDbRecord.status, "approved", "Bob's status in DB remains approved");
+    assert.strictEqual(bobDbRecord.caseVersion, initialBobVersion, "Bob's version in DB remains unchanged");
     console.log("  ✓ Test 10 Passed: Cross-tenant PATCH strictly denied (403) and Bob's clinical record remains unmodified.");
 
     // 11. Cross-Tenant DELETE Consultation: Alice attempts to delete Bob's consultation
@@ -282,7 +372,12 @@ async function runProductionAuthorizationSuite() {
     assert.strictEqual(aliceDeleteBobConsultRes.status, 403, "Deleting consultation returns 403 Forbidden");
     // STATE VERIFICATION: Record MUST remain present
     const bobRecordStillPresent = memoryConsultations.find((c) => c.id === testRecordB.id);
-    assert(Boolean(bobRecordStillPresent), "Bob's consultation record remains completely present in datastore");
+    assert(Boolean(bobRecordStillPresent), "Bob's consultation record remains completely present in memory");
+    const [bobStillInDb] = await dbClient
+      .select()
+      .from(consultationsTable)
+      .where(eq(consultationsTable.id, testRecordB.id));
+    assert(Boolean(bobStillInDb), "Bob's consultation record remains completely present in database");
     console.log("  ✓ Test 11 Passed: Cross-tenant DELETE strictly denied (403) and clinical encounter remains preserved.");
 
     // 12. Cross-Tenant PUT Patient Profile: Alice attempts to update Bob's profile
@@ -359,10 +454,11 @@ async function runProductionAuthorizationSuite() {
     assert.strictEqual(unauthDeleteProfileRes.status, 401, "Unauthenticated DELETE profile returns 401");
     console.log("  ✓ Test 14 Passed: All mutation routes strictly enforce 401 Unauthorized for unauthenticated requests.");
 
-    // 15. Authorized Owner Valid Mutations (Expected Positive Path)
-    console.log("\n[Test 15] Authorized Owner Valid Mutations (200 OK + Verified State Mutation)");
-    // 15a. Bob updates his own consultation
-    const bobValidPatchRes = await patchConsultationById(
+    // 15. Authorized Owner Valid Mutations & Milestone 6 Immutability
+    console.log("\n[Test 15] Authorized Owner Valid Mutations & Milestone 6 Immutability");
+    // 15a. Bob attempts direct mutation of clinical artifact field (soapSubjective) via generic PATCH -> 400 SOAP_DIRECT_MUTATION_PROHIBITED
+    console.log("\n[Test 15a] Milestone 6 Clinical Artifact Immutability: Direct SOAP mutation via PATCH is prohibited (400)");
+    const bobDirectSoapPatchRes = await patchConsultationById(
       new Request(`https://medvoice.org/api/consultations/${testRecordB.id}`, {
         method: "PATCH",
         headers: createTestHeaders("patient", "patient-bob-456"),
@@ -373,11 +469,18 @@ async function runProductionAuthorizationSuite() {
       }),
       { params: Promise.resolve({ id: testRecordB.id }) }
     );
-    assert.strictEqual(bobValidPatchRes.status, 200, "Bob patching his own consultation returns 200");
-    const bobPatchedJson = await bobValidPatchRes.json();
-    assert.strictEqual(bobPatchedJson.consultation.soapSubjective, "Bob updated subjective report: acute pain now fully resolved with medication.");
-    assert.strictEqual(testRecordB.soapSubjective, "Bob updated subjective report: acute pain now fully resolved with medication.");
-    console.log("  ✓ Test 15a Passed: Authorized owner successfully patches consultation with verified state transition.");
+    assert.strictEqual(bobDirectSoapPatchRes.status, 400, "Direct mutation of clinical artifact fields via generic PATCH must return 400 Bad Request");
+    const bobPatchJson = await bobDirectSoapPatchRes.json();
+    assert.strictEqual(bobPatchJson.code, "SOAP_DIRECT_MUTATION_PROHIBITED", "Returns code SOAP_DIRECT_MUTATION_PROHIBITED");
+
+    // STATE VERIFICATION: Datastore record remains unaltered
+    const [bobDbAfterPatch] = await dbClient
+      .select()
+      .from(consultationsTable)
+      .where(eq(consultationsTable.id, testRecordB.id));
+    assert.strictEqual(bobDbAfterPatch.soapSubjective, initialBobSoapSubjective, "Bob's SOAP notes in database remain immutable");
+    assert.strictEqual(bobDbAfterPatch.caseVersion, initialBobVersion, "Bob's caseVersion in database remains unchanged");
+    console.log("  ✓ Test 15a Passed: Direct SOAP mutation strictly prohibited (400) and datastore state preserved.");
 
     // 15b. Bob updates his own profile
     const bobValidPutProfileRes = await putPatientProfileById(
@@ -447,7 +550,19 @@ async function runProductionAuthorizationSuite() {
   console.log("\n================================================================================");
   console.log("  ALL PRODUCTION AUTHORIZATION & CROSS-TENANT TESTS PASSED (100% VERIFIED)      ");
   console.log("================================================================================\n");
-  setCustomDbClient(null);
+  } finally {
+    if (dbClient) {
+      await dbClient
+        .delete(consultationsTable)
+        .where(or(eq(consultationsTable.id, testRecordA.id), eq(consultationsTable.id, testRecordB.id)))
+        .catch(() => {});
+    }
+    const idxA = memoryConsultations.findIndex((c) => c.id === testRecordA.id);
+    if (idxA !== -1) memoryConsultations.splice(idxA, 1);
+    const idxB = memoryConsultations.findIndex((c) => c.id === testRecordB.id);
+    if (idxB !== -1) memoryConsultations.splice(idxB, 1);
+    setCustomDbClient(null);
+  }
 }
 
 runProductionAuthorizationSuite().catch((err) => {
