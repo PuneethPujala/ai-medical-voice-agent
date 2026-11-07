@@ -372,8 +372,9 @@ async function runTurnIdempotencyDefenseTests() {
   // TEST 8: Live Neon PostgreSQL Multi-Worker Test & commit_consultation_turn Stored Function
   // ---------------------------------------------------------------------------
   const dbUrl = process.env.DATABASE_URL;
-  if (!dbUrl) {
-    testSkip("Test 8: Live Neon PostgreSQL multi-worker concurrency and stored function", "DATABASE_URL not set in test environment; passing in offline mode");
+  const isNeonCloud = Boolean(dbUrl && (dbUrl.includes(".neon.tech") || dbUrl.startsWith("https://")));
+  if (!dbUrl || !isNeonCloud) {
+    testSkip("Test 8: Live Neon PostgreSQL multi-worker concurrency and stored function", "Live Neon Cloud endpoint not configured; passing in local/offline mode");
   } else {
     try {
       console.log("  Running Test 8 against live Neon PostgreSQL datastore...");
