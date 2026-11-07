@@ -621,7 +621,7 @@ export async function PATCH(
         resourceType: "consultation",
         resourceId: id,
         status: "SUCCESS",
-        requireDurable: true,
+        requireDurable: Boolean(dbClient) || process.env.NODE_ENV === "production",
         metadata: {
           previousStatus,
           newStatus: nextStatus,

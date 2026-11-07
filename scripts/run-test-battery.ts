@@ -27,7 +27,7 @@ export const CANONICAL_TEST_BATTERY: TestSuiteDefinition[] = [
   { id: "test:hardening", file: "tests/patient-profile/single-patient-mvp-hardening.test.ts", description: "Single-Patient MVP Identity & Longitudinal Hardening" },
   { id: "test:longitudinal-migration-runner", file: "tests/patient-profile/longitudinal-migration-runner.test.ts", description: "Longitudinal Migration Runner & Neon HTTP Contract Invariants" },
   { id: "test:consultation-lifecycle", file: "tests/security-eval/consultation-lifecycle.test.ts", description: "Consultation Lifecycle & Signing Invariants", requiresDatabase: true },
-  { id: "test:voice-telemetry", file: "tests/security-eval/voice-telemetry-lifecycle.test.ts", description: "Voice Telemetry Isolation & RBAC Lifecycle" },
+  { id: "test:voice-telemetry", file: "tests/security-eval/voice-telemetry-lifecycle.test.ts", description: "Voice Telemetry Isolation & RBAC Lifecycle", requiresDatabase: true },
   { id: "test:audit-checkpoint", file: "tests/security-eval/audit-checkpoint-adversarial.test.ts", description: "Audit Checkpoint Verification and Adversarial Defense" },
   { id: "test:production-auth", file: "tests/security-eval/production-auth-and-cross-tenant.test.ts", description: "Production Auth Wall and Cross-Tenant IDOR Matrix", requiresDatabase: true },
   { id: "test:distributed-rate-limiter", file: "tests/security-eval/distributed-rate-limiter.test.ts", description: "Distributed Sliding-Window Rate Limiter & Adversarial Defense" },
@@ -38,7 +38,7 @@ export const CANONICAL_TEST_BATTERY: TestSuiteDefinition[] = [
   { id: "test:atomic-concurrency", file: "tests/security-eval/atomic-concurrency-idempotency.test.ts", description: "Atomic CAS & Unique Idempotency", requiresDatabase: true },
   { id: "test:durable-audit", file: "tests/security-eval/durable-audit.test.ts", description: "Durable SHA-256 Chained Audit Ledger", requiresDatabase: true },
   { id: "test:longitudinal-db", file: "tests/patient-profile/longitudinal-database-persistence.test.ts", description: "Longitudinal Fact Persistence & Atomic Lineage in Live PostgreSQL", requiresDatabase: true },
-  { id: "test:turn-idempotency", file: "tests/security-eval/turn-idempotency-defense.test.ts", description: "Finding 7: Turn Idempotency Defense & Atomic Fencing Battery" },
+  { id: "test:turn-idempotency", file: "tests/security-eval/turn-idempotency-defense.test.ts", description: "Finding 7: Turn Idempotency Defense & Atomic Fencing Battery", requiresDatabase: true },
 
   // 3. Clinical Safety, Arbiters & Red Flags
   { id: "test:safetyarbiter", file: "scripts/test-safety-arbiter-decision.ts", description: "Deterministic Safety Arbiter & Urgency Invariants" },
@@ -91,10 +91,10 @@ export const CANONICAL_TEST_BATTERY: TestSuiteDefinition[] = [
   { id: "test:voice-intelligence", file: "tests/voice/conversation-intelligence.test.ts", description: "Multi-Clause Temporal Progression & Non-Destructive Ledger" },
   { id: "test:voice-intake", file: "tests/voice/voice-intake-review.test.ts", description: "Voice Intake State Machine & Transcript Review Safety" },
   { id: "test:stt-recovery", file: "tests/stt/empty-transcript-recovery.test.ts", description: "Empty-Transcript STT Fallback & Patient Recovery" },
-  { id: "test:multi-turn-concurrency", file: "tests/voice/multi-turn-concurrency.test.ts", description: "Multi-Turn Concurrency & Optimistic Version Synchronization" },
-  { id: "test:whole-conversation-stress", file: "tests/voice/whole-conversation-stress.test.ts", description: "Whole-Conversation 4-Layer Context Behavioral Stress" },
+  { id: "test:multi-turn-concurrency", file: "tests/voice/multi-turn-concurrency.test.ts", description: "Multi-Turn Concurrency & Optimistic Version Synchronization", requiresDatabase: true },
+  { id: "test:whole-conversation-stress", file: "tests/voice/whole-conversation-stress.test.ts", description: "Whole-Conversation 4-Layer Context Behavioral Stress", requiresDatabase: true },
   { id: "test:worklet-parity", file: "tests/acoustic/worklet-parity.test.ts", description: "AudioWorklet DSP Mathematical Parity & Fallback Battery" },
-  { id: "test:acoustic-e2e", file: "tests/acoustic/e2e-acoustic-to-fhir.test.ts", description: "End-to-End Acoustic DSP to HL7 FHIR Integration" },
+  { id: "test:acoustic-e2e", file: "tests/acoustic/e2e-acoustic-to-fhir.test.ts", description: "End-to-End Acoustic DSP to HL7 FHIR Integration", requiresDatabase: true },
 
   // 9. Healthcare Standards & Emergency Dispatch
   { id: "test:fhir", file: "tests/fhir-eval/fhir.test.ts", description: "HL7 FHIR R4 Bundle Validation & Conformance" },

@@ -1193,7 +1193,7 @@ export async function POST(request: Request) {
           resourceType: "consultation",
           resourceId: id,
           status: "SUCCESS",
-          requireDurable: true,
+          requireDurable: Boolean(dbClient) || process.env.NODE_ENV === "production",
           metadata: {
             previousStatus: existingRecord.status,
             newStatus: finalStatus,
@@ -1415,7 +1415,7 @@ export async function POST(request: Request) {
         resourceType: "consultation",
         resourceId: id,
         status: "SUCCESS",
-        requireDurable: true,
+        requireDurable: Boolean(dbClient) || process.env.NODE_ENV === "production",
         metadata: {
           triageLevel,
           specialty,

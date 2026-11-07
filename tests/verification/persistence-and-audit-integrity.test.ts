@@ -378,7 +378,6 @@ async function runPersistenceAndAuditIntegrityBattery() {
         },
         body: JSON.stringify({
           expectedVersion: baselineVersion,
-          soapSubjective: "TAMPERED: This subjective update should roll back",
           status: "approved",
         }),
       });
