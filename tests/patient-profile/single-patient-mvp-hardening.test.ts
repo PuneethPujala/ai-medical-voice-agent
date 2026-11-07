@@ -13,6 +13,7 @@
  */
 
 import assert from "assert";
+import { getTableName } from "drizzle-orm";
 import { POST as postVoiceChat } from "../../app/api/voice/chat/route";
 import { POST as postConsultation, memoryConsultations } from "../../app/api/consultations/route";
 import { POST as postPatientProfile } from "../../app/api/patient/profile/route";
@@ -52,6 +53,95 @@ function testFail(name: string, err: any) {
   failedCount++;
   console.error(`  ✗ FAIL: ${name} -`, err?.message || err);
 }
+
+const createMockDbClient = (profileToFind?: any) => {
+  let auditHeadIndex = -1;
+  let auditHeadHash = "0000000000000000000000000000000000000000000000000000000000000000";
+
+  const client: any = {
+    select: () => ({
+      from: (table?: any) => {
+        let tableName = "";
+        try {
+          tableName = getTableName(table);
+        } catch {
+          tableName = table?._?.name || (table as any)?.name || "";
+        }
+
+        return {
+          where: () => {
+            let found: any[] = [];
+            if (tableName === "patient_profiles") {
+              found = profileToFind ? [profileToFind] : [];
+            } else if (tableName === "consultations") {
+              found = [];
+            }
+            const chain: any = {
+              limit: async () => found,
+              orderBy: () => chain,
+              then: (resolve: any) => Promise.resolve(found).then(resolve),
+            };
+            return chain;
+          },
+          orderBy: () => ({
+            then: (resolve: any) => Promise.resolve([]).then(resolve),
+          }),
+        };
+      },
+    }),
+    insert: (table?: any) => ({
+      values: (val: any) => {
+        let tableName = "";
+        try {
+          tableName = getTableName(table);
+        } catch {
+          tableName = table?._?.name || (table as any)?.name || "";
+        }
+
+        if (tableName === "consultations" || (!tableName && val?.patientProfileId && val?.id)) {
+          if (!memoryConsultations.some((c) => c.id === val.id)) {
+            memoryConsultations.push(val);
+          }
+          return {
+            returning: async () => [val],
+          };
+        }
+        if (tableName === "audit_events" || val?.eventHash) {
+          auditHeadIndex = val.index;
+          auditHeadHash = val.eventHash;
+          return {
+            returning: async () => [val],
+          };
+        }
+        return {
+          returning: async () => [val || {}],
+        };
+      },
+    }),
+    update: () => ({
+      set: () => ({
+        where: () => ({
+          returning: async () => [{}],
+        }),
+      }),
+    }),
+    execute: async (query?: any) => {
+      const queryStr = typeof query === "string" ? query : query?.queryChunks?.map((c: any) => c?.value || "").join(" ") || "";
+      if (queryStr.includes("audit_chain_heads") && queryStr.includes("SELECT")) {
+        if (auditHeadIndex >= 0) {
+          return [{ chain_id: "main", last_event_index: auditHeadIndex, last_event_hash: auditHeadHash }];
+        }
+        return [];
+      }
+      if (queryStr.includes("audit_events") && queryStr.includes("COUNT")) {
+        return [{ count: auditHeadIndex + 1, max_index: auditHeadIndex }];
+      }
+      return [];
+    },
+    transaction: async (fn: any) => fn(client),
+  };
+  return client;
+};
 
 async function runHardeningBattery() {
   console.log("================================================================================");
@@ -218,7 +308,9 @@ async function runHardeningBattery() {
       }),
     });
 
+    setCustomDbClient(createMockDbClient(selfProfile));
     const validCreateRes = await postConsultation(validCreateReq);
+    setCustomDbClient(false);
     assert.strictEqual(validCreateRes.status, 200, "Consultation referencing self-profile must return 200");
     const validJson = await validCreateRes.json();
     assert.strictEqual(validJson.consultation.patientProfileId, selfProfile.id);
@@ -284,7 +376,9 @@ async function runHardeningBattery() {
         patientName: "Arthur Pendelton",
       }),
     });
+    setCustomDbClient(createMockDbClient(selfProfile));
     await postConsultation(createReq);
+    setCustomDbClient(false);
 
     // Turn 1: Account holder reports their own mild symptom
     const turn1Req = new Request("http://localhost:3000/api/voice/chat", {
