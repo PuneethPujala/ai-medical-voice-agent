@@ -17,7 +17,7 @@ export interface TestSuiteDefinition {
 
 export const CANONICAL_TEST_BATTERY: TestSuiteDefinition[] = [
   // 1. Zero-Trust Security, Auth RBAC, and Identity
-  { id: "test:security", file: "tests/security-eval/cors-rbac-audit.test.ts", description: "Zero-Trust Security, RBAC & CORS Audit" },
+  { id: "test:security", file: "tests/security-eval/cors-rbac-audit.test.ts", description: "Zero-Trust Security, RBAC & CORS Audit", requiresDatabase: true },
   { id: "test:chat-isolation", file: "tests/security-eval/chat-identity-isolation.test.ts", description: "Chat Identity & Tenant Isolation" },
   { id: "test:profile-persistence", file: "tests/patient-profile/profile-persistence.test.ts", description: "Patient Profile Persistence & DPDP Compliance" },
   { id: "test:context-chat", file: "tests/patient-profile/context-aware-chat.test.ts", description: "Context-Aware Chat & Profile Ingestion" },
@@ -26,14 +26,14 @@ export const CANONICAL_TEST_BATTERY: TestSuiteDefinition[] = [
   { id: "test:longitudinal-e2e", file: "tests/patient-profile/multi-visit-longitudinal-e2e.test.ts", description: "Multi-Visit Longitudinal Context & Clinical Reasoning E2E" },
   { id: "test:hardening", file: "tests/patient-profile/single-patient-mvp-hardening.test.ts", description: "Single-Patient MVP Identity & Longitudinal Hardening" },
   { id: "test:longitudinal-migration-runner", file: "tests/patient-profile/longitudinal-migration-runner.test.ts", description: "Longitudinal Migration Runner & Neon HTTP Contract Invariants" },
-  { id: "test:consultation-lifecycle", file: "tests/security-eval/consultation-lifecycle.test.ts", description: "Consultation Lifecycle & Signing Invariants" },
+  { id: "test:consultation-lifecycle", file: "tests/security-eval/consultation-lifecycle.test.ts", description: "Consultation Lifecycle & Signing Invariants", requiresDatabase: true },
   { id: "test:voice-telemetry", file: "tests/security-eval/voice-telemetry-lifecycle.test.ts", description: "Voice Telemetry Isolation & RBAC Lifecycle" },
   { id: "test:audit-checkpoint", file: "tests/security-eval/audit-checkpoint-adversarial.test.ts", description: "Audit Checkpoint Verification and Adversarial Defense" },
-  { id: "test:production-auth", file: "tests/security-eval/production-auth-and-cross-tenant.test.ts", description: "Production Auth Wall and Cross-Tenant IDOR Matrix" },
+  { id: "test:production-auth", file: "tests/security-eval/production-auth-and-cross-tenant.test.ts", description: "Production Auth Wall and Cross-Tenant IDOR Matrix", requiresDatabase: true },
   { id: "test:distributed-rate-limiter", file: "tests/security-eval/distributed-rate-limiter.test.ts", description: "Distributed Sliding-Window Rate Limiter & Adversarial Defense" },
 
   // 2. Concurrency, Durability, and Persistence
-  { id: "test:concurrency-durable", file: "tests/security-eval/optimistic-concurrency-durable-state.test.ts", description: "Optimistic Concurrency & Case Versioning" },
+  { id: "test:concurrency-durable", file: "tests/security-eval/optimistic-concurrency-durable-state.test.ts", description: "Optimistic Concurrency & Case Versioning", requiresDatabase: true },
     { id: "test:persistence-audit", file: "tests/verification/persistence-and-audit-integrity.test.ts", description: "Clinical Evidence Ledger, Audit Chaining & Failure-Path Safety" },
   { id: "test:atomic-concurrency", file: "tests/security-eval/atomic-concurrency-idempotency.test.ts", description: "Atomic CAS & Unique Idempotency", requiresDatabase: true },
   { id: "test:durable-audit", file: "tests/security-eval/durable-audit.test.ts", description: "Durable SHA-256 Chained Audit Ledger", requiresDatabase: true },
@@ -167,12 +167,13 @@ export async function runTestBattery() {
       NODE_ENV: "test",
     };
 
-    if (!enableLiveDb || !suite.requiresDatabase) {
+    if (!enableLiveDb) {
       delete env.DATABASE_URL;
       delete env.TEST_DATABASE_URL;
       env.MEDVOICE_OFFLINE_TESTS = "1";
     } else {
       env.DATABASE_URL = rawDbUrl;
+      env.TEST_DATABASE_URL = rawDbUrl;
       delete env.MEDVOICE_OFFLINE_TESTS;
     }
     if (!enableLiveLlm) {
