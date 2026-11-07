@@ -157,7 +157,7 @@ async function runOptimisticConcurrencyTests() {
       },
       body: JSON.stringify({
         caseVersion: 1, // Stale!
-        soapPlan: "Rest and hydration",
+        transcript: [],
       }),
     });
 

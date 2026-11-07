@@ -44,6 +44,7 @@ async function runConsultationLifecycleTests() {
         triageLevel: "routine",
         status: "completed_pending_review",
         durationSeconds: 120,
+        soapPlan: "1. Saltwater gargles 3x daily.\n2. Hydration and rest.",
       }),
     });
 
@@ -84,7 +85,6 @@ async function runConsultationLifecycleTests() {
       },
       body: JSON.stringify({
         action: "approve",
-        soapPlan: "Patient attempted self-signature",
       }),
     });
     const patientSignRes = await patchConsultationById(patientSignReq, { params: Promise.resolve({ id: encounterId }) });
@@ -103,7 +103,6 @@ async function runConsultationLifecycleTests() {
       },
       body: JSON.stringify({
         action: "approve",
-        soapPlan: "1. Saltwater gargles 3x daily.\n2. Hydration and rest.",
       }),
     });
 

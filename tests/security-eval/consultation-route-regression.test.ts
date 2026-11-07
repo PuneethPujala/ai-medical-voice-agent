@@ -102,7 +102,27 @@ async function runConsultationRouteRegressionBattery() {
     // -------------------------------------------------------------------------
     console.log("\n[Test 3] Dev/Test Mode: In-Memory Record Mutation & Optimistic Concurrency");
     (process.env as any).NODE_ENV = "test";
-    setCustomDbClient(false); // In-memory mode
+    // In-memory fallback mode: DB returns no row, falling back to memoryConsultations while satisfying durable audit
+    const mockAuditClient: any = {
+      select: () => ({
+        from: () => ({
+          where: () => ({
+            limit: async () => [],
+            orderBy: () => ({
+              limit: async () => [],
+            }),
+          }),
+        }),
+      }),
+      insert: () => ({
+        values: () => ({
+          returning: async () => [{}],
+        }),
+      }),
+      execute: async () => [{}],
+      transaction: async (fn: any) => fn(mockAuditClient),
+    };
+    setCustomDbClient(mockAuditClient);
 
     const memEncounterId = `ENC-MEM-${Date.now()}`;
     const memRecord: any = {
@@ -123,7 +143,7 @@ async function runConsultationRouteRegressionBattery() {
         method: "PATCH",
         headers: createTestHeaders("patient", "patient-charlie"),
         body: JSON.stringify({
-          soapSubjective: "Updated Charlie complaint: symptom improved",
+          transcript: [{ role: "patient", text: "symptom improved", timestamp: "10:00 AM" }],
           expectedVersion: 2,
         }),
       }),
@@ -131,7 +151,7 @@ async function runConsultationRouteRegressionBattery() {
     );
     assert.strictEqual(patchMemRes.status, 200, "In-memory PATCH should return 200");
     const patchedMemJson = await patchMemRes.json();
-    assert.strictEqual(patchedMemJson.consultation.soapSubjective, "Updated Charlie complaint: symptom improved");
+    assert.strictEqual(patchedMemJson.consultation.transcript[0].text, "symptom improved");
     assert.strictEqual(patchedMemJson.consultation.caseVersion, 3, "caseVersion incremented to 3");
     assert.strictEqual(memRecord.caseVersion, 3, "In-memory fixture version mutated to 3");
 
@@ -141,7 +161,7 @@ async function runConsultationRouteRegressionBattery() {
         method: "PATCH",
         headers: createTestHeaders("patient", "patient-charlie"),
         body: JSON.stringify({
-          soapSubjective: "Stale update attempt",
+          transcript: [{ role: "patient", text: "Stale update attempt", timestamp: "10:00 AM" }],
           expectedVersion: 2, // Stale! Current version is 3
         }),
       }),
@@ -165,17 +185,24 @@ async function runConsultationRouteRegressionBattery() {
     };
 
     // Configure mock DB client with atomic CAS behavior
-    setCustomDbClient({
+    const mockDbCasClient: any = {
       select: () => ({
         from: () => ({
           where: () => ({
             limit: async () => [mockDbRecord],
+            orderBy: () => ({
+              limit: async () => [],
+            }),
           }),
         }),
       }),
       insert: () => ({
-        values: async () => {},
+        values: () => ({
+          returning: async () => [{}],
+        }),
       }),
+      execute: async () => [{}],
+      transaction: async (fn: any) => fn(mockDbCasClient),
       update: () => ({
         set: (fields: any) => ({
           where: (condition: any) => ({
@@ -189,7 +216,8 @@ async function runConsultationRouteRegressionBattery() {
           }),
         }),
       }),
-    } as any);
+    };
+    setCustomDbClient(mockDbCasClient);
 
     // 4a. Legitimate DB-backed record update
     const patchDbRes = await patchConsultationById(
@@ -197,7 +225,7 @@ async function runConsultationRouteRegressionBattery() {
         method: "PATCH",
         headers: createTestHeaders("patient", "patient-dana"),
         body: JSON.stringify({
-          soapSubjective: "Updated DB subjective notes",
+          transcript: [{ role: "patient", text: "Updated DB notes", timestamp: "10:00 AM" }],
           expectedVersion: 5,
         }),
       }),
@@ -212,28 +240,35 @@ async function runConsultationRouteRegressionBattery() {
         method: "PATCH",
         headers: createTestHeaders("patient", "attacker-mallory"),
         body: JSON.stringify({
-          soapSubjective: "Attacker payload",
+          transcript: [{ role: "patient", text: "Attacker payload", timestamp: "10:00 AM" }],
           expectedVersion: 6,
         }),
       }),
       { params: Promise.resolve({ id: mockDbRecord.id }) }
     );
     assert.strictEqual(idorDbRes.status, 403, "Cross-tenant mutation on DB record returns 403 Forbidden");
-    assert.strictEqual(mockDbRecord.soapSubjective, "Updated DB subjective notes", "DB record unmolested");
+    assert.strictEqual(mockDbRecord.caseVersion, 6, "DB record version unmolested by attacker");
 
     // 4c. Optimistic concurrency conflict on DB-backed record
     // Mock DB update returning []
-    setCustomDbClient({
+    const mockDbConflictClient: any = {
       select: () => ({
         from: () => ({
           where: () => ({
             limit: async () => [mockDbRecord],
+            orderBy: () => ({
+              limit: async () => [],
+            }),
           }),
         }),
       }),
       insert: () => ({
-        values: async () => {},
+        values: () => ({
+          returning: async () => [{}],
+        }),
       }),
+      execute: async () => [{}],
+      transaction: async (fn: any) => fn(mockDbConflictClient),
       update: () => ({
         set: () => ({
           where: () => ({
@@ -241,14 +276,15 @@ async function runConsultationRouteRegressionBattery() {
           }),
         }),
       }),
-    } as any);
+    };
+    setCustomDbClient(mockDbConflictClient);
 
     const dbConflictRes = await patchConsultationById(
       new Request(`https://medvoice.org/api/consultations/${mockDbRecord.id}`, {
         method: "PATCH",
         headers: createTestHeaders("patient", "patient-dana"),
         body: JSON.stringify({
-          soapSubjective: "Concurrent clash",
+          transcript: [{ role: "patient", text: "Concurrent clash", timestamp: "10:00 AM" }],
           expectedVersion: 6,
         }),
       }),

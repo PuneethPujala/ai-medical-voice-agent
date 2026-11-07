@@ -90,7 +90,7 @@ async function runAtomicConcurrencyTests() {
         },
         body: JSON.stringify({
           caseVersion: 2,
-          soapPlan: `Plan proposed by concurrent caller ${callerNum}`,
+          transcript: [{ role: "patient", text: `Plan proposed by concurrent caller ${callerNum}`, timestamp: "10:00 AM" }],
         }),
       });
       return patchConsultationById(req, { params: Promise.resolve({ id: encId1 }) });
