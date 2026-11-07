@@ -12,7 +12,7 @@ import {
   AuditEvent,
 } from "../../lib/audit/audit-logger";
 import { getDb } from "../../config/db";
-import { auditEventsTable } from "../../config/schema";
+import { auditEventsTable, auditChainHeadsTable } from "../../config/schema";
 import { asc, eq } from "drizzle-orm";
 import { resolveTestDatabaseUrl, validateTestDatabaseTarget } from "../../lib/security/test-db-guard";
 
@@ -469,6 +469,7 @@ async function runAuditHistoryCompatibilityBattery() {
 
     // Clear previous test records in isolated database
     await dbClient!.delete(auditEventsTable);
+    await dbClient!.delete(auditChainHeadsTable);
 
     // Test 10: 2-key nested object in real PostgreSQL JSONB
     const dbLegacyPartial: Omit<AuditEvent, "eventHash"> = {
@@ -861,6 +862,7 @@ async function runAuditHistoryCompatibilityBattery() {
 
     // Clean up test records
     await dbClient!.delete(auditEventsTable);
+    await dbClient!.delete(auditChainHeadsTable);
   }
 
   console.log("\n================================================================================");
