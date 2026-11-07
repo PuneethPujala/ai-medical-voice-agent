@@ -94,6 +94,10 @@ jobs:
           npm run test:battery -- --with-db
 
       - name: Gate 3e — Patient Profile & Longitudinal Context Batteries
+        env:
+          MEDVOICE_OFFLINE_TESTS: "1"
+          DATABASE_URL: ""
+          TEST_DATABASE_URL: ""
         run: |
           npm run test:hardening
           npm run test:longitudinal-migration-runner

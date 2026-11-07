@@ -29,6 +29,9 @@ import { ConversationManager } from "../../lib/triage/conversation-manager";
 import { DEFAULT_INTERNAL_TEST_SECRET, INTERNAL_TEST_SECRET_HEADER, Role } from "../../lib/auth/rbac";
 import { setCustomDbClient } from "../../config/db";
 
+delete (process.env as Record<string, string | undefined>).DATABASE_URL;
+delete (process.env as Record<string, string | undefined>).TEST_DATABASE_URL;
+(process.env as Record<string, string | undefined>).MEDVOICE_OFFLINE_TESTS = "1";
 (process.env as Record<string, string | undefined>).NODE_ENV = "test";
 (process.env as Record<string, string | undefined>).INTERNAL_TEST_SECRET = DEFAULT_INTERNAL_TEST_SECRET;
 
@@ -149,7 +152,7 @@ async function runHardeningBattery() {
   console.log("================================================================================");
 
   // Use isolated in-memory stores for fast deterministic execution
-  setCustomDbClient(false);
+  setCustomDbClient(null);
   memoryProfiles.clear();
   memoryConsultations.length = 0;
   memoryLongitudinalFacts.clear();
@@ -310,7 +313,7 @@ async function runHardeningBattery() {
 
     setCustomDbClient(createMockDbClient(selfProfile));
     const validCreateRes = await postConsultation(validCreateReq);
-    setCustomDbClient(false);
+    setCustomDbClient(null);
     assert.strictEqual(validCreateRes.status, 200, "Consultation referencing self-profile must return 200");
     const validJson = await validCreateRes.json();
     assert.strictEqual(validJson.consultation.patientProfileId, selfProfile.id);
@@ -378,7 +381,7 @@ async function runHardeningBattery() {
     });
     setCustomDbClient(createMockDbClient(selfProfile));
     await postConsultation(createReq);
-    setCustomDbClient(false);
+    setCustomDbClient(null);
 
     // Turn 1: Account holder reports their own mild symptom
     const turn1Req = new Request("http://localhost:3000/api/voice/chat", {

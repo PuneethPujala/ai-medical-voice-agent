@@ -29,6 +29,9 @@ import {
   memoryProfiles,
 } from "../../lib/patient/patient-profile-service";
 
+delete (process.env as Record<string, string | undefined>).DATABASE_URL;
+delete (process.env as Record<string, string | undefined>).TEST_DATABASE_URL;
+(process.env as Record<string, string | undefined>).MEDVOICE_OFFLINE_TESTS = "1";
 (process.env as Record<string, string | undefined>).NODE_ENV = "test";
 
 async function runLongitudinalFactServiceTests() {
