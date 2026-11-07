@@ -192,6 +192,8 @@ runTest("COND-TEMP-05-COMPOSITION-BUNDLE-TRIAGE-SEPARATION", "Composition.date, 
   const fullRecord: ConsultationRecordFHIR = {
     id: "CONSULT-DISTINCT-05",
     createdAt: "2026-10-25T10:00:00.000Z",
+    status: "approved",
+    hasSignedArtifact: true,
     approvedAt: "2026-10-25T11:15:00.000Z", // Doctor sign-off
     bundleTimestamp: "2026-10-25T12:00:00.000Z", // Export assembly time
     triageLevel: "emergency",
