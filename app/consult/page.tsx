@@ -634,7 +634,9 @@ export default function ConsultPage() {
   }, [user?.id]);
 
   // Recover transient session draft on page mount if user navigated away or reloaded
+  const draftRestoredOnceRef = useRef(false);
   useEffect(() => {
+    if (draftRestoredOnceRef.current) return;
     if (typeof window === "undefined" || !window.sessionStorage) return;
     try {
       for (let i = 0; i < window.sessionStorage.length; i++) {
@@ -645,21 +647,30 @@ export default function ConsultPage() {
             const parsed = JSON.parse(raw);
             if (parsed.expiresAt && Date.now() < parsed.expiresAt && parsed.payload?.transcript?.length > 0) {
               if (messages.length === 0 && !callActiveRef.current) {
+                draftRestoredOnceRef.current = true;
                 stableEncounterIdRef.current = parsed.payload.id;
                 serverEncounterCreatedRef.current = true;
                 setCurrentEncounterId(parsed.payload.id);
-                setMessages(parsed.payload.transcript);
+                const restoredMessages = (parsed.payload.transcript as any[]).map((m, idx) => ({
+                  ...m,
+                  id: m.id || `restored-${parsed.payload.id}-${idx}`,
+                }));
+                setMessages(restoredMessages);
                 setCallDuration(parsed.payload.durationSeconds || 0);
                 setPersistenceStatus("saved");
-                setClinicalToasts((prev) => [
-                  ...prev,
-                  {
-                    id: `draft-restored-${Date.now()}`,
-                    type: "info",
-                    title: "Active Encounter Draft Restored",
-                    description: `Recovered ${parsed.payload.transcript.length} turns from previous session (${parsed.payload.id}).`
-                  }
-                ]);
+                setClinicalToasts((prev) => {
+                  if (prev.some((t) => t.id.startsWith("draft-restored-"))) return prev;
+                  return [
+                    ...prev,
+                    {
+                      id: `draft-restored-${parsed.payload.id}-${Date.now()}`,
+                      type: "info",
+                      title: "Active Encounter Draft Restored",
+                      description: `Recovered ${parsed.payload.transcript.length} turns from previous session (${parsed.payload.id}).`,
+                    },
+                  ];
+                });
+                break;
               }
             }
           }

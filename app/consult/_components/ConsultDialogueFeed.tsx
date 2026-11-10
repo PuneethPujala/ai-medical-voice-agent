@@ -91,9 +91,9 @@ export function ConsultDialogueFeed({
             </p>
           </div>
         ) : (
-          messages.map((msg) => (
+          messages.map((msg, idx) => (
             <div
-              key={msg.id}
+              key={msg.id || `msg-${idx}-${msg.timestamp || 't'}`}
               className={`flex flex-col gap-1.5 transition-all animate-in fade-in slide-in-from-bottom-2 duration-200 motion-reduce:animate-none ${
                 msg.role === "system"
                   ? "items-center w-full my-2"
