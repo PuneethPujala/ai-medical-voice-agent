@@ -184,15 +184,20 @@ export class ClinicalBoard {
       "• Physical Examination: Not performed (telehealth voice interface)",
     ];
 
-    const speechRate = patientCase.speech_features?.speech_rate_wpm || 135;
-    const speechObs = patientCase.speech_features?.observations?.length
-      ? patientCase.speech_features.observations.join("; ")
-      : "Natural conversational cadence, intelligible verbal stream";
+    const hasMeasuredSpeechRate = typeof patientCase.speech_features?.speech_rate_wpm === "number";
+    const hasMeasuredAcousticObs = Boolean(patientCase.speech_features?.observations?.length);
+    const hasAnyAcousticMeasurement = hasMeasuredSpeechRate || hasMeasuredAcousticObs;
 
     objectiveLines.push("");
-    objectiveLines.push("[DEVICE / ACOUSTIC MEASURED]");
-    objectiveLines.push(`• Speech Rate: ${speechRate} WPM`);
-    objectiveLines.push(`• Acoustic Biomarkers: ${speechObs}`);
+    if (hasAnyAcousticMeasurement) {
+      objectiveLines.push("[DEVICE / ACOUSTIC MEASURED]");
+      objectiveLines.push(`• Speech Rate: ${hasMeasuredSpeechRate ? `${patientCase.speech_features!.speech_rate_wpm} WPM` : "Not measured"}`);
+      objectiveLines.push(`• Acoustic Biomarkers: ${hasMeasuredAcousticObs ? patientCase.speech_features!.observations.join("; ") : "Not available (hardware telemetry unassessed)"}`);
+    } else {
+      objectiveLines.push("[ACOUSTIC MEASUREMENTS]");
+      objectiveLines.push("• Speech Rate: Not measured");
+      objectiveLines.push("• Acoustic Biomarkers: Not available (hardware telemetry unassessed)");
+    }
     objectiveLines.push(`• Decision Instruments Executed: ${orchResult.tools_executed.length > 0 ? orchResult.tools_executed.map(t => `${t.tool_name} (${t.clinical_summary})`).join("; ") : "Algorithmic ESI v4 Invariant Engine"}`);
     const icdTags = postResult.icd10_codes && postResult.icd10_codes.length > 0
       ? postResult.icd10_codes.join(", ")

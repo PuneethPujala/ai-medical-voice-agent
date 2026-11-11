@@ -123,9 +123,20 @@ export default function DashboardPage() {
   const [isDispatching, setIsDispatching] = useState<boolean>(false);
   const [dispatches, setDispatches] = useState<Record<string, DispatchReceiptState>>({});
 
-  // SHA-256 Cryptographic Hash State
+  // SHA-256 Cryptographic Hash & Ledger Verification State
   const [currentRecordHash, setCurrentRecordHash] = useState<string>("");
   const [copiedHash, setCopiedHash] = useState<boolean>(false);
+  const [ledgerVerification, setLedgerVerification] = useState<{
+    status: "VERIFIED" | "MISMATCH" | "UNAVAILABLE" | "CORRUPTED_LEDGER" | "LOADING";
+    computedDigest: string;
+    recordedDigest: string | null;
+    eventId?: string;
+    message?: string;
+  }>({
+    status: "LOADING",
+    computedDigest: "",
+    recordedDigest: null,
+  });
 
   const fetchRecords = async (_mode?: string) => {
     setIsLoading(true);
@@ -199,21 +210,51 @@ export default function DashboardPage() {
     }
   };
 
-  // Compute cryptographic SHA-256 hash whenever selected report changes
+  // Verify cryptographic ledger integrity from server whenever selected report changes
   useEffect(() => {
     if (!selectedReport) return;
-    const canonical = [
-      selectedReport.id,
-      selectedReport.patientName,
-      selectedReport.createdAt,
-      selectedReport.triageLevel,
-      (selectedReport.icd10Codes || []).slice().sort().join(","),
-      selectedReport.chiefComplaint?.trim().toLowerCase() || "",
-    ].join("|");
-
-    computeSha256Hex(canonical).then((hash) => {
-      setCurrentRecordHash(hash);
+    let isCancelled = false;
+    setLedgerVerification({
+      status: "LOADING",
+      computedDigest: "",
+      recordedDigest: null,
     });
+
+    fetch(`/api/consultations/${encodeURIComponent(selectedReport.id)}/verify`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (isCancelled) return;
+        if (data.success && data.status) {
+          setLedgerVerification({
+            status: data.status,
+            computedDigest: data.computedDigest || "",
+            recordedDigest: data.recordedDigest || null,
+            eventId: data.eventId,
+            message: data.message,
+          });
+          setCurrentRecordHash(data.computedDigest || data.recordedDigest || "");
+        } else {
+          setLedgerVerification({
+            status: "UNAVAILABLE",
+            computedDigest: "",
+            recordedDigest: null,
+            message: data.error || "Verification unavailable",
+          });
+        }
+      })
+      .catch((err) => {
+        if (isCancelled) return;
+        setLedgerVerification({
+          status: "UNAVAILABLE",
+          computedDigest: "",
+          recordedDigest: null,
+          message: err?.message || "Verification request failed",
+        });
+      });
+
+    return () => {
+      isCancelled = true;
+    };
   }, [selectedReport]);
 
   const filteredConsultations = consultations.filter((c) => {
@@ -261,6 +302,7 @@ export default function DashboardPage() {
       soapAssessment: selectedReport.soapAssessment,
       soapPlan: selectedReport.soapPlan,
       recommendedAction: selectedReport.recommendedAction,
+      status: selectedReport.status,
       createdAt: selectedReport.createdAt,
       transcript: selectedReport.transcript,
     });
@@ -294,9 +336,15 @@ export default function DashboardPage() {
       soapAssessment: selectedReport.soapAssessment,
       soapPlan: selectedReport.soapPlan,
       recommendedAction: selectedReport.recommendedAction,
+      status: selectedReport.status,
       createdAt: selectedReport.createdAt,
       transcript: selectedReport.transcript,
     });
+
+    const validation = validateFhirR4Bundle(bundle as unknown as Record<string, unknown>);
+    if (!validation.valid) {
+      console.warn("[FHIR Download] Bundle validation diagnostics:", validation.issues);
+    }
 
     const blob = new Blob([JSON.stringify(bundle, null, 2)], { type: "application/fhir+json;charset=utf-8" });
     const url = URL.createObjectURL(blob);
@@ -333,12 +381,12 @@ export default function DashboardPage() {
         consultationId: selectedReport.id,
         patientId: selectedReport.userId || "P-1002",
         patientName: selectedReport.patientName,
-        esiScore: selectedReport.esiScore || (selectedReport.triageLevel === "emergency" ? 2 : selectedReport.triageLevel === "priority" ? 3 : 4),
+        esiScore: selectedReport.esiScore != null ? selectedReport.esiScore : undefined,
         triageLevel: selectedReport.triageLevel,
         triageTitle: selectedReport.triageTitle || "Emergency Triage Case",
         chiefComplaint: selectedReport.chiefComplaint || "Emergency Medical Evaluation",
-        icd10Codes: selectedReport.icd10Codes || ["R07.9"],
-        detectedSymptoms: selectedReport.detectedSymptoms || ["Acute Complaint"],
+        icd10Codes: selectedReport.icd10Codes && selectedReport.icd10Codes.length > 0 ? selectedReport.icd10Codes : [],
+        detectedSymptoms: selectedReport.detectedSymptoms && selectedReport.detectedSymptoms.length > 0 ? selectedReport.detectedSymptoms : [],
         redFlagsTriggered: selectedReport.triageLevel === "emergency"
           ? (selectedReport.specialty.toLowerCase().includes("cardio")
               ? ["ACS_CHEST_PAIN_WITH_HIGH_RISK_RADIATION_OR_DIAPHORESIS"]
@@ -539,7 +587,7 @@ export default function DashboardPage() {
                   <div className="bg-emerald-50/60 border border-emerald-200/80 rounded-2xl p-3 flex flex-col justify-between">
                     <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-emerald-800">Interop Standard</span>
                     <span className="text-base font-black text-emerald-700 font-mono mt-1">FHIR R4</span>
-                    <span className="text-[9px] font-mono text-emerald-800/80">US Core v3.1.1</span>
+                    <span className="text-[9px] font-mono text-emerald-800/80">Structural R4</span>
                   </div>
                 </div>
               </div>
@@ -806,9 +854,10 @@ export default function DashboardPage() {
                       <div className="flex flex-wrap items-center gap-2 pt-2 text-xs">
                         <div className="flex items-center gap-1.5">
                           <span className="text-[11px] font-mono uppercase text-slate-400 font-bold">Acuity:</span>
-                          <span className={`font-mono text-xs font-extrabold px-2.5 py-0.5 rounded-full uppercase border ${getUrgencyBadge(selectedReport.triageLevel)}`}>
-                            {selectedReport.triageTitle || selectedReport.triageLevel}
-                            {isRecordIncomplete || !selectedReport.esiScore ? " · ESI: Not Yet Assessed" : (selectedReport.triageLevel === "emergency" ? " · ESI Level 2" : ` · ESI Level ${selectedReport.esiScore}`)}
+                          <span className={`font-mono text-xs font-extrabold px-2.5 py-0.5 rounded-full uppercase border ${getUrgencyBadge(isRecordIncomplete ? "gathering_history" : selectedReport.triageLevel)}`}>
+                            {isRecordIncomplete
+                              ? "CLINICAL HISTORY GATHERING · ESI: Not Yet Assessed"
+                              : `${selectedReport.triageTitle || selectedReport.triageLevel}${!selectedReport.esiScore ? " · ESI: Not Yet Assessed" : (selectedReport.triageLevel === "emergency" ? " · ESI Level 2" : ` · ESI Level ${selectedReport.esiScore}`)}`}
                           </span>
                         </div>
 
@@ -838,7 +887,7 @@ export default function DashboardPage() {
                     </div>
 
                     {/* 2. INCOMPLETE INTAKE BANNER (Conditional) */}
-                    {(selectedReport.soapSubjective?.includes("[INCOMPLETE INTAKE") || selectedReport.status === "in_progress") && (
+                    {isRecordIncomplete && (
                       <div className="p-3.5 rounded-2xl border border-amber-300 bg-amber-50/90 text-amber-900 space-y-1 shadow-2xs">
                         <div className="flex items-center gap-2">
                           <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
@@ -944,9 +993,28 @@ export default function DashboardPage() {
 
                       {/* Inline Integrity status with expandable disclosure */}
                       <details className="group">
-                        <summary className="cursor-pointer list-none flex items-center gap-1.5 font-mono text-[11px] text-slate-700 font-bold hover:text-slate-950 transition-colors">
-                          <Lock className="w-3.5 h-3.5 text-emerald-600" />
-                          <span>Ledger Integrity: Verified (SHA-256)</span>
+                        <summary className="cursor-pointer list-none flex items-center gap-1.5 font-mono text-[11px] font-bold hover:text-slate-950 transition-colors">
+                          {ledgerVerification.status === "VERIFIED" ? (
+                            <>
+                              <Lock className="w-3.5 h-3.5 text-emerald-600" />
+                              <span className="text-emerald-700">Ledger Integrity: Verified (SHA-256)</span>
+                            </>
+                          ) : ledgerVerification.status === "LOADING" ? (
+                            <>
+                              <Clock className="w-3.5 h-3.5 text-slate-500 animate-spin" />
+                              <span className="text-slate-600">Verifying Ledger Integrity...</span>
+                            </>
+                          ) : ledgerVerification.status === "MISMATCH" ? (
+                            <>
+                              <AlertTriangle className="w-3.5 h-3.5 text-rose-600" />
+                              <span className="text-rose-700">Ledger Integrity: Tamper Detected (SHA-256 Mismatch)</span>
+                            </>
+                          ) : (
+                            <>
+                              <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
+                              <span className="text-amber-700">Ledger Integrity: Server Verification Unavailable</span>
+                            </>
+                          )}
                           <ChevronDown className="w-3 h-3 text-slate-400 group-open:rotate-180 transition-transform" />
                         </summary>
                         <div className="absolute z-20 mt-2 right-4 sm:right-6 bg-slate-900 text-slate-200 rounded-xl p-3.5 border border-slate-800 shadow-xl max-w-md text-xs space-y-2">
@@ -961,10 +1029,26 @@ export default function DashboardPage() {
                             </button>
                           </div>
                           <p className="font-mono text-[10px] text-slate-300 break-all bg-slate-950 p-2 rounded border border-slate-800 select-all">
-                            {currentRecordHash || "Computing canonical hash..."}
+                            {ledgerVerification.computedDigest || currentRecordHash || "Computing canonical hash..."}
                           </p>
+                          {ledgerVerification.recordedDigest && (
+                            <div className="text-[10px] space-y-1 border-t border-slate-800 pt-1.5">
+                              <div className="text-slate-400">
+                                Recorded Ledger Digest: <span className="font-mono text-slate-300">{ledgerVerification.recordedDigest.substring(0, 16)}...</span>
+                              </div>
+                              {ledgerVerification.eventId && (
+                                <div className="text-slate-400">
+                                  Audit Event: <span className="font-mono text-slate-300">{ledgerVerification.eventId}</span>
+                                </div>
+                              )}
+                            </div>
+                          )}
                           <p className="text-[10px] text-slate-400">
-                            Cryptographic verification confirms payload immutability against the audit ledger. Attestation status: {selectedReport.status === "approved" ? "Clinician Signed" : "Preliminary Draft (Unsigned)"}.
+                            {ledgerVerification.status === "VERIFIED"
+                              ? `Cryptographic verification confirms payload immutability against the audit ledger. Attestation status: ${selectedReport.status === "approved" ? "Clinician Signed" : "Preliminary Draft (Unsigned)"}.`
+                              : ledgerVerification.status === "MISMATCH"
+                              ? "CRITICAL: The current clinical payload differs from the cryptographic hash sealed in the audit ledger."
+                              : "Server-side cryptographic audit ledger verification is pending or unavailable for this record."}
                           </p>
                         </div>
                       </details>
@@ -988,14 +1072,16 @@ export default function DashboardPage() {
                             name: "Objective",
                             subtitle: "Acoustic Biomarkers & Verified Observations",
                             content: selectedReport.soapObjective || `• Physical Exam / Vitals: No direct physical examination or automated biometric telemetry hardware connected during remote voice encounter. (Never fabricated).\n• Detected clinical features: ${selectedReport.detectedSymptoms?.join(", ") || "None specified"}.`,
-                            tags: ["16kHz Telemetry", "Observed Biomarkers", "Deterministic Telemetry"]
+                            tags: (selectedReport.soapObjective && selectedReport.soapObjective.includes("unconnected")) || isRecordIncomplete
+                              ? ["Acoustic Telemetry: Unavailable", "Hardware Unconnected"]
+                              : ["Acoustic Telemetry: Assessed", "Observed Biomarkers"]
                           },
                           {
                             id: "assessment",
                             letter: "A",
                             name: "Assessment",
                             subtitle: "Multi-Specialist Deliberation & Differential",
-                            content: selectedReport.soapAssessment || selectedReport.triageTitle || "Clinical triage evaluation complete.",
+                            content: selectedReport.soapAssessment || (isRecordIncomplete ? "Assessment not yet generated." : "Assessment pending clinical consensus."),
                             tags: [
                               selectedReport.esiScore ? `ESI Score: ${selectedReport.esiScore}` : "ESI: Unassessed",
                               "Differential Synthesis",
@@ -1007,8 +1093,10 @@ export default function DashboardPage() {
                             letter: "P",
                             name: "Plan",
                             subtitle: "Actionable Directives & Safety Arbiter Clearance",
-                            content: selectedReport.soapPlan || selectedReport.recommendedAction || "Follow standard clinical recommendations.",
-                            tags: ["Disposition Directives", "Safety Arbiter Cleared", "Post-Consult Care"]
+                            content: selectedReport.soapPlan || (isRecordIncomplete ? "Plan not yet generated." : (selectedReport.recommendedAction || "Follow standard clinical recommendations.")),
+                            tags: isRecordIncomplete
+                              ? ["Disposition: Not Established", "Clinician Review Pending"]
+                              : ["Disposition Directives", "Safety Arbiter Cleared", "Post-Consult Care"]
                           }
                         ]}
                       />
@@ -1023,7 +1111,7 @@ export default function DashboardPage() {
                             HL7 FHIR R4 Interoperability & Audit Schema
                           </span>
                           <span className="text-[11px] font-mono text-slate-400 hidden sm:inline">
-                            (US Core v3.1.1 Document Bundle)
+                            (HL7 FHIR R4 Document Bundle)
                           </span>
                         </div>
                         <ChevronDown className="w-4 h-4 text-slate-400 group-open:rotate-180 transition-transform" />
@@ -1044,7 +1132,7 @@ export default function DashboardPage() {
                             { label: "ICD-10-CM", value: (selectedReport.icd10Codes && selectedReport.icd10Codes.length > 0 ? selectedReport.icd10Codes.join(", ") : "Not assigned (unsupported)") },
                             { label: "SHA-256 Hash", value: currentRecordHash ? `${currentRecordHash.substring(0, 18)}...` : "TAMPER_EVIDENT_OK" },
                           ]}
-                          backNote="Compliant with US Core v3.1.1 / HL7 FHIR Release 4 standard. Verified immutable cryptographically."
+                          backNote="FHIR R4 structural validation passed. US Core profile conformance not independently verified."
                         />
                       </div>
                     </details>
@@ -1179,7 +1267,7 @@ export default function DashboardPage() {
                     )}
                     <span className="text-slate-600 text-xs hidden md:inline">
                       {fhirValidation?.valid
-                        ? `Conforms to US Core v3.1.1 Document Profile (${fhirBundle?.entry?.length || 6} resources bundled)`
+                        ? `FHIR R4 structural validation passed. US Core profile conformance not independently verified. (${fhirBundle?.entry?.length || 0} resources bundled)`
                         : `Preliminary bundle structure with ${fhirValidation?.issues?.length || 0} schema diagnostics`}
                     </span>
                   </div>
@@ -1373,7 +1461,7 @@ export default function DashboardPage() {
                   <div className="flex items-center gap-2">
                     <ShieldCheck className="w-4 h-4 text-[#18251D]" />
                     <span className="font-mono text-[11px]">
-                      HL7 FHIR Release 4 (v4.0.1) Document Bundle · US Core Implementation Guide
+                      HL7 FHIR Release 4 (v4.0.1) Document Bundle · Structural R4 Profile
                     </span>
                   </div>
                   <button

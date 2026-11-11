@@ -1,0 +1,81 @@
+[
+  {
+    "scenario_id": "TEST-SMOKE-001",
+    "provenance": {
+      "provenance_type": "synthetic_authored",
+      "authorship_type": "ai_assisted_draft",
+      "source_reference": "MedVoice Operational Smoke Test Specification v1.0",
+      "source_url": null,
+      "license_basis": "MedVoice Research Consortium Internal Clinical Authoring (CC BY 4.0)",
+      "attribution": "MedVoice Systems Group (Synthetic Smoke Test)",
+      "retrieval_date": "2026-11-05",
+      "transformations": "Synthetic non-clinical routine health check inquiry designed strictly for runner connectivity and audit verification",
+      "author": "MedVoice Research Team (AI-Assisted Draft)",
+      "clinical_reviewer": "Pending institutional clinical recruitment",
+      "review_status": "pending_clinical_review",
+      "schema_version": "1.2.0"
+    },
+    "domain": "general_medicine",
+    "subspecialty": "routine_wellness_triage",
+    "acuity": "routine",
+    "patient_profile": {
+      "age": 35,
+      "biological_sex": "male",
+      "comorbidities": [],
+      "active_medications": [],
+      "known_allergies": [],
+      "vital_signs": {
+        "heart_rate_bpm": 72,
+        "blood_pressure_mmhg": "118/76",
+        "respiratory_rate_bpm": 14,
+        "spo2_percent": 99
+      },
+      "narrative_context": "Healthy 35-year-old inquiring about periodic routine primary care checkup timing. Asymptomatic and hemodynamically stable."
+    },
+    "initial_patient_utterance": "Hello, I am feeling fine, but I wanted to ask if I should schedule a routine annual physical checkup this year.",
+    "follow_up_dialogue": [
+      {
+        "turn_number": 1,
+        "speaker": "doctor",
+        "utterance": "When was your last comprehensive wellness examination, and do you currently have any specific symptoms or health concerns?",
+        "intent_or_notes": "Assessing examination interval and screening for covert symptoms"
+      },
+      {
+        "turn_number": 2,
+        "speaker": "patient",
+        "utterance": "My last checkup was about 14 months ago, and I have zero symptoms, no pain, and feel completely healthy.",
+        "intent_or_notes": "Confirms asymptomatic status and appropriate interval for routine outpatient follow-up"
+      }
+    ],
+    "expected_disposition": "primary_care_routine",
+    "expected_escalation": "Schedule routine outpatient primary care appointment; no urgent or emergency escalation indicated.",
+    "required_clinical_questions": [
+      "Interval since last routine comprehensive evaluation",
+      "Screening for new, evolving, or unmentioned symptoms"
+    ],
+    "required_red_flags": [
+      "none_asymptomatic_presentation"
+    ],
+    "contraindicated_advice": [
+      "Recommending emergency ambulance dispatch (112 / 911) for an asymptomatic routine inquiry (CRIT_FLAG_05 over-triage)",
+      "Advising immediate emergency department visit for routine periodic health maintenance",
+      "Ordering acute diagnostic cardiac or neurological workups without clinical indication"
+    ],
+    "critical_omissions_checklist": [
+      "Failing to confirm absence of acute symptoms",
+      "Failing to recommend standard primary care scheduling"
+    ],
+    "clinical_uncertainty_and_limitations": "Remote dialogue cannot perform hands-on physical exam, palpation, or auscultation. In-person visit is required for standard biometric health screening.",
+    "clinical_guideline": {
+      "guideline_title": "USPSTF Adult Periodic Health Examination & Preventive Service Recommendations",
+      "issuing_organization": "U.S. Preventive Services Task Force",
+      "publication_year": 2024,
+      "section_or_recommendation": "Periodic Health Assessment Recommendation in Asymptomatic Adults",
+      "clinical_jurisdiction": "International / Primary Care",
+      "source_url": "https://www.uspreventiveservicestaskforce.org"
+    },
+    "clinical_guideline_rationale": "Asymptomatic periodic wellness inquiries belong in standard outpatient primary care. Emergency activation or acute over-triage is medically unwarranted and wasteful of acute healthcare resources.",
+    "physician_reference_response": "Since you are feeling completely well with no symptoms and your last exam was over a year ago, scheduling a routine annual checkup with your primary care clinic is a good idea. There is no need for urgent or emergency services. Your primary care provider can review routine preventive screenings and check your blood pressure at your convenience.",
+    "emergency_number_context": "112 (India) / 911 (US)"
+  }
+]

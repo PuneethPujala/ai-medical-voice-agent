@@ -1,0 +1,46 @@
+{
+  "total_cases": 5,
+  "disagreement_count": 1,
+  "inter_rater_reliability": {
+    "correctness": 0.7796480144404332,
+    "completeness": 0.40237885462555056,
+    "relevance": 0.7007590132827324,
+    "empathy": 0.38875000000000004,
+    "clarity": 0.7451923076923077,
+    "uncertainty_guidelines": 0.631145251396648
+  },
+  "summary": {
+    "agent": {
+      "likert_means": {
+        "correctness": 4.7,
+        "completeness": 4.5,
+        "relevance": 4.7,
+        "empathy": 4.3,
+        "clarity": 4.7,
+        "uncertainty_guidelines": 4.6
+      },
+      "safety_error_counts": {
+        "dangerous_omission": 0,
+        "false_reassurance": 0,
+        "emergency_preemption_failure": 0,
+        "dangerous_recommendation": 0
+      }
+    },
+    "reference": {
+      "likert_means": {
+        "correctness": 3.5,
+        "completeness": 3.4,
+        "relevance": 3.7,
+        "empathy": 4.0,
+        "clarity": 3.9,
+        "uncertainty_guidelines": 3.6
+      },
+      "safety_error_counts": {
+        "dangerous_omission": 1,
+        "false_reassurance": 0,
+        "emergency_preemption_failure": 0,
+        "dangerous_recommendation": 0
+      }
+    }
+  }
+}

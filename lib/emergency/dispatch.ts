@@ -7,7 +7,7 @@ export const EmergencyDispatchPayloadSchema = z.object({
   patientName: z.string().default("Anonymous Patient"),
   patientAge: z.union([z.number(), z.string()]).optional(),
   patientGender: z.string().optional(),
-  esiScore: z.number().min(1).max(5),
+  esiScore: z.number().min(1).max(5).optional().nullable(),
   triageLevel: z.enum(["emergency", "priority", "routine"]),
   triageTitle: z.string(),
   redFlagsTriggered: z.array(z.string()).default([]),
@@ -43,7 +43,7 @@ export function computeClinicalAuditHash(payload: {
   consultationId: string;
   patientId: string;
   timestamp: string;
-  esiScore: number;
+  esiScore?: number | null;
   triageLevel: string;
   icd10Codes: string[];
   chiefComplaint: string;
@@ -52,7 +52,7 @@ export function computeClinicalAuditHash(payload: {
     payload.consultationId,
     payload.patientId,
     payload.timestamp,
-    payload.esiScore,
+    payload.esiScore ?? "unassessed",
     payload.triageLevel,
     payload.icd10Codes.slice().sort().join(","),
     payload.chiefComplaint.trim().toLowerCase(),
@@ -69,7 +69,7 @@ export function verifyClinicalAuditHash(
     consultationId: string;
     patientId: string;
     timestamp: string;
-    esiScore: number;
+    esiScore?: number | null;
     triageLevel: string;
     icd10Codes: string[];
     chiefComplaint: string;
@@ -83,7 +83,7 @@ export function verifyClinicalAuditHash(
 /**
  * Builds ED pre-arrival clinical directives based on ESI score and red flags
  */
-export function generatePreArrivalDirectives(esiScore: number, redFlags: string[]): {
+export function generatePreArrivalDirectives(esiScore: number | null | undefined, redFlags: string[]): {
   bay: string;
   physician: string;
   directives: string[];

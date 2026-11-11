@@ -1,0 +1,20 @@
+{
+  "run_id": "run_1793882369586_92694a",
+  "provider": "groq",
+  "model_id": "qwen/qwen3.8-27b",
+  "dataset_id": "synthetic-smoke-v1.0.0",
+  "dataset_content_hash": "84ffbc16fad330e5a53fc53b31db5d3b9e71350481f38dd665592295352c8589",
+  "dataset_manifest_hash": "c0b7655b05dab5dfd0633a535b85ece25264e8d13ee2b71e335a2b30ce3d3d92",
+  "rubric_version": "2.2.0",
+  "rubric_content_hash": "8bfc1645ba213b92728c2b6c17f97754965338640fdf016182df99e678b32efb",
+  "protocol_version": "1.2.0",
+  "prompt_template_version": "2.2.0",
+  "prompt_template_hash": "cb9a47d0c6115f44a488f79ee51dbeba1c818b0daea4f2cb2283b155ef6ae5a8",
+  "evaluator_source_tree_hash": "2c367e782e86a1eba0d153a2050f302030bc7a6769a311d67f6e75622aef5abb",
+  "dependency_lockfile_hash": "4010cb1094c6f6efeb70e9d4b33bf234d73cb773b46f6a118ba86054b948be6c",
+  "randomization_seed": 42,
+  "started_at": "2026-11-05T12:39:29.587Z",
+  "status": "COMPLETED",
+  "git_commit_sha": "ccd2f435bf7f99a8f6f97089c076dd6f614495d8",
+  "completed_at": "2026-11-05T12:39:53.210Z"
+}

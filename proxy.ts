@@ -23,6 +23,7 @@ export const ADMIN_ROUTE_PATTERNS = [
 export const PROTECTED_PHI_ROUTE_PATTERNS = [
   '/consult',
   '/dashboard',
+  '/history',
   '/profile',
   '/api/consultations',
   '/api/patient',
@@ -95,8 +96,8 @@ export const isAdminRoute = (req: NextRequest) => isPathMatching(req.nextUrl.pat
 export const isProtectedPhiRoute = (req: NextRequest) => isPathMatching(req.nextUrl.pathname, PROTECTED_PHI_ROUTE_PATTERNS);
 
 export function isTestBypassPermitted(req: { headers: { get: (name: string) => string | null } }): boolean {
-  // Fail-closed invariant 1: NODE_ENV must strictly equal "test"
-  if (process.env.NODE_ENV !== 'test') {
+  // Fail-closed invariant 1: NODE_ENV must strictly equal "test" or "development" (local only)
+  if (process.env.NODE_ENV !== 'test' && process.env.NODE_ENV !== 'development') {
     return false;
   }
   // Fail-closed invariant 2: Real cloud or hosted deployments must NEVER allow test bypass

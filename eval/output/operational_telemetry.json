@@ -1,0 +1,25 @@
+{
+  "success": true,
+  "total_runtime_seconds": 2.253,
+  "start_time": "2026-11-01T11:46:24.722441+00:00",
+  "end_time": "2026-11-01T11:46:26.975740+00:00",
+  "phase": "all",
+  "smoke_test": true,
+  "total_turns_evaluated": 30,
+  "p50_latency_ms": 58.24013135042911,
+  "p95_latency_ms": 78.81817750304984,
+  "failure_rate": 0.0,
+  "tables_generated": [
+    "C:\\dev\\Capstone\\eval\\output\\tables\\table1_main_results.tex",
+    "C:\\dev\\Capstone\\eval\\output\\tables\\table2_domain_slices.tex",
+    "C:\\dev\\Capstone\\eval\\output\\tables\\table3_safety_challenge.tex",
+    "C:\\dev\\Capstone\\eval\\output\\tables\\table4_regression.tex",
+    "C:\\dev\\Capstone\\eval\\output\\tables\\table5_human_eval.tex"
+  ],
+  "figures_generated": [
+    "C:\\dev\\Capstone\\eval\\output\\figures\\figure1_kde_overlay.png",
+    "C:\\dev\\Capstone\\eval\\output\\figures\\figure2_human_correlation.png",
+    "C:\\dev\\Capstone\\eval\\output\\figures\\figure3_domain_boxplots.png",
+    "C:\\dev\\Capstone\\eval\\output\\figures\\figure4_pca_projection.png"
+  ]
+}

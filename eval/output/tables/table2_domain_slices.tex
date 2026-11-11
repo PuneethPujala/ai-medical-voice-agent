@@ -1,0 +1,26 @@
+\begin{table}[htbp]
+\centering
+\small
+\caption{Stratified Performance Across Chief Complaint Clinical Domains}
+\label{tab:domain_slices}
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Clinical Domain} & \textbf{$N$} & \textbf{Cosine Similarity [95\% CI]} & \textbf{Response-Length Ratio} & \textbf{FKGL} & \textbf{Calibrated Alignment} \\
+\midrule
+Cardiovascular & 3 & 0.788 [0.766, 0.819] & 2.57 & 8.2 & 100.0\% \\
+Respiratory & 3 & 0.797 [0.747, 0.850] & 2.57 & 8.2 & 100.0\% \\
+Neurological & 3 & 0.786 [0.745, 0.845] & 2.57 & 8.2 & 100.0\% \\
+Gastrointestinal & 3 & 0.823 [0.817, 0.828] & 2.57 & 8.2 & 100.0\% \\
+Dermatological & 3 & 0.725 [0.684, 0.762] & 2.57 & 8.2 & 66.7\% \\
+Musculoskeletal & 3 & 0.789 [0.774, 0.814] & 2.57 & 8.2 & 100.0\% \\
+General Medicine & 3 & 0.756 [0.748, 0.766] & 2.38 & 8.2 & 100.0\% \\
+Medication & 3 & 0.770 [0.723, 0.822] & 2.57 & 8.2 & 100.0\% \\
+Chronic Conditions & 3 & 0.788 [0.774, 0.809] & 2.38 & 8.2 & 100.0\% \\
+Other & 3 & 0.813 [0.773, 0.834] & 2.57 & 8.2 & 100.0\% \\
+\bottomrule
+\end{tabular}
+\begin{tablenotes}
+\footnotesize
+\item \textit{Note}: Chief complaint stratification covers 10 primary clinical presentations without automated ESI triage inference. FKGL = Flesch-Kincaid Grade Level. Calibrated alignment represents proportion of cases exceeding the empirically calibrated threshold ($T_{\text{calib}}$).
+\end{tablenotes}
+\end{table}

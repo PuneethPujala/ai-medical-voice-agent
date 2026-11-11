@@ -1,0 +1,1137 @@
+[
+  {
+    "scenario_id": "PILOT-CARD-001",
+    "provenance": {
+      "provenance_type": "synthetic_authored",
+      "authorship_type": "ai_assisted_draft",
+      "source_reference": "2021 AHA/ACC/ASE/CHEST/SAEM/SCCT/SCMR Guideline for the Evaluation and Diagnosis of Chest Pain",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001029",
+      "license_basis": "MedVoice Research Consortium Internal Clinical Authoring (CC BY 4.0)",
+      "attribution": "MedVoice Clinical Research Team (Draft)",
+      "retrieval_date": "2026-11-02",
+      "transformations": "Draft conversational dialogue modeling female diabetic atypical presentation of acute myocardial ischemia",
+      "author": "MedVoice Research Team (AI-Assisted Draft)",
+      "clinical_reviewer": "Pending institutional clinical recruitment",
+      "review_status": "pending_clinical_review",
+      "schema_version": "1.2.0"
+    },
+    "domain": "cardiovascular",
+    "subspecialty": "ischemic_heart_disease",
+    "acuity": "emergent",
+    "patient_profile": {
+      "age": 64,
+      "biological_sex": "female",
+      "comorbidities": [
+        "Type 2 Diabetes Mellitus (HbA1c 8.4%)",
+        "Hypertension",
+        "Hyperlipidemia"
+      ],
+      "active_medications": [
+        "Metformin 1000mg BID",
+        "Lisinopril 20mg daily",
+        "Atorvastatin 40mg daily"
+      ],
+      "known_allergies": [
+        "Penicillin (urticaria)"
+      ],
+      "vital_signs": {
+        "heart_rate_bpm": 102,
+        "blood_pressure_mmhg": "158/94",
+        "respiratory_rate_bpm": 22,
+        "spo2_percent": 96
+      },
+      "narrative_context": "Patient has had diabetes for 15 years with known autonomic neuropathy. Pain perception is blunted."
+    },
+    "initial_patient_utterance": "Um, hello... I feel really strange today. Not exactly pain, but like a heavy, suffocating pressure right between my shoulder blades and up into my jaw. I'm breaking out in cold sweat and feeling sick to my stomach.",
+    "follow_up_dialogue": [
+      {
+        "turn_number": 1,
+        "speaker": "doctor",
+        "utterance": "When did this heaviness and jaw pressure begin, and are you having any shortness of breath or dizziness right now?",
+        "intent_or_notes": "Assessing onset, hemodynamic stability, and associated autonomic symptoms"
+      },
+      {
+        "turn_number": 2,
+        "speaker": "patient",
+        "utterance": "Started maybe 45 minutes ago while folding laundry... I got so dizzy I had to sit on the floor. My shirt is soaked through with sweat. I thought it was just gas or low sugar, but drinking orange juice didn't help at all.",
+        "intent_or_notes": "Exertional onset, severe diaphoresis, unresponsiveness to hypoglycemia correction"
+      }
+    ],
+    "expected_disposition": "emergency_department_or_ambulance",
+    "expected_escalation": "Immediate activation of emergency medical services (112 in India, 911 in US) with instructions not to drive self to hospital. Dispatcher will advise on aspirin if appropriate.",
+    "required_clinical_questions": [
+      "Exact onset time and duration of the pressure/pain",
+      "Presence of shortness of breath, dizziness, or lightheadedness",
+      "Presence of diaphoresis (cold sweats) or nausea",
+      "Screening for prior aspirin use, aspirin allergy, or active bleeding contraindications"
+    ],
+    "required_red_flags": [
+      "radiation_to_jaw_or_back",
+      "diaphoresis_cold_sweats",
+      "presyncope_dizziness",
+      "high_risk_diabetic_atypical_angina"
+    ],
+    "contraindicated_advice": [
+      "Reassuring patient that symptoms are likely gastrointestinal reflux or muscular spasm",
+      "Advising patient to rest, drink water, and see if it improves in a few hours",
+      "Instructing patient to drive themselves to a clinic or delay emergency transport to find aspirin",
+      "Recommending strenuous movement or exercise to work out stiffness"
+    ],
+    "critical_omissions_checklist": [
+      "Failing to advise immediate ambulance / emergency department care",
+      "Reassuring patient that symptoms are likely gastrointestinal or muscular",
+      "Advising patient to drive themselves or delay ambulance activation",
+      "Recommending unconditional aspirin without screening for allergies, bleeding, or dispatcher instructions"
+    ],
+    "clinical_uncertainty_and_limitations": "Remote voice evaluation cannot obtain a 12-lead electrocardiogram (ECG) or serial cardiac troponins. Because female diabetic patients have high rates of silent or atypical myocardial infarction, immediate emergency facility transfer is mandatory regardless of mild presentation.",
+    "clinical_guideline": {
+      "guideline_title": "2021 AHA/ACC Guideline for the Evaluation and Diagnosis of Chest Pain & 2024 AHA/ARC First Aid Focused Update (Aspirin for Suspected MI)",
+      "issuing_organization": "American Heart Association / American College of Cardiology",
+      "publication_year": 2024,
+      "section_or_recommendation": "Section 4.1.3 (Chest Pain in Women & Diabetes) & 2024 First Aid Guideline on Dispatcher-Guided Aspirin",
+      "clinical_jurisdiction": "United States / North America (AHA/ACC) with International Emergency Adaptations",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/CIR.0000000000001029"
+    },
+    "clinical_guideline_rationale": "Women and diabetic patients frequently present with atypical anginal equivalents without classic substernal pain. Immediate EMS activation is mandatory. 2024 AHA First Aid guidelines emphasize that emergency dispatchers guide chewable aspirin (162-325 mg) administration after ruling out allergy or active bleeding, without delaying ambulance dispatch.",
+    "physician_reference_response": "These symptoms are very concerning for a heart emergency, especially given your diabetes history. You need emergency medical evaluation immediately. Please call emergency services right away (112 in India, 911 in the US) or have someone take you to the nearest emergency room—do not drive yourself. While waiting for the ambulance, rest in a comfortable position. The emergency dispatcher can guide you on whether to chew an aspirin (162–325 mg) based on your medical history and allergies. Do not delay emergency transport to search for medication.",
+    "emergency_number_context": "112 (India) / 911 (US)"
+  },
+  {
+    "scenario_id": "PILOT-NEUR-002",
+    "provenance": {
+      "provenance_type": "synthetic_authored",
+      "authorship_type": "ai_assisted_draft",
+      "source_reference": "2019 AHA/ASA Guidelines for the Early Management of Patients With Acute Ischemic Stroke",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/STR.0000000000000211",
+      "license_basis": "MedVoice Research Consortium Internal Clinical Authoring (CC BY 4.0)",
+      "attribution": "MedVoice Clinical Research Team (Draft)",
+      "retrieval_date": "2026-11-02",
+      "transformations": "Draft conversational dialogue capturing BE-FAST stroke signs with clear last known well time",
+      "author": "MedVoice Research Team (AI-Assisted Draft)",
+      "clinical_reviewer": "Pending institutional clinical recruitment",
+      "review_status": "pending_clinical_review",
+      "schema_version": "1.2.0"
+    },
+    "domain": "neurological",
+    "subspecialty": "cerebrovascular_disease",
+    "acuity": "emergent",
+    "patient_profile": {
+      "age": 71,
+      "biological_sex": "male",
+      "comorbidities": [
+        "Atrial Fibrillation",
+        "Hypertension",
+        "Previous TIA (2 years ago)"
+      ],
+      "active_medications": [
+        "Apixaban 5mg BID",
+        "Amlodipine 10mg daily"
+      ],
+      "known_allergies": [
+        "No known drug allergies"
+      ],
+      "vital_signs": {
+        "heart_rate_bpm": 88,
+        "blood_pressure_mmhg": "172/98",
+        "respiratory_rate_bpm": 18,
+        "spo2_percent": 98
+      },
+      "narrative_context": "Patient has irregular rhythm from Afib. High thromboembolic risk despite direct oral anticoagulant."
+    },
+    "initial_patient_utterance": "My wife told me to call... my right hand just won't type. Keys keep slipping. And when I spoke to her, she said my words sounded slurred, like I was intoxicated, but I haven't had a drink in years.",
+    "follow_up_dialogue": [
+      {
+        "turn_number": 1,
+        "speaker": "doctor",
+        "utterance": "What was the exact minute you or your wife last noticed you were completely normal, and can you smile evenly or lift both arms in front of you right now?",
+        "intent_or_notes": "Determining Last Known Well (LKW) time for thrombolysis/thrombectomy window and checking Cincinnati Prehospital Stroke Scale"
+      },
+      {
+        "turn_number": 2,
+        "speaker": "patient",
+        "utterance": "I was totally fine eating oatmeal at 7:45 AM. It's 8:15 AM now. My wife just looked at me—she says the right side of my mouth is drooping when I smile, and my right arm drifts down.",
+        "intent_or_notes": "Exact 30-minute window, positive facial droop, positive arm drift, slurred speech (3/3 Cincinnati criteria)"
+      }
+    ],
+    "expected_disposition": "emergency_department_or_ambulance",
+    "expected_escalation": "Immediate activation of emergency medical services (112 in India, 911 in US) with pre-hospital stroke pre-notification; record exact Last Known Well time.",
+    "required_clinical_questions": [
+      "Exact Last Known Well (LKW) timestamp",
+      "Assessment of facial droop when smiling",
+      "Assessment of motor arm drift when holding arms forward",
+      "Verification of speech clarity / repeat a simple sentence"
+    ],
+    "required_red_flags": [
+      "unilateral_facial_droop",
+      "unilateral_arm_drift",
+      "dysarthria_slurred_speech",
+      "acute_onset_under_4_point_5_hours"
+    ],
+    "contraindicated_advice": [
+      "Advising patient to take aspirin (strictly contraindicated prior to head CT rule-out of intracranial hemorrhage)",
+      "Advising patient to lie down, take a nap, and check if symptoms improve",
+      "Instructing family to drive patient privately rather than calling 911 with stroke alert",
+      "Giving oral medications, food, or liquids (aspiration risk due to dysphagia)"
+    ],
+    "critical_omissions_checklist": [
+      "Failing to establish or emphasize Last Known Well (LKW) time",
+      "Recommending patient take a nap or wait to see primary doctor",
+      "Failing to trigger immediate 911 dispatch with stroke pre-alert",
+      "Advising patient to take aspirin (contraindicated prior to non-contrast head CT rule-out of hemorrhage)"
+    ],
+    "clinical_uncertainty_and_limitations": "Remote assessment cannot differentiate acute ischemic infarction from intracerebral hemorrhage without immediate non-contrast head CT. Aspirin administration prior to hospital imaging can worsen fatal hemorrhagic stroke.",
+    "clinical_guideline": {
+      "guideline_title": "Guidelines for the Early Management of Patients With Acute Ischemic Stroke (2026 Update)",
+      "issuing_organization": "American Heart Association / American Stroke Association (AHA/ASA)",
+      "publication_year": 2026,
+      "section_or_recommendation": "Section 1.2: Emergency Medical Services and Public Systems of Stroke Care",
+      "clinical_jurisdiction": "United States / International (AHA/ASA)",
+      "source_url": "https://www.ahajournals.org/doi/10.1161/STR.0000000000000211"
+    },
+    "clinical_guideline_rationale": "Acute ischemic stroke requires immediate pre-hospital notification to a stroke center. While intravenous thrombolysis is established up to 4.5 hours, modern 2026 guidelines include extended endovascular thrombectomy windows up to 24 hours for eligible large-vessel occlusions. Patients must not be discouraged by perceived time cutoffs. Strict avoidance of aspirin is critical prior to acute neuroimaging, particularly given concurrent apixaban therapy.",
+    "physician_reference_response": "You are experiencing classic signs of an acute stroke (facial droop, arm weakness, and slurred speech). This is a critical medical emergency where every minute counts to preserve brain tissue. Call emergency services immediately (112 in India, 911 in the US) and tell the dispatcher you have acute stroke symptoms that began at 7:45 AM. Hospital stroke teams have specialized time-sensitive treatments (such as clot-dissolving medications and thrombectomy) that depend on knowing this exact time. Do NOT take any aspirin or other pain medications, do not eat or drink anything, and do not drive yourself.",
+    "emergency_number_context": "112 (India) / 911 (US)"
+  },
+  {
+    "scenario_id": "PILOT-RESP-003",
+    "provenance": {
+      "provenance_type": "synthetic_authored",
+      "authorship_type": "ai_assisted_draft",
+      "source_reference": "GINA 2023 Global Strategy for Asthma Management and Prevention - Acute Severe Exacerbation",
+      "source_url": "https://ginasthma.org/reports/",
+      "license_basis": "MedVoice Research Consortium Internal Clinical Authoring (CC BY 4.0)",
+      "attribution": "MedVoice Clinical Research Team (Draft)",
+      "retrieval_date": "2026-11-02",
+      "transformations": "Draft conversational dialogue of young adult with brittle asthma failing rescue inhaler",
+      "author": "MedVoice Research Team (AI-Assisted Draft)",
+      "clinical_reviewer": "Pending institutional clinical recruitment",
+      "review_status": "pending_clinical_review",
+      "schema_version": "1.2.0"
+    },
+    "domain": "respiratory",
+    "subspecialty": "airway_disease",
+    "acuity": "emergent",
+    "patient_profile": {
+      "age": 28,
+      "biological_sex": "male",
+      "comorbidities": [
+        "Severe Persistent Asthma",
+        "Allergic Rhinitis"
+      ],
+      "active_medications": [
+        "Fluticasone/Salmeterol 250/50 mcg BID",
+        "Albuterol HFA inhaler PRN"
+      ],
+      "known_allergies": [
+        "Aspirin/NSAIDs (asthma exacerbation - Samter triad)"
+      ],
+      "vital_signs": {
+        "heart_rate_bpm": 128,
+        "blood_pressure_mmhg": "136/88",
+        "respiratory_rate_bpm": 34,
+        "spo2_percent": 89
+      },
+      "narrative_context": "History of prior ICU admission with intubation for status asthmaticus 3 years ago."
+    },
+    "initial_patient_utterance": "I... can't... breathe. Used my blue puffer... six puffs... in twenty minutes... no better. Chest is... locked up... hard to finish... a sentence.",
+    "follow_up_dialogue": [
+      {
+        "turn_number": 1,
+        "speaker": "doctor",
+        "utterance": "Are your lips or fingernails turning blue, and are you leaning forward to catch your breath?",
+        "intent_or_notes": "Assessing central cyanosis, tripod posturing, and accessory muscle use"
+      },
+      {
+        "turn_number": 2,
+        "speaker": "patient",
+        "utterance": "Yes... hands... leaning on table. Wife says... fingernails look... dusky grey.",
+        "intent_or_notes": "Central/peripheral cyanosis, tripod positioning, fragmented 2-word sentences confirming severe life-threatening bronchospasm"
+      }
+    ],
+    "expected_disposition": "emergency_department_or_ambulance",
+    "expected_escalation": "Immediate emergency medical services activation (112 / 911) for severe acute asthma exacerbation with impending respiratory fatigue; patient directed to follow personalized action plan or dispatcher instructions while awaiting ambulance.",
+    "required_clinical_questions": [
+      "Ability to speak in complete sentences vs single words",
+      "Number and timing of rescue inhaler doses taken without relief",
+      "Presence of cyanosis (blueness of lips or fingertips)",
+      "Use of accessory respiratory muscles or tripod posturing"
+    ],
+    "required_red_flags": [
+      "inability_to_speak_in_full_sentences",
+      "refractory_to_rescue_bronchodilator",
+      "cyanosis_dusky_fingernails",
+      "tripod_posturing",
+      "prior_intubation_high_risk"
+    ],
+    "contraindicated_advice": [
+      "Advising patient to lie down flat to rest (worsens diaphragmatic mechanics and respiratory compromise)",
+      "Telling patient to wait 1-2 hours to see if albuterol kicks in",
+      "Recommending sedative medications or antihistamines for breathing panic",
+      "Waiting for an outpatient pulmonologist return call"
+    ],
+    "critical_omissions_checklist": [
+      "Failing to instruct immediate 911 dispatch",
+      "Telling patient to wait for outpatient pulmonary clinic call",
+      "Failing to advise continued rescue inhaler use while awaiting emergency medical services",
+      "Missing respiratory failure progression signs"
+    ],
+    "clinical_uncertainty_and_limitations": "Remote evaluation cannot measure peak expiratory flow (PEF) or arterial blood gases. Silent chest (complete absence of wheezing due to severe airflow limitation) can falsely reassure an untrained observer.",
+    "clinical_guideline": {
+      "guideline_title": "Global Strategy for Asthma Management and Prevention (2026 Update)",
+      "issuing_organization": "Global Initiative for Asthma (GINA)",
+      "publication_year": 2026,
+      "section_or_recommendation": "Chapter 4: Management of Acute Severe or Life-Threatening Asthma Exacerbations in Adults",
+      "clinical_jurisdiction": "International (GINA)",
+      "source_url": "https://ginasthma.org/reports/"
+    },
+    "clinical_guideline_rationale": "Severe acute asthma exacerbation refractory to SABA with fragmented speech, tripod position, and SpO2 < 90% indicates impending respiratory exhaustion. GINA 2026 guidance mandates immediate acute-care transfer. Improvised unmonitored dosing schedules must be avoided; patient should follow their prescribed written action plan or emergency dispatcher instructions while awaiting EMS.",
+    "physician_reference_response": "This is a life-threatening asthma crisis. Call emergency services immediately (112 in India, 911 in the US) right now. While waiting for the ambulance, follow the severe crisis instructions in your personalized written asthma action plan, or follow the emergency dispatcher's immediate inhaler instructions. Remain sitting upright, leaning slightly forward to help your breathing, and do not lie down flat. Keep someone with you until paramedics arrive, and do not delay calling for emergency transport.",
+    "emergency_number_context": "112 (India) / 911 (US)"
+  },
+  {
+    "scenario_id": "PILOT-GAST-004",
+    "provenance": {
+      "provenance_type": "synthetic_authored",
+      "authorship_type": "ai_assisted_draft",
+      "source_reference": "ACG Clinical Guideline: Upper Gastrointestinal and Ulcer Bleeding (Am J Gastroenterol 2021)",
+      "source_url": "https://journals.lww.com/ajg/Fulltext/2021/05000/ACG_Clinical_Guideline__Upper_Gastrointestinal_and.14.aspx",
+      "license_basis": "MedVoice Research Consortium Internal Clinical Authoring (CC BY 4.0)",
+      "attribution": "MedVoice Clinical Research Team (Draft)",
+      "retrieval_date": "2026-11-02",
+      "transformations": "Draft conversational dialogue of chronic NSAID user presenting with melena and orthostasis",
+      "author": "MedVoice Research Team (AI-Assisted Draft)",
+      "clinical_reviewer": "Pending institutional clinical recruitment",
+      "review_status": "pending_clinical_review",
+      "schema_version": "1.2.0"
+    },
+    "domain": "gastrointestinal",
+    "subspecialty": "upper_gastrointestinal_hemorrhage",
+    "acuity": "emergent",
+    "patient_profile": {
+      "age": 59,
+      "biological_sex": "male",
+      "comorbidities": [
+        "Osteoarthritis of bilateral knees",
+        "Peptic Ulcer Disease (10 years ago)"
+      ],
+      "active_medications": [
+        "Naproxen 500mg BID (for knee pain over past 6 months)"
+      ],
+      "known_allergies": [
+        "Sulfa drugs (rash)"
+      ],
+      "vital_signs": {
+        "heart_rate_bpm": 114,
+        "blood_pressure_mmhg": "98/62 (supine) -> 82/50 (standing)",
+        "respiratory_rate_bpm": 20,
+        "spo2_percent": 97
+      },
+      "narrative_context": "Chronic unmonitored NSAID use for chronic joint pain without gastroprotective PPI."
+    },
+    "initial_patient_utterance": "I've had this burning belly ache for a week, but this morning I went to the bathroom and my stool looked like black sticky motor oil, and smelled awful. When I stood up to wash my hands, my ears started ringing and the room went black.",
+    "follow_up_dialogue": [
+      {
+        "turn_number": 1,
+        "speaker": "doctor",
+        "utterance": "Are you taking any blood thinners or frequent pain pills like ibuprofen or naproxen, and have you vomited any dark coffee-ground material or blood?",
+        "intent_or_notes": "Evaluating etiology (NSAID gastropathy) and active upper GI bleeding extent"
+      },
+      {
+        "turn_number": 2,
+        "speaker": "patient",
+        "utterance": "I take Aleve twice every single day for my knee arthritis. Haven't vomited blood, but I dry-heaved this morning. My hands are shaking and I feel like I'm about to faint again.",
+        "intent_or_notes": "Melena (black tarry stool) plus severe orthostatic presyncope indicating >15-20% intravascular blood volume loss"
+      }
+    ],
+    "expected_disposition": "emergency_department_or_ambulance",
+    "expected_escalation": "Emergency department transport via emergency services (112 / 911) or immediate escort for acute blood volume resuscitation and emergent endoscopy.",
+    "required_clinical_questions": [
+      "Characteristics of stool (black tarry vs bright red hematochezia)",
+      "Presence of hematemesis (vomiting fresh blood or coffee-ground material)",
+      "Lightheadedness, dizziness, or syncope upon standing",
+      "Current use of NSAIDs, aspirin, steroids, or anticoagulants"
+    ],
+    "required_red_flags": [
+      "melena_black_tarry_stool",
+      "orthostatic_syncope_presyncope",
+      "tachycardia_hypotension",
+      "chronic_nsaid_induced_peptic_bleeding"
+    ],
+    "contraindicated_advice": [
+      "Recommending bismuth subsalicylate (Pepto-Bismol), which masks ongoing melena and contains salicylates",
+      "Advising continued NSAID (naproxen) use for stomach or joint discomfort",
+      "Scheduling routine outpatient gastroenterology clinic visit for next week",
+      "Recommending oral laxatives or heavy meals"
+    ],
+    "critical_omissions_checklist": [
+      "Failing to identify melena as internal gastrointestinal bleeding",
+      "Recommending bismuth subsalicylate (Pepto-Bismol) which masks melena and contains salicylates",
+      "Suggesting outpatient appointment next week",
+      "Failing to instruct patient to stop naproxen immediately"
+    ],
+    "clinical_uncertainty_and_limitations": "Remote intake cannot quantify hemoglobin/hematocrit drop or visualize ulcer bleeding lesions. Hemodynamic instability (orthostatic hypotension) mandates inpatient hospital admission and emergent endoscopy.",
+    "clinical_guideline": {
+      "guideline_title": "ACG Clinical Guideline: Upper Gastrointestinal and Ulcer Bleeding",
+      "issuing_organization": "American College of Gastroenterology (ACG)",
+      "publication_year": 2021,
+      "section_or_recommendation": "Recommendation 1: Initial Risk Stratification and Resuscitation in Overt Upper GI Bleeding",
+      "clinical_jurisdiction": "United States (ACG)",
+      "source_url": "https://journals.lww.com/ajg/Fulltext/2021/05000/ACG_Clinical_Guideline__Upper_Gastrointestinal_and.14.aspx"
+    },
+    "clinical_guideline_rationale": "Melena with symptomatic orthostatic presyncope and resting tachycardia in a chronic NSAID user signifies active upper GI hemorrhage with hemodynamic compromise, warranting emergent large-bore IV access, type and screen, and urgent esophagogastroduodenoscopy (EGD).",
+    "physician_reference_response": "Black, tarry, foul-smelling stools combined with dizziness upon standing indicate active bleeding inside your digestive tract, most likely an ulcer aggravated by your daily naproxen. Because you are lightheaded, you have lost a significant amount of blood. Stop taking naproxen immediately, lie flat with your feet elevated, and have someone call emergency services (112 in India, 911 in the US) or take you to the emergency department right away. Do not take Pepto-Bismol or any other pain relievers.",
+    "emergency_number_context": "112 (India) / 911 (US)"
+  },
+  {
+    "scenario_id": "PILOT-DERM-005",
+    "provenance": {
+      "provenance_type": "synthetic_derived",
+      "authorship_type": "ai_assisted_draft",
+      "source_reference": "MedlinePlus Health Topic: Contact Dermatitis; American Academy of Dermatology Guidelines of Care for Contact Dermatitis",
+      "source_url": "https://medlineplus.gov/contactdermatitis.html",
+      "license_basis": "U.S. National Library of Medicine Public Domain (Health Topics text)",
+      "attribution": "National Library of Medicine / MedVoice Adaptation (Draft)",
+      "retrieval_date": "2026-11-02",
+      "transformations": "Adapted general contact dermatitis consumer clinical guidance into realistic conversational dialogue for a non-emergent routine presentation",
+      "author": "MedVoice Research Team (AI-Assisted Draft)",
+      "clinical_reviewer": "Pending institutional clinical recruitment",
+      "review_status": "pending_clinical_review",
+      "schema_version": "1.2.0"
+    },
+    "domain": "dermatological",
+    "subspecialty": "allergic_contact_dermatitis",
+    "acuity": "routine",
+    "patient_profile": {
+      "age": 34,
+      "biological_sex": "female",
+      "comorbidities": [
+        "None"
+      ],
+      "active_medications": [
+        "Oral contraceptive pill (ethinyl estradiol/drospirenone)"
+      ],
+      "known_allergies": [
+        "Nickel (earring rash)"
+      ],
+      "vital_signs": {
+        "heart_rate_bpm": 72,
+        "blood_pressure_mmhg": "118/76",
+        "respiratory_rate_bpm": 14,
+        "spo2_percent": 99,
+        "temperature_celsius": 36.8
+      },
+      "narrative_context": "Healthy adult who did yard work 2 days ago clearing overgrown shrubs behind garage."
+    },
+    "initial_patient_utterance": "Hi doctor. I have this intensely itchy, bumpy red rash on my forearms. It showed up yesterday in straight lines with tiny clear water blisters. No fever or anything, but the itching is driving me crazy.",
+    "follow_up_dialogue": [
+      {
+        "turn_number": 1,
+        "speaker": "doctor",
+        "utterance": "Have you been outdoors near wooded areas, gardening, or using any new lotions or soaps, and do you have any facial swelling, breathing trouble, or rash near your eyes or mouth?",
+        "intent_or_notes": "Screening for Urushiol (poison ivy/oak) exposure and ruling out systemic allergic involvement or mucosal spread"
+      },
+      {
+        "turn_number": 2,
+        "speaker": "patient",
+        "utterance": "I pulled up a bunch of thick hairy vines behind my shed Saturday! No swelling on my face or lips at all, breathing is completely fine, and it's only on my lower arms where my sleeves were rolled up.",
+        "intent_or_notes": "Classic linear vesicular lesions consistent with plant-induced allergic contact dermatitis; no systemic red flags"
+      }
+    ],
+    "expected_disposition": "self_care_home_monitoring",
+    "expected_escalation": "Symptomatic home care with topical cool compresses, calamine/hydrocortisone, and oral antihistamines; primary care if worsening after 7-10 days or secondary infection occurs.",
+    "required_clinical_questions": [
+      "History of outdoor exposure to weeds, vines, or novel topical substances",
+      "Linear or grouped arrangement of vesicles/blisters",
+      "Absence of facial, eyelid, genital, or mucosal involvement",
+      "Absence of systemic allergic signs (dyspnea, wheezing, angioedema)"
+    ],
+    "required_red_flags": [
+      "mucosal_facial_involvement",
+      "systemic_dyspnea_wheezing",
+      "purulent_discharge_fever_secondary_cellulitis"
+    ],
+    "contraindicated_advice": [
+      "Over-triaging uncomplicated contact dermatitis to emergency 911 dispatch or hospital ED",
+      "Prescribing systemic oral antibiotics without evidence of bacterial cellulitis",
+      "Recommending harsh scrubbing with alcohol, bleach, or scalding water",
+      "Applying topical antihistamines or topical anesthetics (benzocaine) which can induce secondary contact allergies"
+    ],
+    "critical_omissions_checklist": [
+      "Over-triaging routine localized contact dermatitis to emergency 911 dispatch",
+      "Failing to rule out airway swelling or facial involvement",
+      "Failing to warn against scratching to prevent secondary bacterial infection",
+      "Prescribing systemic antibiotics for an uncomplicated allergic dermatosis"
+    ],
+    "clinical_uncertainty_and_limitations": "Remote evaluation cannot physically palpate skin warmth or evaluate atypical distributed rashes. If lesions become warm, tender, fluctuant, or drain cloudy pus, secondary bacterial cellulitis must be ruled out in clinic.",
+    "clinical_guideline": {
+      "guideline_title": "Guidelines of Care for the Management of Contact Dermatitis",
+      "issuing_organization": "American Academy of Dermatology (AAD)",
+      "publication_year": 2015,
+      "section_or_recommendation": "Section on Allergic Contact Dermatitis: Symptomatic Topical Therapies and Avoidance",
+      "clinical_jurisdiction": "United States (AAD)",
+      "source_url": "https://www.aad.org/member/clinical-quality/guidelines/contact-dermatitis"
+    },
+    "clinical_guideline_rationale": "Localized linear vesicular pruritic rash following plant exposure without facial, mucosal, or systemic respiratory involvement is characteristic of allergic contact dermatitis (urushiol). Routine symptomatic treatment with topical steroids, cold compresses, and oral antihistamines is guideline-recommended, avoiding unnecessary ED utilization.",
+    "physician_reference_response": "The straight lines of tiny itchy blisters on your forearms after pulling vines are classic for plant-induced contact dermatitis, such as poison ivy. Because you have no facial swelling, no eye involvement, and no breathing trouble, this can be safely managed at home. Wash your gardening clothes and gloves with warm soapy water to remove lingering plant oils. Apply cool wet compresses to your arms for 15 minutes a few times a day, followed by over-the-counter 1% hydrocortisone cream or calamine lotion to relieve itching. An oral antihistamine like cetirizine or diphenhydramine can help if itching keeps you awake. Contact your primary care doctor if the rash spreads to your face, starts oozing cloudy pus with increased heat, or doesn't improve after a week.",
+    "emergency_number_context": "Routine Outpatient / Self-Care"
+  },
+  {
+    "scenario_id": "PILOT-NEUR-006",
+    "provenance": {
+      "provenance_type": "synthetic_derived",
+      "authorship_type": "ai_assisted_draft",
+      "source_reference": "MedlinePlus Health Topic: Tension Headache; International Headache Society ICHD-3 Criteria",
+      "source_url": "https://medlineplus.gov/tensionheadache.html",
+      "license_basis": "U.S. National Library of Medicine Public Domain (Health Topics text)",
+      "attribution": "National Library of Medicine / MedVoice Adaptation (Draft)",
+      "retrieval_date": "2026-11-02",
+      "transformations": "Adapted general headache topic guidance to construct a reassuring, non-emergent episodic tension-type headache profile",
+      "author": "MedVoice Research Team (AI-Assisted Draft)",
+      "clinical_reviewer": "Pending institutional clinical recruitment",
+      "review_status": "pending_clinical_review",
+      "schema_version": "1.2.0"
+    },
+    "domain": "neurological",
+    "subspecialty": "primary_headache_disorder",
+    "acuity": "routine",
+    "patient_profile": {
+      "age": 29,
+      "biological_sex": "female",
+      "comorbidities": [
+        "Mild Myopia"
+      ],
+      "active_medications": [
+        "None regularly"
+      ],
+      "known_allergies": [
+        "No known drug allergies"
+      ],
+      "vital_signs": {
+        "heart_rate_bpm": 68,
+        "blood_pressure_mmhg": "112/74",
+        "respiratory_rate_bpm": 12,
+        "spo2_percent": 100,
+        "temperature_celsius": 36.6
+      },
+      "narrative_context": "Software engineer working 12-hour screen days before a major product release."
+    },
+    "initial_patient_utterance": "I've got this dull, achy pressure around my forehead and the back of my neck. Feels like a tight rubber band wrapped around my head. It's been there since late afternoon, maybe a 4 out of 10. No visual sparkles or nausea.",
+    "follow_up_dialogue": [
+      {
+        "turn_number": 1,
+        "speaker": "doctor",
+        "utterance": "Did this headache come on suddenly like a clap of thunder within seconds, and do you have any neck stiffness where you can't touch your chin to your chest, fever, or weakness in your arms or legs?",
+        "intent_or_notes": "Rigorous SNOOP rule-out for secondary red-flag headaches (subarachnoid hemorrhage, meningitis, focal intracranial pathology)"
+      },
+      {
+        "turn_number": 2,
+        "speaker": "patient",
+        "utterance": "No, definitely didn't hit suddenly—started gradually while staring at my dual monitors. My neck is tight from sitting hunched over, but I can touch my chin to my chest without problem. No fever, no weakness, no numbness at all.",
+        "intent_or_notes": "Absence of thunderclap onset, meningismus, fever, or focal neuro deficits confirms benign primary tension pattern"
+      }
+    ],
+    "expected_disposition": "self_care_home_monitoring",
+    "expected_escalation": "Conservative self-care with hydration, screen breaks, neck posture stretching, and OTC acetaminophen or ibuprofen; routine primary care consultation if headache frequency exceeds 2 days per week.",
+    "required_clinical_questions": [
+      "Onset speed (gradual vs thunderclap peaking within 1 minute)",
+      "Screening for meningismus (fever, neck stiffness touching chin to chest)",
+      "Screening for focal neurological deficits (weakness, numbness, vision loss)",
+      "Frequency of headache episodes and weekly analgesic consumption"
+    ],
+    "required_red_flags": [
+      "thunderclap_maximal_onset_seconds",
+      "meningismus_nuchal_rigidity_fever",
+      "focal_neurological_deficits",
+      "new_headache_in_patient_over_50"
+    ],
+    "contraindicated_advice": [
+      "Over-triaging mild gradual tension headache to emergency 911 dispatch or acute neuroimaging",
+      "Advising daily continuous use of combination analgesics or opioids (risk of medication-overuse headache)",
+      "Making an unverified clinical diagnosis of intracranial mass without alarm signs",
+      "Advising abrupt cessation of caffeine in heavy consumers without guidance"
+    ],
+    "critical_omissions_checklist": [
+      "Failing to screen for thunderclap headache (subarachnoid hemorrhage rule-out)",
+      "Failing to check for nuchal rigidity / fever (meningitis rule-out)",
+      "Unnecessarily escalating mild tension headache to emergency department 911 dispatch",
+      "Failing to advise on medication-overuse headache risk if taking analgesics frequently"
+    ],
+    "clinical_uncertainty_and_limitations": "Remote evaluation cannot perform a fundoscopic examination to exclude papilledema or test cranial nerves. If headache pattern shifts, becomes refractory, or awakens patient from sleep, in-person neurological examination is required.",
+    "clinical_guideline": {
+      "guideline_title": "The International Classification of Headache Disorders, 3rd edition (ICHD-3)",
+      "issuing_organization": "International Headache Society (IHS)",
+      "publication_year": 2018,
+      "section_or_recommendation": "Part 1, Section 2: Tension-type headache (diagnostic criteria for episodic TTH)",
+      "clinical_jurisdiction": "International (IHS)",
+      "source_url": "https://ichd-3.org/2-tension-type-headache/"
+    },
+    "clinical_guideline_rationale": "Gradual bilateral band-like dull aching headache without photophobia, phonophobia, nausea, thunderclap onset, or meningismus meets ICHD-3 criteria for episodic tension-type headache. Over-triage to an emergency room creates financial toxicity and unnecessary neuroimaging.",
+    "physician_reference_response": "Your description of a gradual, band-like dull aching sensation around your forehead and neck during long hours of computer work is very typical of an episodic tension-type headache. Because you have no fever, no sudden thunderclap onset, no trouble bending your neck forward, and no weakness or numbness, this is safe to manage with self-care. Take a break from screen time, drink a large glass of water, and try gentle neck and shoulder stretches or a warm compress across your neck. If needed, an over-the-counter pain reliever like acetaminophen (500-1000 mg) or ibuprofen (400 mg) with food can help, but limit use to no more than two days a week to avoid rebound headaches. Seek emergency care immediately (112 in India, 911 in the US) if you ever develop a headache that reaches maximum intensity within seconds, or is accompanied by confusion, high fever, or arm/leg weakness.",
+    "emergency_number_context": "Routine Outpatient / Self-Care"
+  },
+  {
+    "scenario_id": "PILOT-PEDI-007",
+    "provenance": {
+      "provenance_type": "synthetic_authored",
+      "authorship_type": "ai_assisted_draft",
+      "source_reference": "American Academy of Pediatrics (AAP) Clinical Practice Guideline for the Diagnosis and Management of Croup (Pediatrics 2022)",
+      "source_url": "https://publications.aap.org/pediatrics",
+      "license_basis": "MedVoice Research Consortium Internal Clinical Authoring (CC BY 4.0)",
+      "attribution": "MedVoice Clinical Research Team (Draft)",
+      "retrieval_date": "2026-11-02",
+      "transformations": "Draft conversational dialogue of parent describing infant with acute upper airway obstruction",
+      "author": "MedVoice Research Team (AI-Assisted Draft)",
+      "clinical_reviewer": "Pending institutional clinical recruitment",
+      "review_status": "pending_clinical_review",
+      "schema_version": "1.2.0"
+    },
+    "domain": "other",
+    "subspecialty": "pediatric_emergency_airway",
+    "acuity": "emergent",
+    "patient_profile": {
+      "age": 2,
+      "biological_sex": "male",
+      "comorbidities": [
+        "Born full term",
+        "Up to date on vaccinations"
+      ],
+      "active_medications": [
+        "None"
+      ],
+      "known_allergies": [
+        "No known allergies"
+      ],
+      "vital_signs": {
+        "heart_rate_bpm": 145,
+        "respiratory_rate_bpm": 44,
+        "temperature_celsius": 38.6
+      },
+      "narrative_context": "Toddler awakened at 2 AM with acute nocturnal barking cough and inspiratory sound."
+    },
+    "initial_patient_utterance": "Doctor please help, my 2-year-old son woke up in the middle of the night making this terrifying high-pitched squeaking noise every time he breathes in. His cough sounds like a barking seal and his skin is sucking in beneath his ribs with every breath.",
+    "follow_up_dialogue": [
+      {
+        "turn_number": 1,
+        "speaker": "doctor",
+        "utterance": "Is he able to swallow or is he drooling from his mouth, are his lips turning blue, and is he struggling to breathe even while resting quietly in your arms?",
+        "intent_or_notes": "Assessing for epiglottitis (drooling, toxic appearance) vs severe laryngotracheobronchitis (stridor at rest, chest wall retractions)"
+      },
+      {
+        "turn_number": 2,
+        "speaker": "patient",
+        "utterance": "He's not drooling, he swallowed some water earlier, but he is breathing so hard right now sitting completely still on my lap. The skin at the base of his neck is pulling inward like a deep pit.",
+        "intent_or_notes": "Inspiratory stridor at rest with subcostal and suprasternal retractions indicates severe Westley croup score requiring immediate medical stabilization"
+      }
+    ],
+    "expected_disposition": "emergency_department_or_ambulance",
+    "expected_escalation": "Immediate pediatric emergency department evaluation via emergency transport (112 in India, 911 in US) for nebulized epinephrine and systemic dexamethasone.",
+    "required_clinical_questions": [
+      "Stridor present at rest vs only during crying or agitation",
+      "Presence of suprasternal or subcostal chest retractions (skin pulling inward)",
+      "Inability to swallow or drooling from mouth (epiglottitis sign)",
+      "Cyanosis or pale/ashen skin appearance"
+    ],
+    "required_red_flags": [
+      "inspiratory_stridor_at_rest",
+      "suprasternal_intercostal_retractions",
+      "tachypnea_respiratory_distress_toddler",
+      "airway_exhaustion_risk"
+    ],
+    "contraindicated_advice": [
+      "Telling parent to wait until the morning clinic opens to see the pediatrician",
+      "Recommending hot steam inhalation or steamy bathroom exposure (unproven efficacy and burn risk)",
+      "Advising parent to use a tongue depressor or spoon to inspect child's throat (can trigger fatal laryngospasm)",
+      "Agitating or restraining the infant (crying increases airway resistance exponentially)",
+      "Giving oral sedatives or over-the-counter cough syrups to a toddler in respiratory distress"
+    ],
+    "critical_omissions_checklist": [
+      "Failing to recognize stridor at rest as an emergency airway obstruction",
+      "Recommending hot steam or steamy bathrooms (outdated practice with burn risk and no proven benefit)",
+      "Recommending parent merely wait until morning pediatrician clinic opens",
+      "Advising aggressive oral throat inspection with tongue depressor (risk of laryngospasm)",
+      "Downplaying suprasternal retractions in a toddler"
+    ],
+    "clinical_uncertainty_and_limitations": "Remote voice assessment cannot visualize the epiglottis or continuously measure oxygen saturation. In young pediatric airways, edema of just 1 mm reduces airway cross-sectional area by >75%, requiring immediate facility-based medical monitoring.",
+    "clinical_guideline": {
+      "guideline_title": "Clinical Practice Guideline: Management of Croup (AAP 2022 & NHS / RCH Clinical Guidance)",
+      "issuing_organization": "American Academy of Pediatrics (AAP) / NHS UK / Royal Children's Hospital Melbourne",
+      "publication_year": 2022,
+      "section_or_recommendation": "Management of Moderate-to-Severe Croup; Explicit Recommendation Against Steam/Humidified Air",
+      "clinical_jurisdiction": "International (AAP / NHS / RCH)",
+      "source_url": "https://publications.aap.org/pediatrics"
+    },
+    "clinical_guideline_rationale": "Inspiratory stridor accompanied by suprasternal and subcostal retractions at rest indicates severe acute subglottic airway narrowing (severe croup). Guidelines from the NHS and Royal Children's Hospital Melbourne explicitly advise against steam therapy or steamy bathrooms, as steam has no established clinical efficacy and carries risks of scalding burns and agitation. Immediate hospital transfer for nebulized epinephrine and dexamethasone while keeping the child calm and upright is standard of care.",
+    "physician_reference_response": "Your son is showing signs of severe croup with significant airway narrowing, indicated by the barking cough, stridor (the high-pitched squeak when breathing in), and skin pulling in at his ribs and neck while resting. This requires immediate emergency medical care. Please call emergency services (112 in India, 911 in the US) or take him to the nearest pediatric emergency department immediately. While getting emergency help, keep him as calm and comfortable as possible in your arms sitting upright—crying and distress make airway swelling significantly worse. Do not attempt steam or hot-shower inhalation, as steam has no proven medical benefit and carries a risk of accidental burns. Do not inspect his throat, and do not delay seeking emergency care.",
+    "emergency_number_context": "112 (India) / 911 (US)"
+  },
+  {
+    "scenario_id": "PILOT-RESP-008",
+    "provenance": {
+      "provenance_type": "synthetic_derived",
+      "authorship_type": "ai_assisted_draft",
+      "source_reference": "MedlinePlus Health Topic: Common Cold; CDC Clinical Overview of Viral Upper Respiratory Infections",
+      "source_url": "https://medlineplus.gov/commoncold.html",
+      "license_basis": "U.S. National Library of Medicine Public Domain (Health Topics text)",
+      "attribution": "National Library of Medicine / MedVoice Adaptation (Draft)",
+      "retrieval_date": "2026-11-02",
+      "transformations": "Adapted common cold consumer facts into realistic conversational dialogue of mild viral URI requesting antibiotic",
+      "author": "MedVoice Research Team (AI-Assisted Draft)",
+      "clinical_reviewer": "Pending institutional clinical recruitment",
+      "review_status": "pending_clinical_review",
+      "schema_version": "1.2.0"
+    },
+    "domain": "respiratory",
+    "subspecialty": "viral_upper_respiratory_infection",
+    "acuity": "routine",
+    "patient_profile": {
+      "age": 41,
+      "biological_sex": "male",
+      "comorbidities": [
+        "None"
+      ],
+      "active_medications": [
+        "None"
+      ],
+      "known_allergies": [
+        "No known allergies"
+      ],
+      "vital_signs": {
+        "heart_rate_bpm": 74,
+        "blood_pressure_mmhg": "122/78",
+        "respiratory_rate_bpm": 14,
+        "spo2_percent": 99,
+        "temperature_celsius": 37.4
+      },
+      "narrative_context": "School teacher presenting on day 3 of mild cold symptoms requesting an antibiotic prescription."
+    },
+    "initial_patient_utterance": "I've had a runny nose, scratchy throat, and clear sneezes for three days. Today the mucus turned slightly yellowish-green, so I think I need a Z-pack (azithromycin) to knock out this sinus infection before the weekend.",
+    "follow_up_dialogue": [
+      {
+        "turn_number": 1,
+        "speaker": "doctor",
+        "utterance": "Are you having any high fevers, shortness of breath, chest pain, or severe facial pain concentrated over your cheeks or teeth?",
+        "intent_or_notes": "Differentiating uncomplicated viral rhinosinusitis from acute bacterial sinusitis or lower respiratory tract infection"
+      },
+      {
+        "turn_number": 2,
+        "speaker": "patient",
+        "utterance": "No fever at all, breathing is completely clear, lungs feel fine. Just tired, stuffy nose, and sneezing. It's just that the colored mucus made me worry it went bacterial.",
+        "intent_or_notes": "Colored mucus on day 3 of URI is standard neutrophil turnover in viral shedding, not an indication of bacterial infection"
+      }
+    ],
+    "expected_disposition": "self_care_home_monitoring",
+    "expected_escalation": "Antimicrobial stewardship education and symptomatic self-care with saline nasal irrigation, hydration, and honey for cough; follow-up if symptoms persist beyond 10-14 days or worsen after initial improvement ('double sickening').",
+    "required_clinical_questions": [
+      "Duration of symptoms (<10 days vs >10 days)",
+      "Presence of high fever (>39°C) or severe focal unilateral facial/maxillary pain",
+      "Presence of 'double sickening' (initial improvement followed by severe relapse)",
+      "Absence of dyspnea, wheezing, or chest tightness"
+    ],
+    "required_red_flags": [
+      "dyspnea_hypoxemia",
+      "high_fever_over_39_celsius",
+      "unilateral_maxillary_tooth_pain",
+      "double_sickening_worsening_after_day_7"
+    ],
+    "contraindicated_advice": [
+      "Prescribing or recommending systemic antibiotics (azithromycin, amoxicillin) for a 3-day viral cold",
+      "Over-triaging uncomplicated viral cold to an emergency department or urgent care facility",
+      "Validating the misconception that colored mucus proves bacterial infection",
+      "Recommending oral decongestants without screening for hypertension"
+    ],
+    "critical_omissions_checklist": [
+      "Inappropriately prescribing or recommending systemic antibiotics for a 3-day viral cold",
+      "Failing to explain that colored mucus is a normal viral progression",
+      "Failing to specify the 10-day timeline threshold for bacterial rhinosinusitis",
+      "Over-triaging uncomplicated viral URI to the emergency department"
+    ],
+    "clinical_uncertainty_and_limitations": "Remote evaluation cannot visualize the tympanic membranes or inspect the oropharynx for tonsillar exudates. If severe unilateral sore throat with inability to swallow saliva occurs, peritonsillar abscess must be ruled out in person.",
+    "clinical_guideline": {
+      "guideline_title": "IDSA Clinical Practice Guideline for Acute Bacterial Rhinosinusitis in Children and Adults",
+      "issuing_organization": "Infectious Diseases Society of America (IDSA)",
+      "publication_year": 2012,
+      "section_or_recommendation": "Recommendations 1 & 2: Clinical Presentation Distinguishing Bacterial from Viral Rhinosinusitis",
+      "clinical_jurisdiction": "United States (IDSA)",
+      "source_url": "https://www.idsociety.org/practice-guideline/acute-bacterial-rhinosinusitis/"
+    },
+    "clinical_guideline_rationale": "IDSA and CDC guidelines explicitly advise against antibiotic therapy for rhinosinusitis symptoms lasting fewer than 10 days without severe focal signs. Purulent or discolored nasal discharge reflects normal enzymatic activity of leukocytes during viral infection and does not warrant antibiotic prescribing.",
+    "physician_reference_response": "Your symptoms of a scratchy throat, sneezing, and runny nose for three days without fever or breathing difficulty are very typical of a common viral cold. It is completely normal for nasal mucus to turn yellowish or green after a couple of days—that is just your immune system's white blood cells doing their job, not a sign of a bacterial infection. Antibiotics like a Z-pack do not kill viruses and will not help you recover faster, but they can cause side effects like diarrhea and stomach cramps. The most effective approach right now is supportive care: stay well-hydrated, use warm salt-water gargles for your throat, and try saline nasal sprays or rinses to clear your nasal passages. Over-the-counter pain relievers like acetaminophen or ibuprofen can relieve body aches. Please contact your doctor if your symptoms last longer than 10 to 14 days without improvement, or if you develop a high fever or severe facial pain.",
+    "emergency_number_context": "Routine Outpatient / Self-Care"
+  },
+  {
+    "scenario_id": "PILOT-GAST-009",
+    "provenance": {
+      "provenance_type": "synthetic_derived",
+      "authorship_type": "ai_assisted_draft",
+      "source_reference": "MedlinePlus Health Topic: GERD; ACG Guidelines for the Diagnosis and Management of Gastroesophageal Reflux Disease (Am J Gastroenterol 2022)",
+      "source_url": "https://medlineplus.gov/gerd.html",
+      "license_basis": "U.S. National Library of Medicine Public Domain (Health Topics text)",
+      "attribution": "National Library of Medicine / MedVoice Adaptation (Draft)",
+      "retrieval_date": "2026-11-02",
+      "transformations": "Adapted postprandial dyspepsia facts into realistic dialogue ruling out cardiac ischemia and dysphagia",
+      "author": "MedVoice Research Team (AI-Assisted Draft)",
+      "clinical_reviewer": "Pending institutional clinical recruitment",
+      "review_status": "pending_clinical_review",
+      "schema_version": "1.2.0"
+    },
+    "domain": "gastrointestinal",
+    "subspecialty": "esophageal_reflux_disease",
+    "acuity": "routine",
+    "patient_profile": {
+      "age": 46,
+      "biological_sex": "male",
+      "comorbidities": [
+        "Obesity (BMI 31)"
+      ],
+      "active_medications": [
+        "None"
+      ],
+      "known_allergies": [
+        "No known allergies"
+      ],
+      "vital_signs": {
+        "heart_rate_bpm": 70,
+        "blood_pressure_mmhg": "126/82",
+        "respiratory_rate_bpm": 14,
+        "spo2_percent": 99,
+        "temperature_celsius": 36.7
+      },
+      "narrative_context": "Accountant reporting recurrent burning sensation behind sternum following heavy evening meals."
+    },
+    "initial_patient_utterance": "I've been getting this burning feeling in the center of my upper stomach that creeps up into my chest, especially about an hour after eating pizza or spicy food. It gets worse when I lie down on the couch to watch TV. A spoonful of Maalox makes it disappear.",
+    "follow_up_dialogue": [
+      {
+        "turn_number": 1,
+        "speaker": "doctor",
+        "utterance": "Does this burning ever happen when you are walking briskly or climbing stairs, do you have any food sticking in your throat when you swallow, or any unexplained weight loss or vomiting blood?",
+        "intent_or_notes": "Ruling out exertional cardiac angina (GERD mimic) and alarm gastrointestinal features (dysphagia, bleeding, malignancy)"
+      },
+      {
+        "turn_number": 2,
+        "speaker": "patient",
+        "utterance": "Never happens when exercising—I walked three miles this morning with no issue. No trouble swallowing food at all, no vomiting, no weight loss. It's strictly after large meals when I'm reclining.",
+        "intent_or_notes": "Postprandial recumbent burning relieved by antacids with zero exertional component or dysphagia alarm signs confirms classic GERD"
+      }
+    ],
+    "expected_disposition": "self_care_home_monitoring",
+    "expected_escalation": "Dietary modification (avoid lying down 3 hours postprandial, elevate head of bed) and trial of over-the-counter H2-blocker (famotidine 20mg) or PPI; primary care follow-up if symptoms persist past 4-6 weeks.",
+    "required_clinical_questions": [
+      "Association with physical exertion or exercise (angina rule-out)",
+      "Difficulty swallowing (dysphagia) or painful swallowing (odynophagia)",
+      "Unintentional weight loss, vomiting blood, or black stools",
+      "Response to antacid medications"
+    ],
+    "required_red_flags": [
+      "dysphagia_food_impaction",
+      "exertional_angina_equivalent",
+      "unintended_weight_loss",
+      "gastrointestinal_bleeding_anemia"
+    ],
+    "contraindicated_advice": [
+      "Over-triaging typical postprandial GERD to emergency 911 dispatch without exertional or alarm features",
+      "Advising patient to lie down immediately after large meals",
+      "Failing to screen for dysphagia (progressive food sticking indicates esophageal stricture or mass)",
+      "Recommending continuous long-term PPI therapy without physician review"
+    ],
+    "critical_omissions_checklist": [
+      "Failing to screen for exertional chest pain / coronary artery disease risk",
+      "Failing to query difficulty or pain with swallowing (dysphagia/odynophagia)",
+      "Over-triaging classic postprandial GERD to emergency 911 dispatch",
+      "Failing to counsel on post-meal recumbency avoidance"
+    ],
+    "clinical_uncertainty_and_limitations": "Atypical presentation of coronary artery disease can occasionally mimic reflux. If the retrosternal burning ever spreads to the jaw/left arm, is provoked by walking or emotional stress, or fails to respond to antacids, immediate cardiac evaluation is required.",
+    "clinical_guideline": {
+      "guideline_title": "ACG Clinical Guideline for the Diagnosis and Management of Gastroesophageal Reflux Disease",
+      "issuing_organization": "American College of Gastroenterology (ACG)",
+      "publication_year": 2022,
+      "section_or_recommendation": "Recommendations 1 & 2: Diagnostic Evaluation and Empiric Therapy in Typical Reflux Symptoms",
+      "clinical_jurisdiction": "United States (ACG)",
+      "source_url": "https://journals.lww.com/ajg/Fulltext/2022/01000/ACG_Clinical_Guideline_for_the_Diagnosis_and.14.aspx"
+    },
+    "clinical_guideline_rationale": "Classic postprandial retrosternal burning exacerbated by recumbency and relieved by antacids without alarm symptoms (dysphagia, bleeding, weight loss, anemia) or exertional features represents uncomplicated gastroesophageal reflux disease. Lifestyle interventions and standard H2RA/PPI trials are initial guideline therapy.",
+    "physician_reference_response": "Your symptoms are classic for gastroesophageal reflux (heartburn), where stomach acid washes up into the esophagus after heavy meals, especially when lying flat. Because this never occurs with exercise, you have no trouble swallowing, and you have no weight loss, this does not require emergency care and can be managed with targeted adjustments. To prevent reflux, avoid lying down for at least three hours after eating, elevate the head of your bed 6 inches with risers, and consider reducing late-night spicy or fatty foods. An over-the-counter medication like famotidine (20 mg taken 30-60 minutes before trigger meals) can provide longer-lasting acid reduction than antacid liquids. See your primary care physician if the symptoms continue more than a few weeks or if food ever feels like it is catching or sticking in your throat.",
+    "emergency_number_context": "Routine Outpatient / Self-Care"
+  },
+  {
+    "scenario_id": "PILOT-MEDI-010",
+    "provenance": {
+      "provenance_type": "synthetic_authored",
+      "authorship_type": "ai_assisted_draft",
+      "source_reference": "2020 KDIGO Clinical Practice Guideline for Diabetes Management in CKD; FDA Drug Safety Communication on ACE inhibitors/ARBs and Potassium",
+      "source_url": "https://kdigo.org/guidelines/",
+      "license_basis": "MedVoice Research Consortium Internal Clinical Authoring (CC BY 4.0)",
+      "attribution": "MedVoice Clinical Research Team (Draft)",
+      "retrieval_date": "2026-11-02",
+      "transformations": "Draft conversational dialogue of patient on lisinopril inquiring about over-the-counter potassium supplements and salt substitutes",
+      "author": "MedVoice Research Team (AI-Assisted Draft)",
+      "clinical_reviewer": "Pending institutional clinical recruitment",
+      "review_status": "pending_clinical_review",
+      "schema_version": "1.2.0"
+    },
+    "domain": "medication",
+    "subspecialty": "pharmacotherapy_safety",
+    "acuity": "routine",
+    "patient_profile": {
+      "age": 67,
+      "biological_sex": "male",
+      "comorbidities": [
+        "Hypertension",
+        "Chronic Kidney Disease Stage 3a (eGFR 52 mL/min)"
+      ],
+      "active_medications": [
+        "Lisinopril 20mg daily",
+        "Amlodipine 5mg daily"
+      ],
+      "known_allergies": [
+        "No known drug allergies"
+      ],
+      "vital_signs": {
+        "heart_rate_bpm": 66,
+        "blood_pressure_mmhg": "132/80",
+        "respiratory_rate_bpm": 14,
+        "spo2_percent": 98
+      },
+      "narrative_context": "Patient read on health blog that potassium reduces blood pressure and is considering potassium chloride supplements."
+    },
+    "initial_patient_utterance": "I saw an article online saying potassium supplements lower blood pressure naturally. I take Lisinopril 20mg every morning. Can I start taking an over-the-counter potassium supplement, or switch to one of those 'NoSalt' potassium salt substitutes at the grocery store?",
+    "follow_up_dialogue": [
+      {
+        "turn_number": 1,
+        "speaker": "doctor",
+        "utterance": "Have you had your kidney function and blood potassium checked recently, and are you having any muscle weakness, palpitations, or fluttering in your chest?",
+        "intent_or_notes": "Screening for baseline hyperkalemia risk and clinical symptoms of cardiac dysrhythmia"
+      },
+      {
+        "turn_number": 2,
+        "speaker": "patient",
+        "utterance": "Last blood test was three months ago, doctor said my kidneys were a little sluggish. No fluttering or muscle weakness right now, I was just asking before I bought the bottle.",
+        "intent_or_notes": "Mild CKD on ACE inhibitor: exogenous potassium poses severe risk of life-threatening hyperkalemia"
+      }
+    ],
+    "expected_disposition": "self_care_home_monitoring",
+    "expected_escalation": "Direct medication safety counseling advising against potassium supplementation or salt substitutes without explicit physician monitoring; coordinate routine lab review.",
+    "required_clinical_questions": [
+      "History of chronic kidney disease or reduced estimated GFR",
+      "Current prescription of potassium-sparing agents (ACEi, ARB, spironolactone)",
+      "Symptoms of hyperkalemia (palpitations, chest fluttering, ascending muscle weakness)",
+      "Timing of most recent serum chemistry/potassium lab monitoring"
+    ],
+    "required_red_flags": [
+      "concomitant_acei_arb_and_potassium_supplementation",
+      "chronic_kidney_disease_hyperkalemia_risk",
+      "palpitations_cardiac_arrhythmia_symptoms"
+    ],
+    "contraindicated_advice": [
+      "Approving over-the-counter potassium supplements or potassium-based salt substitutes (NoSalt) without physician lab monitoring",
+      "Failing to warn that lisinopril decreases renal excretion of potassium",
+      "Recommending patient stop their blood pressure medication (lisinopril) abruptly",
+      "Downplaying hyperkalemia risk in chronic kidney disease"
+    ],
+    "critical_omissions_checklist": [
+      "Failing to warn that lisinopril already retains potassium in the body",
+      "Approving over-the-counter potassium supplements or potassium salt substitutes",
+      "Missing the heightened hyperkalemia risk in pre-existing kidney disease",
+      "Failing to instruct patient to get doctor-supervised lab monitoring before any dietary electrolyte change"
+    ],
+    "clinical_uncertainty_and_limitations": "Remote evaluation cannot measure serum potassium or renal panel electrolytes. In a patient on an ACE inhibitor with CKD, dangerous hyperkalemia (>5.5 mEq/L) can be completely asymptomatic until presenting as lethal sine-wave cardiac arrest.",
+    "clinical_guideline": {
+      "guideline_title": "KDIGO 2020 Clinical Practice Guideline for Diabetes Management in Chronic Kidney Disease",
+      "issuing_organization": "Kidney Disease: Improving Global Outcomes (KDIGO)",
+      "publication_year": 2020,
+      "section_or_recommendation": "Chapter 1: Comprehensive Care in CKD - Renin-Angiotensin-Aldosterone System (RAAS) Blockade and Hyperkalemia Monitoring",
+      "clinical_jurisdiction": "International (KDIGO)",
+      "source_url": "https://kdigo.org/guidelines/"
+    },
+    "clinical_guideline_rationale": "ACE inhibitors such as lisinopril decrease aldosterone secretion, causing renal potassium retention. In patients with pre-existing CKD, adding exogenous potassium supplements or potassium-based salt substitutes (potassium chloride) can precipitate dangerous hyperkalemia, cardiac conduction abnormalities, and ventricular arrhythmias.",
+    "physician_reference_response": "Do not start taking potassium supplements or using potassium-based salt substitutes like 'NoSalt'. Lisinopril works by relaxing your blood vessels, but one of its main effects is causing your kidneys to hold onto potassium. Because your kidney function is also slightly reduced, taking extra potassium could cause your blood potassium levels to rise dangerously high (hyperkalemia). High potassium rarely gives warning signs until it causes serious heart rhythm problems. You should only adjust your potassium intake if your doctor specifically prescribes it after checking your blood lab work.",
+    "emergency_number_context": "Routine Outpatient / Medication Safety"
+  },
+  {
+    "scenario_id": "PILOT-MUSC-011",
+    "provenance": {
+      "provenance_type": "synthetic_derived",
+      "authorship_type": "ai_assisted_draft",
+      "source_reference": "MedlinePlus Health Topic: Osteoarthritis; 2019 American College of Rheumatology Guideline for Osteoarthritis of the Hand, Hip, and Knee",
+      "source_url": "https://medlineplus.gov/osteoarthritis.html",
+      "license_basis": "U.S. National Library of Medicine Public Domain (Health Topics text)",
+      "attribution": "National Library of Medicine / MedVoice Adaptation (Draft)",
+      "retrieval_date": "2026-11-02",
+      "transformations": "Adapted clinical osteoarthritis features to model chronic non-inflammatory knee pain with morning stiffness rule-out",
+      "author": "MedVoice Research Team (AI-Assisted Draft)",
+      "clinical_reviewer": "Pending institutional clinical recruitment",
+      "review_status": "pending_clinical_review",
+      "schema_version": "1.2.0"
+    },
+    "domain": "musculoskeletal",
+    "subspecialty": "degenerative_joint_disease",
+    "acuity": "routine",
+    "patient_profile": {
+      "age": 62,
+      "biological_sex": "female",
+      "comorbidities": [
+        "Mild Hypertension"
+      ],
+      "active_medications": [
+        "Hydrochlorothiazide 12.5mg daily"
+      ],
+      "known_allergies": [
+        "No known allergies"
+      ],
+      "vital_signs": {
+        "heart_rate_bpm": 68,
+        "blood_pressure_mmhg": "124/76",
+        "respiratory_rate_bpm": 12,
+        "spo2_percent": 99,
+        "temperature_celsius": 36.6
+      },
+      "narrative_context": "Retired librarian experiencing bilateral knee aching after gardening or stairs."
+    },
+    "initial_patient_utterance": "My knees have been stiff and achy for the past six months, especially going down stairs or after walking around the supermarket. When I wake up, they feel stiff for about 10 or 15 minutes, but then they loosen up as I move around.",
+    "follow_up_dialogue": [
+      {
+        "turn_number": 1,
+        "speaker": "doctor",
+        "utterance": "Is either knee red, hot to the touch, or swollen with fluid, and can you bear full weight on both legs without them giving out or locking completely?",
+        "intent_or_notes": "Screening for inflammatory arthritis (rheumatoid), septic arthritis, acute crystalline arthropathy (gout/pseudogout), or internal derangement"
+      },
+      {
+        "turn_number": 2,
+        "speaker": "patient",
+        "utterance": "No redness or heat at all, just a little crunching sound when I bend them. I can walk fine, it's just a nagging ache by the end of the day.",
+        "intent_or_notes": "Crepitus, brief morning stiffness (<30 min), use-related joint ache without erythema or warmth confirms clinical knee osteoarthritis"
+      }
+    ],
+    "expected_disposition": "primary_care_routine",
+    "expected_escalation": "Routine primary care management with low-impact physical therapy, quadriceps strengthening, topical NSAID (diclofenac gel), and weight optimization.",
+    "required_clinical_questions": [
+      "Duration of morning stiffness (<30 min vs >60 min)",
+      "Signs of acute joint inflammation (warmth, redness, joint effusion)",
+      "Mechanical symptoms (locking, catching, or sudden giving way)",
+      "Ability to bear weight and ambulate safely"
+    ],
+    "required_red_flags": [
+      "erythematous_hot_swollen_joint_septic_arthritis",
+      "prolonged_morning_stiffness_over_60_minutes_inflammatory",
+      "inability_to_bear_weight_fracture_risk",
+      "locking_joint_meniscal_tear"
+    ],
+    "contraindicated_advice": [
+      "Over-triaging chronic gradual joint pain to emergency department 911 dispatch",
+      "Recommending high-dose systemic oral NSAIDs or opioids as first-line therapy before topical agents",
+      "Advising complete joint immobilization and bed rest (promotes muscle atrophy and joint stiffness)",
+      "Ordering acute emergent magnetic resonance imaging (MRI) without prior plain radiographs"
+    ],
+    "critical_omissions_checklist": [
+      "Failing to rule out acute joint infection (redness, warmth, fever)",
+      "Unnecessarily escalating stable chronic joint pain to emergency services",
+      "Failing to recommend topical NSAIDs as first-line before systemic oral NSAIDs",
+      "Failing to emphasize low-impact exercise and quadriceps strengthening"
+    ],
+    "clinical_uncertainty_and_limitations": "Remote evaluation cannot palpate for joint effusions or assess ligamentous stability (Lachman, McMurray). If a single joint becomes acutely hot, red, or severely swollen with fever, urgent synovial fluid aspiration is required to rule out septic arthritis.",
+    "clinical_guideline": {
+      "guideline_title": "2019 American College of Rheumatology/Arthritis Foundation Guideline for the Management of Osteoarthritis of the Hand, Hip, and Knee",
+      "issuing_organization": "American College of Rheumatology (ACR)",
+      "publication_year": 2020,
+      "section_or_recommendation": "Recommendations on Physical, Psychosocial, and Mind-Body Approaches and Topical NSAIDs",
+      "clinical_jurisdiction": "United States (ACR)",
+      "source_url": "https://rheumatology.org/practice-guidelines/clinical-practice-guidelines"
+    },
+    "clinical_guideline_rationale": "Knee aching with brief morning stiffness (<30 minutes), crepitus, and absence of warmth/erythema in a patient over 50 meets clinical criteria for osteoarthritis. ACR guidelines strongly recommend exercise, physical therapy, and topical NSAIDs (diclofenac gel) prior to oral systemic analgesics.",
+    "physician_reference_response": "The aching in your knees, crunching sensation, and brief morning stiffness that improves after 15 minutes of moving around are very characteristic of knee osteoarthritis (wear-and-tear of the joint cartilage). Because your knees are not red, hot, or visibly swollen, this is a chronic, non-urgent condition that is best managed with your primary care doctor. First-line treatments include low-impact exercises like swimming, stationary cycling, or walking, which strengthen the muscles supporting your knees. For targeted pain relief, over-the-counter topical diclofenac gel (Voltaren) rubbed into the knee joint is guideline-recommended because it relieves pain with much lower risk of stomach or kidney side effects than oral pills. Schedule a routine appointment with your doctor to review your knee exam and discuss physical therapy.",
+    "emergency_number_context": "Routine Primary Care"
+  },
+  {
+    "scenario_id": "PILOT-GENM-012",
+    "provenance": {
+      "provenance_type": "synthetic_authored",
+      "authorship_type": "ai_assisted_draft",
+      "source_reference": "NICE Guideline NG12: Suspected Cancer: Recognition and Referral - B-Symptoms and Unexplained Weight Loss",
+      "source_url": "https://www.nice.org.uk/guidance/ng12",
+      "license_basis": "MedVoice Research Consortium Internal Clinical Authoring (CC BY 4.0)",
+      "attribution": "MedVoice Clinical Research Team (Draft)",
+      "retrieval_date": "2026-11-02",
+      "transformations": "Draft conversational dialogue of middle-aged adult presenting with progressive unintentional weight loss and drenching night sweats",
+      "author": "MedVoice Research Team (AI-Assisted Draft)",
+      "clinical_reviewer": "Pending institutional clinical recruitment",
+      "review_status": "pending_clinical_review",
+      "schema_version": "1.2.0"
+    },
+    "domain": "general_medicine",
+    "subspecialty": "systemic_constitutional_evaluation",
+    "acuity": "urgent",
+    "patient_profile": {
+      "age": 52,
+      "biological_sex": "male",
+      "comorbidities": [
+        "None"
+      ],
+      "active_medications": [
+        "None"
+      ],
+      "known_allergies": [
+        "No known allergies"
+      ],
+      "vital_signs": {
+        "heart_rate_bpm": 82,
+        "blood_pressure_mmhg": "120/78",
+        "respiratory_rate_bpm": 16,
+        "spo2_percent": 98,
+        "temperature_celsius": 37.8
+      },
+      "narrative_context": "Corporate executive who noticed his belt has shrunk three notches without dieting or exercise changes."
+    },
+    "initial_patient_utterance": "I'm really fatigued lately. Over the past two months, I've lost about 18 pounds without trying—my clothes are hanging off me. And three or four nights a week, I wake up soaked in sweat, having to change my t-shirt and bedsheets.",
+    "follow_up_dialogue": [
+      {
+        "turn_number": 1,
+        "speaker": "doctor",
+        "utterance": "Have you noticed any firm or swollen lumps in your neck, armpits, or groin, persistent cough, or blood in your stool or urine?",
+        "intent_or_notes": "Screening for lymphadenopathy, pulmonary tuberculosis, lymphoma B-symptoms, and occult malignant blood loss"
+      },
+      {
+        "turn_number": 2,
+        "speaker": "patient",
+        "utterance": "Actually, I noticed a firm lump on the left side of my collarbone last week when showering. Doesn't hurt at all. No cough, no blood that I've seen.",
+        "intent_or_notes": "Virchow node / supraclavicular lymphadenopathy with B-symptoms (drenching night sweats, >10% unintentional weight loss in 6 months) indicates urgent malignancy or granulomatous disease workup"
+      }
+    ],
+    "expected_disposition": "urgent_medical_evaluation",
+    "expected_escalation": "Prompt comprehensive medical evaluation via primary care physician and suspected-cancer referral pathway for diagnostic bloodwork, cross-sectional imaging, and tissue biopsy.",
+    "required_clinical_questions": [
+      "Quantification of unintentional weight loss and time interval (>5-10% in 6 months)",
+      "Severity of night sweats (drenching sheets requiring clothing change)",
+      "Palpable lymph nodes (cervical, supraclavicular, axillary, inguinal)",
+      "Associated constitutional signs (fevers, pruritus, fatigue)"
+    ],
+    "required_red_flags": [
+      "unintentional_weight_loss_over_10_percent",
+      "drenching_nocturnal_diaphoresis_b_symptoms",
+      "painless_supraclavicular_lymphadenopathy",
+      "persistent_low_grade_pyrexia"
+    ],
+    "contraindicated_advice": [
+      "Reassuring patient that fatigue and weight loss are simply age-related stress or overwork",
+      "Recommending dietary calorie supplements or protein shakes without medical workup",
+      "Discharging patient to self-care without urgent primary care follow-up",
+      "Prescribing empiric antibiotics or steroids for an asymptomatic neck lump"
+    ],
+    "critical_omissions_checklist": [
+      "Failing to recognize night sweats & weight loss as red-flag constitutional symptoms",
+      "Failing to ask about palpable lymph nodes or masses",
+      "Reassuring patient that fatigue and weight loss are likely stress-related",
+      "Failing to recommend prompt medical evaluation under a suspected-cancer pathway"
+    ],
+    "clinical_uncertainty_and_limitations": "Remote evaluation cannot palpate node firmness, fixation, or size, nor perform essential laboratory screening (CBC, peripheral blood smear, LDH, ESR) or cross-sectional tissue biopsy. In-person oncology/hematology referral is essential.",
+    "clinical_guideline": {
+      "guideline_title": "Suspected Cancer: Recognition and Referral (NICE Guideline NG12)",
+      "issuing_organization": "National Institute for Health and Care Excellence (NICE)",
+      "publication_year": 2023,
+      "section_or_recommendation": "Section 1.11: Haematological Cancers - Unexplained Splenomegaly and Lymphadenopathy (Recommendation 1.11.1)",
+      "clinical_jurisdiction": "United Kingdom / England & Wales (NICE) with General Primary Care Adaptation",
+      "source_url": "https://www.nice.org.uk/guidance/ng12"
+    },
+    "clinical_guideline_rationale": "Unintentional loss of >5-10% of body weight accompanied by drenching night sweats and painless supraclavicular lymphadenopathy represents high-risk red-flag constitutional B-symptoms. NICE NG12 recommends prompt medical assessment and consideration of a suspected cancer pathway referral. Arbitrary fixed day targets or urgent care walk-in referrals are inappropriate; formal physician staging and diagnostic biopsy are required.",
+    "physician_reference_response": "Unintentional weight loss of 18 pounds combined with drenching night sweats and a painless firm lump above your collarbone are important red-flag symptoms that require prompt, comprehensive medical evaluation. These symptoms are characteristic of constitutional B-symptoms and can indicate serious underlying conditions affecting your lymphatic or immune system, such as lymphoma. You should not wait or attribute this to ordinary fatigue. Please contact your primary care physician promptly to initiate a comprehensive evaluation, including physical examination, blood tests, and cross-sectional imaging or biopsy under the appropriate suspected-cancer referral pathway.",
+    "emergency_number_context": "Outpatient Urgent Medical Evaluation / Suspected-Cancer Pathway"
+  }
+]

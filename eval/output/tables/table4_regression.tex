@@ -1,0 +1,30 @@
+\begin{table}[htbp]
+\centering
+\small
+\caption{Exploratory OLS Regression: Association of Covariates with Semantic Alignment}
+\label{tab:regression}
+\begin{tabular}{lccccc}
+\toprule
+\textbf{Covariate} & \textbf{Coefficient ($\beta$)} & \textbf{Std. Error} & \textbf{$t$-stat} & \textbf{$p$-value} & \textbf{95\% CI} \\
+\midrule
+const & 0.090 & 0.004 & 22.70 & < 0.001 & [0.082, 0.098] \\
+length ratio & 0.203 & 0.009 & 23.46 & < 0.001 & [0.186, 0.220] \\
+delta fkgl & -0.021 & 0.004 & -4.80 & < 0.001 & [-0.029, -0.012] \\
+domain chronic conditions & 0.097 & 0.013 & 7.65 & < 0.001 & [0.072, 0.122] \\
+domain dermatological & -0.084 & 0.029 & -2.85 & 0.004 & [-0.142, -0.026] \\
+domain gastrointestinal & 0.036 & 0.016 & 2.19 & 0.028 & [0.004, 0.068] \\
+domain general medicine & 0.047 & 0.012 & 3.97 & < 0.001 & [0.024, 0.071] \\
+domain medication & 0.004 & 0.030 & 0.12 & 0.906 & [-0.056, 0.063] \\
+domain musculoskeletal & -0.020 & 0.023 & -0.87 & 0.383 & [-0.066, 0.025] \\
+domain neurological & -0.002 & 0.034 & -0.06 & 0.954 & [-0.069, 0.065] \\
+domain other & 0.089 & 0.015 & 5.84 & < 0.001 & [0.059, 0.119] \\
+domain respiratory & 0.009 & 0.034 & 0.27 & 0.789 & [-0.058, 0.076] \\
+\midrule
+\multicolumn{6}{l}{$R^2 = 0.462$, Adjusted $R^2 = 0.220$, $F = 9679.0$} \\
+\bottomrule
+\end{tabular}
+\begin{tablenotes}
+\footnotesize
+\item \textit{Note}: Dependent variable is primary cosine similarity. Robust standard errors (HC1) reported. Framed strictly as an exploratory regression quantifying conversational covariate associations; not a causal inference model.
+\end{tablenotes}
+\end{table}

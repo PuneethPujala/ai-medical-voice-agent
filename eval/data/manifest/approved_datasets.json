@@ -1,0 +1,56 @@
+{
+  "$schema": "eval-manifest-schema-v1.2.0",
+  "manifest_version": "1.2.0",
+  "last_updated": "2026-11-05T11:15:00.000Z",
+  "approved_datasets": [
+    {
+      "dataset_id": "synthetic-smoke-v1.0.0",
+      "dataset_version": "1.0.0",
+      "fixture_relative_path": "eval/data/smoke/smoke-scenario.json",
+      "sha256": "84ffbc16fad330e5a53fc53b31db5d3b9e71350481f38dd665592295352c8589",
+      "scenario_count": 1,
+      "approved_scenario_ids": [
+        "TEST-SMOKE-001"
+      ],
+      "provenance_types": [
+        "synthetic_authored"
+      ],
+      "authorship_types": [
+        "ai_assisted_draft"
+      ],
+      "schema_version": "1.2.0",
+      "quarantined_from_benchmarks": true,
+      "description": "Dedicated single non-clinical synthetic fixture for live endpoint connectivity, latency measurement, and audit verification without clinical benchmarking."
+    },
+    {
+      "dataset_id": "synthetic-pilot-v1.2.0",
+      "dataset_version": "1.2.0",
+      "fixture_relative_path": "eval/data/pilot/pilot-scenarios.json",
+      "sha256": "59970841c93ce958056e6a9f4391d0afe368f7b1552b6c1a86ec0a36ab604874",
+      "scenario_count": 12,
+      "approved_scenario_ids": [
+        "PILOT-CARD-001",
+        "PILOT-NEUR-002",
+        "PILOT-RESP-003",
+        "PILOT-GAST-004",
+        "PILOT-DERM-005",
+        "PILOT-NEUR-006",
+        "PILOT-PEDI-007",
+        "PILOT-RESP-008",
+        "PILOT-GAST-009",
+        "PILOT-MEDI-010",
+        "PILOT-MUSC-011",
+        "PILOT-GENM-012"
+      ],
+      "provenance_types": [
+        "synthetic_authored"
+      ],
+      "authorship_types": [
+        "ai_assisted_draft"
+      ],
+      "schema_version": "1.2.0",
+      "quarantined_from_benchmarks": true,
+      "description": "Quarantined 12-case synthetic calibration corpus. Machine-prohibited from inclusion in held-out benchmark datasets."
+    }
+  ]
+}
