@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 # ==============================================================================
 # MedVoice Study 3: Proportional Odds Diagnostic & Bayesian Sensitivity Pipeline
-# Specification Version 3.3.19 / Protocol Version 2.3.14
+# Specification Version 3.3.20 / Protocol Version 2.3.15
 #
 # Primary Frequentist Diagnostic: lme4::glmer (v1.1-35.5) / ordinal::clmm (v2023.12-4)
 # Secondary Bayesian Predictive Analysis: brms (v2.22.0)
@@ -430,9 +430,17 @@ fit_threshold_regressions <- function(df_data) {
     conv_msgs <- fit_c@optinfo$conv$lme4$messages
     
     # Check for lme4 gradient-related convergence failure codes (-1, -2, -5)
-    # -1: Scaled gradient tolerance exceeded
-    # -2: Relative gradient tolerance exceeded
-    # -5: Gradient evaluation produced NA or non-finite values
+    # In lme4 (v1.1-35.5 checkConv.R), gradient codes are strictly:
+    # -1: Scaled-gradient failure. Occurs under two distinct conditions:
+    #     (a) Scaled-gradient evaluation failure: Cholesky solve failed (solve(chol(Hessian), gradient))
+    #         or produced NA/non-finite values (messages: "unable to evaluate scaled gradient" or
+    #         "scaled gradient has non-finite values"). Mapped to GRADIENT_EVALUATION_FAILED.
+    #     (b) Scaled-gradient tolerance exceeded: maxmingrad > tol (message: "Model failed to converge
+    #         with max|grad| = ..."). Mapped to GRADIENT_TOLERANCE_EXCEEDED.
+    # -2: Relative gradient tolerance exceeded. NOTE: Unreachable under primary fitting configuration
+    #     because glmerControl specifies relTol = NULL. Retained as defensive check for non-primary configs.
+    #     Mapped to GRADIENT_TOLERANCE_EXCEEDED.
+    # -5: Gradient evaluation produced NA or non-finite values. Mapped to GRADIENT_EVALUATION_FAILED.
     # NOTE: In lme4 1.1-35.5 checkConv.R, codes -1, -2, -5 are specifically GRADIENT failures,
     # NOT Hessian failures! They must be classified under Step 3, not Step 4.
     if (!is.null(lme4_code) && (lme4_code %in% c(-1L, -2L, -5L))) {
@@ -444,10 +452,22 @@ fit_threshold_regressions <- function(df_data) {
       s4_hess_status[c_idx] <- "NOT_ASSESSED_DUE_TO_GRADIENT_FAILURE"
       s5_sep_status[c_idx] <- "NOT_ASSESSED_DUE_TO_GRADIENT_FAILURE"
       
-      is_eval_fail <- (lme4_code == -5L)
-      code_desc <- if (lme4_code == -1L) "Scaled-gradient check failure (lme4 code -1)"
-                   else if (lme4_code == -2L) "Relative-gradient check failure (lme4 code -2)"
-                   else "Gradient contains NA or non-finite values (lme4 code -5)"
+      msg_text <- if (!is.null(conv_msgs)) paste(conv_msgs, collapse = "; ") else ""
+      is_eval_fail <- (lme4_code == -5L) || 
+                      (lme4_code == -1L && grepl("unable to evaluate|non-finite", msg_text, ignore.case = TRUE))
+      
+      code_desc <- if (lme4_code == -1L) {
+        if (is_eval_fail) {
+          sprintf("Scaled-gradient evaluation failure (lme4 code -1: %s)", if (nchar(msg_text) > 0) msg_text else "unable to evaluate or non-finite")
+        } else {
+          sprintf("Scaled-gradient tolerance exceeded (lme4 code -1: %s)", if (nchar(msg_text) > 0) msg_text else "max|grad| > tol")
+        }
+      } else if (lme4_code == -2L) {
+        "Relative-gradient check failure (lme4 code -2, unreachable under primary relTol = NULL)"
+      } else {
+        "Gradient contains NA or non-finite values (lme4 code -5)"
+      }
+      
       cutpoint_status[c_idx] <- if (is_eval_fail) "GRADIENT_EVALUATION_FAILED" else "GRADIENT_TOLERANCE_EXCEEDED"
       cutpoint_detail[c_idx] <- code_desc
       max_grads[c_idx] <- NA_real_

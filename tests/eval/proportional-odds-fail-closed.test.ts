@@ -1,6 +1,6 @@
 /**
  * Unit and Regression Tests for Study 3 Proportional Odds Diagnostic Fail-Closed Architecture
- * Specification Version 3.3.19 / Protocol Version 2.3.14
+ * Specification Version 3.3.20 / Protocol Version 2.3.15
  *
  * Verifies:
  * 1. Step 0: Event count screening guard (< 15 events).
@@ -131,6 +131,7 @@ export function evaluateCutpointModel(input: {
   design_matrix_rank?: number;
   grouping_terms?: string[];
   lme4_conv_code?: number | null;
+  lme4_message?: string | null;
   lme4_hess_code?: number | null;
   fitting_args?: { nAGQ?: number };
   require_full_domain_taxonomy?: boolean;
@@ -328,19 +329,46 @@ export function evaluateCutpointModel(input: {
   const s2_sing_status: TriStateStatus = 'PASSED';
 
   // Step 3: Raw Gradient Diagnostics & Dynamic Dimensionality Check
-  // First check gradient-related lme4 convergence codes (-1, -2, -5)
+  // In lme4 (v1.1-35.5 checkConv.R), gradient-related codes are -1, -2, -5:
+  // -1: Scaled-gradient failure:
+  //     (a) Evaluation failure: solve(chol(Hessian), gradient) fails or produces NA/non-finite
+  //         (Message: "unable to evaluate scaled gradient" or "scaled gradient has non-finite values")
+  //         -> GRADIENT_EVALUATION_FAILED
+  //     (b) Tolerance exceeded: maxmingrad > tol
+  //         (Message: "Model failed to converge with max|grad| = ...")
+  //         -> GRADIENT_TOLERANCE_EXCEEDED
+  // -2: Relative-gradient tolerance exceeded:
+  //     NOTE: Unreachable under primary fitting configuration because glmerControl specifies relTol = NULL.
+  //     Retained as defensive decode for secondary / non-primary configurations.
+  //     -> GRADIENT_TOLERANCE_EXCEEDED
+  // -5: Gradient evaluation produced NA or non-finite values
+  //     -> GRADIENT_EVALUATION_FAILED
   if (input.lme4_conv_code === -1 || input.lme4_conv_code === -2 || input.lme4_conv_code === -5) {
-    const isEvalFail = input.lme4_conv_code === -5;
-    const codeDesc = input.lme4_conv_code === -1
-      ? 'Scaled-gradient check failure (lme4 code -1)'
-      : input.lme4_conv_code === -2
-        ? 'Relative-gradient check failure (lme4 code -2)'
-        : 'Gradient contains NA or non-finite values (lme4 code -5)';
+    let status: DiagnosticStepStatus;
+    let codeDesc: string;
+
+    if (input.lme4_conv_code === -1) {
+      const msg = input.lme4_message || '';
+      const isEvalFail = msg.includes('unable to evaluate') || msg.includes('non-finite');
+      if (isEvalFail) {
+        status = 'GRADIENT_EVALUATION_FAILED';
+        codeDesc = `Scaled-gradient evaluation failure (lme4 code -1: ${msg || 'unable to evaluate or non-finite'})`;
+      } else {
+        status = 'GRADIENT_TOLERANCE_EXCEEDED';
+        codeDesc = `Scaled-gradient tolerance exceeded (lme4 code -1: ${msg || 'max|grad| > tol'})`;
+      }
+    } else if (input.lme4_conv_code === -2) {
+      status = 'GRADIENT_TOLERANCE_EXCEEDED';
+      codeDesc = 'Relative-gradient check failure (lme4 code -2, unreachable under primary relTol = NULL)';
+    } else {
+      status = 'GRADIENT_EVALUATION_FAILED';
+      codeDesc = 'Gradient contains NA or non-finite values (lme4 code -5)';
+    }
 
     return {
       cutpoint: c,
       threshold,
-      status: isEvalFail ? 'GRADIENT_EVALUATION_FAILED' : 'GRADIENT_TOLERANCE_EXCEEDED',
+      status,
       detail: codeDesc,
       s0_event_status,
       s1_opt_status,
@@ -1256,37 +1284,39 @@ describe('MedVoice Study 3: Proportional Odds Diagnostic 6-Step Decision Protoco
   });
 
   it('24. Diagnostic Classification: Gradient codes (-1, -2, -5) fail Step 3 and are NOT classified as Hessian failures', () => {
-    // Test code -1: Scaled-gradient failure
-    const res1 = evaluateCutpointModel({
+    // Test 24a: Code -1 with evaluation failure ("unable to evaluate scaled gradient")
+    const res1Eval = evaluateCutpointModel({
       cutpoint: 1,
       n_pos: 600,
       n_neg: 600,
       optimizer_code: 0,
       is_singular: false,
       lme4_conv_code: -1,
+      lme4_message: 'unable to evaluate scaled gradient',
       raw_gradient: dummy17Grad(1e-4),
     });
-    assert.strictEqual(res1.status, 'GRADIENT_TOLERANCE_EXCEEDED');
-    assert.strictEqual(res1.s3_grad_status, 'FAILED');
-    assert.strictEqual(res1.s4_hess_status, 'NOT_ASSESSED_DUE_TO_GRADIENT_FAILURE');
-    assert.match(res1.detail, /Scaled-gradient check failure \(lme4 code -1\)/);
+    assert.strictEqual(res1Eval.status, 'GRADIENT_EVALUATION_FAILED');
+    assert.strictEqual(res1Eval.s3_grad_status, 'FAILED');
+    assert.strictEqual(res1Eval.s4_hess_status, 'NOT_ASSESSED_DUE_TO_GRADIENT_FAILURE');
+    assert.match(res1Eval.detail, /Scaled-gradient evaluation failure \(lme4 code -1: unable to evaluate scaled gradient\)/);
 
-    // Test code -2: Relative-gradient failure
-    const res2 = evaluateCutpointModel({
+    // Test 24b: Code -1 with tolerance exceedance ("Model failed to converge with max|grad| = ...")
+    const res1Tol = evaluateCutpointModel({
       cutpoint: 1,
       n_pos: 600,
       n_neg: 600,
       optimizer_code: 0,
       is_singular: false,
-      lme4_conv_code: -2,
+      lme4_conv_code: -1,
+      lme4_message: 'Model failed to converge with max|grad| = 0.005 (tol = 0.001, component 1)',
       raw_gradient: dummy17Grad(1e-4),
     });
-    assert.strictEqual(res2.status, 'GRADIENT_TOLERANCE_EXCEEDED');
-    assert.strictEqual(res2.s3_grad_status, 'FAILED');
-    assert.strictEqual(res2.s4_hess_status, 'NOT_ASSESSED_DUE_TO_GRADIENT_FAILURE');
-    assert.match(res2.detail, /Relative-gradient check failure \(lme4 code -2\)/);
+    assert.strictEqual(res1Tol.status, 'GRADIENT_TOLERANCE_EXCEEDED');
+    assert.strictEqual(res1Tol.s3_grad_status, 'FAILED');
+    assert.strictEqual(res1Tol.s4_hess_status, 'NOT_ASSESSED_DUE_TO_GRADIENT_FAILURE');
+    assert.match(res1Tol.detail, /Scaled-gradient tolerance exceeded \(lme4 code -1: Model failed to converge with max\|grad\|/);
 
-    // Test code -5: Gradient NA
+    // Test 24c: Code -5: Gradient NA or non-finite
     const res5 = evaluateCutpointModel({
       cutpoint: 1,
       n_pos: 600,
@@ -1300,6 +1330,21 @@ describe('MedVoice Study 3: Proportional Odds Diagnostic 6-Step Decision Protoco
     assert.strictEqual(res5.s3_grad_status, 'FAILED');
     assert.strictEqual(res5.s4_hess_status, 'NOT_ASSESSED_DUE_TO_GRADIENT_FAILURE');
     assert.match(res5.detail, /Gradient contains NA or non-finite values \(lme4 code -5\)/);
+
+    // Test 24d: Defensive check for Code -2 (relative gradient failure, unreachable under primary relTol = NULL)
+    const res2 = evaluateCutpointModel({
+      cutpoint: 1,
+      n_pos: 600,
+      n_neg: 600,
+      optimizer_code: 0,
+      is_singular: false,
+      lme4_conv_code: -2,
+      raw_gradient: dummy17Grad(1e-4),
+    });
+    assert.strictEqual(res2.status, 'GRADIENT_TOLERANCE_EXCEEDED');
+    assert.strictEqual(res2.s3_grad_status, 'FAILED');
+    assert.strictEqual(res2.s4_hess_status, 'NOT_ASSESSED_DUE_TO_GRADIENT_FAILURE');
+    assert.match(res2.detail, /Relative-gradient check failure \(lme4 code -2, unreachable under primary relTol = NULL\)/);
   });
 
   it('25. Diagnostic Classification: Hessian codes (-3, -4, -6, 2, 3) fail Step 4 as HESSIAN_CHECK_FAILED', () => {

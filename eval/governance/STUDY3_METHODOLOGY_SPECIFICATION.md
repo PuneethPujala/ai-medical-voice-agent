@@ -1,6 +1,6 @@
 # MedVoice Study 3: In-Silico Computational Evaluation Methodology Specification
 **Document ID:** `SPEC-2026-11-07-STUDY3-METHODOLOGY`  
-**Protocol Version:** 3.3.19 (Pre-Registration Draft / Proposed Freeze Candidate)
+**Protocol Version:** 3.3.20 (Pre-Registration Draft / Proposed Freeze Candidate)
 **Date:** November 11, 2026
 **Status:** Proposed Freeze Candidate (Runner Codebase Frozen; Scenario Authoring Paused pending Gate 1 Sign-Off)
 **Governance:** Non-Human Subjects / In-Silico Computational Evaluation  
@@ -421,8 +421,14 @@ $$\psi_{\text{primary}} = \beta_1 + \frac{1}{3} (\delta_{\text{SIM-02}} + \delta
              $$g_{\text{rel}, j} = \left|\frac{g_j}{p_j}\right|$$
              with **no** denominator floor ($\max(|p_j|, 1)$). Setting `relTol = NULL` explicitly disables this relative gradient check, preventing false-positive convergence warnings when parameters are close to zero (e.g., null interaction or main effects) while preserving the Cholesky-scaled gradient check ($g_{\text{scaled}} = \operatorname{solve}(\operatorname{chol}(\mathbf{H}), \mathbf{g})$).
            - *Accurate Diagnostic Code Classification in `lme4` (v1.1-35.5)*:
-             In `lme4::checkConv`, optimizer convergence codes are strictly partitioned:
-             * **Gradient Codes**: `-1` (scaled gradient $> \text{tol}$), `-2` (relative gradient $> \text{relTol}$), and `-5` (gradient evaluation produced `NA`/non-finite). Any of these codes fails Step 3 as `GRADIENT_TOLERANCE_EXCEEDED` (or `GRADIENT_EVALUATION_FAILED`), and is **never** misclassified as a Hessian check failure. Downstream Steps 4 and 5 are marked `NOT_ASSESSED_DUE_TO_GRADIENT_FAILURE`.
+             In `lme4::checkConv.R`, optimizer convergence codes are strictly partitioned:
+             * **Gradient Codes**:
+               - Code `-1` (Scaled-gradient failure): Emitted under two distinct conditions:
+                 a) *Scaled-gradient evaluation failure*: Cholesky solve failed (`solve(chol(Hessian), gradient)`) or produced `NA`/non-finite values (messages: `"unable to evaluate scaled gradient"` or `"scaled gradient has non-finite values"`). Mapped strictly to `GRADIENT_EVALUATION_FAILED`.
+                 b) *Scaled-gradient tolerance exceeded*: `maxmingrad > tol` (message: `"Model failed to converge with max|grad| = ..."`). Mapped strictly to `GRADIENT_TOLERANCE_EXCEEDED`.
+               - Code `-2` (Relative-gradient tolerance exceeded): Documented as **unreachable** under the primary fitting configuration because `glmerControl` explicitly specifies `relTol = NULL`. Retained as a defensive decode for secondary / non-primary configurations and mapped to `GRADIENT_TOLERANCE_EXCEEDED`.
+               - Code `-5` (Gradient evaluation produced `NA`/non-finite values): Mapped strictly to `GRADIENT_EVALUATION_FAILED`.
+             Any of these codes fails Step 3 (marking `s3_grad_status = FAILED`), and is **never** misclassified as a Hessian check failure. Downstream Steps 4 and 5 are marked `NOT_ASSESSED_DUE_TO_GRADIENT_FAILURE`.
            - *Separately Prespecified Custom Raw-Gradient Rule*: As an explicitly additional, stricter acceptance criterion, the pipeline requires:
              $$\max_j |\nabla_j| < 10^{-3}$$
              on the raw unscaled gradient vector $\mathbf{g} = \text{fit}_c@\text{optinfo}\$\text{derivs}\$\text{gradient}$.
