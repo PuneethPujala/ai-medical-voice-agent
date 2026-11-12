@@ -178,7 +178,7 @@ compute_contrast_se <- function(fixef_estimates, vcov_matrix) {
 # Step 0: Event count guard: min(sum(Y_bin==1), sum(Y_bin==0)) >= 15
 # Step 1: Optimizer execution & termination code: opt_code == 0 (bobyqa code 0 required)
 # Step 2: Random-effects singularity: isSingular(tol = 1e-4) rank deficiency check via rePCA/VarCorr
-# Step 3: Explicit raw gradient & relTol: non-empty, finite, length 16, max|grad| < 1e-3, no lme4 grad msgs
+# Step 3: Explicit raw gradient & relTol: non-empty, finite, dynamic length n_expected (17), max|grad| < 1e-3, no lme4 grad msgs
 # Step 4: Full & fixed-effect Hessian: full derivative Hessian min eigval > 1e-6, no lme4 hess msgs, vcov PD
 # Step 5: Fixed-effect quasi-separation guard: finite SEs and max(SE_fixef) < 10.0
 # Step 6: Four-cutpoint omnibus synthesis: all 4 cutpoints required; fails closed if any fails
