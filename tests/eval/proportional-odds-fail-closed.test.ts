@@ -1,6 +1,6 @@
 /**
  * Unit and Regression Tests for Study 3 Proportional Odds Diagnostic Fail-Closed Architecture
- * Specification Version 3.3.20 / Protocol Version 2.3.15
+ * Specification Version 3.3.21 / Protocol Version 2.3.16
  *
  * Verifies:
  * 1. Step 0: Event count screening guard (< 15 events).
@@ -130,9 +130,10 @@ export function evaluateCutpointModel(input: {
   has_dropped?: boolean;
   design_matrix_rank?: number;
   grouping_terms?: string[];
-  lme4_conv_code?: number | null;
+  lme4_conv_code?: number | number[] | null;
   lme4_message?: string | null;
-  lme4_hess_code?: number | null;
+  lme4_messages?: string[] | null;
+  lme4_hess_code?: number | number[] | null;
   fitting_args?: { nAGQ?: number };
   require_full_domain_taxonomy?: boolean;
   is_singular?: boolean | null;
@@ -328,119 +329,97 @@ export function evaluateCutpointModel(input: {
   }
   const s2_sing_status: TriStateStatus = 'PASSED';
 
-  // Step 3: Raw Gradient Diagnostics & Dynamic Dimensionality Check
-  // In lme4 (v1.1-35.5 checkConv.R), gradient-related codes are -1, -2, -5:
-  // -1: Scaled-gradient failure:
-  //     (a) Evaluation failure: solve(chol(Hessian), gradient) fails or produces NA/non-finite
-  //         (Message: "unable to evaluate scaled gradient" or "scaled gradient has non-finite values")
-  //         -> GRADIENT_EVALUATION_FAILED
-  //     (b) Tolerance exceeded: maxmingrad > tol
-  //         (Message: "Model failed to converge with max|grad| = ...")
-  //         -> GRADIENT_TOLERANCE_EXCEEDED
-  // -2: Relative-gradient tolerance exceeded:
-  //     NOTE: Unreachable under primary fitting configuration because glmerControl specifies relTol = NULL.
-  //     Retained as defensive decode for secondary / non-primary configurations.
-  //     -> GRADIENT_TOLERANCE_EXCEEDED
-  // -5: Gradient evaluation produced NA or non-finite values
-  //     -> GRADIENT_EVALUATION_FAILED
-  if (input.lme4_conv_code === -1 || input.lme4_conv_code === -2 || input.lme4_conv_code === -5) {
-    let status: DiagnosticStepStatus;
-    let codeDesc: string;
-
-    if (input.lme4_conv_code === -1) {
-      const msg = input.lme4_message || '';
-      const isEvalFail = msg.includes('unable to evaluate') || msg.includes('non-finite');
-      if (isEvalFail) {
-        status = 'GRADIENT_EVALUATION_FAILED';
-        codeDesc = `Scaled-gradient evaluation failure (lme4 code -1: ${msg || 'unable to evaluate or non-finite'})`;
-      } else {
-        status = 'GRADIENT_TOLERANCE_EXCEEDED';
-        codeDesc = `Scaled-gradient tolerance exceeded (lme4 code -1: ${msg || 'max|grad| > tol'})`;
-      }
-    } else if (input.lme4_conv_code === -2) {
-      status = 'GRADIENT_TOLERANCE_EXCEEDED';
-      codeDesc = 'Relative-gradient check failure (lme4 code -2, unreachable under primary relTol = NULL)';
+  // Normalize lme4 convergence codes and messages to arrays
+  const rawCodes: number[] = [];
+  if (input.lme4_conv_code !== undefined && input.lme4_conv_code !== null) {
+    if (Array.isArray(input.lme4_conv_code)) {
+      rawCodes.push(...input.lme4_conv_code);
     } else {
+      rawCodes.push(input.lme4_conv_code);
+    }
+  }
+  if (input.lme4_hess_code !== undefined && input.lme4_hess_code !== null) {
+    if (Array.isArray(input.lme4_hess_code)) {
+      rawCodes.push(...input.lme4_hess_code);
+    } else {
+      rawCodes.push(input.lme4_hess_code);
+    }
+  }
+
+  const allMessages: string[] = [];
+  if (input.lme4_message) {
+    allMessages.push(input.lme4_message);
+  }
+  if (input.lme4_messages) {
+    allMessages.push(...input.lme4_messages);
+  }
+
+  // Step 3: Raw Gradient Diagnostics & Dynamic Dimensionality Check
+  // Independently detect gradient failures regardless of final numeric code (which may have been overwritten by Hessian checks)
+  const msgGradEvalFail = allMessages.some((m) => /unable to evaluate|non-finite/i.test(m));
+  const codeGradEvalFail = rawCodes.includes(-5);
+  const rawGradInvalid =
+    !input.raw_gradient ||
+    input.raw_gradient.length !== n_expected ||
+    input.raw_gradient.some((g) => Number.isNaN(g) || !Number.isFinite(g));
+
+  const isGradEvalFail = msgGradEvalFail || codeGradEvalFail || rawGradInvalid;
+
+  const msgGradTolFail = allMessages.some((m) => /failed to converge with max\|grad\||relative gradient/i.test(m));
+  const codeGradTolFail = rawCodes.includes(-1) || rawCodes.includes(-2);
+  const rawGradTolFail = !rawGradInvalid && Math.max(...input.raw_gradient!.map((g) => Math.abs(g))) >= 1e-3;
+  const hasGradWarning = Boolean(input.has_gradient_warning) || allMessages.some((m) => /gradient|relTol/i.test(m) && !/unable to evaluate|non-finite/i.test(m));
+
+  const isGradTolFail = !isGradEvalFail && (msgGradTolFail || codeGradTolFail || rawGradTolFail || hasGradWarning);
+
+  if (isGradEvalFail || isGradTolFail) {
+    const codesStr = rawCodes.length > 0 ? rawCodes.join(',') : 'none';
+    let status: DiagnosticStepStatus;
+    let detail: string;
+
+    if (isGradEvalFail) {
       status = 'GRADIENT_EVALUATION_FAILED';
-      codeDesc = 'Gradient contains NA or non-finite values (lme4 code -5)';
+      const detailMsg = msgGradEvalFail
+        ? allMessages.filter((m) => /unable to evaluate|non-finite/i.test(m)).join('; ')
+        : codeGradEvalFail
+          ? 'Gradient contains NA or non-finite values (lme4 code -5)'
+          : `Gradient vector invalid (length=${input.raw_gradient?.length ?? 0}, expected=${n_expected}, non-finite)`;
+      detail = `Gradient evaluation failure [codes: ${codesStr}]: ${detailMsg}`;
+    } else {
+      status = 'GRADIENT_TOLERANCE_EXCEEDED';
+      const maxGVal = !rawGradInvalid ? Math.max(...input.raw_gradient!.map((g) => Math.abs(g))) : null;
+      const detailMsg = msgGradTolFail || hasGradWarning
+        ? allMessages.filter((m) => /failed to converge with max\|grad\||relative gradient|gradient|relTol/i.test(m)).join('; ')
+        : rawCodes.includes(-2)
+          ? 'Relative-gradient check failure (lme4 code -2, unreachable under primary relTol = NULL)'
+          : `Max absolute raw gradient ${maxGVal !== null ? maxGVal.toExponential(2) : 'NA'} >= 1e-3`;
+      detail = `Gradient tolerance exceeded [codes: ${codesStr}]: ${detailMsg}`;
     }
 
     return {
       cutpoint: c,
       threshold,
       status,
-      detail: codeDesc,
+      detail,
       s0_event_status,
       s1_opt_status,
       s2_sing_status,
       s3_grad_status: 'FAILED',
       s4_hess_status: 'NOT_ASSESSED_DUE_TO_GRADIENT_FAILURE',
       s5_sep_status: 'NOT_ASSESSED_DUE_TO_GRADIENT_FAILURE',
-      opt_code: input.lme4_conv_code,
+      opt_code: rawCodes[0] ?? opt_code,
       is_singular: false,
       n_fixef,
       n_theta,
       n_expected,
-      max_grad: null,
-      min_hess_eigval: null,
-      max_se: null,
-      contrast: null,
-    };
-  }
-
-  if (
-    !input.raw_gradient ||
-    input.raw_gradient.length !== n_expected ||
-    input.raw_gradient.some((g) => Number.isNaN(g) || !Number.isFinite(g))
-  ) {
-    return {
-      cutpoint: c,
-      threshold,
-      status: 'GRADIENT_EVALUATION_FAILED',
-      detail: `Gradient vector invalid (length=${input.raw_gradient?.length ?? 0}, expected=${n_expected}, non-finite)`,
-      s0_event_status,
-      s1_opt_status,
-      s2_sing_status,
-      s3_grad_status: 'FAILED',
-      s4_hess_status: 'NOT_ASSESSED_DUE_TO_GRADIENT_FAILURE',
-      s5_sep_status: 'NOT_ASSESSED_DUE_TO_GRADIENT_FAILURE',
-      opt_code,
-      is_singular: false,
-      n_fixef,
-      n_theta,
-      n_expected,
-      max_grad: null,
-      min_hess_eigval: null,
-      max_se: null,
-      contrast: null,
-    };
-  }
-
-  const max_grad = Math.max(...input.raw_gradient.map((g) => Math.abs(g)));
-  if (max_grad >= 1e-3 || input.has_gradient_warning) {
-    return {
-      cutpoint: c,
-      threshold,
-      status: 'GRADIENT_TOLERANCE_EXCEEDED',
-      detail: `Max absolute gradient ${max_grad.toExponential(2)} exceeds tolerance 1e-3 (or relTol warning)`,
-      s0_event_status,
-      s1_opt_status,
-      s2_sing_status,
-      s3_grad_status: 'FAILED',
-      s4_hess_status: 'NOT_ASSESSED_DUE_TO_GRADIENT_FAILURE',
-      s5_sep_status: 'NOT_ASSESSED_DUE_TO_GRADIENT_FAILURE',
-      opt_code,
-      is_singular: false,
-      n_fixef,
-      n_theta,
-      n_expected,
-      max_grad,
+      max_grad: !rawGradInvalid ? Math.max(...input.raw_gradient!.map((g) => Math.abs(g))) : null,
       min_hess_eigval: null,
       max_se: null,
       contrast: null,
     };
   }
   const s3_grad_status: TriStateStatus = 'PASSED';
+  const max_grad = Math.max(...input.raw_gradient!.map((g) => Math.abs(g)));
 
   // Step 4: Full Hessian & Fixed-Effect Information Matrix Verification
   // Check full Hessian dimensions
@@ -503,46 +482,47 @@ export function evaluateCutpointModel(input: {
   const cond_num = input.full_hessian_cond_num ?? 10.0;
   const chol_failed = Boolean(input.full_hessian_chol_failed);
 
-  const lme4_hess_code_failed = Boolean(
-    (input.lme4_conv_code !== undefined &&
-      input.lme4_conv_code !== null &&
-      [-3, -4, -6, 2, 3].includes(input.lme4_conv_code)) ||
-      (input.lme4_hess_code !== undefined &&
-        input.lme4_hess_code !== null &&
-        input.lme4_hess_code !== 0)
-  );
+  const KNOWN_HESS_CODES = [-3, -4, -6, 2, 3];
+  const detectedHessCodes = rawCodes.filter((code) => KNOWN_HESS_CODES.includes(code));
+  const hasHessCodeFail = detectedHessCodes.length > 0;
 
-  const hess_code_val = input.lme4_conv_code ?? input.lme4_hess_code ?? 0;
+  const ALL_KNOWN_CODES = [0, -1, -2, -3, -4, -5, -6, 2, 3];
+  const unrecognizedCodes = rawCodes.filter((code) => !ALL_KNOWN_CODES.includes(code));
+  const hasUnknownCode = unrecognizedCodes.length > 0;
+
+  const hasHessMsg = allMessages.some((m) => /Hessian|singular|eigenvalue|unidentifiable/i.test(m));
 
   if (
     input.cov_matrix_valid === false ||
     input.has_hessian_warning ||
+    hasHessMsg ||
     chol_failed ||
-    lme4_hess_code_failed ||
+    hasHessCodeFail ||
+    hasUnknownCode ||
     min_eig <= 1e-6 ||
     cond_num > 1e6 ||
     Number.isNaN(min_eig) ||
     !Number.isFinite(min_eig)
   ) {
-    const reason = lme4_hess_code_failed
-      ? input.lme4_conv_code === -3
-        ? 'Negative Hessian eigenvalues (lme4 code -3)'
-        : input.lme4_conv_code === -4
-          ? 'Numerically singular Hessian (lme4 code -4)'
-          : input.lme4_conv_code === -6
-            ? 'Hessian eigenvalue calculation failure (lme4 code -6)'
-            : input.lme4_conv_code === 2
-              ? 'Excessively large Hessian eigenvalue (lme4 code 2)'
-              : input.lme4_conv_code === 3
-                ? 'Excessive eigenvalue ratio / ill-conditioned Hessian (lme4 code 3)'
-                : `Hessian diagnostic code ${hess_code_val} indicates non-positive-definite or singular Hessian`
+    const codeReasons: string[] = [];
+    if (detectedHessCodes.includes(-3)) codeReasons.push('Negative Hessian eigenvalues (code -3)');
+    if (detectedHessCodes.includes(-4)) codeReasons.push('Numerically singular Hessian (code -4)');
+    if (detectedHessCodes.includes(-6)) codeReasons.push('Hessian eigenvalue calculation failure (code -6)');
+    if (detectedHessCodes.includes(2)) codeReasons.push('Excessively large Hessian eigenvalue (code 2)');
+    if (detectedHessCodes.includes(3)) codeReasons.push('Excessive eigenvalue ratio / ill-conditioned Hessian (code 3)');
+    if (hasUnknownCode) codeReasons.push(`Unrecognized diagnostic code(s): ${unrecognizedCodes.join(', ')}`);
+
+    const reason = codeReasons.length > 0
+      ? `Hessian diagnostic code(s) [${[...detectedHessCodes, ...unrecognizedCodes].join(', ')}]: ${codeReasons.join('; ')}`
       : chol_failed
         ? 'Cholesky decomposition of full Hessian failed'
         : cond_num > 1e6
           ? `Full Hessian condition number ${cond_num.toExponential(2)} > 1e6`
           : min_eig <= 1e-6
             ? `Full derivative Hessian min eigenvalue ${min_eig} <= 1e-6`
-            : 'vcov non-invertible or Hessian warning message emitted';
+            : hasHessMsg
+              ? allMessages.filter((m) => /Hessian|singular|eigenvalue|unidentifiable/i.test(m)).join('; ')
+              : 'vcov non-invertible or Hessian warning message emitted';
 
     return {
       cutpoint: c,
@@ -555,13 +535,13 @@ export function evaluateCutpointModel(input: {
       s3_grad_status,
       s4_hess_status: 'FAILED',
       s5_sep_status: 'NOT_ASSESSED_DUE_TO_HESSIAN_FAILURE',
-      opt_code,
+      opt_code: rawCodes[0] ?? opt_code,
       is_singular: false,
       n_fixef,
       n_theta,
       n_expected,
       max_grad,
-      min_hess_eigval: min_eig,
+      min_hess_eigval: Number.isFinite(min_eig) ? min_eig : null,
       max_se: null,
       contrast: null,
     };
@@ -1197,7 +1177,7 @@ describe('MedVoice Study 3: Proportional Odds Diagnostic 6-Step Decision Protoco
     assert.strictEqual(res.status, 'HESSIAN_CHECK_FAILED');
     assert.strictEqual(res.s4_hess_status, 'FAILED');
     assert.strictEqual(res.contrast, null);
-    assert.match(res.detail, /Hessian diagnostic code 1 indicates non-positive-definite or singular Hessian/);
+    assert.match(res.detail, /Hessian diagnostic code\(s\) \[1\]: Unrecognized diagnostic code\(s\): 1/);
   });
 
   it('21. Domain Taxonomy Invariant: Missing registered domain fails closed as STRUCTURAL_SPECIFICATION_FAILED', () => {
@@ -1298,7 +1278,7 @@ describe('MedVoice Study 3: Proportional Odds Diagnostic 6-Step Decision Protoco
     assert.strictEqual(res1Eval.status, 'GRADIENT_EVALUATION_FAILED');
     assert.strictEqual(res1Eval.s3_grad_status, 'FAILED');
     assert.strictEqual(res1Eval.s4_hess_status, 'NOT_ASSESSED_DUE_TO_GRADIENT_FAILURE');
-    assert.match(res1Eval.detail, /Scaled-gradient evaluation failure \(lme4 code -1: unable to evaluate scaled gradient\)/);
+    assert.match(res1Eval.detail, /Gradient evaluation failure \[codes: -1\]: unable to evaluate scaled gradient/);
 
     // Test 24b: Code -1 with tolerance exceedance ("Model failed to converge with max|grad| = ...")
     const res1Tol = evaluateCutpointModel({
@@ -1314,7 +1294,7 @@ describe('MedVoice Study 3: Proportional Odds Diagnostic 6-Step Decision Protoco
     assert.strictEqual(res1Tol.status, 'GRADIENT_TOLERANCE_EXCEEDED');
     assert.strictEqual(res1Tol.s3_grad_status, 'FAILED');
     assert.strictEqual(res1Tol.s4_hess_status, 'NOT_ASSESSED_DUE_TO_GRADIENT_FAILURE');
-    assert.match(res1Tol.detail, /Scaled-gradient tolerance exceeded \(lme4 code -1: Model failed to converge with max\|grad\|/);
+    assert.match(res1Tol.detail, /Gradient tolerance exceeded \[codes: -1\]: Model failed to converge with max\|grad\|/);
 
     // Test 24c: Code -5: Gradient NA or non-finite
     const res5 = evaluateCutpointModel({
@@ -1347,15 +1327,16 @@ describe('MedVoice Study 3: Proportional Odds Diagnostic 6-Step Decision Protoco
     assert.match(res2.detail, /Relative-gradient check failure \(lme4 code -2, unreachable under primary relTol = NULL\)/);
   });
 
-  it('25. Diagnostic Classification: Hessian codes (-3, -4, -6, 2, 3) fail Step 4 as HESSIAN_CHECK_FAILED', () => {
+  it('25. Diagnostic Classification: Vector-safe Hessian codes fail Step 4 as HESSIAN_CHECK_FAILED', () => {
     const valid_effects = { M1: 0.3, 'M1:PerspectiveSIM-02': 0.0, 'M1:PerspectiveSIM-03': 0.0 };
 
-    for (const [code, expectedDesc] of [
-      [-3, 'Negative Hessian eigenvalues (lme4 code -3)'],
-      [-4, 'Numerically singular Hessian (lme4 code -4)'],
-      [-6, 'Hessian eigenvalue calculation failure (lme4 code -6)'],
-      [2, 'Excessively large Hessian eigenvalue (lme4 code 2)'],
-      [3, 'Excessive eigenvalue ratio / ill-conditioned Hessian (lme4 code 3)'],
+    // 25a: Scalar Hessian codes
+    for (const [code, expectedFragment] of [
+      [-3, 'Negative Hessian eigenvalues (code -3)'],
+      [-4, 'Numerically singular Hessian (code -4)'],
+      [-6, 'Hessian eigenvalue calculation failure (code -6)'],
+      [2, 'Excessively large Hessian eigenvalue (code 2)'],
+      [3, 'Excessive eigenvalue ratio / ill-conditioned Hessian (code 3)'],
     ] as const) {
       const res = evaluateCutpointModel({
         cutpoint: 2,
@@ -1374,8 +1355,48 @@ describe('MedVoice Study 3: Proportional Odds Diagnostic 6-Step Decision Protoco
       assert.strictEqual(res.status, 'HESSIAN_CHECK_FAILED', `Code ${code} must classify as HESSIAN_CHECK_FAILED`);
       assert.strictEqual(res.s3_grad_status, 'PASSED');
       assert.strictEqual(res.s4_hess_status, 'FAILED');
-      assert.strictEqual(res.detail, expectedDesc);
+      assert.match(res.detail, new RegExp(expectedFragment.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     }
+
+    // 25b: Vector Hessian codes: c(2L, 3L) combined
+    const resMulti = evaluateCutpointModel({
+      cutpoint: 2,
+      n_pos: 400,
+      n_neg: 800,
+      optimizer_code: 0,
+      is_singular: false,
+      raw_gradient: dummy17Grad(1e-4),
+      full_hessian_dim: [17, 17],
+      fixed_effect_dim: [15, 15],
+      lme4_conv_code: [2, 3], // Multiple Hessian codes vector
+      cov_matrix_valid: true,
+      se_values: [0.25],
+      fixed_effects: valid_effects,
+    });
+    assert.strictEqual(resMulti.status, 'HESSIAN_CHECK_FAILED');
+    assert.strictEqual(resMulti.s3_grad_status, 'PASSED');
+    assert.strictEqual(resMulti.s4_hess_status, 'FAILED');
+    assert.match(resMulti.detail, /Excessively large Hessian eigenvalue \(code 2\)/);
+    assert.match(resMulti.detail, /Excessive eigenvalue ratio \/ ill-conditioned Hessian \(code 3\)/);
+
+    // 25c: Unrecognized diagnostic code (e.g. 99) fails closed
+    const resUnknown = evaluateCutpointModel({
+      cutpoint: 2,
+      n_pos: 400,
+      n_neg: 800,
+      optimizer_code: 0,
+      is_singular: false,
+      raw_gradient: dummy17Grad(1e-4),
+      full_hessian_dim: [17, 17],
+      fixed_effect_dim: [15, 15],
+      lme4_conv_code: [99], // Unrecognized code
+      cov_matrix_valid: true,
+      se_values: [0.25],
+      fixed_effects: valid_effects,
+    });
+    assert.strictEqual(resUnknown.status, 'HESSIAN_CHECK_FAILED');
+    assert.strictEqual(resUnknown.s4_hess_status, 'FAILED');
+    assert.match(resUnknown.detail, /Unrecognized diagnostic code\(s\): 99/);
   });
 
   it('26. Structural Invariant: Explicit nAGQ = 1L (Laplace approximation) is verified', () => {
@@ -1407,5 +1428,100 @@ describe('MedVoice Study 3: Proportional Odds Diagnostic 6-Step Decision Protoco
       fixed_effects: { M1: 0.3, 'M1:PerspectiveSIM-02': 0.0, 'M1:PerspectiveSIM-03': 0.0 },
     });
     assert.strictEqual(res_valid.status, 'PASSED');
+  });
+
+  it('27. Sequential Preemption Invariant: Gradient evaluation failure with overwritten Hessian code fails Step 3', () => {
+    // Simulates lme4 scenario where checkConv records "unable to evaluate scaled gradient",
+    // but checkHess subsequently overwrites code with Hessian code [3] and appends Hessian message
+    const resPreempt = evaluateCutpointModel({
+      cutpoint: 1,
+      n_pos: 600,
+      n_neg: 600,
+      optimizer_code: 0,
+      is_singular: false,
+      raw_gradient: dummy17Grad(1e-4),
+      lme4_conv_code: [3], // Overwritten by Hessian check!
+      lme4_messages: [
+        'unable to evaluate scaled gradient',
+        'Model is nearly unidentifiable: large eigenvalue ratio',
+      ],
+      full_hessian_dim: [17, 17],
+      fixed_effect_dim: [15, 15],
+      cov_matrix_valid: true,
+      se_values: [0.25],
+    });
+
+    // Invariant: Must fail closed at Step 3 as GRADIENT_EVALUATION_FAILED.
+    // Downstream Hessian check (Step 4) MUST NOT be assessed!
+    assert.strictEqual(resPreempt.status, 'GRADIENT_EVALUATION_FAILED');
+    assert.strictEqual(resPreempt.s3_grad_status, 'FAILED');
+    assert.strictEqual(resPreempt.s4_hess_status, 'NOT_ASSESSED_DUE_TO_GRADIENT_FAILURE');
+    assert.strictEqual(resPreempt.s5_sep_status, 'NOT_ASSESSED_DUE_TO_GRADIENT_FAILURE');
+    assert.match(resPreempt.detail, /unable to evaluate scaled gradient/);
+  });
+
+  it('28. Sequential Preemption Invariant: Gradient tolerance failure with Hessian codes fails Step 3', () => {
+    const resTolPreempt = evaluateCutpointModel({
+      cutpoint: 1,
+      n_pos: 600,
+      n_neg: 600,
+      optimizer_code: 0,
+      is_singular: false,
+      raw_gradient: dummy17Grad(1e-4),
+      lme4_conv_code: [2, 3], // Hessian codes present
+      lme4_messages: [
+        'Model failed to converge with max|grad| = 0.005 (tol = 0.001, component 1)',
+        'Hessian eigenvalue calculation failure',
+      ],
+      full_hessian_dim: [17, 17],
+      fixed_effect_dim: [15, 15],
+      cov_matrix_valid: true,
+      se_values: [0.25],
+    });
+
+    assert.strictEqual(resTolPreempt.status, 'GRADIENT_TOLERANCE_EXCEEDED');
+    assert.strictEqual(resTolPreempt.s3_grad_status, 'FAILED');
+    assert.strictEqual(resTolPreempt.s4_hess_status, 'NOT_ASSESSED_DUE_TO_GRADIENT_FAILURE');
+    assert.strictEqual(resTolPreempt.s5_sep_status, 'NOT_ASSESSED_DUE_TO_GRADIENT_FAILURE');
+    assert.match(resTolPreempt.detail, /Model failed to converge with max\|grad\|/);
+  });
+
+  it('29. Robustness: Missing or empty messages with diagnostic codes fail closed safely without error', () => {
+    // Missing messages array and null message with Hessian code
+    const resNoMsg = evaluateCutpointModel({
+      cutpoint: 1,
+      n_pos: 600,
+      n_neg: 600,
+      optimizer_code: 0,
+      is_singular: false,
+      raw_gradient: dummy17Grad(1e-4),
+      lme4_conv_code: [2],
+      lme4_message: null,
+      lme4_messages: null,
+      full_hessian_dim: [17, 17],
+      fixed_effect_dim: [15, 15],
+      cov_matrix_valid: true,
+      se_values: [0.25],
+      fixed_effects: { M1: 0.3, 'M1:PerspectiveSIM-02': 0.0, 'M1:PerspectiveSIM-03': 0.0 },
+    });
+    assert.strictEqual(resNoMsg.status, 'HESSIAN_CHECK_FAILED');
+    assert.strictEqual(resNoMsg.s4_hess_status, 'FAILED');
+    assert.match(resNoMsg.detail, /Excessively large Hessian eigenvalue \(code 2\)/);
+
+    // Missing messages with code -1 falls back safely to tolerance exceeded
+    const resNoMsgGrad = evaluateCutpointModel({
+      cutpoint: 1,
+      n_pos: 600,
+      n_neg: 600,
+      optimizer_code: 0,
+      is_singular: false,
+      raw_gradient: dummy17Grad(1e-4),
+      lme4_conv_code: [-1],
+      lme4_message: null,
+      lme4_messages: [],
+    });
+    assert.strictEqual(resNoMsgGrad.status, 'GRADIENT_TOLERANCE_EXCEEDED');
+    assert.strictEqual(resNoMsgGrad.s3_grad_status, 'FAILED');
+    assert.match(resNoMsgGrad.detail, /Gradient tolerance exceeded/);
   });
 });

@@ -1,7 +1,7 @@
 #!/usr/bin/env Rscript
 # ==============================================================================
 # MedVoice Study 3: Proportional Odds Diagnostic & Bayesian Sensitivity Pipeline
-# Specification Version 3.3.20 / Protocol Version 2.3.15
+# Specification Version 3.3.21 / Protocol Version 2.3.16
 #
 # Primary Frequentist Diagnostic: lme4::glmer (v1.1-35.5) / ordinal::clmm (v2023.12-4)
 # Secondary Bayesian Predictive Analysis: brms (v2.22.0)
@@ -426,24 +426,39 @@ fit_threshold_regressions <- function(df_data) {
     # Our custom raw-gradient rule is an additional, stricter criterion.
     raw_grad <- fit_c@optinfo$derivs$gradient
     lme4_conv <- fit_c@optinfo$conv$lme4
-    lme4_code <- if (!is.null(lme4_conv$code)) as.integer(lme4_conv$code) else 0L
-    conv_msgs <- fit_c@optinfo$conv$lme4$messages
+    lme4_codes <- if (!is.null(lme4_conv$code)) as.integer(lme4_conv$code) else integer(0)
+    conv_msgs <- if (!is.null(lme4_conv$messages)) as.character(lme4_conv$messages) else character(0)
     
-    # Check for lme4 gradient-related convergence failure codes (-1, -2, -5)
-    # In lme4 (v1.1-35.5 checkConv.R), gradient codes are strictly:
-    # -1: Scaled-gradient failure. Occurs under two distinct conditions:
-    #     (a) Scaled-gradient evaluation failure: Cholesky solve failed (solve(chol(Hessian), gradient))
-    #         or produced NA/non-finite values (messages: "unable to evaluate scaled gradient" or
-    #         "scaled gradient has non-finite values"). Mapped to GRADIENT_EVALUATION_FAILED.
-    #     (b) Scaled-gradient tolerance exceeded: maxmingrad > tol (message: "Model failed to converge
-    #         with max|grad| = ..."). Mapped to GRADIENT_TOLERANCE_EXCEEDED.
-    # -2: Relative gradient tolerance exceeded. NOTE: Unreachable under primary fitting configuration
-    #     because glmerControl specifies relTol = NULL. Retained as defensive check for non-primary configs.
-    #     Mapped to GRADIENT_TOLERANCE_EXCEEDED.
-    # -5: Gradient evaluation produced NA or non-finite values. Mapped to GRADIENT_EVALUATION_FAILED.
-    # NOTE: In lme4 1.1-35.5 checkConv.R, codes -1, -2, -5 are specifically GRADIENT failures,
-    # NOT Hessian failures! They must be classified under Step 3, not Step 4.
-    if (!is.null(lme4_code) && (lme4_code %in% c(-1L, -2L, -5L))) {
+    # Preemption Invariant: Detect gradient failures independently of numeric code.
+    # In lme4 (checkConv.R), Hessian checks occur after gradient checks; Hessian diagnostics
+    # can append messages and replace the numeric code with Hessian code(s) (e.g. c(2L, 3L)),
+    # but the earlier gradient messages are preserved in conv$lme4$messages.
+    # Therefore, Step 3 must inspect BOTH the complete message vector AND code vector.
+    
+    # 1. Detect gradient evaluation failure:
+    #    - Code -5 (gradient NA / non-finite)
+    #    - Message containing "unable to evaluate scaled gradient" or "scaled gradient has non-finite values"
+    #    - raw_grad is null, has wrong dimension (!= n_expected), or contains NA/NaN/Inf
+    msg_grad_eval_fail <- any(grepl("unable to evaluate|non-finite", conv_msgs, ignore.case = TRUE))
+    code_grad_eval_fail <- any(lme4_codes == -5L)
+    raw_grad_invalid <- is.null(raw_grad) || (length(raw_grad) != n_expected) || any(!is.finite(raw_grad))
+    
+    is_grad_eval_fail <- msg_grad_eval_fail || code_grad_eval_fail || raw_grad_invalid
+    
+    # 2. Detect gradient tolerance failure (if not an evaluation failure):
+    #    - Code -1 (scaled gradient > tol) without evaluation failure message
+    #    - Code -2 (relative gradient > relTol; unreachable under primary relTol = NULL, retained defensively)
+    #    - Message containing "failed to converge with max|grad|" or "relative gradient"
+    #    - Raw gradient max(abs(raw_grad)) >= 1e-3
+    #    - Any message matching "gradient" or "relTol"
+    msg_grad_tol_fail <- any(grepl("failed to converge with max\\|grad\\||relative gradient", conv_msgs, ignore.case = TRUE))
+    code_grad_tol_fail <- any(lme4_codes %in% c(-1L, -2L))
+    raw_grad_tol_fail <- (!raw_grad_invalid) && (max(abs(raw_grad)) >= 1e-3)
+    has_grad_warning <- any(grepl("gradient|relTol", conv_msgs, ignore.case = TRUE))
+    
+    is_grad_tol_fail <- (!is_grad_eval_fail) && (msg_grad_tol_fail || code_grad_tol_fail || raw_grad_tol_fail || has_grad_warning)
+    
+    if (is_grad_eval_fail || is_grad_tol_fail) {
       contrasts[c_idx] <- NA_real_
       convergence[c_idx] <- FALSE
       non_estimable[c_idx] <- TRUE
@@ -452,71 +467,40 @@ fit_threshold_regressions <- function(df_data) {
       s4_hess_status[c_idx] <- "NOT_ASSESSED_DUE_TO_GRADIENT_FAILURE"
       s5_sep_status[c_idx] <- "NOT_ASSESSED_DUE_TO_GRADIENT_FAILURE"
       
-      msg_text <- if (!is.null(conv_msgs)) paste(conv_msgs, collapse = "; ") else ""
-      is_eval_fail <- (lme4_code == -5L) || 
-                      (lme4_code == -1L && grepl("unable to evaluate|non-finite", msg_text, ignore.case = TRUE))
+      all_codes_str <- if (length(lme4_codes) > 0) paste(lme4_codes, collapse = ",") else "none"
       
-      code_desc <- if (lme4_code == -1L) {
-        if (is_eval_fail) {
-          sprintf("Scaled-gradient evaluation failure (lme4 code -1: %s)", if (nchar(msg_text) > 0) msg_text else "unable to evaluate or non-finite")
+      if (is_grad_eval_fail) {
+        cutpoint_status[c_idx] <- "GRADIENT_EVALUATION_FAILED"
+        detail_msg <- if (msg_grad_eval_fail) {
+          paste(conv_msgs[grepl("unable to evaluate|non-finite", conv_msgs, ignore.case = TRUE)], collapse = "; ")
+        } else if (code_grad_eval_fail) {
+          "Gradient contains NA or non-finite values (lme4 code -5)"
         } else {
-          sprintf("Scaled-gradient tolerance exceeded (lme4 code -1: %s)", if (nchar(msg_text) > 0) msg_text else "max|grad| > tol")
+          sprintf("Gradient vector invalid (length=%d, expected=%d, non-finite=%s)",
+                  if (is.null(raw_grad)) 0 else length(raw_grad), n_expected,
+                  if (is.null(raw_grad)) TRUE else any(!is.finite(raw_grad)))
         }
-      } else if (lme4_code == -2L) {
-        "Relative-gradient check failure (lme4 code -2, unreachable under primary relTol = NULL)"
+        cutpoint_detail[c_idx] <- sprintf("Gradient evaluation failure [codes: %s]: %s", all_codes_str, detail_msg)
       } else {
-        "Gradient contains NA or non-finite values (lme4 code -5)"
+        cutpoint_status[c_idx] <- "GRADIENT_TOLERANCE_EXCEEDED"
+        max_g_val <- if (!raw_grad_invalid) max(abs(raw_grad)) else NA_real_
+        detail_msg <- if (msg_grad_tol_fail || has_grad_warning) {
+          paste(conv_msgs[grepl("failed to converge with max\\|grad\\||relative gradient|gradient|relTol", conv_msgs, ignore.case = TRUE)], collapse = "; ")
+        } else if (any(lme4_codes == -2L)) {
+          "Relative-gradient check failure (lme4 code -2, unreachable under primary relTol = NULL)"
+        } else {
+          sprintf("Max absolute raw gradient %.2e >= 1e-3", max_g_val)
+        }
+        cutpoint_detail[c_idx] <- sprintf("Gradient tolerance exceeded [codes: %s]: %s", all_codes_str, detail_msg)
       }
       
-      cutpoint_status[c_idx] <- if (is_eval_fail) "GRADIENT_EVALUATION_FAILED" else "GRADIENT_TOLERANCE_EXCEEDED"
-      cutpoint_detail[c_idx] <- code_desc
-      max_grads[c_idx] <- NA_real_
-      min_hess_eigvals[c_idx] <- NA_real_
-      max_ses[c_idx] <- NA_real_
-      next
-    }
-    
-    grad_invalid <- is.null(raw_grad) || length(raw_grad) != n_expected || any(!is.finite(raw_grad))
-    if (grad_invalid) {
-      contrasts[c_idx] <- NA_real_
-      convergence[c_idx] <- FALSE
-      non_estimable[c_idx] <- TRUE
-      
-      s3_grad_status[c_idx] <- "FAILED"
-      s4_hess_status[c_idx] <- "NOT_ASSESSED_DUE_TO_GRADIENT_FAILURE"
-      s5_sep_status[c_idx] <- "NOT_ASSESSED_DUE_TO_GRADIENT_FAILURE"
-      
-      cutpoint_status[c_idx] <- "GRADIENT_EVALUATION_FAILED"
-      cutpoint_detail[c_idx] <- sprintf("Gradient vector invalid (length=%d, expected=%d, non-finite=%s)", 
-                                        if (is.null(raw_grad)) 0 else length(raw_grad), n_expected, 
-                                        if (is.null(raw_grad)) TRUE else any(!is.finite(raw_grad)))
-      max_grads[c_idx] <- NA_real_
-      min_hess_eigvals[c_idx] <- NA_real_
-      max_ses[c_idx] <- NA_real_
-      next
-    }
-    
-    max_grad <- max(abs(raw_grad))
-    max_grads[c_idx] <- max_grad
-    has_grad_msg <- any(grepl("gradient|relTol", conv_msgs, ignore.case = TRUE))
-    
-    if (max_grad >= 1e-3 || has_grad_msg) {
-      contrasts[c_idx] <- NA_real_
-      convergence[c_idx] <- FALSE
-      non_estimable[c_idx] <- TRUE
-      
-      s3_grad_status[c_idx] <- "FAILED"
-      s4_hess_status[c_idx] <- "NOT_ASSESSED_DUE_TO_GRADIENT_FAILURE"
-      s5_sep_status[c_idx] <- "NOT_ASSESSED_DUE_TO_GRADIENT_FAILURE"
-      
-      msg_text <- if (has_grad_msg) paste(conv_msgs[grepl("gradient|relTol", conv_msgs, ignore.case = TRUE)], collapse="; ") else "none"
-      cutpoint_status[c_idx] <- "GRADIENT_TOLERANCE_EXCEEDED"
-      cutpoint_detail[c_idx] <- sprintf("Max raw |grad|=%.2e >= 1e-3 (or lme4 warning: %s)", max_grad, msg_text)
+      max_grads[c_idx] <- if (!raw_grad_invalid) max(abs(raw_grad)) else NA_real_
       min_hess_eigvals[c_idx] <- NA_real_
       max_ses[c_idx] <- NA_real_
       next
     }
     s3_grad_status[c_idx] <- "PASSED"
+    max_grads[c_idx] <- max(abs(raw_grad))
     
     # --------------------------------------------------------------------------
     # Step 4: Full Derivative Hessian & Fixed-Effect Information Matrix Verification
@@ -535,14 +519,22 @@ fit_threshold_regressions <- function(df_data) {
     chol_ok <- if (hess_finite) !inherits(tryCatch(chol(full_hess), error = function(e) e), "error") else FALSE
     
     min_hess_eigvals[c_idx] <- min_eig
-    # Hessian-specific lme4 checkHess failure codes (-3, -4, -6, 2, 3)
+    # Vector-safe Hessian convergence codes check
+    # Hessian-specific lme4 checkHess failure codes (-3, -4, -6, 2, 3):
     # -3: Negative eigenvalues (indefinite Hessian)
     # -4: Numerically singular Hessian (zero eigenvalue)
     # -6: Eigenvalue calculation failed
     #  2: Excessively large eigenvalue (> 1e6)
     #  3: Excessive condition number / ratio (> 1e6)
-    has_hess_code_fail <- (!is.null(lme4_code)) && (lme4_code %in% c(-3L, -4L, -6L, 2L, 3L))
+    known_hess_codes <- c(-3L, -4L, -6L, 2L, 3L)
+    detected_hess_codes <- intersect(lme4_codes, known_hess_codes)
+    has_hess_code_fail <- length(detected_hess_codes) > 0
     has_hess_msg <- any(grepl("Hessian|singular|eigenvalue|unidentifiable", conv_msgs, ignore.case = TRUE))
+    
+    # Check for unrecognized/unknown non-zero codes (fail closed)
+    all_known_codes <- c(0L, -1L, -2L, -3L, -4L, -5L, -6L, 2L, 3L)
+    unrecognized_codes <- setdiff(lme4_codes, all_known_codes)
+    has_unknown_code <- length(unrecognized_codes) > 0
     
     # 2. Fixed-effect covariance matrix (vcov, dim: n_fixef x n_fixef = 15 x 15)
     cov_mat <- tryCatch(as.matrix(vcov(fit_c)), error = function(e) NULL)
@@ -552,7 +544,7 @@ fit_threshold_regressions <- function(df_data) {
     
     hess_failed <- (!hess_dim_valid) || (!hess_finite) || (min_eig <= 1e-6) || 
                    (cond_num > 1e6) || (!chol_ok) || has_hess_code_fail || has_hess_msg || 
-                   (!cov_dim_valid) || (!cov_finite) || (!cov_pd)
+                   has_unknown_code || (!cov_dim_valid) || (!cov_finite) || (!cov_pd)
     
     if (hess_failed) {
       contrasts[c_idx] <- NA_real_
@@ -562,13 +554,17 @@ fit_threshold_regressions <- function(df_data) {
       s4_hess_status[c_idx] <- "FAILED"
       s5_sep_status[c_idx] <- "NOT_ASSESSED_DUE_TO_HESSIAN_FAILURE"
       
-      fail_reason <- if (has_hess_code_fail) {
-                       if (lme4_code == -3L) "Negative Hessian eigenvalues (lme4 code -3)"
-                       else if (lme4_code == -4L) "Numerically singular Hessian (lme4 code -4)"
-                       else if (lme4_code == -6L) "Hessian eigenvalue calculation failure (lme4 code -6)"
-                       else if (lme4_code == 2L) "Excessively large Hessian eigenvalue (lme4 code 2)"
-                       else if (lme4_code == 3L) "Excessive eigenvalue ratio / ill-conditioned Hessian (lme4 code 3)"
-                       else sprintf("Hessian diagnostic code %d", lme4_code)
+      # Build readable combined failure reason supporting multiple vector codes
+      code_reasons <- character(0)
+      if (any(detected_hess_codes == -3L)) code_reasons <- c(code_reasons, "Negative Hessian eigenvalues (code -3)")
+      if (any(detected_hess_codes == -4L)) code_reasons <- c(code_reasons, "Numerically singular Hessian (code -4)")
+      if (any(detected_hess_codes == -6L)) code_reasons <- c(code_reasons, "Hessian eigenvalue calculation failure (code -6)")
+      if (any(detected_hess_codes == 2L)) code_reasons <- c(code_reasons, "Excessively large Hessian eigenvalue (code 2)")
+      if (any(detected_hess_codes == 3L)) code_reasons <- c(code_reasons, "Excessive eigenvalue ratio / ill-conditioned Hessian (code 3)")
+      if (has_unknown_code) code_reasons <- c(code_reasons, sprintf("Unrecognized diagnostic code(s): %s", paste(unrecognized_codes, collapse = ", ")))
+      
+      fail_reason <- if (length(code_reasons) > 0) {
+                       sprintf("Hessian diagnostic code(s) [%s]: %s", paste(c(detected_hess_codes, unrecognized_codes), collapse = ", "), paste(code_reasons, collapse = "; "))
                      }
                      else if (!hess_dim_valid) sprintf("Full Hessian dim invalid (%s, expected %dx%d)", 
                                                        if(is.null(full_hess)) "NULL" else paste(dim(full_hess), collapse="x"), 

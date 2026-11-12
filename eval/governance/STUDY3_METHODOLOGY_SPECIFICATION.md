@@ -1,7 +1,7 @@
 # MedVoice Study 3: In-Silico Computational Evaluation Methodology Specification
 **Document ID:** `SPEC-2026-11-07-STUDY3-METHODOLOGY`  
-**Protocol Version:** 3.3.20 (Pre-Registration Draft / Proposed Freeze Candidate)
-**Date:** November 11, 2026
+**Protocol Version:** 3.3.21 (Pre-Registration Draft / Proposed Freeze Candidate)
+**Date:** November 12, 2026
 **Status:** Proposed Freeze Candidate (Runner Codebase Frozen; Scenario Authoring Paused pending Gate 1 Sign-Off)
 **Governance:** Non-Human Subjects / In-Silico Computational Evaluation  
 
@@ -420,15 +420,17 @@ $$\psi_{\text{primary}} = \beta_1 + \frac{1}{3} (\delta_{\text{SIM-02}} + \delta
              In `lme4` source code (`checkConv.R`), the relative gradient is calculated as:
              $$g_{\text{rel}, j} = \left|\frac{g_j}{p_j}\right|$$
              with **no** denominator floor ($\max(|p_j|, 1)$). Setting `relTol = NULL` explicitly disables this relative gradient check, preventing false-positive convergence warnings when parameters are close to zero (e.g., null interaction or main effects) while preserving the Cholesky-scaled gradient check ($g_{\text{scaled}} = \operatorname{solve}(\operatorname{chol}(\mathbf{H}), \mathbf{g})$).
-           - *Accurate Diagnostic Code Classification in `lme4` (v1.1-35.5)*:
-             In `lme4::checkConv.R`, optimizer convergence codes are strictly partitioned:
+           - *Accurate Diagnostic Code Classification & Preemption Architecture in `lme4` (v1.1-35.5)*:
+             In `lme4::checkConv.R`, optimizer convergence diagnostics execute sequentially, but Hessian checks can append messages and replace the numeric code vector with Hessian results while retaining earlier gradient messages in `fit@optinfo$conv$lme4$messages`.
+             To strictly uphold the sequential estimability protocol, Step 3 inspects **both** the complete message vector and all codes independently:
+             * **Independent Gradient Detection & Preemption**: If any gradient failure is detected (message matching `unable to evaluate` or `non-finite` $\rightarrow$ `GRADIENT_EVALUATION_FAILED`; message matching `failed to converge with max|grad|` or code `-1`/`-2` $\rightarrow$ `GRADIENT_TOLERANCE_EXCEEDED`), Step 3 immediately fails closed (`s3_grad_status = FAILED`), preempting downstream checks. Steps 4 and 5 are marked `NOT_ASSESSED_DUE_TO_GRADIENT_FAILURE`, guaranteeing that a gradient failure is never obscured by subsequent Hessian diagnostics.
              * **Gradient Codes**:
                - Code `-1` (Scaled-gradient failure): Emitted under two distinct conditions:
                  a) *Scaled-gradient evaluation failure*: Cholesky solve failed (`solve(chol(Hessian), gradient)`) or produced `NA`/non-finite values (messages: `"unable to evaluate scaled gradient"` or `"scaled gradient has non-finite values"`). Mapped strictly to `GRADIENT_EVALUATION_FAILED`.
                  b) *Scaled-gradient tolerance exceeded*: `maxmingrad > tol` (message: `"Model failed to converge with max|grad| = ..."`). Mapped strictly to `GRADIENT_TOLERANCE_EXCEEDED`.
                - Code `-2` (Relative-gradient tolerance exceeded): Documented as **unreachable** under the primary fitting configuration because `glmerControl` explicitly specifies `relTol = NULL`. Retained as a defensive decode for secondary / non-primary configurations and mapped to `GRADIENT_TOLERANCE_EXCEEDED`.
                - Code `-5` (Gradient evaluation produced `NA`/non-finite values): Mapped strictly to `GRADIENT_EVALUATION_FAILED`.
-             Any of these codes fails Step 3 (marking `s3_grad_status = FAILED`), and is **never** misclassified as a Hessian check failure. Downstream Steps 4 and 5 are marked `NOT_ASSESSED_DUE_TO_GRADIENT_FAILURE`.
+             Any gradient failure fails Step 3 and is **never** misclassified as a Hessian check failure.
            - *Separately Prespecified Custom Raw-Gradient Rule*: As an explicitly additional, stricter acceptance criterion, the pipeline requires:
              $$\max_j |\nabla_j| < 10^{-3}$$
              on the raw unscaled gradient vector $\mathbf{g} = \text{fit}_c@\text{optinfo}\$\text{derivs}\$\text{gradient}$.
@@ -436,13 +438,14 @@ $$\psi_{\text{primary}} = \beta_1 + \frac{1}{3} (\delta_{\text{SIM-02}} + \delta
              $$\operatorname{length}(\mathbf{g}) == n_{\text{expected}} \quad (17 \text{ elements})$$
              The optimizer log `fit_c@optinfo$conv$lme4$messages` is inspected for any `gradient` or `relTol` warnings. If length mismatches, $\max_j |\nabla_j| \ge 10^{-3}$, or any gradient warning is present, the step fails closed as `GRADIENT_TOLERANCE_EXCEEDED` (or `GRADIENT_EVALUATION_FAILED` if malformed). Downstream Steps 4 and 5 are marked `NOT_ASSESSED_DUE_TO_GRADIENT_FAILURE`.
         6. **Step 4 (Full Derivative Hessian & Fixed-Effect Information Matrix Verification)**:
-           - *Built-in `lme4` `checkHess()` Architecture & Diagnostic Return Codes*: In `lme4::checkConv`, Hessian-specific failure codes are strictly:
+           - *Built-in `lme4` `checkHess()` Architecture & Vector-Safe Diagnostic Return Codes*:
+             In `lme4::checkConv`, Hessian diagnostics evaluate eigenvalues and condition number, and `fit_c@optinfo$conv$lme4$code` can be a **vector** (e.g. `c(2L, 3L)` when both large-eigenvalue and excessive-ratio conditions trigger simultaneously). All checks use vector-safe set operations (`intersect()`, `any()`) and format combined readable failure telemetry without scalar condition-length errors. Hessian-specific failure codes are strictly:
              * `-3`: Negative eigenvalues (indefinite Hessian).
              * `-4`: Numerically singular Hessian (zero eigenvalue).
              * `-6`: Eigenvalue calculation failure.
              * `2`: Excessively large eigenvalue ($> 10^6$).
              * `3`: Excessive condition number / eigenvalue ratio ($> 10^6$).
-             Under the fail-closed policy, any of these Hessian codes (`fit_c@optinfo$conv$lme4$code %in% c(-3, -4, -6, 2, 3)`) or warning messages in `fit_c@optinfo$conv$lme4$messages` matching `Hessian`, `singular`, `eigenvalue`, or `unidentifiable` forces mandatory failure as `HESSIAN_CHECK_FAILED`.
+             Under the fail-closed policy, any detected Hessian code (`length(intersect(lme4_codes, c(-3, -4, -6, 2, 3))) > 0`), any unrecognized non-zero code, or warning messages matching `Hessian`, `singular`, `eigenvalue`, or `unidentifiable` forces mandatory failure as `HESSIAN_CHECK_FAILED`. Downstream Step 5 is marked `NOT_ASSESSED_DUE_TO_HESSIAN_FAILURE`.
            - *Full Derivative Hessian Inspection ($17 \times 17$)*: The full Hessian $\mathbf{H}_{\text{full}} = \text{fit}_c@\text{optinfo}\$\text{derivs}\$\text{Hessian}$ must satisfy:
              * $\operatorname{dim}(\mathbf{H}_{\text{full}}) == [n_{\text{expected}}, n_{\text{expected}}] = [17, 17]$.
              * All elements finite (zero `NaN` or `Inf`).
