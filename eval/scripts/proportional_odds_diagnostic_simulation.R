@@ -437,7 +437,7 @@ fit_threshold_regressions <- function(df_data) {
     
     # 1. Detect gradient evaluation failure:
     #    - Code -5 (gradient NA / non-finite)
-    #    - Message containing "unable to evaluate scaled gradient" or "scaled gradient has non-finite values"
+    #    - Message containing "unable to evaluate scaled gradient" (emitted by lme4 checkConv.R when solve(chol(Hessian), gradient) fails or any(is.na(scgrad)))
     #    - raw_grad is null, has wrong dimension (!= n_expected), or contains NA/NaN/Inf
     msg_grad_eval_fail <- any(grepl("unable to evaluate|non-finite", conv_msgs, ignore.case = TRUE))
     code_grad_eval_fail <- any(lme4_codes == -5L)
@@ -448,10 +448,10 @@ fit_threshold_regressions <- function(df_data) {
     # 2. Detect gradient tolerance failure (if not an evaluation failure):
     #    - Code -1 (scaled gradient > tol) without evaluation failure message
     #    - Code -2 (relative gradient > relTol; unreachable under primary relTol = NULL, retained defensively)
-    #    - Message containing "failed to converge with max|grad|" or "relative gradient"
+    #    - Message containing "failed to converge with max|grad|" or "max|relative grad|"
     #    - Raw gradient max(abs(raw_grad)) >= 1e-3
     #    - Any message matching "gradient" or "relTol"
-    msg_grad_tol_fail <- any(grepl("failed to converge with max\\|grad\\||relative gradient", conv_msgs, ignore.case = TRUE))
+    msg_grad_tol_fail <- any(grepl("failed to converge with max\\|grad\\||max\\|relative grad\\|", conv_msgs, ignore.case = TRUE))
     code_grad_tol_fail <- any(lme4_codes %in% c(-1L, -2L))
     raw_grad_tol_fail <- (!raw_grad_invalid) && (max(abs(raw_grad)) >= 1e-3)
     has_grad_warning <- any(grepl("gradient|relTol", conv_msgs, ignore.case = TRUE))
@@ -485,7 +485,7 @@ fit_threshold_regressions <- function(df_data) {
         cutpoint_status[c_idx] <- "GRADIENT_TOLERANCE_EXCEEDED"
         max_g_val <- if (!raw_grad_invalid) max(abs(raw_grad)) else NA_real_
         detail_msg <- if (msg_grad_tol_fail || has_grad_warning) {
-          paste(conv_msgs[grepl("failed to converge with max\\|grad\\||relative gradient|gradient|relTol", conv_msgs, ignore.case = TRUE)], collapse = "; ")
+          paste(conv_msgs[grepl("failed to converge with max\\|grad\\||max\\|relative grad\\||gradient|relTol", conv_msgs, ignore.case = TRUE)], collapse = "; ")
         } else if (any(lme4_codes == -2L)) {
           "Relative-gradient check failure (lme4 code -2, unreachable under primary relTol = NULL)"
         } else {

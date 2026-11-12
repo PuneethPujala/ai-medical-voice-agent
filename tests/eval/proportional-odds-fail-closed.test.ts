@@ -365,7 +365,7 @@ export function evaluateCutpointModel(input: {
 
   const isGradEvalFail = msgGradEvalFail || codeGradEvalFail || rawGradInvalid;
 
-  const msgGradTolFail = allMessages.some((m) => /failed to converge with max\|grad\||relative gradient/i.test(m));
+  const msgGradTolFail = allMessages.some((m) => /failed to converge with max\|grad\||max\|relative grad\|/i.test(m));
   const codeGradTolFail = rawCodes.includes(-1) || rawCodes.includes(-2);
   const rawGradTolFail = !rawGradInvalid && Math.max(...input.raw_gradient!.map((g) => Math.abs(g))) >= 1e-3;
   const hasGradWarning = Boolean(input.has_gradient_warning) || allMessages.some((m) => /gradient|relTol/i.test(m) && !/unable to evaluate|non-finite/i.test(m));
@@ -389,7 +389,7 @@ export function evaluateCutpointModel(input: {
       status = 'GRADIENT_TOLERANCE_EXCEEDED';
       const maxGVal = !rawGradInvalid ? Math.max(...input.raw_gradient!.map((g) => Math.abs(g))) : null;
       const detailMsg = msgGradTolFail || hasGradWarning
-        ? allMessages.filter((m) => /failed to converge with max\|grad\||relative gradient|gradient|relTol/i.test(m)).join('; ')
+        ? allMessages.filter((m) => /failed to converge with max\|grad\||max\|relative grad\||gradient|relTol/i.test(m)).join('; ')
         : rawCodes.includes(-2)
           ? 'Relative-gradient check failure (lme4 code -2, unreachable under primary relTol = NULL)'
           : `Max absolute raw gradient ${maxGVal !== null ? maxGVal.toExponential(2) : 'NA'} >= 1e-3`;
@@ -1325,6 +1325,22 @@ describe('MedVoice Study 3: Proportional Odds Diagnostic 6-Step Decision Protoco
     assert.strictEqual(res2.s3_grad_status, 'FAILED');
     assert.strictEqual(res2.s4_hess_status, 'NOT_ASSESSED_DUE_TO_GRADIENT_FAILURE');
     assert.match(res2.detail, /Relative-gradient check failure \(lme4 code -2, unreachable under primary relTol = NULL\)/);
+
+    // Test 24d (with upstream message): "Model failed to converge with max|relative grad| = ..."
+    const res2Msg = evaluateCutpointModel({
+      cutpoint: 1,
+      n_pos: 600,
+      n_neg: 600,
+      optimizer_code: 0,
+      is_singular: false,
+      lme4_conv_code: -2,
+      lme4_message: 'Model failed to converge with max|relative grad| = 0.005 (tol = 0.001, component 1)',
+      raw_gradient: dummy17Grad(1e-4),
+    });
+    assert.strictEqual(res2Msg.status, 'GRADIENT_TOLERANCE_EXCEEDED');
+    assert.strictEqual(res2Msg.s3_grad_status, 'FAILED');
+    assert.strictEqual(res2Msg.s4_hess_status, 'NOT_ASSESSED_DUE_TO_GRADIENT_FAILURE');
+    assert.match(res2Msg.detail, /Model failed to converge with max\|relative grad\|/);
   });
 
   it('25. Diagnostic Classification: Vector-safe Hessian codes fail Step 4 as HESSIAN_CHECK_FAILED', () => {
