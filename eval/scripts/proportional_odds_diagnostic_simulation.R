@@ -388,8 +388,10 @@ fit_threshold_regressions <- function(df_data) {
       # Use rePCA as supplementary diagnostic for orthogonal variance decomposition
       pca_summary <- tryCatch({
         pca_fit <- lme4::rePCA(fit_c)
-        sds <- sapply(pca_fit, function(x) x$sdev)
-        paste(sprintf("%s: sdev=%s", names(sds), paste(round(sds, 5), collapse=",")), collapse="; ")
+        pca_items <- vapply(names(pca_fit), function(nm) {
+          sprintf("%s: sdev=%s", nm, paste(round(pca_fit[[nm]]$sdev, 5), collapse = ","))
+        }, character(1))
+        paste(pca_items, collapse = "; ")
       }, error = function(e) "rePCA unavailable")
       
       singular_components[c_idx] <- sprintf("%s | %s", vc_details, pca_summary)
@@ -796,8 +798,9 @@ run_parametric_null_bootstrap <- function(df_observed, B = 1000, seed = 42) {
   # Extract fitted parameters
   fitted_cutpoints <- fit_null$Theta
   fitted_coefs <- fit_null$beta
-  sigma_u <- sqrt(as.numeric(fit_null$ST$scenario_id[1, 1]))
-  sigma_v <- sqrt(as.numeric(fit_null$ST$scenario_persp_id[1, 1]))
+  vc_null <- ordinal::VarCorr(fit_null)
+  sigma_u <- as.numeric(attr(vc_null[["scenario_id"]], "stddev"))[1]
+  sigma_v <- as.numeric(attr(vc_null[["scenario_persp_id"]], "stddev"))[1]
   
   # Step 3: Parametric bootstrap loop under null (preserving clustered structure)
   # Retry budget: Target B valid replicates, maximum B * 1.25 attempts (25% retry budget)

@@ -124,9 +124,12 @@ t1_clmm <- Sys.time()
 cat("ordinal::clmm Fit Succeeded in ", round(difftime(t1_clmm, t0_clmm, units = "secs"), 2), " s\n")
 cat("Estimated Thresholds (Theta):\n")
 print(fit_null$Theta)
-cat("Estimated Random Effects SD:\n")
-cat("  sigma_u (scenario):     ", round(sqrt(as.numeric(fit_null$ST$scenario_id[1, 1])), 4), "\n")
-cat("  sigma_v (session):      ", round(sqrt(as.numeric(fit_null$ST$scenario_persp_id[1, 1])), 4), "\n\n")
+vc_null <- ordinal::VarCorr(fit_null)
+sigma_u_est <- as.numeric(attr(vc_null[["scenario_id"]], "stddev"))[1]
+sigma_v_est <- as.numeric(attr(vc_null[["scenario_persp_id"]], "stddev"))[1]
+cat("Estimated Random Effects SD (via ordinal::VarCorr):\n")
+cat("  sigma_u (scenario):     ", round(sigma_u_est, 4), "\n")
+cat("  sigma_v (session):      ", round(sigma_v_est, 4), "\n\n")
 
 # 4. Execute 4-Cutpoint Proportional-Odds Diagnostic via lme4::glmer
 cat("[Phase 4] Primary Proportional-Odds Diagnostic Execution via lme4::glmer\n")
