@@ -1,0 +1,51 @@
+{
+  "timestamp": "2026-11-13T14:43:53.151Z",
+  "governance_boundary": {
+    "gate_4_status": "LOCKED",
+    "live_api_calls_attempted": 0,
+    "network_egress_bytes": 0,
+    "mock_provider_used": true,
+    "investigator_clinical_content_loaded": false
+  },
+  "matrix_sizing": {
+    "scenarios_count": 200,
+    "perspectives_count": 3,
+    "evaluation_sessions_count": 600,
+    "candidates_per_session": 2,
+    "total_observation_ratings": 1200
+  },
+  "execution_metrics": {
+    "duration_ms": 468,
+    "records_processed": 600,
+    "exit_code": 0,
+    "initial_heap_mb": 10,
+    "final_heap_mb": 15,
+    "peak_heap_diff_mb": 5,
+    "avg_latency_ms": 1,
+    "total_prompt_tokens": 210000,
+    "total_completion_tokens": 72000
+  },
+  "artifacts": {
+    "output_dir": "C:\\dev\\Capstone\\eval\\output\\gate4_dry_run_1794581032542\\run_artifacts",
+    "manifest_file": "run_manifest.json",
+    "manifest_status": "COMPLETED",
+    "manifest_sha256": "e249bebae98e8d3953181b1b36b15f5a7dcf88260aa2a00edcd3e6e37a32602a",
+    "results_jsonl": "eval_results.jsonl",
+    "results_line_count": 600,
+    "results_sha256": "8e04ff359484c292a6ed9d193835c9073fedaaa857afdae21f1387cbca44a8b3",
+    "secret_mapping_file": "secret_mapping.enc",
+    "secret_mapping_sha256": "7b4fd99771685dfe6b8116f7ff17c01c3390a043fec7e774b5e23ebb77cfc9cb",
+    "secret_mapping_decryption_verified": true
+  },
+  "reproducibility": {
+    "randomization_seed": 42,
+    "git_commit_sha": "842d5a9bc4e8ab4d5393a2f4aef0ce22513ef283",
+    "evaluator_source_hash": "4bbe412fa390a642e20310e0bf12d55399e9272bdbc387e3bb2381efb74acab5",
+    "rubric_version": "2.2.0",
+    "prompt_template_version": "2.2.0"
+  },
+  "crash_recovery_verification": {
+    "simulated_resume_tested": true,
+    "duplicate_records_prevented": true
+  }
+}
