@@ -93,6 +93,72 @@ export default function ConsultationHistoryPage() {
   const [selectedConsultationForSoap, setSelectedConsultationForSoap] = useState<ConsultationItem | null>(null);
   const [inspectingTranscript, setInspectingTranscript] = useState<ConsultationItem | null>(null);
 
+  // Auto-fetch full encounter details if dialogue transcript is missing when modal opens
+  useEffect(() => {
+    if (!inspectingTranscript?.id) return;
+    if (inspectingTranscript.transcript && inspectingTranscript.transcript.length > 0) return;
+
+    let isSubscribed = true;
+    fetch(`/api/consultations/${encodeURIComponent(inspectingTranscript.id)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!isSubscribed || !data?.consultation) return;
+        const c = data.consultation;
+        setInspectingTranscript((prev) => {
+          if (!prev || prev.id !== c.id) return prev;
+          return {
+            ...prev,
+            transcript: c.transcript || prev.transcript,
+            soapSubjective: c.soapSubjective || prev.soapSubjective,
+            soapObjective: c.soapObjective || prev.soapObjective,
+            soapAssessment: c.soapAssessment || prev.soapAssessment,
+            soapPlan: c.soapPlan || prev.soapPlan,
+          };
+        });
+      })
+      .catch(() => {});
+
+    return () => {
+      isSubscribed = false;
+    };
+  }, [inspectingTranscript?.id]);
+
+  useEffect(() => {
+    if (!selectedConsultationForSoap?.id) return;
+    if (
+      selectedConsultationForSoap.transcript &&
+      selectedConsultationForSoap.transcript.length > 0 &&
+      selectedConsultationForSoap.soapSubjective
+    ) {
+      return;
+    }
+
+    let isSubscribed = true;
+    fetch(`/api/consultations/${encodeURIComponent(selectedConsultationForSoap.id)}`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!isSubscribed || !data?.consultation) return;
+        const c = data.consultation;
+        setSelectedConsultationForSoap((prev) => {
+          if (!prev || prev.id !== c.id) return prev;
+          return {
+            ...prev,
+            ...c,
+            transcript: c.transcript || prev.transcript,
+            soapSubjective: c.soapSubjective || prev.soapSubjective,
+            soapObjective: c.soapObjective || prev.soapObjective,
+            soapAssessment: c.soapAssessment || prev.soapAssessment,
+            soapPlan: c.soapPlan || prev.soapPlan,
+          };
+        });
+      })
+      .catch(() => {});
+
+    return () => {
+      isSubscribed = false;
+    };
+  }, [selectedConsultationForSoap?.id]);
+
   // Fetch consultations (initial page or query change)
   const fetchConsultations = useCallback(
     async (cursor?: string | null, append: boolean = false) => {
@@ -265,13 +331,14 @@ export default function ConsultationHistoryPage() {
 
     // 2. Pending review check
     if (summary?.status === "awaiting_review" || item.status === "completed_pending_review") {
+      const hasGeneratedSoap = Boolean(item.soapSubjective || item.soapAssessment);
       return {
-        label: "Awaiting physician review",
-        colorClass: "bg-slate-100 text-slate-700 border-slate-200",
+        label: hasGeneratedSoap ? "SOAP Note Ready · Pending Review" : "Awaiting physician review",
+        colorClass: "bg-indigo-50 text-indigo-700 border-indigo-200",
         badge: "Awaiting Review",
-        hasReport: false,
-        canViewSoap: false,
-        soapUrl: null,
+        hasReport: true,
+        canViewSoap: true,
+        soapUrl: `/history/${item.id}/soap`,
       };
     }
 
@@ -281,6 +348,18 @@ export default function ConsultationHistoryPage() {
         label: "Signed · Clinician Approved",
         colorClass: "bg-emerald-50 text-emerald-800 border-emerald-200",
         badge: "Signed",
+        hasReport: true,
+        canViewSoap: true,
+        soapUrl: `/history/${item.id}/soap`,
+      };
+    }
+
+    // 4. Any consultation with compiled SOAP text
+    if (item.soapSubjective || item.soapAssessment) {
+      return {
+        label: "Clinical SOAP Compiled",
+        colorClass: "bg-slate-100 text-slate-700 border-slate-200",
+        badge: "SOAP Compiled",
         hasReport: true,
         canViewSoap: true,
         soapUrl: `/history/${item.id}/soap`,
@@ -348,7 +427,14 @@ export default function ConsultationHistoryPage() {
     return (
       <div
         key={item.id}
-        className="group rounded-2xl bg-white border border-slate-200/90 hover:border-slate-300 p-5 sm:p-6 transition-all hover:shadow-[0_4px_20px_-4px_rgba(0,0,0,0.06)]"
+        onClick={() => {
+          if (soapMeta.canViewSoap) {
+            setSelectedConsultationForSoap(item);
+          } else {
+            setInspectingTranscript(item);
+          }
+        }}
+        className="group rounded-2xl bg-white border border-slate-200/90 hover:border-slate-300 p-5 sm:p-6 transition-all hover:shadow-[0_4px_20px_-4px_rgba(0,0,0,0.06)] cursor-pointer"
       >
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           {/* Left: Metadata & Clinical Summary */}
@@ -442,6 +528,7 @@ export default function ConsultationHistoryPage() {
             {isResumable ? (
               <Link
                 href={`/consult/${item.id}`}
+                onClick={(e) => e.stopPropagation()}
                 className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-[#18251D] hover:bg-black text-white transition-all shadow-xs cursor-pointer group"
               >
                 <span>Resume</span>
@@ -450,23 +537,33 @@ export default function ConsultationHistoryPage() {
             ) : null}
 
             <button
-              onClick={() => setInspectingTranscript(item)}
-              className="inline-flex items-center gap-1 px-3 py-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200/80 text-slate-700 transition-all cursor-pointer"
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setInspectingTranscript(item);
+              }}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-slate-100 hover:bg-slate-200/90 text-slate-800 border border-slate-200/80 transition-all cursor-pointer shadow-2xs"
+              title="Inspect conversation dialogue turns"
             >
               <MessageSquare className="w-3.5 h-3.5 text-slate-500" />
-              <span>View Dialogue</span>
+              <span>View Dialogue {turnsCount > 0 ? `(${turnsCount})` : ""}</span>
             </button>
 
-            {soapMeta.canViewSoap && soapMeta.soapUrl ? (
-              <Link
-                href={soapMeta.soapUrl}
-                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-[#18251D] hover:bg-black text-white transition-all shadow-xs cursor-pointer group"
+            {soapMeta.canViewSoap && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedConsultationForSoap(item);
+                }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-[#18251D] hover:bg-black text-white transition-all shadow-xs cursor-pointer group"
+                title="View full generated SOAP report"
               >
                 <FileText className="w-3.5 h-3.5 text-[#B7FF72]" />
-                <span>View SOAP Report</span>
+                <span>View SOAP Note</span>
                 <ArrowRight className="w-3 h-3 text-[#B7FF72] group-hover:translate-x-0.5 transition-transform" />
-              </Link>
-            ) : null}
+              </button>
+            )}
           </div>
         </div>
       </div>
@@ -824,6 +921,25 @@ export default function ConsultationHistoryPage() {
                   {inspectingTranscript.transcript?.length || 0} turns recorded
                 </span>
                 <div className="flex items-center gap-2">
+                  {Boolean(
+                    inspectingTranscript.soapSubjective ||
+                    inspectingTranscript.soapAssessment ||
+                    inspectingTranscript.status === "completed_pending_review" ||
+                    inspectingTranscript.status === "approved"
+                  ) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const target = inspectingTranscript;
+                        setInspectingTranscript(null);
+                        setSelectedConsultationForSoap(target);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-[#18251D] hover:bg-black text-white transition-all shadow-xs cursor-pointer"
+                    >
+                      <FileText className="w-3.5 h-3.5 text-[#B7FF72]" />
+                      <span>View Full SOAP Note</span>
+                    </button>
+                  )}
                   {(inspectingTranscript.status === "paused" ||
                     inspectingTranscript.status === "incomplete_intake" ||
                     inspectingTranscript.status === "in_progress") && (

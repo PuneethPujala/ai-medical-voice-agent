@@ -95,7 +95,7 @@ export function SoapReportModal({
   const [saveSuccess, setSaveSuccess] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [copiedNote, setCopiedNote] = useState(false);
-  const [showTranscript, setShowTranscript] = useState(false);
+  const [showTranscript, setShowTranscript] = useState(true);
 
   // Artifact Architecture State
   const [artifacts, setArtifacts] = useState<any[]>([]);
@@ -186,11 +186,11 @@ export function SoapReportModal({
             setArtifacts([]);
             setActiveArtifact(null);
             // Initialize from encounter props or synthesize initial note
-            if (encounter.soap?.subjective && encounter.soap?.assessment) {
-              setSubjective(encounter.soap.subjective);
-              setObjective(encounter.soap.objective || "");
-              setAssessment(encounter.soap.assessment);
-              setPlan(encounter.soap.plan || "");
+            if (encounter.soap?.subjective || encounter.soap?.assessment) {
+              setSubjective(encounter.soap?.subjective || "");
+              setObjective(encounter.soap?.objective || "");
+              setAssessment(encounter.soap?.assessment || "");
+              setPlan(encounter.soap?.plan || "");
             } else {
               const patientSummary =
                 patientUtterances.length > 0
