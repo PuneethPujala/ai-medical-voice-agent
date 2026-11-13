@@ -189,4 +189,38 @@ describe('Gate 1: Scenario Generator Infrastructure & Governance Guards', () => 
     assert.strictEqual(entry.quarantined_from_benchmarks, true);
     assert.strictEqual(entry.sha256, batch.contentSha256);
   });
+
+  it('8. Test fixture neutralization: ensures test fixtures contain zero realistic clinical diagnoses or medications', () => {
+    const batch = generateScenarioBatch({
+      testFixtureMode: true,
+      perDomainCount: 5,
+      seed: 42,
+    });
+
+    const prohibitedClinicalTerms = [
+      'Hypertension',
+      'Diabetes',
+      'Amlodipine',
+      'Metformin',
+      'Lisinopril',
+      'Atorvastatin',
+      'Penicillin',
+      'crushing chest pain',
+      'shortness of breath',
+    ];
+
+    for (const scen of batch.scenarios) {
+      const serialized = JSON.stringify(scen);
+      for (const term of prohibitedClinicalTerms) {
+        assert(
+          !serialized.includes(term),
+          `Test fixture ${scen.scenario_id} must not contain clinical term '${term}'`
+        );
+      }
+      // Assert explicitly marked non-clinical placeholders
+      assert(scen.patient_profile.narrative_context.includes('[NON-CLINICAL TEST FIXTURE]'));
+      assert(scen.initial_patient_utterance.includes('[SCHEMA TEST QUERY]'));
+      assert(scen.physician_reference_response.includes('[NON-CLINICAL TEST REFERENCE]'));
+    }
+  });
 });

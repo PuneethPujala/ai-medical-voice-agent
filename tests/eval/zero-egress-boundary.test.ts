@@ -17,8 +17,10 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert';
 import http from 'node:http';
 import https from 'node:https';
+import http2 from 'node:http2';
 import net from 'node:net';
 import tls from 'node:tls';
+import dgram from 'node:dgram';
 import dns from 'node:dns';
 import child_process from 'node:child_process';
 import { MockEvalProvider } from '../../eval/src/providers/mock-eval-provider';
@@ -29,7 +31,9 @@ export interface NetworkEgressBarrier {
 }
 
 /**
- * Installs a comprehensive, fail-closed multi-layer network barrier.
+ * Installs a comprehensive, fail-closed multi-layer network barrier covering
+ * HTTP, HTTPS, HTTP/2, global fetch, DNS (callbacks and promises),
+ * raw TCP sockets, TLS sockets, UDP datagram sockets, and child-process execution.
  */
 export function installMultiLayerZeroEgressBarrier(): NetworkEgressBarrier {
   const violations: Array<{ vector: string; target?: string; timestamp: string }> = [];
@@ -38,15 +42,23 @@ export function installMultiLayerZeroEgressBarrier(): NetworkEgressBarrier {
   const origHttpGet = http.get;
   const origHttpsRequest = https.request;
   const origHttpsGet = https.get;
+  const origHttp2Connect = http2.connect;
   const origFetch = globalThis.fetch;
   const origDnsLookup = dns.lookup;
   const origDnsResolve = dns.resolve;
+  const origDnsResolve4 = dns.resolve4;
+  const origDnsResolve6 = dns.resolve6;
+  const origDnsPromisesLookup = dns.promises?.lookup;
+  const origDnsPromisesResolve = dns.promises?.resolve;
   const origNetConnect = net.connect;
   const origNetCreateConnection = net.createConnection;
   const origSocketConnect = net.Socket.prototype.connect;
   const origTlsConnect = tls.connect;
+  const origDgramCreateSocket = dgram.createSocket;
   const origChildExec = child_process.exec;
   const origChildSpawn = child_process.spawn;
+  const origChildFork = child_process.fork;
+  const origChildExecFile = child_process.execFile;
 
   function recordViolation(vector: string, target?: string): never {
     const record = { vector, target, timestamp: new Date().toISOString() };
@@ -77,7 +89,14 @@ export function installMultiLayerZeroEgressBarrier(): NetworkEgressBarrier {
     recordViolation('https.get');
   };
 
-  // 2. Global fetch
+  // 2. HTTP/2
+  if (http2 && typeof http2.connect === 'function') {
+    (http2 as any).connect = function (authority: any) {
+      recordViolation('http2.connect', String(authority));
+    };
+  }
+
+  // 3. Global fetch
   if (typeof globalThis.fetch === 'function') {
     (globalThis as any).fetch = async function (input: any) {
       const url = typeof input === 'string' ? input : input?.url || 'unknown_url';
@@ -85,17 +104,29 @@ export function installMultiLayerZeroEgressBarrier(): NetworkEgressBarrier {
     };
   }
 
-  // 3. DNS
+  // 4. DNS (Callbacks & Promises)
   (dns as any).lookup = function (...args: any[]) {
-    const hostname = args[0];
-    recordViolation('dns.lookup', hostname);
+    recordViolation('dns.lookup', args[0]);
   };
   (dns as any).resolve = function (...args: any[]) {
-    const hostname = args[0];
-    recordViolation('dns.resolve', hostname);
+    recordViolation('dns.resolve', args[0]);
   };
+  (dns as any).resolve4 = function (...args: any[]) {
+    recordViolation('dns.resolve4', args[0]);
+  };
+  (dns as any).resolve6 = function (...args: any[]) {
+    recordViolation('dns.resolve6', args[0]);
+  };
+  if (dns.promises) {
+    (dns.promises as any).lookup = async function (...args: any[]) {
+      recordViolation('dns.promises.lookup', args[0]);
+    };
+    (dns.promises as any).resolve = async function (...args: any[]) {
+      recordViolation('dns.promises.resolve', args[0]);
+    };
+  }
 
-  // 4. Raw TCP
+  // 5. Raw TCP Sockets
   (net as any).connect = function (...args: any[]) {
     recordViolation('net.connect');
   };
@@ -106,18 +137,40 @@ export function installMultiLayerZeroEgressBarrier(): NetworkEgressBarrier {
     recordViolation('net.Socket.connect');
   };
 
-  // 5. TLS
+  // 6. TLS Sockets
   (tls as any).connect = function (...args: any[]) {
     recordViolation('tls.connect');
   };
 
-  // 6. Child Process Network Vectors
+  // 7. UDP Datagram Sockets
+  (dgram as any).createSocket = function (...args: any[]) {
+    recordViolation('dgram.createSocket');
+  };
+
+  // 8. Child Process Network Vectors
   (child_process as any).exec = function (...args: any[]) {
     const cmd = args[0];
     if (typeof cmd === 'string' && /(?:curl|wget|nc|ncat|ssh|invoke-webrequest)/i.test(cmd)) {
       recordViolation('child_process.exec_network_client', cmd);
     }
     return origChildExec.apply(child_process, args as any);
+  };
+  (child_process as any).spawn = function (...args: any[]) {
+    const cmd = args[0];
+    if (typeof cmd === 'string' && /(?:curl|wget|nc|ncat|ssh)/i.test(cmd)) {
+      recordViolation('child_process.spawn_network_client', cmd);
+    }
+    return origChildSpawn.apply(child_process, args as any);
+  };
+  (child_process as any).execFile = function (...args: any[]) {
+    const file = args[0];
+    if (typeof file === 'string' && /(?:curl|wget|nc|ncat|ssh)/i.test(file)) {
+      recordViolation('child_process.execFile_network_client', file);
+    }
+    return origChildExecFile.apply(child_process, args as any);
+  };
+  (child_process as any).fork = function (...args: any[]) {
+    recordViolation('child_process.fork', String(args[0]));
   };
 
   return {
@@ -127,15 +180,25 @@ export function installMultiLayerZeroEgressBarrier(): NetworkEgressBarrier {
       http.get = origHttpGet;
       https.request = origHttpsRequest;
       https.get = origHttpsGet;
+      if (http2) http2.connect = origHttp2Connect;
       if (origFetch) (globalThis as any).fetch = origFetch;
       dns.lookup = origDnsLookup;
       dns.resolve = origDnsResolve;
+      dns.resolve4 = origDnsResolve4;
+      dns.resolve6 = origDnsResolve6;
+      if (dns.promises) {
+        if (origDnsPromisesLookup) dns.promises.lookup = origDnsPromisesLookup;
+        if (origDnsPromisesResolve) dns.promises.resolve = origDnsPromisesResolve;
+      }
       net.connect = origNetConnect;
       net.createConnection = origNetCreateConnection;
       net.Socket.prototype.connect = origSocketConnect;
       tls.connect = origTlsConnect;
+      dgram.createSocket = origDgramCreateSocket;
       child_process.exec = origChildExec;
       child_process.spawn = origChildSpawn;
+      child_process.execFile = origChildExecFile;
+      child_process.fork = origChildFork;
     },
   };
 }
@@ -235,7 +298,7 @@ describe('Gate 4 Zero-Egress Network Isolation Audit', () => {
     }
   });
 
-  it('5. Child Process Network Client Trap: Blocks external curl/wget execution', () => {
+  it('5. Child Process Network Client Trap: Blocks external curl/wget execution across exec, spawn, execFile and fork', () => {
     const barrier = installMultiLayerZeroEgressBarrier();
     try {
       assert.throws(
@@ -248,12 +311,87 @@ describe('Gate 4 Zero-Egress Network Isolation Audit', () => {
           return true;
         }
       );
+
+      assert.throws(
+        () => {
+          child_process.spawn('wget', ['https://api.groq.com']);
+        },
+        (err: any) => {
+          assert.strictEqual(err.code, 'ZERO_EGRESS_VIOLATION');
+          assert.strictEqual(err.vector, 'child_process.spawn_network_client');
+          return true;
+        }
+      );
+
+      assert.throws(
+        () => {
+          child_process.execFile('curl', ['https://api.groq.com']);
+        },
+        (err: any) => {
+          assert.strictEqual(err.code, 'ZERO_EGRESS_VIOLATION');
+          assert.strictEqual(err.vector, 'child_process.execFile_network_client');
+          return true;
+        }
+      );
+
+      assert.throws(
+        () => {
+          child_process.fork('./child-worker.js');
+        },
+        (err: any) => {
+          assert.strictEqual(err.code, 'ZERO_EGRESS_VIOLATION');
+          assert.strictEqual(err.vector, 'child_process.fork');
+          return true;
+        }
+      );
     } finally {
       barrier.restore();
     }
   });
 
-  it('6. MockEvalProvider Zero Egress: Executes without triggering any barrier violation', async () => {
+  it('6. Advanced Network Vectors Trap: Blocks DNS promises, HTTP/2, and UDP datagrams', async () => {
+    const barrier = installMultiLayerZeroEgressBarrier();
+    try {
+      if (dns.promises) {
+        await assert.rejects(
+          async () => {
+            await dns.promises.lookup('api.groq.com');
+          },
+          (err: any) => {
+            assert.strictEqual(err.code, 'ZERO_EGRESS_VIOLATION');
+            assert.strictEqual(err.vector, 'dns.promises.lookup');
+            return true;
+          }
+        );
+      }
+
+      assert.throws(
+        () => {
+          http2.connect('https://api.groq.com');
+        },
+        (err: any) => {
+          assert.strictEqual(err.code, 'ZERO_EGRESS_VIOLATION');
+          assert.strictEqual(err.vector, 'http2.connect');
+          return true;
+        }
+      );
+
+      assert.throws(
+        () => {
+          dgram.createSocket('udp4');
+        },
+        (err: any) => {
+          assert.strictEqual(err.code, 'ZERO_EGRESS_VIOLATION');
+          assert.strictEqual(err.vector, 'dgram.createSocket');
+          return true;
+        }
+      );
+    } finally {
+      barrier.restore();
+    }
+  });
+
+  it('7. MockEvalProvider Zero Egress: Executes without triggering any barrier violation', async () => {
     const barrier = installMultiLayerZeroEgressBarrier();
     try {
       const mockProvider = new MockEvalProvider({
@@ -273,7 +411,7 @@ describe('Gate 4 Zero-Egress Network Isolation Audit', () => {
     }
   });
 
-  it('7. Token Provenance Verification: Confirms token counts are synthetic multipliers, not model inference', async () => {
+  it('8. Token Provenance Verification: Confirms token counts are synthetic multipliers, not model inference', async () => {
     const mock = new MockEvalProvider({
       promptTokens: 350,
       completionTokens: 120,

@@ -98,11 +98,16 @@ export async function executeGate4OfflineDryRun(): Promise<DryRunTelemetry> {
   const originalFetch = globalThis.fetch;
   const originalDnsLookup = dns.lookup;
   const originalDnsResolve = dns.resolve;
+  const origDnsPromisesLookup = dns.promises?.lookup;
+  const origDnsPromisesResolve = dns.promises?.resolve;
   const originalNetConnect = net.connect;
   const originalNetCreateConnection = net.createConnection;
   const originalSocketConnect = net.Socket.prototype.connect;
   const originalTlsConnect = tls.connect;
   const originalChildExec = child_process.exec;
+  const originalChildSpawn = child_process.spawn;
+  const originalChildFork = child_process.fork;
+  const originalChildExecFile = child_process.execFile;
 
   const egressBlocker = function (vector: string, target?: string) {
     networkRequestsAttempted++;
@@ -131,6 +136,10 @@ export async function executeGate4OfflineDryRun(): Promise<DryRunTelemetry> {
   }
   (dns as any).lookup = function (...args: any[]) { egressBlocker('dns.lookup', args[0]); };
   (dns as any).resolve = function (...args: any[]) { egressBlocker('dns.resolve', args[0]); };
+  if (dns.promises) {
+    (dns.promises as any).lookup = async function (...args: any[]) { egressBlocker('dns.promises.lookup', args[0]); };
+    (dns.promises as any).resolve = async function (...args: any[]) { egressBlocker('dns.promises.resolve', args[0]); };
+  }
   (net as any).connect = function () { egressBlocker('net.connect'); };
   (net as any).createConnection = function () { egressBlocker('net.createConnection'); };
   (net.Socket.prototype as any).connect = function () { egressBlocker('net.Socket.connect'); };
@@ -141,6 +150,23 @@ export async function executeGate4OfflineDryRun(): Promise<DryRunTelemetry> {
       egressBlocker('child_process.exec_network_client', cmd);
     }
     return originalChildExec.apply(child_process, args as any);
+  };
+  (child_process as any).spawn = function (...args: any[]) {
+    const cmd = args[0];
+    if (typeof cmd === 'string' && /(?:curl|wget|nc|ncat|ssh)/i.test(cmd)) {
+      egressBlocker('child_process.spawn_network_client', cmd);
+    }
+    return originalChildSpawn.apply(child_process, args as any);
+  };
+  (child_process as any).execFile = function (...args: any[]) {
+    const file = args[0];
+    if (typeof file === 'string' && /(?:curl|wget|nc|ncat|ssh)/i.test(file)) {
+      egressBlocker('child_process.execFile_network_client', file);
+    }
+    return originalChildExecFile.apply(child_process, args as any);
+  };
+  (child_process as any).fork = function (...args: any[]) {
+    egressBlocker('child_process.fork', String(args[0]));
   };
 
   const initialMemory = process.memoryUsage();
@@ -397,11 +423,18 @@ export async function executeGate4OfflineDryRun(): Promise<DryRunTelemetry> {
     if (originalFetch) (globalThis as any).fetch = originalFetch;
     (dns as any).lookup = originalDnsLookup;
     (dns as any).resolve = originalDnsResolve;
+    if (dns.promises) {
+      if (origDnsPromisesLookup) (dns.promises as any).lookup = origDnsPromisesLookup;
+      if (origDnsPromisesResolve) (dns.promises as any).resolve = origDnsPromisesResolve;
+    }
     (net as any).connect = originalNetConnect;
     (net as any).createConnection = originalNetCreateConnection;
     (net.Socket.prototype as any).connect = originalSocketConnect;
     (tls as any).connect = originalTlsConnect;
     (child_process as any).exec = originalChildExec;
+    (child_process as any).spawn = originalChildSpawn;
+    (child_process as any).fork = originalChildFork;
+    (child_process as any).execFile = originalChildExecFile;
 
     // Clean up temporary workspace
     try {
