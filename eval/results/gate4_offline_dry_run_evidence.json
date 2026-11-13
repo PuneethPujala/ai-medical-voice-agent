@@ -1,11 +1,26 @@
 {
-  "timestamp": "2026-11-13T14:43:53.151Z",
+  "timestamp": "2026-11-13T15:05:41.112Z",
   "governance_boundary": {
     "gate_4_status": "LOCKED",
     "live_api_calls_attempted": 0,
     "network_egress_bytes": 0,
     "mock_provider_used": true,
-    "investigator_clinical_content_loaded": false
+    "investigator_clinical_content_loaded": false,
+    "isolation_layers_enforced": [
+      "http.request",
+      "http.get",
+      "https.request",
+      "https.get",
+      "globalThis.fetch",
+      "dns.lookup",
+      "dns.resolve",
+      "net.connect",
+      "net.createConnection",
+      "net.Socket.connect",
+      "tls.connect",
+      "child_process.exec_network_client"
+    ],
+    "token_inference_mode": "SYNTHETIC_MOCK_METADATA_ONLY"
   },
   "matrix_sizing": {
     "scenarios_count": 200,
@@ -15,7 +30,7 @@
     "total_observation_ratings": 1200
   },
   "execution_metrics": {
-    "duration_ms": 468,
+    "duration_ms": 321,
     "records_processed": 600,
     "exit_code": 0,
     "initial_heap_mb": 10,
@@ -26,20 +41,20 @@
     "total_completion_tokens": 72000
   },
   "artifacts": {
-    "output_dir": "C:\\dev\\Capstone\\eval\\output\\gate4_dry_run_1794581032542\\run_artifacts",
+    "output_dir": "C:\\dev\\Capstone\\eval\\output\\gate4_dry_run_1794582340702\\run_artifacts",
     "manifest_file": "run_manifest.json",
     "manifest_status": "COMPLETED",
-    "manifest_sha256": "e249bebae98e8d3953181b1b36b15f5a7dcf88260aa2a00edcd3e6e37a32602a",
+    "manifest_sha256": "69de28710b3163436047fe374f5763a0031f40509017521ad166b0815757b4ed",
     "results_jsonl": "eval_results.jsonl",
     "results_line_count": 600,
-    "results_sha256": "8e04ff359484c292a6ed9d193835c9073fedaaa857afdae21f1387cbca44a8b3",
+    "results_sha256": "fcefdfb2e1c1d78d15f11c365e186ed1dc0f81c1f7a1a70da5906706af387dce",
     "secret_mapping_file": "secret_mapping.enc",
-    "secret_mapping_sha256": "7b4fd99771685dfe6b8116f7ff17c01c3390a043fec7e774b5e23ebb77cfc9cb",
+    "secret_mapping_sha256": "59c986ae35cd827139fe950b8a042d8cc2a59c6e41b30a95a87e9ed1c3b50722",
     "secret_mapping_decryption_verified": true
   },
   "reproducibility": {
     "randomization_seed": 42,
-    "git_commit_sha": "842d5a9bc4e8ab4d5393a2f4aef0ce22513ef283",
+    "git_commit_sha": "4a2d3864d22ed8e89cf79f9bdee19f88fd4e97db",
     "evaluator_source_hash": "4bbe412fa390a642e20310e0bf12d55399e9272bdbc387e3bb2381efb74acab5",
     "rubric_version": "2.2.0",
     "prompt_template_version": "2.2.0"

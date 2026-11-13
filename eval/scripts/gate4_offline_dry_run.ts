@@ -18,6 +18,10 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import http from 'node:http';
 import https from 'node:https';
+import net from 'node:net';
+import tls from 'node:tls';
+import dns from 'node:dns';
+import child_process from 'node:child_process';
 import { EvaluatorRunner, RunExecutionResult } from '../src/evaluator/evaluator-runner';
 import { MockEvalProvider } from '../src/providers/mock-eval-provider';
 import { decryptSecretMapping, EncryptedSecretPayload } from '../src/evaluator/blinding-engine';
@@ -34,6 +38,8 @@ interface DryRunTelemetry {
     network_egress_bytes: 0;
     mock_provider_used: true;
     investigator_clinical_content_loaded: false;
+    isolation_layers_enforced: string[];
+    token_inference_mode: 'SYNTHETIC_MOCK_METADATA_ONLY';
   };
   matrix_sizing: {
     scenarios_count: number; // 200
@@ -83,20 +89,59 @@ export async function executeGate4OfflineDryRun(): Promise<DryRunTelemetry> {
   console.log('MEDVOICE STUDY 3 — GATE 4 OFFLINE MOCK DRY RUN (1,200 OBSERVATIONS)');
   console.log('================================================================================\n');
 
-  // 1. Install Zero-Egress Network Guard
+  // 1. Install Multi-Layer Zero-Egress Network Isolation Barrier
   let networkRequestsAttempted = 0;
   const originalHttpRequest = http.request;
+  const originalHttpGet = http.get;
   const originalHttpsRequest = https.request;
+  const originalHttpsGet = https.get;
+  const originalFetch = globalThis.fetch;
+  const originalDnsLookup = dns.lookup;
+  const originalDnsResolve = dns.resolve;
+  const originalNetConnect = net.connect;
+  const originalNetCreateConnection = net.createConnection;
+  const originalSocketConnect = net.Socket.prototype.connect;
+  const originalTlsConnect = tls.connect;
+  const originalChildExec = child_process.exec;
 
-  const egressBlocker = function (this: any, ...args: any[]) {
+  const egressBlocker = function (vector: string, target?: string) {
     networkRequestsAttempted++;
     throw new Error(
-      'NETWORK_EGRESS_VIOLATION: Attempted outbound network call during Gate 4 offline dry run!'
+      `ZERO_EGRESS_BARRIER_VIOLATION: Attempted outbound network call via '${vector}'${
+        target ? ` targeting '${target}'` : ''
+      } during Gate 4 offline dry run!`
     );
   };
 
-  (http as any).request = egressBlocker;
-  (https as any).request = egressBlocker;
+  (http as any).request = function (...args: any[]) {
+    const target = typeof args[0] === 'string' ? args[0] : args[0]?.host || args[0]?.hostname;
+    egressBlocker('http.request', target);
+  };
+  (http as any).get = function () { egressBlocker('http.get'); };
+  (https as any).request = function (...args: any[]) {
+    const target = typeof args[0] === 'string' ? args[0] : args[0]?.host || args[0]?.hostname;
+    egressBlocker('https.request', target);
+  };
+  (https as any).get = function () { egressBlocker('https.get'); };
+  if (typeof globalThis.fetch === 'function') {
+    (globalThis as any).fetch = async function (input: any) {
+      const url = typeof input === 'string' ? input : input?.url || 'unknown_url';
+      egressBlocker('globalThis.fetch', url);
+    };
+  }
+  (dns as any).lookup = function (...args: any[]) { egressBlocker('dns.lookup', args[0]); };
+  (dns as any).resolve = function (...args: any[]) { egressBlocker('dns.resolve', args[0]); };
+  (net as any).connect = function () { egressBlocker('net.connect'); };
+  (net as any).createConnection = function () { egressBlocker('net.createConnection'); };
+  (net.Socket.prototype as any).connect = function () { egressBlocker('net.Socket.connect'); };
+  (tls as any).connect = function () { egressBlocker('tls.connect'); };
+  (child_process as any).exec = function (...args: any[]) {
+    const cmd = args[0];
+    if (typeof cmd === 'string' && /(?:curl|wget|nc|ncat|ssh|invoke-webrequest)/i.test(cmd)) {
+      egressBlocker('child_process.exec_network_client', cmd);
+    }
+    return originalChildExec.apply(child_process, args as any);
+  };
 
   const initialMemory = process.memoryUsage();
   const startTime = Date.now();
@@ -273,6 +318,21 @@ export async function executeGate4OfflineDryRun(): Promise<DryRunTelemetry> {
         network_egress_bytes: 0,
         mock_provider_used: true,
         investigator_clinical_content_loaded: false,
+        isolation_layers_enforced: [
+          'http.request',
+          'http.get',
+          'https.request',
+          'https.get',
+          'globalThis.fetch',
+          'dns.lookup',
+          'dns.resolve',
+          'net.connect',
+          'net.createConnection',
+          'net.Socket.connect',
+          'tls.connect',
+          'child_process.exec_network_client',
+        ],
+        token_inference_mode: 'SYNTHETIC_MOCK_METADATA_ONLY',
       },
       matrix_sizing: {
         scenarios_count: 200,
@@ -329,12 +389,28 @@ export async function executeGate4OfflineDryRun(): Promise<DryRunTelemetry> {
 
     return telemetry;
   } finally {
-    // Restore original HTTP handlers
+    // Restore all original network & execution handlers
     (http as any).request = originalHttpRequest;
+    (http as any).get = originalHttpGet;
     (https as any).request = originalHttpsRequest;
+    (https as any).get = originalHttpsGet;
+    if (originalFetch) (globalThis as any).fetch = originalFetch;
+    (dns as any).lookup = originalDnsLookup;
+    (dns as any).resolve = originalDnsResolve;
+    (net as any).connect = originalNetConnect;
+    (net as any).createConnection = originalNetCreateConnection;
+    (net.Socket.prototype as any).connect = originalSocketConnect;
+    (tls as any).connect = originalTlsConnect;
+    (child_process as any).exec = originalChildExec;
 
-    // Clean up temporary workspace if needed or preserve run artifacts
-    // We preserve the output directory for auditability or clean temp fixtures
+    // Clean up temporary workspace
+    try {
+      if (fs.existsSync(tempWorkspace)) {
+        fs.rmSync(tempWorkspace, { recursive: true, force: true });
+      }
+    } catch {
+      // Ignore cleanup error
+    }
   }
 }
 
