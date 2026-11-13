@@ -265,8 +265,8 @@ fit_threshold_regressions <- function(df_data) {
       list(error = conditionMessage(e))
     })
     
-    if (is.null(fit_c) || (!is.null(fit_c$error))) {
-      err_msg <- if (!is.null(fit_c$error)) fit_c$error else "NULL model returned"
+    if (is.null(fit_c) || (is.list(fit_c) && !is.null(fit_c$error))) {
+      err_msg <- if (is.list(fit_c) && !is.null(fit_c$error)) fit_c$error else "NULL model returned"
       contrasts[c_idx] <- NA_real_
       convergence[c_idx] <- FALSE
       non_estimable[c_idx] <- TRUE
