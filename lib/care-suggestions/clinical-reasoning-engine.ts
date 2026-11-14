@@ -80,32 +80,58 @@ export class ClinicalReasoningEngine {
     const doctorTurns = transcript.filter((t) => t.role === "doctor" || t.role === "assistant");
     const allPatientText = patientTurns.map((t) => t.text).join(" ");
     const fullConversationText = transcript.map((t) => `${t.role}: ${t.text}`).join("\n");
-    const combinedText = `${chiefComplaint || ""} ${fullConversationText}`.toLowerCase();
+
+    // Strip denied symptoms from patient speech so "no chest pain" doesn't trigger "chest pain"
+    const patientTextWithoutNegatives = allPatientText
+      .replace(/\b(?:no|not having|don'?t have|without|denies|never had)\s+(?:any\s+)?(?:[a-z\s]{1,30})(?:and\s+no\s+[a-z\s]{1,30})?/gi, "")
+      .toLowerCase();
+    const ccText = (chiefComplaint || "").toLowerCase();
 
     // ----------------------------------------------------
     // 1. INFER PRIMARY SYMPTOM & DOMAIN
     // ----------------------------------------------------
-    let primarySymptom = "discomfort";
-    let domain: ClinicalSymptomProfile["domain"] = "general";
+    const matchDomainSymptom = (text: string) => {
+      if (/\b(headache|migraine|head pain|throbbing head|sir dard|tala noppi)\b/i.test(text)) {
+        return { symptom: "headache", domain: "neurology" as const };
+      }
+      if (/\b(dizziness|vertigo|lightheadedness|chakkar)\b/i.test(text)) {
+        return { symptom: "dizziness / lightheadedness", domain: "neurology" as const };
+      }
+      if (/\b(cough|coughing|khansi|daggu)\b/i.test(text)) {
+        return { symptom: "cough", domain: "respiratory" as const };
+      }
+      if (/\b(shortness of breath|dyspnea|breathlessness|saans phoolna)\b/i.test(text)) {
+        return { symptom: "shortness of breath", domain: "respiratory" as const };
+      }
+      if (/\b(wheezing|stridor)\b/i.test(text)) {
+        return { symptom: "wheezing", domain: "respiratory" as const };
+      }
+      if (/\b(chest pain|chest pressure|angina|chhati me dard|gunde noppi)\b/i.test(text)) {
+        return { symptom: "chest discomfort", domain: "cardiology" as const };
+      }
+      if (/\b(abdominal pain|stomach pain|belly ache|pet dard|cramp(?:ing|s)?)\b/i.test(text)) {
+        return { symptom: "abdominal pain", domain: "gastroenterology" as const };
+      }
+      if (/\b(loose motions|diarrhea|loose stools|dast)\b/i.test(text)) {
+        return { symptom: "diarrhea", domain: "gastroenterology" as const };
+      }
+      if (/\b(fever|high temperature|bukhar|jwaram)\b/i.test(text)) {
+        return { symptom: "fever", domain: "infectious" as const };
+      }
+      if (/\b(chills|shivering|thand lagna)\b/i.test(text)) {
+        return { symptom: "chills", domain: "infectious" as const };
+      }
+      return null;
+    };
 
-    if (/\b(headache|migraine|head pain|throbbing head|sir dard|tala noppi)\b/i.test(combinedText)) {
-      primarySymptom = "headache";
-      domain = "neurology";
-    } else if (/\b(chest pain|chest pressure|angina|chhati me dard|gunde noppi)\b/i.test(combinedText)) {
-      primarySymptom = "chest discomfort";
-      domain = "cardiology";
-    } else if (/\b(shortness of breath|cough|wheezing|dyspnea|saans phoolna)\b/i.test(combinedText)) {
-      primarySymptom = "respiratory symptoms";
-      domain = "respiratory";
-    } else if (/\b(abdominal pain|stomach pain|belly ache|pet dard|loose motions|diarrhea)\b/i.test(combinedText)) {
-      primarySymptom = "abdominal / GI symptoms";
-      domain = "gastroenterology";
-    } else if (/\b(fever|chills|high temperature|bukhar|jwaram)\b/i.test(combinedText)) {
-      primarySymptom = "febrile illness";
-      domain = "infectious";
-    } else if (chiefComplaint) {
-      primarySymptom = chiefComplaint.toLowerCase().slice(0, 50);
-    }
+    // Priority 1: Chief complaint (primary stated presentation)
+    // Priority 2: Patient's positive statements
+    const ccMatch = ccText ? matchDomainSymptom(ccText) : null;
+    const patientMatch = matchDomainSymptom(patientTextWithoutNegatives);
+    const resolved = ccMatch || patientMatch;
+
+    let primarySymptom = resolved?.symptom || (chiefComplaint ? chiefComplaint.toLowerCase().slice(0, 50) : "discomfort");
+    let domain: ClinicalSymptomProfile["domain"] = resolved?.domain || "general";
 
     // ----------------------------------------------------
     // 2. EXTRACT DIMENSIONAL CHARACTERISTICS
@@ -199,6 +225,10 @@ export class ClinicalReasoningEngine {
       character = "cramping";
     } else if (/\b(dull|ache|dull ache)\b/i.test(allPatientText)) {
       character = "dull";
+    } else if (/\b(hacking|dry)\b/i.test(allPatientText)) {
+      character = "dry";
+    } else if (/\b(productive|wet|phlegm)\b/i.test(allPatientText)) {
+      character = "productive";
     }
 
     // E. Location & Laterality
@@ -329,6 +359,33 @@ export class ClinicalReasoningEngine {
       /\b(?:not sure if I bumped it)\b/i
     );
 
+    // Shortness of breath
+    evaluateFinding(
+      "shortness_of_breath",
+      "shortness of breath or difficulty breathing",
+      /\b(?:short of breath|trouble breathing|hard to breathe|breathless|gasping)\b/i,
+      /\b(?:no|don'?t have|not having|never had|without|denies)\s+(?:any\s+)?(?:shortness of breath|difficulty breathing|breathlessness|trouble breathing)\b/i,
+      /\b(?:maybe a little hard to breathe|not sure)\b/i
+    );
+
+    // Chest pain
+    evaluateFinding(
+      "chest_pain",
+      "chest pain or chest tightness",
+      /\b(?:chest pain|chest tightness|pressure in chest|heart hurts)\b/i,
+      /\b(?:no|don'?t have|not having|never had|without|denies)\s+(?:any\s+)?(?:chest pain|chest pressure|chest tightness)\b/i,
+      /\b(?:slight flutter maybe|not sure)\b/i
+    );
+
+    // GI bleeding (blood in stool / melena)
+    evaluateFinding(
+      "gi_bleeding",
+      "blood in stool or black tarry stools",
+      /\b(?:blood in (?:stool|poop)|black stool|red blood|melena)\b/i,
+      /\b(?:no|don'?t have|not having|never had|without|denies)\s+(?:any\s+)?(?:blood in (?:stool|poop)|black stool|rectal bleeding|blood)\b/i,
+      /\b(?:not sure about color)\b/i
+    );
+
     // ----------------------------------------------------
     // 4. DETECT UNANSWERED INQUIRIES (Invariant 4)
     // ----------------------------------------------------
@@ -340,6 +397,9 @@ export class ClinicalReasoningEngine {
       { topic: "fever", regex: /\b(fever|temperature|chills|hot)\b/i, label: "Fever or chills" },
       { topic: "neck_stiffness", regex: /\b(neck|stiff|chin to chest)\b/i, label: "Neck stiffness" },
       { topic: "nausea_vomiting", regex: /\b(nausea|vomit|throwing up|sick to your stomach)\b/i, label: "Nausea or vomiting" },
+      { topic: "shortness_of_breath", regex: /\b(shortness of breath|trouble breathing|breathless)\b/i, label: "Shortness of breath" },
+      { topic: "chest_pain", regex: /\b(chest pain|chest tightness|pressure in chest)\b/i, label: "Chest pain or tightness" },
+      { topic: "gi_bleeding", regex: /\b(blood in stool|black stool|bleeding)\b/i, label: "Gastrointestinal bleeding" },
       { topic: "allergies", regex: /\b(allerg|allergic|reaction to (?:drugs|medicines))\b/i, label: "Drug allergy history" },
       { topic: "medications", regex: /\b(taking any|current medications?|prescriptions?|pills)\b/i, label: "Current medication intake" },
       { topic: "medical_history", regex: /\b(medical history|chronic conditions?|high blood pressure|diabetes|liver|kidney|ulcer)\b/i, label: "Chronic medical history" },
@@ -443,8 +503,11 @@ export class ClinicalReasoningEngine {
     // Part 1: Presentation, Onset, and Duration
     const charDesc = profile.character ? `${profile.character} ` : "";
     const onsetDesc = profile.onsetPattern !== "unknown" ? `${profile.onsetPattern} onset` : "unspecified onset pattern";
+    const isUncountable = /^(shortness of breath|abdominal pain|chest discomfort|fever|chills|diarrhea|dizziness)/i.test(profile.primarySymptom);
+    const leadArticle = isUncountable ? "" : (/^[aeiou]/i.test(charDesc || profile.primarySymptom) ? "an " : "a ");
+
     parts.push(
-      `Patient presents with a ${charDesc}${profile.primarySymptom} characterized by a ${onsetDesc} lasting ${profile.duration}.`
+      `Patient presents with ${leadArticle}${charDesc}${profile.primarySymptom} characterized by a ${onsetDesc} lasting ${profile.duration}.`
     );
 
     // Part 2: Severity Progression & Location
