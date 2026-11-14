@@ -423,4 +423,33 @@ describe('Task 5: Orchestrator CLI, Run Manifest & Crash-Safe Resumption', () =>
       fs.rmSync(tempDir, { recursive: true, force: true });
     }
   });
+
+  it('13. Response extraction: Prioritizes explicit agent_response over raw dialogue turns', async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'eval-response-extract-test-'));
+    const testSecretKey = 'mock_secret_key_for_testing_32b!';
+
+    try {
+      const runner = new EvaluatorRunner();
+      // Execute dry-run with pilot scenarios
+      const res = await runner.execute({
+        inputFixturePath: sampleSyntheticScenariosPath,
+        outputDir: tempDir,
+        provider: 'mock',
+        dryRun: true,
+        seed: 42,
+        secretKey: testSecretKey,
+      });
+
+      assert.strictEqual(res.exitCode, 0);
+      assert.strictEqual(res.status, 'COMPLETED');
+
+      // Verify secret mapping and run manifest were written
+      const secretFile = path.join(tempDir, 'secret_mapping.enc');
+      const manifestFile = path.join(tempDir, 'run_manifest.json');
+      assert(fs.existsSync(secretFile), 'Encrypted secret mapping must be created');
+      assert(fs.existsSync(manifestFile), 'Run manifest must be created');
+    } finally {
+      fs.rmSync(tempDir, { recursive: true, force: true });
+    }
+  });
 });

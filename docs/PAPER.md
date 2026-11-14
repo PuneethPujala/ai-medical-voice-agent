@@ -326,34 +326,49 @@ To eliminate hardcoded location defaults (previously defaulting to Vijayawada co
 MedVoice AI is validated by an automated evaluation harness comprising 24 verification suites.
 
 ### 9.1 Clinical Triage Benchmark (35 Cases)
-The clinical safety evaluation harness evaluates 35 standardized clinical vignettes: 22 life-threatening emergencies (ACS, ischemic stroke, subarachnoid hemorrhage, respiratory failure, anaphylaxis, neonatal sepsis) and 13 non-emergency controls (urgent and routine presentations):
+The clinical safety evaluation harness evaluates 35 standardized clinical vignettes: 22 life-threatening emergencies (ACS, acute ischemic stroke, subarachnoid hemorrhage, respiratory failure, anaphylaxis, neonatal sepsis) and 13 non-emergency controls (urgent outpatient and routine ambulatory presentations).
+
+**Vignette Methodology & Authoring Safeguards**:
+The 35 clinical vignettes were synthetically authored by the engineering and clinical research team following Emergency Severity Index (ESI) Version 4 implementation criteria and published clinical practice guidelines, including the 2021 AHA/ACC chest pain and acute coronary syndrome guidelines, AHA/ASA acute ischemic stroke criteria (2026/2019), and AAP pediatric early warning guidelines. Pediatric fever vignettes model systemic red flags and pediatric deterioration (PEWS) rather than the 2021 AAP guideline for well-appearing febrile infants (8–60 days). All vignettes are entirely synthetic, contain zero protected health information (PHI) or authentic patient records, and were internally verified against deterministic clinical safety rules without claiming independent external clinician trial validation.
+
+**Evaluation Paradigm (Deterministic Arbiter Challenge)**:
+The evaluation harness deliberately supplies `routine` as the simulated LLM recommendation for every case. This strictly isolates and stress-tests whether the deterministic safety arbiter catches and overrides dangerous down-classifications. It is a deterministic arbiter safety preemption test, not an end-to-end multi-turn conversation trial on real patients.
 
 | Metric | Result | Audited Reality & Qualification |
 |---|---|---|
 | **Evaluated Vignettes** | 35 | 22 Emergency presentations, 13 Non-Emergency controls |
-| **Emergency Sensitivity (Recall)** | **100% (22/22)** | All 22 life-threatening cases correctly identified without downgrade |
-| **False-Negative Emergencies** | **0** | Zero life-threatening cases misclassified as routine |
-| **Overall Vignette Concordance** | **100% (35/35)** | Validated across evaluated 35-case benchmark |
-| **Safety Overrides Fired** | **22** | Unsafe simulated LLM routine downgrades neutralized by Arbiter |
+| **Emergency Sensitivity (Recall)** | **100% (22/22)** | All 22 life-threatening cases correctly identified without downgrade (0 false negatives) |
+| **Non-Emergency Control Specificity** | **92.3% (12/13)** | 12 of 13 controls kept non-emergent; Clopper-Pearson exact 95% CI: [64.0%, 99.8%] (Wilson score 95% CI: [66.7%, 98.6%]) |
+| **Over-Triage Rate** | **7.7% (1/13)** | 1 control vignette (ABD-001, acute abdomen with peritoneal signs) conservatively escalated to ESI-2 |
+| **Under-Triage Rate (False Negatives)** | **0.0% (0/22)** | Zero life-threatening cases misclassified as routine |
+| **Urgency-Level Concordance** | **97.1% (34/35)** | Validated across evaluated 35-case benchmark |
+| **Exact 5-Level ESI Concordance** | **85.7% (30/35)** | Exact integer ESI match (5 emergency cases assigned ESI-1 due to collapse criteria vs expected ESI-2) |
+| **Safety Overrides Fired** | **23** | Unsafe simulated LLM routine downgrades neutralized by Arbiter |
 
 *Note: The evidence supports 22/22 emergency detection on this finite benchmark; it should not be generalized to population-level clinical accuracy.*
 
 ### 9.2 Latency Profile Summary
 
+Latency was measured on a **13th Gen Intel(R) Core(TM) i7-1360P (12 cores, 16 threads) with 16 GB RAM** running Node.js v22 on Windows. Warm runs were recorded following a 5-iteration JIT compiler and module cache warm-up pass.
+
 | Subsystem | Measurement | Conditions / Hardware |
 |---|---|---|
-| **Deterministic Safety Arbiter** | **0.39 ms mean** (P50: 0.14 ms, P95: 2.23 ms) | Node.js v22 CPU runtime, 35 benchmark vignettes |
+| **Deterministic Safety Arbiter (Warm)** | **0.17 ms mean** (P50: 0.16 ms, P95: 0.25 ms) | 13th Gen Intel Core i7-1360P, 16 GB RAM, Node.js v22 (5-cycle warm runs) |
+| **Deterministic Safety Arbiter (Single-pass)** | **0.39 ms mean** (P50: 0.14 ms, P95: 2.23 ms) | Unwarmed cold-start single pass over 35 benchmark vignettes |
 | **Kokoro-82M TTS Engine (5 words)** | **~0.93–0.96 s P50** | CPU q4 quantized ONNX inference |
 | **Compound Response TTFA (Adaptive)** | **1.1–1.6 s** (61.4% TTFA reduction) | Adaptive first-chunk sentence pipeline |
 | **Compound Response Buffer Starvation** | **0 ms** | Zero audio starvation between consecutive chunks |
 | **Barge-in Invalidation Latency** | Low-latency monotonic token clear | Verified by automated browser acceptance tests |
 
-### 9.3 Knowledge Retrieval (RAG) Performance
-On the 5-domain clinical evaluation suite:
+### 9.3 Knowledge Retrieval (RAG) Smoke Test
+Evaluated on 5 standardized clinical queries spanning 3 clinical specialty domains (Cardiology: 1, Neurology: 3, Pediatrics: 1) covering acute emergency guidance, differential diagnosis, and preventive care over 2,112 indexed local MedlinePlus XML passages and clinical guidelines:
 - **Mean Reciprocal Rank (MRR)**: 100.0%
 - **Hit Rate @ K=3 (Recall@3)**: 100.0%
-- **Precision @ K=3**: 100.0%
-- **Authority Order Violations**: 0
+- **Strict Precision @ K=3**: 60.0% (requiring simultaneous match on target topic AND clinical section)
+- **Cross-Domain Leakage Rate**: 13.3%
+- **Authority-Order Violations**: 0 (verified: clinical practice guidelines outrank general reference pages)
+
+*Framing Qualification*: This evaluation represents a deterministic retrieval smoke test with heuristic and authority checks, not an exhaustive population-level clinical retrieval benchmark.
 
 ---
 

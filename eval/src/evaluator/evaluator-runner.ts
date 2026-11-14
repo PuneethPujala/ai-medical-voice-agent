@@ -522,20 +522,28 @@ export class EvaluatorRunner {
       })),
       (item) => {
         const fullScen = scenariosToProcess.find((s) => s.scenario_id === item.id)!;
-        const dialogueTurns: string[] = [];
-        if (fullScen.initial_patient_utterance) {
-          dialogueTurns.push(fullScen.initial_patient_utterance);
-        }
-        if (fullScen.follow_up_dialogue && Array.isArray(fullScen.follow_up_dialogue)) {
-          for (const d of fullScen.follow_up_dialogue) {
-            dialogueTurns.push(d.utterance);
+        let agentText =
+          (fullScen as any).agent_response ||
+          (fullScen as any).medvoice_response ||
+          (fullScen as any).candidate_response ||
+          (fullScen as any).generated_response;
+
+        if (!agentText) {
+          const dialogueTurns: string[] = [];
+          if (fullScen.initial_patient_utterance) {
+            dialogueTurns.push(fullScen.initial_patient_utterance);
           }
-        } else if ((fullScen as any).presenting_dialogue && Array.isArray((fullScen as any).presenting_dialogue)) {
-          for (const d of (fullScen as any).presenting_dialogue) {
-            dialogueTurns.push(d.utterance);
+          if (fullScen.follow_up_dialogue && Array.isArray(fullScen.follow_up_dialogue)) {
+            for (const d of fullScen.follow_up_dialogue) {
+              dialogueTurns.push(d.utterance);
+            }
+          } else if ((fullScen as any).presenting_dialogue && Array.isArray((fullScen as any).presenting_dialogue)) {
+            for (const d of (fullScen as any).presenting_dialogue) {
+              dialogueTurns.push(d.utterance);
+            }
           }
+          agentText = dialogueTurns.join(' ');
         }
-        const agentText = dialogueTurns.join(' ');
         const refText =
           fullScen.physician_reference_response ||
           (fullScen as any).comparator_response?.response_text ||
