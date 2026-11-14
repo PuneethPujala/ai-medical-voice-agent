@@ -380,3 +380,105 @@ export const signingIdempotencyKeysTable = pgTable("signing_idempotency_keys", {
     .on(table.consultationId, table.artifactId, table.actorId, table.idempotencyKey),
   check("chk_request_hash_sha256", sql`length(${table.requestHash}) = 64 AND ${table.requestHash} ~ '^[0-9a-f]{64}$'`),
 ]);
+
+export interface OtcMedicationEducationItem {
+  genericName: string;
+  tradeNames: string[];
+  commonlyUsedFor: string;
+  precautions: string[];
+  contraindicationsAndInteractions: string[];
+  approvalRequirement: string;
+  source: string;
+}
+
+export interface ExistingMedicationsSection {
+  reported: string[];
+  verifiedFromProfile: string[];
+  statusSummary: string;
+}
+
+export interface MedicationSafetySection {
+  contraindicationsDetected: string[];
+  safetyWarnings: string[];
+  requiresClinicianApproval: boolean;
+  generalPrecautions: string[];
+}
+
+export interface ClinicalClarificationSection {
+  missingSafetyInformation: string[];
+  followUpQuestions: string[];
+  rationaleIfNoMedicationAppropriate?: string;
+}
+
+export interface CareSuggestionsData {
+  consultationId: string;
+  source: "soap_and_transcript" | "transcript_only";
+  sourceDisplay: string;
+  soapAvailable: boolean;
+  soapArtifactId?: string | null;
+  reviewStatus: "pending_clinician_review";
+  clinicalSummary: string;
+  medicationInformation: {
+    existingMedications?: ExistingMedicationsSection;
+    potentialOtcEducation?: OtcMedicationEducationItem[];
+    safetyAndPrecautions?: MedicationSafetySection;
+    clinicalClarification?: ClinicalClarificationSection;
+    items: Array<{
+      name: string;
+      genericName?: string;
+      purpose?: string;
+      relevantContext?: string;
+      safetyWarnings?: string[];
+      source?: string;
+      requiresClinicianReview: boolean;
+    }>;
+    patientReportedMedications: string[];
+    contraindicationsDetected: string[];
+    safetyWarnings: string[];
+    requiresClinicianApproval: boolean;
+  };
+  restAndRecovery: string[];
+  dietRecommendations: {
+    suitable: string[];
+    avoidOrLimit: string[];
+    generalAdvice: string[];
+  };
+  hydrationGuidance: string[];
+  precautions: string[];
+  warningSigns: {
+    routine: string[];
+    urgent: string[];
+    emergency: string[];
+  };
+  followUpRecommendations: string[];
+  missingInformation: string[];
+  sources: Array<{ title: string; url?: string; source: string; domain?: string }>;
+  safetyNotes: string[];
+  disclaimer: string;
+}
+
+/**
+ * Care Suggestions Table (Evidence-Based Personalized Recovery & Care Guidance)
+ */
+export const careSuggestionsTable = pgTable("care_suggestions", {
+  id: varchar("id", { length: 128 }).primaryKey(),
+  consultationId: varchar("consultation_id", { length: 128 })
+    .notNull()
+    .references(() => consultationsTable.id, { onDelete: "cascade" }),
+  soapArtifactId: varchar("soap_artifact_id", { length: 128 }),
+  userId: varchar("user_id", { length: 128 }),
+  source: varchar("source", { length: 64 }).notNull(), // "soap_and_transcript" | "transcript_only"
+  sourceDisplay: varchar("source_display", { length: 128 }).notNull().default("SOAP Report + Consultation Chat"),
+  status: varchar("status", { length: 32 }).notNull().default("completed"), // "completed" | "failed"
+  reviewStatus: varchar("review_status", { length: 64 }).notNull().default("pending_clinician_review"),
+  clinicalSummary: text("clinical_summary").notNull(),
+  suggestions: jsonb("suggestions").$type<CareSuggestionsData>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("idx_care_suggestions_consultation_id")
+    .on(table.consultationId),
+  index("idx_care_suggestions_user_id")
+    .on(table.userId),
+]);
+

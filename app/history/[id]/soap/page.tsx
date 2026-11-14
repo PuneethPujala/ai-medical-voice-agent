@@ -22,11 +22,13 @@ import {
   ExternalLink,
   ChevronRight,
   RotateCcw,
+  Sparkles,
 } from "lucide-react";
 
 import { LandingFloatingNavbar } from "@/app/_components/LandingFloatingNavbar";
 import { ArchitecturalBrandLedgerFooter } from "@/app/_components/ArchitecturalBrandLedgerFooter";
 import { SoapVersionDiff } from "@/app/history/_components/SoapVersionDiff";
+import { CareSuggestionsModal } from "@/app/_components/CareSuggestionsModal";
 import { generateFHIRBundle, validateFhirR4Bundle } from "@/lib/fhir/bundle";
 import type { ClinicalArtifact } from "@/lib/consultation/clinical-artifact-service";
 
@@ -76,6 +78,7 @@ export default function EncounterSoapPage() {
   const [isComparingVersions, setIsComparingVersions] = useState<boolean>(false);
   const [copiedHash, setCopiedHash] = useState<boolean>(false);
   const [copiedSummary, setCopiedSummary] = useState<boolean>(false);
+  const [showCareSuggestions, setShowCareSuggestions] = useState<boolean>(false);
 
   useEffect(() => {
     if (!consultationId) return;
@@ -468,6 +471,15 @@ export default function EncounterSoapPage() {
                 {/* Export & Action Controls */}
                 <div className="flex flex-wrap items-center gap-2.5 shrink-0">
                   <button
+                    onClick={() => setShowCareSuggestions(true)}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-[#18251D] hover:bg-black text-[#B7FF72] transition-all cursor-pointer shadow-xs group"
+                    title="View personalized AI care suggestions"
+                  >
+                    <Sparkles className="w-3.5 h-3.5 text-[#B7FF72] group-hover:scale-110 transition-transform" />
+                    <span>Care Suggestions</span>
+                  </button>
+
+                  <button
                     onClick={() => handleCopySummary(pageState.activeArtifact)}
                     className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200/90 transition-all cursor-pointer shadow-2xs"
                   >
@@ -486,9 +498,9 @@ export default function EncounterSoapPage() {
 
                   <button
                     onClick={() => handleDownloadFhir(pageState.consultation, pageState.activeArtifact)}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-[#18251D] hover:bg-black text-white transition-all cursor-pointer shadow-xs group"
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-white hover:bg-slate-50 text-slate-900 border border-slate-200 transition-all cursor-pointer shadow-xs group"
                   >
-                    <Download className="w-3.5 h-3.5 text-[#B7FF72]" />
+                    <Download className="w-3.5 h-3.5 text-slate-700" />
                     <span>Download FHIR R4</span>
                   </button>
                 </div>
@@ -755,6 +767,17 @@ export default function EncounterSoapPage() {
               </div>
             )}
           </div>
+        )}
+
+        {/* AI CARE SUGGESTIONS MODAL */}
+        {showCareSuggestions && (
+          <CareSuggestionsModal
+            isOpen={showCareSuggestions}
+            onClose={() => setShowCareSuggestions(false)}
+            consultationId={consultationId}
+            doctorName={pageState.status === "ready" ? pageState.consultation.doctorName : undefined}
+            specialty={pageState.status === "ready" ? pageState.consultation.specialty : undefined}
+          />
         )}
       </main>
 
