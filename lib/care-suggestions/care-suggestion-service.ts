@@ -33,11 +33,6 @@ import {
   SymptomEvaluationInput,
   EnhancedMedicationInformation,
 } from "./symptom-medication-evaluator";
-import {
-  ClinicalReasoningEngine,
-  DialogueTurn,
-  ClinicalSymptomProfile,
-} from "./clinical-reasoning-engine";
 
 export const CareSuggestionsSchema = z.object({
   consultationId: z.string(),
@@ -326,11 +321,6 @@ export class CareSuggestionService {
         isUrgent,
         redFlagResult,
         soapReport,
-        transcript,
-        doctorName,
-        specialty,
-        esiScore,
-        triageLevel,
       }
     );
 
@@ -624,6 +614,10 @@ Respond with a JSON object with this exact structure:
       specialty,
     } = ctx;
 
+    const summaryText = hasUsableSoap && soapReport?.assessment
+      ? `Patient presented with ${primaryConcern}. Assessment formulated under ${specialty} consultation with ${doctorName}. Follow-up and structured supportive care outlined below.`
+      : `Patient presented with ${primaryConcern} during clinical voice consultation. Supportive recovery guidance compiled directly from conversational testimony.`;
+
     const medicationItems = extractedMedications.map((med: string) => {
       const { generic } = resolveGenericDrugName(med);
       const extInfo = externalDrugInfos.find((d: any) => d.queryTerm === med || d.genericName === generic);
@@ -659,31 +653,6 @@ Respond with a JSON object with this exact structure:
     const fullConversationText = (ctx.transcript || [])
       .map((t: any) => `${t.role === "patient" ? "Patient" : "Doctor"}: ${t.text}`)
       .join("\n");
-
-    const transcriptTurns: DialogueTurn[] = ctx.transcript || [];
-    const reasoning = ClinicalReasoningEngine.analyzeDialogue(
-      transcriptTurns,
-      patientProfile,
-      primaryConcern,
-      redFlagResult,
-      isEmergency ? 1 : isUrgent ? 3 : 4
-    );
-
-    const summaryText = ClinicalReasoningEngine.generateClinicalSummary(
-      reasoning,
-      soapReport?.assessment
-    );
-
-    const symptomWarningSigns = ClinicalReasoningEngine.generateSymptomSpecificWarningSigns(
-      reasoning,
-      isEmergency
-    );
-
-    const followUpRecs = ClinicalReasoningEngine.generateRiskAppropriateFollowUp(
-      reasoning,
-      doctorName,
-      specialty
-    );
 
     const enhancedMedInfo = SymptomMedicationEvaluator.evaluate({
       conversationText: fullConversationText,
@@ -744,12 +713,32 @@ Respond with a JSON object with this exact structure:
         "Practice diligent hand hygiene and avoid close contact with vulnerable individuals if respiratory symptoms are present.",
         "Do not operate heavy machinery if experiencing drowsiness, lightheadedness, or fatigue.",
       ],
-      warningSigns: symptomWarningSigns,
-      followUpRecommendations: followUpRecs,
-      missingInformation: Array.from(new Set([
-        ...reasoning.missingTelemetry,
+      warningSigns: {
+        routine: [
+          "Mild fatigue or residual discomfort that gradually improves each day.",
+          "Stable baseline symptoms without new acute features.",
+        ],
+        urgent: [
+          "Symptoms persisting or worsening beyond 48-72 hours without noticeable relief.",
+          "Persistent high fever (>101°F / 38.3°C) unresponsive to standard antipyretics.",
+          "Inability to tolerate oral fluids or food for more than 24 hours.",
+        ],
+        emergency: [
+          "Acute onset of crushing chest pain, pressure, or pain radiating to the left arm, neck, or jaw.",
+          "Sudden severe shortness of breath, stridor, or inability to speak in full sentences.",
+          "Sudden facial droop, arm weakness, or slurred speech (Signs of Acute Stroke / BE-FAST).",
+          "Loss of consciousness, acute confusion, or uncontrollable bleeding.",
+        ],
+      },
+      followUpRecommendations: [
+        `Schedule an in-person outpatient clinical evaluation with ${doctorName} (${specialty}) or a primary care provider within 2-3 days if symptoms do not resolve.`,
+        "Bring a complete list of your current medications and this care summary to your in-person visit.",
+      ],
+      missingInformation: [
+        "Physical examination and in-person diagnostic telemetry unassessed (remote voice intake).",
+        "Recent blood pressure, heart rate, and temperature biometrics unmeasured.",
         patientProfile?.drugAllergies?.length ? "" : "Complete comprehensive drug allergy history unverified.",
-      ].filter(Boolean))),
+      ].filter(Boolean),
       sources: sourcesList,
       groundedSources: sourcesList,
       safetyNotes: [
@@ -772,60 +761,11 @@ Respond with a JSON object with this exact structure:
     isEmergency: boolean,
     isUrgent: boolean,
     redFlags: RedFlagResult,
-    evalInput?: SymptomEvaluationInput & {
-      transcript?: DialogueTurn[];
-      doctorName?: string;
-      specialty?: string;
-      esiScore?: number | null;
-      triageLevel?: string;
-    }
+    evalInput?: SymptomEvaluationInput
   ): CareSuggestionsResponse {
     const sanitized = { ...data };
 
-    // 1. Clinical Reasoning & Categorical Finding Extraction
-    let reasoning: ClinicalSymptomProfile | null = null;
-    if (evalInput?.transcript && evalInput.transcript.length > 0) {
-      reasoning = ClinicalReasoningEngine.analyzeDialogue(
-        evalInput.transcript,
-        evalInput.patientProfile,
-        evalInput.primaryConcern,
-        redFlags,
-        evalInput.esiScore,
-        evalInput.triageLevel
-      );
-
-      // Symptom-specific clinical summary representing actual statements
-      sanitized.clinicalSummary = ClinicalReasoningEngine.generateClinicalSummary(
-        reasoning,
-        evalInput.soapReport?.assessment
-      );
-
-      // Symptom-specific warning signs (neurology, cardiology, etc.)
-      const symptomWarnings = ClinicalReasoningEngine.generateSymptomSpecificWarningSigns(
-        reasoning,
-        isEmergency
-      );
-      sanitized.warningSigns = {
-        routine: symptomWarnings.routine,
-        urgent: symptomWarnings.urgent,
-        emergency: Array.from(new Set([...symptomWarnings.emergency, ...sanitized.warningSigns.emergency])),
-      };
-
-      // Risk-appropriate follow-up recommendations
-      sanitized.followUpRecommendations = ClinicalReasoningEngine.generateRiskAppropriateFollowUp(
-        reasoning,
-        evalInput.doctorName || "Attending Clinician",
-        evalInput.specialty || "Clinical Medicine"
-      );
-
-      // Missing telemetry & unassessed details
-      sanitized.missingInformation = Array.from(new Set([
-        ...reasoning.missingTelemetry,
-        ...sanitized.missingInformation,
-      ]));
-    }
-
-    // 2. Emergency Invariant: Emergency symptoms cannot be downgraded or erased
+    // Emergency Invariant: Emergency symptoms cannot be downgraded or erased
     if (isEmergency) {
       const emergencyAlerts = [
         "CRITICAL EMERGENCY ALERT: Emergency symptoms detected during clinical intake.",
@@ -844,7 +784,7 @@ Respond with a JSON object with this exact structure:
       ]));
     }
 
-    // 3. Symptom-Specific Medication & Safety Evaluation
+    // Symptom-Specific Medication & Safety Evaluation
     if (evalInput) {
       const enhancedMed = SymptomMedicationEvaluator.evaluate(evalInput);
 
@@ -861,11 +801,6 @@ Respond with a JSON object with this exact structure:
         requiresClinicianApproval: true,
       };
 
-      // Update follow-up questions from reasoning if available (suppressing answered topics)
-      if (reasoning && reasoning.targetedClarificationQuestions.length > 0 && sanitized.medicationInformation.clinicalClarification) {
-        sanitized.medicationInformation.clinicalClarification.followUpQuestions = reasoning.targetedClarificationQuestions;
-      }
-
       if (enhancedMed.clinicalClarification.rationaleIfNoMedicationAppropriate) {
         sanitized.safetyNotes = Array.from(new Set([
           enhancedMed.clinicalClarification.rationaleIfNoMedicationAppropriate,
@@ -881,7 +816,7 @@ Respond with a JSON object with this exact structure:
       }
     }
 
-    // 4. Medication Safety Invariant: Always mark as requiring clinician approval
+    // Medication Safety Invariant: Always mark as requiring clinician approval
     sanitized.medicationInformation.requiresClinicianApproval = true;
     sanitized.medicationInformation.items = sanitized.medicationInformation.items.map((item) => ({
       ...item,
@@ -891,7 +826,7 @@ Respond with a JSON object with this exact structure:
         .replace(/\b(take|prescribed|dose at|administer)\s+\d+\s*(mg|ml|tablets?)/gi, "Dosage to be determined by clinician"),
     }));
 
-    // 5. Disclaimer Invariant
+    // Disclaimer Invariant
     sanitized.disclaimer =
       "This care plan provides clinical decision-support guidance derived from conversational telehealth intake. It is not an automated prescription or diagnosis and must be reviewed with an attending physician.";
 

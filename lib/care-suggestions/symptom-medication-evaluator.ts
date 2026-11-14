@@ -243,28 +243,17 @@ export class SymptomMedicationEvaluator {
       contraindicationsDetected.push("NSAIDs (Ibuprofen, Aspirin, Naproxen) are prohibited due to documented patient allergy.");
     }
 
-    // Missing information assessment & contextual deduplication
-    const hasAnsweredAllergies = profile?.drugAllergies && profile.drugAllergies.length > 0;
-    const hasAnsweredOnset = text.includes("gradual") || text.includes("sudden") || text.includes("thunderclap") || text.includes("slowly") || text.includes("dheere");
-    const hasAnsweredMedicalHistory = profile?.knownConditions && profile.knownConditions.length > 0;
-
-    if (!hasAnsweredAllergies) {
+    // Missing information assessment
+    if (profile?.drugAllergies === undefined || profile.drugAllergies.length === 0) {
       missingSafetyInfo.push("Complete drug allergy and adverse drug reaction history unverified.");
       followUpQuestions.push("Do you have any known allergies to paracetamol, ibuprofen, aspirin, or any other medications?");
     }
-    if (hasHeadache && !hasAnsweredOnset) {
+    if (hasHeadache && !hasThunderclapOnset && !text.includes("gradual")) {
       missingSafetyInfo.push("Headache onset timeline (seconds vs gradual hours) unmeasured.");
       followUpQuestions.push("Did your headache start suddenly within seconds, or did it build up gradually?");
     }
-    if (!hasGiUlcerOrBleed && !hasAnsweredMedicalHistory && (hasHeadache || hasFever || hasBodyAche)) {
+    if (!hasGiUlcerOrBleed && (hasHeadache || hasFever || hasBodyAche)) {
       followUpQuestions.push("Do you have any history of stomach ulcers, acid reflux, or kidney disease?");
-    }
-
-    // Safety Invariant: If allergies or medical history are unverified, do not claim no contraindications exist
-    if (!hasAnsweredAllergies || !hasAnsweredMedicalHistory) {
-      contraindicationsDetected.push(
-        "Contraindication status cannot be cleared: Comprehensive drug allergy history, current chronic medications, and renal/hepatic laboratory telemetry are unverified/unknown. Attending clinician review is required before starting any medication."
-      );
     }
 
     // ----------------------------------------------------
@@ -292,9 +281,9 @@ export class SymptomMedicationEvaluator {
           tradeNames: ["Dolo 650", "Calpol", "Crocin", "Tylenol", "PCM"],
           commonlyUsedFor: "Temporary relief of mild-to-moderate headache, muscle aches, sore throat discomfort, and fever reduction",
           precautions: [
-            "Individualized safe dosing parameters must be established by a physician or pharmacist based on your age, body weight, liver and kidney function, and concurrent therapies.",
-            "Never exceed package-directed limits or combine with other products containing paracetamol/acetaminophen to protect liver function.",
-            "Strictly avoid alcohol while taking paracetamol to prevent hepatotoxicity.",
+            "Do not exceed the maximum daily limit (typically 3,000–4,000 mg in 24 hours for healthy adults; lower for low body weight or elderly).",
+            "Strictly avoid alcohol while taking paracetamol to protect liver function.",
+            "Always check combination cold or cough syrups to prevent accidental duplicate paracetamol dosing.",
           ],
           contraindicationsAndInteractions: [
             "Severe hepatic impairment, active acute hepatitis, or severe liver cirrhosis.",
@@ -321,9 +310,9 @@ export class SymptomMedicationEvaluator {
           tradeNames: ["Advil", "Motrin", "Brufen"],
           commonlyUsedFor: "Temporary relief of inflammatory discomfort, tension headache, musculoskeletal aches, or fever",
           precautions: [
-            "Individualized safe dosing parameters must be evaluated with a doctor or pharmacist based on your clinical history.",
             "Always take with food or milk to protect stomach lining and reduce gastric irritation.",
-            "Use only for the shortest duration necessary; do not take concurrently with other NSAIDs (e.g. naproxen, diclofenac) or aspirin.",
+            "Use only for the shortest duration necessary to control symptoms.",
+            "Do not take concurrently with other NSAIDs (e.g. naproxen, diclofenac) or aspirin.",
           ],
           contraindicationsAndInteractions: [
             "Active peptic ulcer disease, gastric bleeding history, or severe gastrointestinal reflux.",
