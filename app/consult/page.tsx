@@ -42,8 +42,7 @@ import {
   Lock,
   Plus,
   RotateCcw,
-  History,
-  Sparkles,
+  History
 } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
@@ -51,8 +50,6 @@ import { PatientCorrectionRecord } from "@/lib/agents/schemas";
 import { LandingFloatingNavbar } from "../_components/LandingFloatingNavbar";
 import { ArchitecturalBrandLedgerFooter } from "../_components/ArchitecturalBrandLedgerFooter";
 import { SoapReportModal } from "../_components/SoapReportModal";
-import { CareSuggestionsModal } from "../_components/CareSuggestionsModal";
-import type { CareSuggestionsResponse } from "@/lib/care-suggestions/care-suggestion-service";
 import { DOCTOR_PROFILES, DoctorProfile, getDoctorById } from "@/config/doctors";
 import { migrateInterviewState, InterviewStateMigrationResult } from "@/lib/triage/interview-state-migration";
 import { ResumeStateRestorer, RestoredConsultationPayload } from "./_components/ResumeStateRestorer";
@@ -844,13 +841,6 @@ export default function ConsultPage() {
   const [currentEncounterId, setCurrentEncounterId] = useState<string>("");
   const [persistenceStatus, setPersistenceStatus] = useState<"idle" | "saving" | "saved" | "error">("idle");
   const [persistenceError, setPersistenceError] = useState<string | null>(null);
-
-  // AI Care Suggestions & SOAP Generation Fallback State
-  const [showCareSuggestionsModal, setShowCareSuggestionsModal] = useState<boolean>(false);
-  const [careSuggestionsData, setCareSuggestionsData] = useState<CareSuggestionsResponse | null>(null);
-  const [isGeneratingCareSuggestions, setIsGeneratingCareSuggestions] = useState<boolean>(false);
-  const [careSuggestionsError, setCareSuggestionsError] = useState<string | null>(null);
-  const [soapGenerationFailed, setSoapGenerationFailed] = useState<boolean>(false);
 
   // Unified Consultation Restoration Pipeline Handlers (delegated exclusively to ResumeStateRestorer)
   const handleEncounterRestored = useCallback((payload: RestoredConsultationPayload) => {
@@ -2700,9 +2690,6 @@ export default function ConsultPage() {
         console.warn("[MedVoice] Live SOAP evaluation synthesis notice:", evalErr);
       }
 
-      // Mark that live clinical AI evaluation encountered a synthesis issue
-      setSoapGenerationFailed(true);
-
       // Client-Side Deterministic Fallback Synthesis:
       // If server evaluation is unavailable, assemble structured clinical SOAP from conversation history
       const patientUtterances = currentMessages.filter((m) => m.role === "patient");
@@ -2820,113 +2807,7 @@ export default function ConsultPage() {
     setIsSynthesizingSoap(false);
     setPersistenceStatus("idle");
     setPersistenceError(null);
-    setCareSuggestionsData(null);
-    setIsGeneratingCareSuggestions(false);
-    setCareSuggestionsError(null);
-    setSoapGenerationFailed(false);
-    setShowCareSuggestionsModal(false);
     setSessionMode("ACTIVE_CONSULTATION");
-  };
-
-  // AI Care Suggestions Handler (Works in Scenario A and Scenario B)
-  const handleGenerateCareSuggestions = async () => {
-    const encId = stableEncounterIdRef.current || currentEncounterId;
-    if (!encId) return;
-    setShowCareSuggestionsModal(true);
-    if (careSuggestionsData) return; // already present
-
-    setIsGeneratingCareSuggestions(true);
-    setCareSuggestionsError(null);
-    try {
-      const res = await fetch(`/api/consultations/${encodeURIComponent(encId)}/care-suggestions`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          doctorName: selectedDoctor.name,
-          specialty: selectedDoctor.specialty || selectedDoctor.department,
-        }),
-      });
-      const data = await res.json();
-      if (!res.ok || !data.success || !data.careSuggestions) {
-        throw new Error(data.error || "Failed to generate care suggestions.");
-      }
-      setCareSuggestionsData(data.careSuggestions);
-    } catch (err: any) {
-      console.error("[MedVoice] Care suggestions generation error:", err);
-      setCareSuggestionsError(err.message || "Failed to generate care suggestions.");
-    } finally {
-      setIsGeneratingCareSuggestions(false);
-    }
-  };
-
-  // Retry SOAP Generation Handler
-  const handleRetrySoap = async () => {
-    const encId = stableEncounterIdRef.current || currentEncounterId;
-    if (!encId) return;
-    setIsSynthesizingSoap(true);
-    setPersistenceStatus("saving");
-    try {
-      const evalEndpoint = (!user?.id) ? "/api/consultations/evaluate?demo=true" : "/api/consultations/evaluate";
-      const evalRes = await fetch(evalEndpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          encounterId: encId,
-          patientName: patientDisplayName || "Anonymous Patient",
-          patientAge: activeProfile?.age != null ? String(activeProfile.age) : undefined,
-          patientGender: activeProfile?.gender || undefined,
-          doctorId: selectedDoctor.id,
-          messages,
-          interviewState,
-          durationSeconds: callDuration,
-          persist: true,
-        }),
-      });
-
-      if (evalRes.ok) {
-        const evalData = await evalRes.json();
-        if (evalData.success && evalData.soap) {
-          setSoapGenerationFailed(false);
-          setTriageData(evalData.triage);
-          if (evalData.board) {
-            setBoardData(evalData.board);
-          }
-          await persistEncounterRecord(
-            encId,
-            callDuration,
-            "completed_pending_review",
-            messages,
-            evalData.triage
-          );
-          setPersistenceStatus("saved");
-          setClinicalToasts((prev) => [
-            ...prev,
-            {
-              id: `soap-retry-ready-${Date.now()}`,
-              type: "success",
-              title: "SOAP Note Generated",
-              description: "Clinical evaluation completed successfully.",
-            },
-          ]);
-          return;
-        }
-      }
-      throw new Error("Clinical board evaluation returned an incomplete response.");
-    } catch (err: any) {
-      console.warn("[MedVoice] Retry SOAP evaluation failed:", err);
-      setSoapGenerationFailed(true);
-      setClinicalToasts((prev) => [
-        ...prev,
-        {
-          id: `soap-retry-failed-${Date.now()}`,
-          type: "warning",
-          title: "SOAP Evaluation Incomplete",
-          description: "Could not generate formal SOAP report. Care suggestions remain available.",
-        },
-      ]);
-    } finally {
-      setIsSynthesizingSoap(false);
-    }
   };
 
   // Process User Utterance (Preserves exact spoken text without artificial tag prefixes)
@@ -3603,69 +3484,18 @@ export default function ConsultPage() {
                   </div>
                 </div>
 
-                {/* SOAP Report Failure Notice & Direct Care Suggestion Fallback */}
-                {soapGenerationFailed && (
-                  <div className="w-full max-w-2xl p-4 sm:p-5 rounded-2xl bg-amber-50/90 border border-amber-200 text-left space-y-2.5">
-                    <div className="flex items-center gap-2 text-amber-900 font-bold text-xs sm:text-sm">
-                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
-                      <span>SOAP Generation Notice</span>
-                    </div>
-                    <p className="text-xs text-amber-800 leading-relaxed font-normal">
-                      SOAP report could not be generated. You can still generate care suggestions using your consultation conversation.
-                    </p>
-                    <div className="flex flex-wrap items-center gap-2 pt-1">
-                      <button
-                        type="button"
-                        onClick={handleGenerateCareSuggestions}
-                        disabled={isGeneratingCareSuggestions}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-[#18251D] text-[#B7FF72] text-xs font-bold hover:bg-[#25392d] transition-all cursor-pointer shadow-xs"
-                      >
-                        <Sparkles className="w-3.5 h-3.5 text-[#B7FF72]" />
-                        <span>Generate Care Suggestions from Conversation</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={handleRetrySoap}
-                        disabled={isSynthesizingSoap}
-                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-white text-slate-800 border border-slate-200 text-xs font-semibold hover:bg-slate-50 transition-all cursor-pointer"
-                      >
-                        <RotateCcw className="w-3.5 h-3.5 text-slate-500" />
-                        <span>Retry SOAP Generation</span>
-                      </button>
-                    </div>
-                  </div>
-                )}
-
                 {/* Action Buttons */}
-                <div className="flex flex-col sm:flex-row flex-wrap items-center justify-center gap-3 pt-3 w-full max-w-2xl">
-                  {/* Primary: Generate or View Care Suggestions */}
-                  <button
-                    type="button"
-                    onClick={handleGenerateCareSuggestions}
-                    disabled={isGeneratingCareSuggestions}
-                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-[#18251D] hover:bg-[#233529] text-[#B7FF72] border border-[#18251D] text-xs sm:text-sm font-bold shadow-sm transition-all cursor-pointer group"
-                  >
-                    <Sparkles className={`w-4 h-4 text-[#B7FF72] ${isGeneratingCareSuggestions ? "animate-spin" : "group-hover:scale-110 transition-transform"}`} />
-                    <span>
-                      {isGeneratingCareSuggestions
-                        ? "Synthesizing Care Suggestions…"
-                        : careSuggestionsData
-                        ? "View Care Suggestions"
-                        : "Generate Care Suggestions"}
-                    </span>
-                  </button>
-
-                  {/* Secondary: View Full SOAP Report */}
+                <div className="flex flex-col sm:flex-row items-center justify-center gap-3 pt-3 w-full max-w-2xl">
                   <button
                     type="button"
                     onClick={() => setShowSoapModal(true)}
                     disabled={isSynthesizingSoap}
-                    className={`w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3.5 rounded-2xl bg-white hover:bg-slate-50 text-slate-900 border border-slate-200 text-xs sm:text-sm font-bold shadow-2xs transition-all cursor-pointer group ${
+                    className={`w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 rounded-2xl bg-[#18251D] hover:bg-[#233529] text-white text-xs sm:text-sm font-bold shadow-sm transition-all cursor-pointer group ${
                       isSynthesizingSoap ? "opacity-75 cursor-wait" : ""
                     }`}
                   >
-                    <FileText className={`w-4 h-4 text-emerald-600 ${isSynthesizingSoap ? "animate-pulse" : "group-hover:scale-105 transition-transform"}`} />
-                    <span>{isSynthesizingSoap ? "Synthesizing SOAP…" : "View SOAP Report"}</span>
+                    <FileText className={`w-4 h-4 text-[#B7FF72] ${isSynthesizingSoap ? "animate-pulse" : "group-hover:scale-105 transition-transform"}`} />
+                    <span>{isSynthesizingSoap ? "Synthesizing SOAP Report…" : "View Full SOAP Clinical Report"}</span>
                   </button>
 
                   <button
@@ -3674,7 +3504,7 @@ export default function ConsultPage() {
                     className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3.5 rounded-2xl bg-white hover:bg-slate-50 text-slate-900 text-xs sm:text-sm font-bold border border-slate-200 shadow-2xs transition-all cursor-pointer"
                   >
                     <RotateCcw className="w-4 h-4 text-slate-600" />
-                    <span>Start New</span>
+                    <span>Start New Consultation</span>
                   </button>
 
                   <Link
@@ -3682,7 +3512,7 @@ export default function ConsultPage() {
                     className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3.5 rounded-2xl bg-white hover:bg-slate-50 text-slate-700 hover:text-slate-900 text-xs sm:text-sm font-semibold border border-slate-200 shadow-2xs transition-all cursor-pointer"
                   >
                     <History className="w-4 h-4 text-slate-500" />
-                    <span>History</span>
+                    <span>Encounter History</span>
                   </Link>
                 </div>
 
@@ -4072,19 +3902,6 @@ export default function ConsultPage() {
           onSaveSuccess={() => {
             setPersistenceStatus("saved");
           }}
-        />
-
-        {/* PERSONALIZED CLINICAL CARE SUGGESTIONS MODAL */}
-        <CareSuggestionsModal
-          isOpen={showCareSuggestionsModal}
-          onClose={() => setShowCareSuggestionsModal(false)}
-          consultationId={currentEncounterId || stableEncounterIdRef.current}
-          careSuggestions={careSuggestionsData}
-          isLoading={isGeneratingCareSuggestions}
-          error={careSuggestionsError}
-          onRetry={handleGenerateCareSuggestions}
-          doctorName={selectedDoctor.name}
-          specialty={selectedDoctor.specialty || selectedDoctor.department}
         />
 
         <ArchitecturalBrandLedgerFooter />

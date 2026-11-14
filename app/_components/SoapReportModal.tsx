@@ -21,12 +21,10 @@ import {
   Send,
   AlertCircle,
   Clock,
-  Sparkles,
 } from "lucide-react";
 import { generateFHIRBundle } from "@/lib/fhir/bundle";
 import { ArtifactTimeline } from "@/app/history/_components/ArtifactTimeline";
 import { SoapVersionDiff } from "@/app/history/_components/SoapVersionDiff";
-import { CareSuggestionsModal } from "./CareSuggestionsModal";
 
 export interface SoapEncounterData {
   id?: string;
@@ -66,7 +64,6 @@ interface SoapReportModalProps {
   onClose: () => void;
   encounter: SoapEncounterData;
   onSaveSuccess?: (savedRecord: any) => void;
-  onOpenCareSuggestions?: () => void;
 }
 
 function formatNaturalDuration(seconds?: number): string {
@@ -87,7 +84,6 @@ export function SoapReportModal({
   onClose,
   encounter,
   onSaveSuccess,
-  onOpenCareSuggestions,
 }: SoapReportModalProps) {
   const [mounted, setMounted] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
@@ -100,7 +96,6 @@ export function SoapReportModal({
   const [saveError, setSaveError] = useState<string | null>(null);
   const [copiedNote, setCopiedNote] = useState(false);
   const [showTranscript, setShowTranscript] = useState(true);
-  const [showCareSuggestions, setShowCareSuggestions] = useState(false);
 
   // Artifact Architecture State
   const [artifacts, setArtifacts] = useState<any[]>([]);
@@ -1161,24 +1156,6 @@ Integrity: Attestation verified (SHA-256) · Zero fabricated vitals
                 <span className="hidden sm:inline">Export FHIR</span>
               </button>
             )}
-
-            {encounter.id && (
-              <button
-                type="button"
-                onClick={() => {
-                  if (onOpenCareSuggestions) {
-                    onOpenCareSuggestions();
-                  } else {
-                    setShowCareSuggestions(true);
-                  }
-                }}
-                className="px-2.5 sm:px-3 py-1.5 rounded-xl bg-white border border-slate-200 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors flex items-center gap-1.5 cursor-pointer shrink-0 font-sans"
-                title="View or generate personalized AI care suggestions"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-                <span className="hidden sm:inline">Care Suggestions</span>
-              </button>
-            )}
           </div>
 
           {/* Right: State-Dependent Primary Actions */}
@@ -1256,16 +1233,6 @@ Integrity: Attestation verified (SHA-256) · Zero fabricated vitals
           </div>
         </div>
       </div>
-
-      {showCareSuggestions && encounter.id && (
-        <CareSuggestionsModal
-          isOpen={showCareSuggestions}
-          onClose={() => setShowCareSuggestions(false)}
-          consultationId={encounter.id}
-          doctorName={encounter.doctorName}
-          specialty={encounter.specialty}
-        />
-      )}
     </div>
   ),
   document.body

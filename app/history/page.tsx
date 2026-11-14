@@ -37,7 +37,6 @@ import {
 import { LandingFloatingNavbar } from "../_components/LandingFloatingNavbar";
 import { ArchitecturalBrandLedgerFooter } from "../_components/ArchitecturalBrandLedgerFooter";
 import { SoapReportModal } from "../_components/SoapReportModal";
-import { CareSuggestionsModal } from "../_components/CareSuggestionsModal";
 import { DOCTOR_PROFILES, getDoctorById } from "@/config/doctors";
 import { TimelineGroup, groupConsultationsByPeriod } from "./_components/TimelineGroup";
 import { PaginationControls } from "./_components/PaginationControls";
@@ -92,7 +91,6 @@ export default function ConsultationHistoryPage() {
 
   // Selected consultation for transcript inspection or SOAP viewing
   const [selectedConsultationForSoap, setSelectedConsultationForSoap] = useState<ConsultationItem | null>(null);
-  const [selectedConsultationForCare, setSelectedConsultationForCare] = useState<ConsultationItem | null>(null);
   const [inspectingTranscript, setInspectingTranscript] = useState<ConsultationItem | null>(null);
 
   // Auto-fetch full encounter details if dialogue transcript is missing when modal opens
@@ -551,19 +549,6 @@ export default function ConsultationHistoryPage() {
               <span>View Dialogue {turnsCount > 0 ? `(${turnsCount})` : ""}</span>
             </button>
 
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setSelectedConsultationForCare(item);
-              }}
-              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-semibold bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-200/90 transition-all cursor-pointer shadow-2xs"
-              title="View or generate personalized AI care suggestions"
-            >
-              <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
-              <span>Care Suggestions</span>
-            </button>
-
             {soapMeta.canViewSoap && (
               <button
                 type="button"
@@ -1009,17 +994,6 @@ export default function ConsultationHistoryPage() {
             userId: selectedConsultationForSoap.userId,
             createdAt: selectedConsultationForSoap.createdAt,
           }}
-        />
-      )}
-
-      {/* ============================================================ AI CARE SUGGESTIONS MODAL */}
-      {selectedConsultationForCare && (
-        <CareSuggestionsModal
-          isOpen={Boolean(selectedConsultationForCare)}
-          onClose={() => setSelectedConsultationForCare(null)}
-          consultationId={selectedConsultationForCare.id}
-          doctorName={selectedConsultationForCare.doctorName}
-          specialty={selectedConsultationForCare.specialty}
         />
       )}
 
