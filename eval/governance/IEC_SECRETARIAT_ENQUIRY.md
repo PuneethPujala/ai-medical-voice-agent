@@ -1,11 +1,11 @@
 # Pre-Submission Formal Enquiry to Institutional Ethics Committee (IEC) Secretariat
 
 **Document Purpose:** Formal administrative and regulatory enquiry prior to protocol dossier submission.  
-**Target Recipient:** Member Secretary / Secretariat Office, Institutional Ethics Committee (IEC), `[Host Institution Name]`  
-**Sender:** `[Principal Investigator Name]`, `[Designation]`, Department of `[Department Name]`, `[Host Institution Name]`  
+**Target Recipient:** Member Secretary / Secretariat Office, Institutional Ethics Committee (IEC), VIT-AP University, Amaravati, Andhra Pradesh, India  
+**Sender:** Pujala Puneeth, Student Researcher, School of Computer Science and Engineering (SCOPE), VIT-AP University  
 **Protocol Short Title:** MedVoice Clinical AI Evaluation (Phase 1 In-Silico Computational Framework & Benchmark)  
 **Applicable Framework:** ICMR National Ethical Guidelines for Biomedical and Health Research (2017) & ICMR Ethical Guidelines for Application of Artificial Intelligence in Biomedical Research and Healthcare (2023)  
-**Status:** `[READY FOR PI PERSONALIZATION & TRANSMISSION]`  
+**Status:** `[PI DETAILS BOUND — READY FOR TRANSMISSION]`  
 
 ---
 
@@ -13,10 +13,10 @@
 To,
 The Member Secretary,
 Institutional Ethics Committee (IEC),
-[Host Medical College / Hospital / Research University Name],
-[Campus Address, City, State, PIN]
+VIT-AP University,
+Amaravati, Andhra Pradesh, India
 
-Date: [Date of Transmission, e.g., November 2026]
+Date: November 2026
 
 Subject: Pre-Submission Enquiry Regarding Review Categorization & Submission Protocol for Pure In-Silico Clinical AI Evaluation Study ("MedVoice Phase 1")
 
@@ -60,27 +60,27 @@ Sincerely,
 
 _________________________________________
 [Principal Investigator Signature]
-[Principal Investigator Full Name, Qualifications]
-[Designation & Department]
-[Host Institution Name]
-Official Email: [PI Email Address] | Phone: [PI Phone Number]
+Pujala Puneeth
+Student Researcher, School of Computer Science and Engineering (SCOPE)
+VIT-AP University, Amaravati, Andhra Pradesh, India
+Official Email: puneeth.23bce9481@vitapstudent.ac.in
 
 Endorsed by:
 
 _________________________________________
-[Faculty Advisor / Institutional Sponsor Signature]
-[Faculty Advisor Full Name, Qualifications]
-[Designation & Department]
-[Host Institution Name]
-Official Email: [Faculty Advisor Email Address]
+[Faculty Advisor Signature]
+Ms. Pechetti Mounika, Assistant Professor Junior
+School of Computer Science and Engineering (SCOPE)
+VIT-AP University, Amaravati, Andhra Pradesh, India
+Official Email: mounika.p@vitap.ac.in
 ```
 
 ---
 
 ## Action Checklist for Principal Investigator
 
-- [ ] Confirm and insert authentic **Host Medical Institution Name** and official postal address.
-- [ ] Confirm and insert authentic **Principal Investigator Name**, designation, official department, and contact details.
-- [ ] Confirm and insert authentic **Faculty Advisor / Research Sponsor Name**, academic qualifications, and department.
+- [x] Confirm and insert authentic **Host Institution Name** and official postal address. → **VIT-AP University, Amaravati, Andhra Pradesh, India**
+- [x] Confirm and insert authentic **Principal Investigator Name**, designation, official department, and contact details. → **Pujala Puneeth, SCOPE, VIT-AP University**
+- [x] Confirm and insert authentic **Faculty Advisor / Research Sponsor Name**, academic qualifications, and department. → **Ms. Pechetti Mounika, Assistant Professor Junior, SCOPE, VIT-AP University**
 - [ ] Transmit this enquiry via official institutional email to the IEC Secretariat email address or hand-deliver to the IEC Office.
 - [ ] Record the Secretariat's reply date, reference guidance, and filing instructions in `eval/governance/IEC_PI_SUBMISSION_PACKAGE.md`.

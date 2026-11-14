@@ -1,9 +1,9 @@
 # Institutional Ethics Committee (IEC) Submission Readiness Checklist
 **Protocol Title:** Empirical Multi-Dimensional In-Silico Evaluation of a Voice-Enabled Conversational Decision-Support System for Clinical Intake and Triage  
 **Protocol Short Title:** MedVoice Clinical AI Evaluation (Phase 1 In-Silico Framework & Pilot)  
-**Date of Audit:** November 13, 2026  
+**Date of Audit:** November 14, 2026  
 **Governing Ethical Code:** ICMR National Ethical Guidelines (2017) & ICMR AI in Healthcare Guidelines (2023)  
-**Status:** READY FOR INSTITUTIONAL SPONSOR BINDING & FORMAL FILING  
+**Status:** PI DETAILS BOUND — READY FOR FACULTY ADVISOR REVIEW & FORMAL FILING  
 
 ---
 
@@ -21,18 +21,20 @@ This checklist audits the submission readiness of the MedVoice Phase 1 evaluatio
 
 ---
 
-## 2. Institutional Placeholder Audit (Action Required by PI)
+## 2. Institutional Placeholder Audit (Binding Status)
 
-The following placeholders in `eval/governance/IEC_STUDY_BRIEF.md` require formal binding prior to institutional dispatch:
+The following placeholders in `eval/governance/IEC_STUDY_BRIEF.md` have been formally bound:
 
-| Location | Current Placeholder | Required Action | Responsible Party | Blocker Ref |
+| Location | Previous Placeholder | Bound Value | Status | Blocker Ref |
 | :--- | :--- | :--- | :--- | :--- |
-| **Line 6** | `[Faculty Advisor / Institutional Sponsor]` | Insert full legal name, academic title, and departmental affiliation of the Faculty Advisor / Research Sponsor. | Principal Investigator | `B-G2-01` |
-| **Line 7** | `[Institution Name]` | Insert official name and address of the accredited host medical / research institution. | Principal Investigator | `B-G2-01` |
-| **Section 5** | Institutional COI Disclosures | Confirm formal disclosure statements regarding absence of financial interest in commercial comparator models. | Principal Investigator | `B-G2-01` |
+| **Line 5** | `MedVoice Engineering & Clinical Research Group` | Pujala Puneeth, SCOPE, VIT-AP University | **BOUND** | `B-G2-01` |
+| **Line 6** | `[Faculty Advisor / Institutional Sponsor]` | Ms. Pechetti Mounika, Assistant Professor Junior, SCOPE, VIT-AP University | **BOUND** | `B-G2-01` |
+| **Line 7** | `[Institution Name]` | VIT-AP University, Amaravati, Andhra Pradesh, India | **BOUND** | `B-G2-01` |
+| **New Line** | *(not present)* | Co-Investigators: Srinivas Manchinasetti, Kodavanti Sashank, Tarun Sai Vadlamudi | **ADDED** | `B-G2-01` |
+| **Section 5** | Institutional COI Disclosures | All 5 investigators named in COI checklist | **BOUND** | `B-G2-01` |
 
 > [!IMPORTANT]
-> **Anti-Fabrication Guard:** Under engineering directives and research integrity standards, these placeholders **must never be filled with speculative or synthetic institutional credentials**. They must remain explicit until the Principal Investigator provides authentic institutional affiliation details.
+> **Anti-Fabrication Guard:** All bound values were sourced from the authenticated institutional project document provided by the Principal Investigator. No speculative or synthetic institutional credentials were fabricated.
 
 ---
 
@@ -43,13 +45,15 @@ The submission dossier consists of the following version-controlled project asse
 | # | Document | File Path | Version | Verification Status |
 |---|---|---|---|---|
 | 1 | **Research Evaluation Protocol** | `docs/RESEARCH_EVALUATION_PROTOCOL.md` | v2.3.16 | Complete & Guideline-Grounded |
-| 2 | **IEC Study Brief** | `eval/governance/IEC_STUDY_BRIEF.md` | v1.0.0 | Drafted (Placeholders Audited) |
+| 2 | **IEC Study Brief** | `eval/governance/IEC_STUDY_BRIEF.md` | v1.1.0 | PI Details Bound |
 | 3 | **Dataset Governance & Licensing Audit** | `eval/config/DATASET_GOVERNANCE.md` | v1.2.0 | Verified (All Sources Documented) |
 | 4 | **Gate 0 Automated Feasibility Check** | `eval/src/governance/gate0-feasibility-check.ts` | v1.0.0 | Verified (13/13 Tests Green) |
 | 5 | **Clinical Review Packet** | `docs/clinical-review-packet.md` | v2.0.0 | Complete (Urgency Tiers 1–5 & 65 Red Flags) |
 | 6 | **Standardized Scoring Rubric** | `eval/data/human_eval/scoring_rubric.md` | v2.2.0 | Complete (6 Dimensions + 5 Safety Flags) |
-| 7 | **Clinician Calibration SOP** | `eval/governance/CLINICIAN_CALIBRATION_SOP.md` | v1.0.0 | Drafted (Disagreement & Adjudication Rules) |
+| 7 | **Clinician Calibration SOP** | `eval/governance/CLINICIAN_CALIBRATION_SOP.md` | v1.0.0 | Drafted (Phase 2 Pre-Operational Specification) |
 | 8 | **Methodology Specification** | `eval/governance/STUDY3_METHODOLOGY_SPECIFICATION.md` | v3.3.21 | FROZEN & Statistically Verified |
+| 9 | **PI Submission Package** | `eval/governance/IEC_PI_SUBMISSION_PACKAGE.md` | v1.1.0 | PI Details Bound |
+| 10 | **Secretariat Enquiry** | `eval/governance/IEC_SECRETARIAT_ENQUIRY.md` | v1.1.0 | PI Details Bound — Ready for Transmission |
 
 ---
 
@@ -57,30 +61,38 @@ The submission dossier consists of the following version-controlled project asse
 
 ```
 ┌────────────────────────────────────────────────────────┐
-│ Step 1: Sponsor Binding                                │
-│ - PI binds [Faculty Advisor] and [Institution Name]    │
-│ - Finalize Cover Letter to IEC Secretariat             │
+│ Step 1: Sponsor Binding                          [DONE]│
+│ - PI bound: Pujala Puneeth, SCOPE, VIT-AP University   │
+│ - Faculty Advisor bound: Ms. Pechetti Mounika          │
+│ - Cover Letter personalized                            │
 └──────────────────────────┬─────────────────────────────┘
                            │
                            ▼
 ┌────────────────────────────────────────────────────────┐
-│ Step 2: Formal Filing with IEC Secretariat             │
-│ - Submit Completed Dossier (Items 1-8 above)           │
+│ Step 2: Faculty Advisor Review & Sign-Off    [PENDING] │
+│ - Ms. Mounika reviews submission package               │
+│ - Faculty advisor endorses cover letter                 │
+└──────────────────────────┬─────────────────────────────┘
+                           │
+                           ▼
+┌────────────────────────────────────────────────────────┐
+│ Step 3: Formal Filing with IEC Secretariat   [PENDING] │
+│ - Submit Completed Dossier (Items 1-10 above)          │
 │ - Request Form: ICMR Exemption Determination           │
 │ - Obtain Formal Filing Receipt / Reference Number      │
 └──────────────────────────┬─────────────────────────────┘
                            │
                            ▼
 ┌────────────────────────────────────────────────────────┐
-│ Step 3: Administrative / Secretariat Review            │
+│ Step 4: Administrative / Secretariat Review            │
 │ - IEC Secretariat reviews protocol under ICMR 2017     │
-│   Table 4.2 / Section 4.8 & ICMR AI 2023 Section 3     │
+│   Table 4.2 / Section 4.8 & ICMR AI 2023 Section 3    │
 │ - Verifies 100% synthetic in-silico nature             │
 └──────────────────────────┬─────────────────────────────┘
                            │
                            ▼
 ┌────────────────────────────────────────────────────────┐
-│ Step 4: Issuance of Determination Letter               │
+│ Step 5: Issuance of Determination Letter               │
 │ - IEC issues Formal Exemption Certificate OR           │
 │   Full/Expedited Committee Review Request              │
 │ - Archive Determination Letter in repo                 │
@@ -89,7 +101,7 @@ The submission dossier consists of the following version-controlled project asse
                            │
                            ▼
 ┌────────────────────────────────────────────────────────┐
-│ Step 5: Unblock Gate 2                                 │
+│ Step 6: Unblock Gate 2                                 │
 │ - Update GATE_READINESS_AUDIT.md: Gate 2 -> UNBLOCKED  │
 │ - Authorize progression toward Gate 4 unblinding       │
 └────────────────────────────────────────────────────────┘
@@ -103,7 +115,7 @@ The submission dossier consists of the following version-controlled project asse
 
 ```markdown
 ### IEC Filing Tracking Record
-- **Target Ethics Committee:** _____________________________________________
+- **Target Ethics Committee:** VIT-AP University Institutional Ethics Committee
 - **Institutional Reference Number:** _______________________________________
 - **Date of Submission:** _________________________________________________
 - **Submission Mode:** [ ] Physical Hardcopy  [ ] Institutional Portal  [ ] Email

@@ -152,7 +152,7 @@ All 11 database-dependent test suites were executed individually against the iso
 
 | # | Blocker | Owner | Required Action | Dependency | Current Status |
 |---|---|---|---|---|---|
-| **B-G2-01** | Sponsor & institution placeholders unbound in IEC brief | PI / Institutional Sponsor | Bind institutional details in `eval/governance/IEC_STUDY_BRIEF.md` (Lines 6–7) | Institutional Affiliation Setup | **READY FOR PI** |
+| **B-G2-01** | Sponsor & institution placeholders unbound in IEC brief | PI / Institutional Sponsor | Bind institutional details in `eval/governance/IEC_STUDY_BRIEF.md` (Lines 5–9) | Institutional Affiliation Setup | **RESOLVED (BOUND)** — PI: Pujala Puneeth, Faculty Advisor: Ms. Pechetti Mounika, Institution: VIT-AP University |
 | **B-G2-02** | Formal IEC application for review determination not yet filed | PI / Research Lead | Submit 8-document dossier to IEC Secretariat under ICMR 2017 Table 4.2 / Sec 4.8 & ICMR AI 2023 Sec 3 | B-G2-01 | **UNBLOCKED FOR FILING** |
 | **B-G2-03** | Institutional review determination certificate pending | Institutional Ethics Committee (IEC) | Secretariat administrative review and issuance of formal determination letter | B-G2-02 | **AWAITING SUBMISSION** |
 | **B-G1-01** | Automated generation harness unbuilt | Evaluation Engineering Lead | Implement deterministic generator with fixed seed, non-clinical fixtures & schema validation | Methodology v3.3.21 | **RESOLVED & VERIFIED** |
@@ -166,6 +166,6 @@ All 11 database-dependent test suites were executed individually against the iso
 
 With technical integrity and governance boundaries verified, the project transitions focus to **Institutional Sponsorship & IEC Engagement (Route A Pure In-Silico Evaluation)**:
 
-1. **Milestone A (Institutional Binding):** Principal Investigator binds authentic `[Faculty Advisor]` and `[Institution Name]` in `eval/governance/IEC_STUDY_BRIEF.md`, `IEC_PI_SUBMISSION_PACKAGE.md`, and `IEC_SECRETARIAT_ENQUIRY.md`.
+1. **Milestone A (Institutional Binding):** ~~Principal Investigator binds authentic `[Faculty Advisor]` and `[Institution Name]`.~~ **COMPLETED** — All governance documents now contain authentic PI, faculty advisor, co-investigator, and institutional details sourced from the official project document.
 2. **Milestone B (IEC Pre-Submission & Filing):** Transmit `IEC_SECRETARIAT_ENQUIRY.md` to the IEC Secretariat and submit the completed `IEC_PI_SUBMISSION_PACKAGE.md` dossier requesting institutional review categorization under ICMR 2017 Table 4.2 / Section 4.8.
 3. **Milestone C (Gate 1 Execution Post-Authorization):** Upon formal PI signature on `GATE1_AUTHORIZATION.md`, execute `scenario-generator.ts` with `GATE1_AUTHORIZED=true` to create the authoritative 200 clinical scenario blueprints and compute their cryptographic manifest hash.

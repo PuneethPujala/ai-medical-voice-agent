@@ -2,11 +2,12 @@
 
 **Protocol Title:** Empirical Multi-Dimensional In-Silico Evaluation of a Voice-Enabled Conversational Decision-Support System for Clinical Intake and Triage
 **Protocol Short Title:** MedVoice Clinical AI Evaluation (Phase 1 In-Silico Computational Framework & Pilot)
-**Principal Investigator / Research Lead:** MedVoice Engineering & Clinical Research Group
-**Faculty Supervisor / Sponsor:** [Faculty Advisor / Institutional Sponsor], Department of Biomedical Informatics / Medical AI
-**Target Ethics Body:** Institutional Ethics Committee (IEC), [Institution Name]
+**Principal Investigator / Research Lead:** Pujala Puneeth, School of Computer Science and Engineering (SCOPE), VIT-AP University, Amaravati, Andhra Pradesh, India (puneeth.23bce9481@vitapstudent.ac.in)
+**Co-Investigators:** Srinivas Manchinasetti, Kodavanti Sashank, Tarun Sai Vadlamudi (SCOPE, VIT-AP University)
+**Faculty Supervisor / Sponsor:** Ms. Pechetti Mounika, Assistant Professor Junior, School of Computer Science and Engineering (SCOPE), VIT-AP University (mounika.p@vitap.ac.in)
+**Target Ethics Body:** Institutional Ethics Committee (IEC), VIT-AP University, Amaravati, Andhra Pradesh, India
 **Applicable Framework:** ICMR National Ethical Guidelines for Biomedical and Health Research (2017) & ICMR AI in Healthcare Guidelines (2023)
-**Date of Submission:** November 2, 2026
+**Date of Submission:** November 14, 2026
 
 ---
 

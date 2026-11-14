@@ -5,7 +5,7 @@
 **Governing Regulatory Codes:**  
 - ICMR National Ethical Guidelines for Biomedical and Health Research Involving Human Participants (2017) — **Table 4.2 & Sections 4.8.1–4.8.3** (*Review Procedures: Exemption, Expedited, and Full Committee Review*)  
 - ICMR Ethical Guidelines for Application of Artificial Intelligence in Biomedical Research and Healthcare (2023) — **Section 3** (*Ethical Review Process for AI proposals*)  
-**Package Version:** 1.0.0 (PI-Ready Institutional Dossier)  
+**Package Version:** 1.1.0 (PI-Bound Institutional Dossier)  
 **Date of Assembly:** November 14, 2026  
 **Compiled By:** MedVoice Systems & Computational Evaluation Working Group  
 
@@ -32,11 +32,11 @@ Under ICMR 2017 Guidelines (Sections 4.8.2–4.8.3), **the decision on review ca
 
 | Section | Component Description | Current Status | Responsible Party |
 | :---: | :--- | :---: | :---: |
-| **Part I** | Formal Cover Letter to IEC Secretariat | `[READY FOR PI]` | Principal Investigator |
+| **Part I** | Formal Cover Letter to IEC Secretariat | `[PI DETAILS BOUND]` | Principal Investigator |
 | **Part II** | Institutional Ethics Application & Synopsis | `[READY FOR IEC FILING]` | PI / Research Lead |
-| **Part III** | PI & Faculty Sponsor Information Sheet | `[READY FOR PI]` | PI & Faculty Sponsor |
+| **Part III** | PI & Faculty Sponsor Information Sheet | `[PI DETAILS BOUND]` | PI & Faculty Sponsor |
 | **Part IV** | Research Team CV & Training Checklist | `[READY FOR PI]` | Research Team |
-| **Part V** | Conflict of Interest (COI) Declarations | `[READY FOR PI]` | All Investigators |
+| **Part V** | Conflict of Interest (COI) Declarations | `[PI DETAILS BOUND]` | All Investigators |
 | **Part VI** | Signed Investigator Undertaking Checklist | `[READY FOR PI]` | PI & Co-Investigators |
 | **Part VII** | Supporting Technical Dossier (8 Documents) | `[READY FOR IEC FILING]` | Complete & Frozen |
 | **Part VIII**| Institutional Permissions Checklist | `[READY FOR PI]` | Host Institution / HOD |
@@ -50,10 +50,10 @@ Under ICMR 2017 Guidelines (Sections 4.8.2–4.8.3), **the decision on review ca
 To,
 The Member Secretary,
 Institutional Ethics Committee (IEC),
-[Name of Host Medical Institution / University / Research Center],
-[Institutional Address, City, State, PIN]
+VIT-AP University,
+Amaravati, Andhra Pradesh, India
 
-Date: [Date of Formal Dispatch, e.g., November 2026]
+Date: November 2026
 
 Subject: Submission of Research Protocol for Institutional Ethics Committee Review Category Determination — "MedVoice Clinical AI Evaluation (Phase 1 In-Silico Computational Framework & Benchmark)"
 
@@ -88,26 +88,26 @@ Sincerely,
 
 _________________________________________
 [Principal Investigator Signature]
-[Principal Investigator Full Name, Qualifications]
-[Designation & Department]
-[Host Institution Name]
-Email: [Official Email Address] | Phone: [Official Phone Number]
+Pujala Puneeth
+Student Researcher, School of Computer Science and Engineering (SCOPE)
+VIT-AP University, Amaravati, Andhra Pradesh, India
+Email: puneeth.23bce9481@vitapstudent.ac.in
 
 Endorsed by:
 
 _________________________________________
-[Faculty Advisor / Research Sponsor Signature]
-[Faculty Advisor Full Name, Qualifications]
-[Designation & Department]
-[Host Institution Name]
-Email: [Official Email Address]
+[Faculty Advisor Signature]
+Ms. Pechetti Mounika, Assistant Professor Junior
+School of Computer Science and Engineering (SCOPE)
+VIT-AP University, Amaravati, Andhra Pradesh, India
+Email: mounika.p@vitap.ac.in
 ```
 
 ---
 
 ## Part II: Institutional Application & Protocol Synopsis Checklist
 
-*Status: `[READY FOR IEC FILING]` (Content Complete; awaiting PI binding of institutional identifiers)*
+*Status: `[READY FOR IEC FILING]` (Content Complete; institutional identifiers bound)*
 
 | Protocol Field | Institutional Summary |
 | :--- | :--- |
@@ -123,30 +123,37 @@ Email: [Official Email Address]
 | **Risk Categorization** | **Less than Minimal Risk** (No human subject exposure, no patient intervention, no live hospital deployment). |
 | **Ethical Framework** | ICMR 2017 (Table 4.2, Sec 4.8.1–4.8.3) & ICMR AI 2023 (Sec 3). |
 | **Review Requested** | Determination of Review Category (Requesting consideration for Exemption under Table 4.2). |
+| **Principal Investigator** | Pujala Puneeth, SCOPE, VIT-AP University |
+| **Faculty Supervisor** | Ms. Pechetti Mounika, Assistant Professor Junior, SCOPE, VIT-AP University |
+| **Co-Investigators** | Srinivas Manchinasetti, Kodavanti Sashank, Tarun Sai Vadlamudi (SCOPE, VIT-AP University) |
+| **Host Institution** | VIT-AP University, Amaravati, Andhra Pradesh, India |
 
 ---
 
 ## Part III: Principal Investigator & Faculty Sponsor Information Sheet
 
-*Status: `[READY FOR PI]` — Requires authentic investigator credentials. Anti-fabrication directive strictly applies.*
+*Status: `[PI DETAILS BOUND]` — Authentic investigator credentials bound from institutional records.*
 
 ### 1. Principal Investigator (PI) Profile
-- **Full Legal Name:** `[Principal Investigator Name]`
-- **Highest Medical / Academic Qualification:** `[e.g., MBBS, MD, MS, MTech, PhD]`
-- **Current Designation:** `[e.g., Assistant Professor / Research Fellow / Lead Investigator]`
-- **Department:** `[e.g., Department of Medical Informatics / Emergency Medicine / Internal Medicine]`
-- **Host Institution:** `[Official Name of Accredited Medical College / University / Research Institute]`
-- **Institutional Address:** `[Campus Address, Street, City, State, PIN]`
-- **Contact Details:** `[Official Institutional Email]` | `[Phone Number]`
-- **Medical Council / Professional Registration Number:** `[Registration No. & Council, if clinician]`
+- **Full Legal Name:** Pujala Puneeth
+- **Current Designation:** Student Researcher (B.Tech CSE)
+- **Department:** School of Computer Science and Engineering (SCOPE)
+- **Host Institution:** VIT-AP University
+- **Institutional Address:** VIT-AP University, Amaravati, Andhra Pradesh, India
+- **Contact Details:** puneeth.23bce9481@vitapstudent.ac.in
 
 ### 2. Faculty Advisor / Institutional Sponsor Profile
-- **Full Legal Name:** `[Faculty Advisor / Institutional Sponsor Name]`
-- **Academic Qualifications:** `[e.g., MD, PhD, FACP, FRCP]`
-- **Designation & Title:** `[e.g., Professor & Head / Senior Consultant]`
-- **Department:** `[e.g., Department of Biomedical Informatics / Clinical Medicine]`
-- **Institutional Affiliation:** `[Official Name of Accredited Institution]`
+- **Full Legal Name:** Ms. Pechetti Mounika
+- **Designation & Title:** Assistant Professor Junior
+- **Department:** School of Computer Science and Engineering (SCOPE)
+- **Institutional Affiliation:** VIT-AP University, Amaravati, Andhra Pradesh, India
+- **Contact Details:** mounika.p@vitap.ac.in
 - **Role in Research:** Institutional oversight, scientific supervision, ethical accountability, and regulatory liaison.
+
+### 3. Co-Investigators
+- **Srinivas Manchinasetti** — School of Computer Science and Engineering (SCOPE), VIT-AP University
+- **Kodavanti Sashank** — School of Computer Science and Engineering (SCOPE), VIT-AP University
+- **Tarun Sai Vadlamudi** — School of Computer Science and Engineering (SCOPE), VIT-AP University
 
 ---
 
@@ -154,9 +161,9 @@ Email: [Official Email Address]
 
 *Status: `[READY FOR PI]` — PI to attach authenticated copies.*
 
-- [ ] **Curriculum Vitae (CV) of Principal Investigator:** Signed and dated within the last 12 months, detailing academic qualifications, clinical/computational appointments, research grants, and peer-reviewed publications.
-- [ ] **Curriculum Vitae (CV) of Faculty Advisor / Sponsor:** Signed and dated, detailing supervisory experience and clinical/informatics publications.
-- [ ] **Curriculum Vitae of Co-Investigators / Computational Engineers:** Highlighting role in AI evaluation harness design, data engineering, and statistical modeling.
+- [ ] **Curriculum Vitae (CV) of Principal Investigator (Pujala Puneeth):** Signed and dated within the last 12 months, detailing academic qualifications, computational appointments, research projects, and publications.
+- [ ] **Curriculum Vitae (CV) of Faculty Advisor / Sponsor (Ms. Pechetti Mounika):** Signed and dated, detailing supervisory experience and informatics publications.
+- [ ] **Curriculum Vitae of Co-Investigators (Srinivas Manchinasetti, Kodavanti Sashank, Tarun Sai Vadlamudi):** Highlighting role in AI evaluation harness design, data engineering, and statistical modeling.
 - [ ] **Good Clinical Practice (GCP) Certification:** Valid certificate in Good Clinical Practice (GCP) according to ICMR / CDSCO / ICH-GCP guidelines for PI and Co-Investigators (completed within the past 3 years).
 - [ ] **Ethics in AI / Biomedical Research Training:** Documentation of completed modules on research bioethics or AI ethics (recommended under ICMR AI 2023 guidelines).
 
@@ -164,7 +171,7 @@ Email: [Official Email Address]
 
 ## Part V: Conflict of Interest (COI) Declaration Checklist
 
-*Status: `[READY FOR PI]` — To be signed by all named investigators.*
+*Status: `[PI DETAILS BOUND]` — To be signed by all named investigators.*
 
 Each named investigator must sign a formal declaration affirming:
 1. **Commercial Independence:** Zero equity, stock options, patent royalties, or advisory board retainers with closed-source commercial LLM providers evaluated in this benchmark (e.g., Anthropic, OpenAI, Google, Groq).
@@ -173,9 +180,11 @@ Each named investigator must sign a formal declaration affirming:
 4. **Funding Transparency:** Full disclosure of research funding, compute grants, and academic support received for this project.
 
 ```text
-[ ] Signed COI Declaration: Principal Investigator ([Principal Investigator Name])
-[ ] Signed COI Declaration: Faculty Advisor ([Faculty Advisor Name])
-[ ] Signed COI Declaration: Co-Investigators / Technical Contributors
+[ ] Signed COI Declaration: Principal Investigator (Pujala Puneeth)
+[ ] Signed COI Declaration: Faculty Advisor (Ms. Pechetti Mounika)
+[ ] Signed COI Declaration: Co-Investigator (Srinivas Manchinasetti)
+[ ] Signed COI Declaration: Co-Investigator (Kodavanti Sashank)
+[ ] Signed COI Declaration: Co-Investigator (Tarun Sai Vadlamudi)
 ```
 
 ---
@@ -203,7 +212,7 @@ The submission package incorporates the following 8 comprehensive repository doc
 | # | Document Title | File Path in Repository | Governed Version | Verification Role & Evidence |
 |---|---|---|---|---|
 | **D-01** | **Research Evaluation Protocol** | `docs/RESEARCH_EVALUATION_PROTOCOL.md` | v2.3.16 | Core study protocol: 4-study decoupled architecture, sample sizing, and clinical rationale. |
-| **D-02** | **IEC Study Brief** | `eval/governance/IEC_STUDY_BRIEF.md` | v1.0.0 | High-level ethics brief: ICMR 2017/2023 alignment, simulated personas, Phase 2 roadmap. |
+| **D-02** | **IEC Study Brief** | `eval/governance/IEC_STUDY_BRIEF.md` | v1.1.0 | High-level ethics brief: ICMR 2017/2023 alignment, simulated personas, Phase 2 roadmap. PI details bound. |
 | **D-03** | **Dataset Governance & Licensing Audit** | `eval/config/DATASET_GOVERNANCE.md` | v1.2.0 | Provenance ledger: CC BY 4.0 licensing, synthetic generation rules, zero PHI verification. |
 | **D-04** | **Gate 0 Automated Feasibility Check** | `eval/src/governance/gate0-feasibility-check.ts` | v1.0.0 | Machine-enforced pre-flight test: 13/13 automated checks green, blocking unauthorized data. |
 | **D-05** | **Clinical Review Packet** | `docs/clinical-review-packet.md` | v2.0.0 | Clinical grounding: Urgency Tiers 1–5, 65 red-flag rules across 14 clinical domains. |
@@ -215,12 +224,12 @@ The submission package incorporates the following 8 comprehensive repository doc
 
 ## Part VIII: Institutional Permissions & Infrastructure Checklist
 
-*Status: `[READY FOR PI]` — Host institution clearances.*
+*Status: `[READY FOR PI]` — VIT-AP University clearances.*
 
-- [ ] **Departmental Clearance / No-Objection Certificate (NOC):** Letter of endorsement from the Head of the Department (e.g., Medical Informatics / Internal Medicine) supporting the computational evaluation.
-- [ ] **Computing Infrastructure Clearance:** Confirmation from institutional IT / server administrator that evaluation workstations or local servers comply with institutional data security policies.
+- [ ] **Departmental Clearance / No-Objection Certificate (NOC):** Letter of endorsement from the Head of SCOPE, VIT-AP University, supporting the computational evaluation.
+- [ ] **Computing Infrastructure Clearance:** Confirmation from VIT-AP University IT / server administrator that evaluation workstations or local servers comply with institutional data security policies.
 - [ ] **Data Management Plan (DMP):** Documentation confirming that all synthetic benchmark datasets, blinded manifests, and encrypted secret mappings are stored on secure institutional storage with periodic backups.
-- [ ] **Institutional Fee / Processing Form:** Completed IEC submission processing form and institutional review fee receipt (if required by host institution policy).
+- [ ] **Institutional Fee / Processing Form:** Completed IEC submission processing form and institutional review fee receipt (if required by VIT-AP University policy).
 
 ---
 
@@ -229,7 +238,7 @@ The submission package incorporates the following 8 comprehensive repository doc
 *Status: `[AWAITING IEC DETERMINATION]` — To be populated upon filing with IEC Secretariat.*
 
 ```text
-1. IEC Protocol Reference Number:   [e.g., IEC/HMC/2026/AI-042]
+1. IEC Protocol Reference Number:   [e.g., IEC/VITAP/2026/AI-XXX]
 2. Date of Formal Submission:       [DD/MM/YYYY]
 3. Date of Secretariat Receipt:     [DD/MM/YYYY]
 4. Secretariat Administrative Note: [Exemption review assigned / Expedited review routed]
@@ -245,6 +254,6 @@ The submission package incorporates the following 8 comprehensive repository doc
 
 - **Methodology Specification v3.3.21:** Strictly **FROZEN**.
 - **Gate 1 Status:** **PAUSED** (Scenario generator infrastructure ready; production clinical generation blocked pending formal PI signature).
-- **Gate 2 Status:** **PENDING** (Institutional package compiled; awaiting PI credentials and formal IEC filing).
+- **Gate 2 Status:** **PENDING** (Institutional package compiled and PI details bound; awaiting faculty advisor review and formal IEC filing).
 - **Gate 3 Status:** **PROPOSED** (Calibration SOP finalized as Phase 2 pre-operational specification).
 - **Gate 4 Status:** **LOCKED** (Offline mock dry run verified; live evaluation calls strictly prohibited).
