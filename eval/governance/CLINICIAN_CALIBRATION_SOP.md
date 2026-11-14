@@ -15,10 +15,12 @@
 
 This Standard Operating Procedure (SOP) establishes the clinical onboarding, calibration training, independent rating, and consensus adjudication protocols for licensed physician evaluators participating in clinical validation of the **MedVoice** conversational clinical intake system.
 
-### Regulatory & Phase Invariants
-1. **Phase 1 In-Silico Separation:** Phase 1 computational benchmarking uses frozen in-silico simulated evaluator perspectives (`SIM-01`, `SIM-02`, `SIM-03`) executing under pinned parameters. This SOP establishes the governance framework for human clinician calibration (Phase 1 calibration exercises) and future human panel evaluation (Phase 2).
-2. **Zero Fabrication Policy:** All reviewer profiles must reflect authentic licensed clinicians. No simulated or artificial score may ever be presented as human clinician opinion.
-3. **Quarantined Calibration Corpus:** Clinician calibration exercises use exclusively the 12 quarantined pilot scenarios (`eval/data/pilot/pilot-scenarios.json`). Under no circumstances may calibration scenarios be pooled into held-out benchmark evaluation sets.
+### Regulatory & Phase Invariants (Route A Pure In-Silico Governance)
+1. **Phase 1 In-Silico Pure Computational Boundary:** Phase 1 computational benchmarking operates **strictly in-silico** using three frozen simulated evaluator perspectives (`SIM-01`, `SIM-02`, `SIM-03`) executing under pinned parameters. **Zero human clinicians are recruited, surveyed, or calibrated during Phase 1.**
+2. **Phase 2 Specification Scope:** This SOP governs the subsequent **Phase 2 Human Clinician Panel Validation**, which will be submitted to the Institutional Ethics Committee as a separate formal protocol amendment. It is retained in the project repository as an approved pre-operational specification, but remains inactive during Phase 1.
+3. **Zero Fabrication Policy:** All reviewer profiles, when recruited in Phase 2 under IEC-approved written informed consent, must reflect authentic licensed clinicians. No simulated or artificial score may ever be presented as human clinician opinion.
+4. **Quarantined Pilot Corpus:** Future Phase 2 clinician calibration exercises will use exclusively the 12 quarantined pilot scenarios (`eval/data/pilot/pilot-scenarios.json`). Under no circumstances may calibration scenarios be pooled into held-out benchmark evaluation sets.
+5. **Regulatory Review Authority:** In alignment with ICMR Guidelines (2017, Table 4.2 and Section 4.8.1–4.8.3) and ICMR AI in Healthcare Guidelines (2023, Section 3), any introduction of human participants or clinician evaluators requires prior formal IEC review and approval.
 
 ---
 
@@ -205,9 +207,10 @@ During active evaluation, 10% of cases are randomly re-introduced across evaluat
 
 ## 8. Governance Sign-Off
 
-*This SOP is hereby submitted to the MedVoice Clinical Research Governance Board and Principal Investigator.*
+*This SOP is hereby recorded as a pre-operational specification for subsequent Phase 2 human validation.*
 
 - **Drafted By:** MedVoice Clinical Evaluation Engineering Working Group  
-- **Clinical Governance Status:** PROPOSED (Awaiting PI & Institutional Sponsor Endorsement)  
-- **Approved For:** Quarantined Pilot Calibration & Training Exercises  
-- **Prohibited:** Live clinical evaluation prior to Gate 2 IEC Exemption Determination and Gate 4 Release Sign-Off  
+- **Clinical Governance Status:** PROPOSED (Pre-operational Phase 2 Protocol Specification; inactive during Phase 1)  
+- **Phase 1 Invariant:** Strict in-silico computational simulation only. Zero human clinician recruitment or calibration in Phase 1.  
+- **Approved For:** Future Phase 2 clinical protocol amendment preparation.  
+- **Prohibited:** Any recruitment, onboarding, or calibration of human clinicians prior to formal Phase 2 IEC protocol amendment review and approval.  

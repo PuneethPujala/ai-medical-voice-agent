@@ -80,6 +80,8 @@ data/raw-datasets/
 *review-mapping*.json
 *reviewer_mapping_secret.json
 *secret*
+!eval/governance/*secretariat*
+!eval/governance/*Secretariat*
 *phi*
 *identifiable*
 

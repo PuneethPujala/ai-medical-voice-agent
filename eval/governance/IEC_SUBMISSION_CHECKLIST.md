@@ -12,12 +12,12 @@
 This checklist audits the submission readiness of the MedVoice Phase 1 evaluation protocol for an **Application for Exemption from Ethics Committee Review / Determination of Non-Human Subjects Research**.
 
 ### Ethical & Regulatory Classification
-- **Primary Framework:** ICMR National Ethical Guidelines for Biomedical and Health Research (2017), Section 5.4 (*Minimal Risk / Secondary & In-Silico Computational Research*).
-- **AI Domain Framework:** ICMR Ethical Guidelines for AI in Healthcare (2023), Chapter 2 (*Guiding Principles*).
+- **Primary Framework:** ICMR National Ethical Guidelines for Biomedical and Health Research Involving Human Participants (2017), **Table 4.2 and Sections 4.8.1–4.8.3** (*Review Procedures: Exemption, Expedited, and Full Committee Review*).
+- **AI Domain Framework:** ICMR Ethical Guidelines for Application of Artificial Intelligence in Biomedical Research and Healthcare (2023), **Section 3** (*Ethical Review Process for AI proposals*).
 - **Core Bioethics Safeguard:** 
   - **Zero Patient Enrollment:** 100% synthetic clinical vignettes. No real patient data, authentic EHR records, PII, or PHI are involved.
-  - **Zero Human Clinician Burden in Phase 1:** Computational evaluation executes via simulated evaluator configurations (`SIM-01`, `SIM-02`, `SIM-03`).
-- **Core Governance Invariant:** **Exemption cannot be unilaterally declared by investigators.** Under ICMR Guidelines, the determination of exemption must be formally issued by the Institutional Ethics Committee (IEC) or its Secretariat upon administrative review of the protocol brief.
+  - **Zero Human Clinician Burden in Phase 1:** Computational evaluation executes strictly in-silico via simulated evaluator configurations (`SIM-01`, `SIM-02`, `SIM-03`). No human clinician participants are recruited or calibrated in Phase 1.
+- **Core Governance Invariant:** **Review category cannot be unilaterally declared by investigators.** Under ICMR Guidelines (Section 4.8.2–4.8.3), the determination of review category (Exemption, Expedited, or Full Committee) must be formally decided and issued by the Institutional Ethics Committee (IEC) or its Secretariat upon review of the application package.
 
 ---
 
@@ -73,8 +73,8 @@ The submission dossier consists of the following version-controlled project asse
                            ▼
 ┌────────────────────────────────────────────────────────┐
 │ Step 3: Administrative / Secretariat Review            │
-│ - IEC Secretariat reviews protocol for exemption       │
-│   criteria under ICMR 2017 Ch. 5.4                     │
+│ - IEC Secretariat reviews protocol under ICMR 2017     │
+│   Table 4.2 / Section 4.8 & ICMR AI 2023 Section 3     │
 │ - Verifies 100% synthetic in-silico nature             │
 └──────────────────────────┬─────────────────────────────┘
                            │

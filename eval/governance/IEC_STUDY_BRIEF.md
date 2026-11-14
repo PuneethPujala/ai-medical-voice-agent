@@ -17,7 +17,7 @@ This protocol outlines the scientific rationale, methodology, and ethical safegu
 ### Key Bioethics Invariant
 * **Zero Real Patient Enrollment:** Phase 1 uses **100% synthetic clinical vignettes** designed to represent diverse clinical complaints (cardiovascular, respiratory, neurological, gastrointestinal, pediatric). No authentic medical records, personal identifiable data (PII), or protected health information (PHI) are collected, processed, or stored.
 * **No External Human Subjects or Clinician Recruitment in Phase 1:** To maintain strict research integrity without fabricating clinician credentials, Phase 1 evaluates system behavior entirely in-silico using **computational, role-conditioned simulated expert perspectives (`SIM-01`, `SIM-02`, `SIM-03`)** alongside frozen guideline-grounded reference responses. No external human participants, clinical staff, or healthcare consumers are recruited, surveyed, or burdened in this phase.
-* **Application for IEC Exemption Determination:** The investigators formally submit this protocol to apply for a **Determination of Exemption / Non-Human Subjects Research** from the Institutional Ethics Committee. Under the ICMR 2017 Guidelines (Section 5.4, Minimal Risk / Secondary & In-Silico Computational Research) and ICMR AI in Healthcare Guidelines (2023), the determination of exemption is made exclusively by the Ethics Committee or its Secretariat—not by the investigators.
+* **Formal Request for IEC Review Category Determination:** The investigators formally submit this dossier to request the Institutional Ethics Committee's **Official Review Category Determination** (seeking consideration for Exemption from Review or Expedited Review as determined by the Committee). Under the ICMR 2017 Guidelines (**Table 4.2 and Sections 4.8.1–4.8.3**, Review Procedures) and the ICMR AI in Healthcare Guidelines (**2023, Section 3**, Ethical Review Process), the categorization of review (Exemption, Expedited, or Full Committee) is determined exclusively by the Ethics Committee and its Secretariat upon evaluation of the protocol—never through researcher self-determination.
 
 ---
 
@@ -78,7 +78,7 @@ If institutional review determines that future deployment warrants human clinica
 
 * [x] **Milestone 1:** Synthetic scenario schema v1.2.0 and 12-case pilot calibration set completed.
 * [x] **Milestone 2:** Simulated expert evaluation framework (`SIM-01`, `SIM-02`, `SIM-03`) and CLMM statistical analysis plan defined.
-* [ ] **Milestone 3:** Formal Faculty Sponsor endorsement and submission to Institutional Ethics Committee for Exemption Determination.
+* [ ] **Milestone 3:** Formal Faculty Sponsor endorsement and submission to Institutional Ethics Committee for Review Category Determination.
 * [ ] **Milestone 4:** Execution of Study 1–4 computational benchmarks using synthetic corpora.
 * [ ] **Milestone 5:** Optional Phase 2 protocol amendment submission if transition to human clinician panel is funded.
 
