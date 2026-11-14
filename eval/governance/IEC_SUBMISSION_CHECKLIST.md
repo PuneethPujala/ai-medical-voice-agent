@@ -31,7 +31,7 @@ The following placeholders in `eval/governance/IEC_STUDY_BRIEF.md` have been for
 | **Line 6** | `[Faculty Advisor / Institutional Sponsor]` | Ms. Pechetti Mounika, Assistant Professor Junior, SCOPE, VIT-AP University | **BOUND** | `B-G2-01` |
 | **Line 7** | `[Institution Name]` | VIT-AP University, Amaravati, Andhra Pradesh, India | **BOUND** | `B-G2-01` |
 | **New Line** | *(not present)* | Co-Investigators: Srinivas Manchinasetti, Kodavanti Sashank, Tarun Sai Vadlamudi | **ADDED** | `B-G2-01` |
-| **Section 5** | Institutional COI Disclosures | All 5 investigators named in COI checklist | **BOUND** | `B-G2-01` |
+| **Section 5** | Institutional COI Disclosures | All 5 investigators named in COI checklist; individual declarations in collection | **BOUND** | `B-G2-01` |
 
 > [!IMPORTANT]
 > **Anti-Fabrication Guard:** All bound values were sourced from the authenticated institutional project document provided by the Principal Investigator. No speculative or synthetic institutional credentials were fabricated.
@@ -45,15 +45,15 @@ The submission dossier consists of the following version-controlled project asse
 | # | Document | File Path | Version | Verification Status |
 |---|---|---|---|---|
 | 1 | **Research Evaluation Protocol** | `docs/RESEARCH_EVALUATION_PROTOCOL.md` | v2.3.16 | Complete & Guideline-Grounded |
-| 2 | **IEC Study Brief** | `eval/governance/IEC_STUDY_BRIEF.md` | v1.1.0 | PI Details Bound |
+| 2 | **IEC Study Brief** | `eval/governance/IEC_STUDY_BRIEF.md` | v1.2.0 | PI Details Bound & Reconciled |
 | 3 | **Dataset Governance & Licensing Audit** | `eval/config/DATASET_GOVERNANCE.md` | v1.2.0 | Verified (All Sources Documented) |
 | 4 | **Gate 0 Automated Feasibility Check** | `eval/src/governance/gate0-feasibility-check.ts` | v1.0.0 | Verified (13/13 Tests Green) |
 | 5 | **Clinical Review Packet** | `docs/clinical-review-packet.md` | v2.0.0 | Complete (Urgency Tiers 1–5 & 65 Red Flags) |
 | 6 | **Standardized Scoring Rubric** | `eval/data/human_eval/scoring_rubric.md` | v2.2.0 | Complete (6 Dimensions + 5 Safety Flags) |
 | 7 | **Clinician Calibration SOP** | `eval/governance/CLINICIAN_CALIBRATION_SOP.md` | v1.0.0 | Drafted (Phase 2 Pre-Operational Specification) |
 | 8 | **Methodology Specification** | `eval/governance/STUDY3_METHODOLOGY_SPECIFICATION.md` | v3.3.21 | FROZEN & Statistically Verified |
-| 9 | **PI Submission Package** | `eval/governance/IEC_PI_SUBMISSION_PACKAGE.md` | v1.1.0 | PI Details Bound |
-| 10 | **Secretariat Enquiry** | `eval/governance/IEC_SECRETARIAT_ENQUIRY.md` | v1.1.0 | PI Details Bound — Ready for Transmission |
+| 9 | **PI Submission Package** | `eval/governance/IEC_PI_SUBMISSION_PACKAGE.md` | v1.2.0 | Reconciled Governance & Security Baseline |
+| 10 | **Secretariat Enquiry** | `eval/governance/IEC_SECRETARIAT_ENQUIRY.md` | v1.2.0 | PI Details Bound — Includes PI Role Query |
 
 ---
 
@@ -71,14 +71,14 @@ The submission dossier consists of the following version-controlled project asse
 ┌────────────────────────────────────────────────────────┐
 │ Step 2: Faculty Advisor Review & Sign-Off    [PENDING] │
 │ - Ms. Mounika reviews submission package               │
-│ - Faculty advisor endorses cover letter                 │
+│ - Faculty advisor endorses cover letter & role query   │
 └──────────────────────────┬─────────────────────────────┘
                            │
                            ▼
 ┌────────────────────────────────────────────────────────┐
 │ Step 3: Formal Filing with IEC Secretariat   [PENDING] │
 │ - Submit Completed Dossier (Items 1-10 above)          │
-│ - Request Form: ICMR Exemption Determination           │
+│ - Transmit Pre-Submission Enquiry for PI role & review │
 │ - Obtain Formal Filing Receipt / Reference Number      │
 └──────────────────────────┬─────────────────────────────┘
                            │
@@ -130,9 +130,11 @@ The submission dossier consists of the following version-controlled project asse
 
 ## 6. Regulatory Risk Analysis & ICMR Compliance Summary
 
-| Evaluation Area | Risk Level | Mitigation & Compliance Safeguards |
+| Evaluation Area | Risk Determination | Mitigation & Compliance Safeguards |
 | :--- | :---: | :--- |
 | **Patient Harm** | **None (Zero)** | Zero real patients are treated, advised, or observed. System operates purely in-silico. |
 | **Data Privacy & PII** | **None (Zero)** | 100% synthetic vignettes. `PhiScrubber` sanitization eliminates synthetic resemblance to real individuals. |
-| **Commercial Exploitation** | **None (Zero)** | Research is conducted under open CC BY 4.0 license for academic evaluation. |
+| **Participant Risk Classification** | **Formal IEC Determination Requested** | No direct participant-facing procedures or identifiable human data are involved in Phase 1. Formal categorization rests with the IEC under ICMR 2017 Table 4.2 & Sec 4.8. |
+| **Network & Execution Security** | **Defense-in-Depth** | In-process network API interception blocks live calls; OS-level isolation UNVERIFIED; no live model calls authorized. |
+| **Commercial Exploitation** | **None (Zero)** | Research is conducted under open CC BY 4.0 license for academic evaluation. Signed COI disclosures in collection. |
 | **Research Integrity** | **High Assurance** | All evaluator perspectives are explicitly labeled as AI simulations (`SIM-01` through `SIM-03`). Zero fabricated clinician credentials. |

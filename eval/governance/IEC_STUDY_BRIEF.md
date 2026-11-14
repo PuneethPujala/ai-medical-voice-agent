@@ -70,8 +70,8 @@ If institutional review determines that future deployment warrants human clinica
 
 * **Patient Risk:** **None (Zero).** No human patients are involved, treated, or observed.
 * **Human Subject Risk:** **None (Zero).** Phase 1 involves no human clinician subjects or research volunteers.
-* **Data Security & Privacy:** All synthetic test vignettes are held in version-controlled local repositories without exposure to unprotected public endpoints.
-* **Conflict of Interest:** Investigators hold no commercial ownership of closed-source competitor clinical models.
+* **Data Security & Privacy:** The offline evaluation dry-run uses in-process network API interception as a defense-in-depth measure. OS-level network isolation has not yet been independently verified. No live model inference or external API calls are authorized under the current execution gate. All synthetic test vignettes are held in version-controlled local repositories without exposure to unprotected public endpoints.
+* **Conflict of Interest:** Individual signed Conflict of Interest (COI) disclosure statements are currently being collected from all named investigators (confirming zero commercial equity or financial interest in evaluated models) and will be submitted with the formal institutional dossier.
 
 ---
 

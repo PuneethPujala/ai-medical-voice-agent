@@ -5,7 +5,7 @@
 **Governing Regulatory Codes:**  
 - ICMR National Ethical Guidelines for Biomedical and Health Research Involving Human Participants (2017) — **Table 4.2 & Sections 4.8.1–4.8.3** (*Review Procedures: Exemption, Expedited, and Full Committee Review*)  
 - ICMR Ethical Guidelines for Application of Artificial Intelligence in Biomedical Research and Healthcare (2023) — **Section 3** (*Ethical Review Process for AI proposals*)  
-**Package Version:** 1.1.0 (PI-Bound Institutional Dossier)  
+**Package Version:** 1.2.0 (Reconciled Governance & Security Baseline)  
 **Date of Assembly:** November 14, 2026  
 **Compiled By:** MedVoice Systems & Computational Evaluation Working Group  
 
@@ -32,11 +32,11 @@ Under ICMR 2017 Guidelines (Sections 4.8.2–4.8.3), **the decision on review ca
 
 | Section | Component Description | Current Status | Responsible Party |
 | :---: | :--- | :---: | :---: |
-| **Part I** | Formal Cover Letter to IEC Secretariat | `[PI DETAILS BOUND]` | Principal Investigator |
+| **Part I** | Formal Cover Letter to IEC Secretariat | `[PI DETAILS BOUND]` | Principal Investigator / Faculty Sponsor |
 | **Part II** | Institutional Ethics Application & Synopsis | `[READY FOR IEC FILING]` | PI / Research Lead |
 | **Part III** | PI & Faculty Sponsor Information Sheet | `[PI DETAILS BOUND]` | PI & Faculty Sponsor |
 | **Part IV** | Research Team CV & Training Checklist | `[READY FOR PI]` | Research Team |
-| **Part V** | Conflict of Interest (COI) Declarations | `[PI DETAILS BOUND]` | All Investigators |
+| **Part V** | Conflict of Interest (COI) Declarations | `[IN COLLECTION]` | All Investigators |
 | **Part VI** | Signed Investigator Undertaking Checklist | `[READY FOR PI]` | PI & Co-Investigators |
 | **Part VII** | Supporting Technical Dossier (8 Documents) | `[READY FOR IEC FILING]` | Complete & Frozen |
 | **Part VIII**| Institutional Permissions Checklist | `[READY FOR PI]` | Host Institution / HOD |
@@ -66,7 +66,7 @@ In accordance with the ICMR National Ethical Guidelines for Biomedical and Healt
 Key Features of the Phase 1 Protocol:
 1. Non-Human / Zero Patient Enrollment: This study evaluates an artificial intelligence conversational agent strictly in-silico using standardized, synthetic clinical vignettes. No human patients, authentic medical records, identifiable health data, or Protected Health Information (PHI) are accessed, processed, or collected.
 2. In-Silico Simulated Reviewers: Phase 1 multi-perspective evaluations are conducted entirely through computational, simulated role-conditioned models (SIM-01 Emergency Medicine, SIM-02 Internal Medicine, SIM-03 Primary Care) and frozen clinical practice guidelines. No human clinicians or research participants are recruited, surveyed, or burdened in Phase 1.
-3. Offline Network Isolation: All computational evaluation harnesses operate under strict multi-layer zero-egress network isolation barriers.
+3. Offline Network Isolation: The offline evaluation dry-run uses in-process network API interception as a defense-in-depth measure. OS-level network isolation has not yet been independently verified. No live model inference or external API calls are authorized under the current execution gate.
 4. Proposed Phase 2 Separation: Recruitment and onboarding of licensed human clinicians is explicitly deferred to Phase 2, which will be submitted as a separate formal protocol amendment with full participant consent documentation prior to initiation.
 
 Request for Consideration:
@@ -87,7 +87,7 @@ Thanking you.
 Sincerely,
 
 _________________________________________
-[Principal Investigator Signature]
+[Student Lead Signature]
 Pujala Puneeth
 Student Researcher, School of Computer Science and Engineering (SCOPE)
 VIT-AP University, Amaravati, Andhra Pradesh, India
@@ -120,11 +120,11 @@ Email: mounika.p@vitap.ac.in
 | **Comparator System** | Human-authored clinical practice guideline reference standards (Gold Standards). |
 | **Primary Endpoints** | Correctness, Relevance, Completeness, Uncertainty Communication, Clarity, Empathy (6-dimension 1–5 Likert scale) evaluated across 3 simulated perspectives ($N = 1,200$ observation ratings). |
 | **Statistical Methodology** | Cumulative-Link Mixed-Effects Models (CLMM) with two random intercepts (Scenario, Perspective) and Proportional Odds diagnostic testing (Methodology Specification v3.3.21 FROZEN). |
-| **Risk Categorization** | **Less than Minimal Risk** (No human subject exposure, no patient intervention, no live hospital deployment). |
+| **Anticipated Participant Risk** | **No direct participant-facing procedures or identifiable human data are involved in Phase 1.** The formal risk assessment and applicable review category are requested from the IEC. |
 | **Ethical Framework** | ICMR 2017 (Table 4.2, Sec 4.8.1–4.8.3) & ICMR AI 2023 (Sec 3). |
 | **Review Requested** | Determination of Review Category (Requesting consideration for Exemption under Table 4.2). |
-| **Principal Investigator** | Pujala Puneeth, SCOPE, VIT-AP University |
-| **Faculty Supervisor** | Ms. Pechetti Mounika, Assistant Professor Junior, SCOPE, VIT-AP University |
+| **Principal Investigator / Student Lead** | Pujala Puneeth, SCOPE, VIT-AP University |
+| **Faculty Supervisor / Institutional Sponsor** | Ms. Pechetti Mounika, Assistant Professor Junior, SCOPE, VIT-AP University |
 | **Co-Investigators** | Srinivas Manchinasetti, Kodavanti Sashank, Tarun Sai Vadlamudi (SCOPE, VIT-AP University) |
 | **Host Institution** | VIT-AP University, Amaravati, Andhra Pradesh, India |
 
@@ -134,9 +134,12 @@ Email: mounika.p@vitap.ac.in
 
 *Status: `[PI DETAILS BOUND]` — Authentic investigator credentials bound from institutional records.*
 
-### 1. Principal Investigator (PI) Profile
+> [!NOTE]
+> **Investigator Role Designation:** Under standard ICMR and institutional governance, PI eligibility for student-led research is subject to institutional policy. This dossier structures Ms. Pechetti Mounika (Assistant Professor Junior) as Faculty Sponsor / Institutional Oversight Lead and Pujala Puneeth as Student Lead Investigator. Formal designation as PI vs Faculty PI will follow the IEC Secretariat's specific guidance.
+
+### 1. Student Lead / Investigator Profile
 - **Full Legal Name:** Pujala Puneeth
-- **Current Designation:** Student Researcher (B.Tech CSE)
+- **Current Designation:** Student Researcher (B.Tech CSE, Reg No. 23BCE9481)
 - **Department:** School of Computer Science and Engineering (SCOPE)
 - **Host Institution:** VIT-AP University
 - **Institutional Address:** VIT-AP University, Amaravati, Andhra Pradesh, India
@@ -151,9 +154,9 @@ Email: mounika.p@vitap.ac.in
 - **Role in Research:** Institutional oversight, scientific supervision, ethical accountability, and regulatory liaison.
 
 ### 3. Co-Investigators
-- **Srinivas Manchinasetti** — School of Computer Science and Engineering (SCOPE), VIT-AP University
-- **Kodavanti Sashank** — School of Computer Science and Engineering (SCOPE), VIT-AP University
-- **Tarun Sai Vadlamudi** — School of Computer Science and Engineering (SCOPE), VIT-AP University
+- **Srinivas Manchinasetti** — Student Researcher (Reg No. 23BCE7704), SCOPE, VIT-AP University
+- **Kodavanti Sashank** — Student Researcher (Reg No. 23BCE7092), SCOPE, VIT-AP University
+- **Tarun Sai Vadlamudi** — Student Researcher (Reg No. 23BCE7760), SCOPE, VIT-AP University
 
 ---
 
@@ -171,7 +174,7 @@ Email: mounika.p@vitap.ac.in
 
 ## Part V: Conflict of Interest (COI) Declaration Checklist
 
-*Status: `[PI DETAILS BOUND]` — To be signed by all named investigators.*
+*Status: `[IN COLLECTION]` — Individual signed Conflict of Interest (COI) disclosure statements are currently being collected from all named investigators and will be submitted with the formal dossier.*
 
 Each named investigator must sign a formal declaration affirming:
 1. **Commercial Independence:** Zero equity, stock options, patent royalties, or advisory board retainers with closed-source commercial LLM providers evaluated in this benchmark (e.g., Anthropic, OpenAI, Google, Groq).
@@ -180,7 +183,7 @@ Each named investigator must sign a formal declaration affirming:
 4. **Funding Transparency:** Full disclosure of research funding, compute grants, and academic support received for this project.
 
 ```text
-[ ] Signed COI Declaration: Principal Investigator (Pujala Puneeth)
+[ ] Signed COI Declaration: Student Lead (Pujala Puneeth)
 [ ] Signed COI Declaration: Faculty Advisor (Ms. Pechetti Mounika)
 [ ] Signed COI Declaration: Co-Investigator (Srinivas Manchinasetti)
 [ ] Signed COI Declaration: Co-Investigator (Kodavanti Sashank)
@@ -193,7 +196,7 @@ Each named investigator must sign a formal declaration affirming:
 
 *Status: `[READY FOR PI]` — Institutional undertaking under ICMR 2017 guidelines.*
 
-The Principal Investigator undertakes that:
+The Principal Investigator / Faculty Sponsor undertakes that:
 1. **Protocol Adherence:** The research will be conducted strictly in accordance with the protocol approved or exempted by the IEC.
 2. **Phase 1 In-Silico Boundary:** No human clinical trials, live patient interactions, or human clinician panel evaluations will be initiated under Phase 1.
 3. **Synthetic Data Invariant:** Zero authentic patient data or Protected Health Information (PHI) will be ingested into the evaluation pipeline.
@@ -212,7 +215,7 @@ The submission package incorporates the following 8 comprehensive repository doc
 | # | Document Title | File Path in Repository | Governed Version | Verification Role & Evidence |
 |---|---|---|---|---|
 | **D-01** | **Research Evaluation Protocol** | `docs/RESEARCH_EVALUATION_PROTOCOL.md` | v2.3.16 | Core study protocol: 4-study decoupled architecture, sample sizing, and clinical rationale. |
-| **D-02** | **IEC Study Brief** | `eval/governance/IEC_STUDY_BRIEF.md` | v1.1.0 | High-level ethics brief: ICMR 2017/2023 alignment, simulated personas, Phase 2 roadmap. PI details bound. |
+| **D-02** | **IEC Study Brief** | `eval/governance/IEC_STUDY_BRIEF.md` | v1.2.0 | High-level ethics brief: ICMR 2017/2023 alignment, simulated personas, Phase 2 roadmap. PI details bound. |
 | **D-03** | **Dataset Governance & Licensing Audit** | `eval/config/DATASET_GOVERNANCE.md` | v1.2.0 | Provenance ledger: CC BY 4.0 licensing, synthetic generation rules, zero PHI verification. |
 | **D-04** | **Gate 0 Automated Feasibility Check** | `eval/src/governance/gate0-feasibility-check.ts` | v1.0.0 | Machine-enforced pre-flight test: 13/13 automated checks green, blocking unauthorized data. |
 | **D-05** | **Clinical Review Packet** | `docs/clinical-review-packet.md` | v2.0.0 | Clinical grounding: Urgency Tiers 1–5, 65 red-flag rules across 14 clinical domains. |
