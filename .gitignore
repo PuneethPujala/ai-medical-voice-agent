@@ -87,3 +87,7 @@ data/raw-datasets/
 
 # Evaluator ephemeral and dry run output artifacts
 eval/output/
+
+eval/cache/
+.agents/
+PROJECT.md

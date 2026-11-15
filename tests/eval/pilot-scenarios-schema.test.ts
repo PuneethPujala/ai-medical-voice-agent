@@ -22,7 +22,7 @@ describe('Phase 1 Research Pilot Scenarios Schema & Invariant Battery', () => {
     const raw = fs.readFileSync(pilotPath, 'utf-8');
     const scenarios = JSON.parse(raw);
     assert.strictEqual(Array.isArray(scenarios), true, 'Pilot data must be an array');
-    assert.strictEqual(scenarios.length >= 10 && scenarios.length <= 15, true, `Expected 10-15 pilot scenarios, received ${scenarios.length}`);
+    assert.strictEqual(scenarios.length === 50, true, `Expected exactly 50 pilot scenarios, received ${scenarios.length}`);
   });
 
   it('2. Every pilot scenario passes schema validation without errors', () => {

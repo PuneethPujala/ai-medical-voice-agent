@@ -9,6 +9,7 @@
     "start": "next start",
     "lint": "eslint",
     "test:clinical": "tsx scripts/run-clinical-eval.ts",
+    "demo:preemption": "tsx scripts/demo-preemption.ts",
     "test:board": "tsx scripts/run-multi-agent-eval.ts",
     "test:bargein": "tsx scripts/test-bargein.ts",
     "test:discussion": "tsx scripts/test-cardioneuro-discussion.ts",

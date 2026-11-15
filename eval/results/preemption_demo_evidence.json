@@ -1,0 +1,51 @@
+{
+  "demo_id": "PREEMPTION-DEMO-ACS-001",
+  "scenario": "Crushing chest pressure with diaphoresis (Acute Coronary Syndrome)",
+  "patient_transcript": "I have a crushing chest pressure and broke into a cold sweat",
+  "patient_demographics": {
+    "age": 58,
+    "sex": "male"
+  },
+  "simulated_llm_disposition": "routine",
+  "deterministic_arbiter_result": {
+    "is_emergency": true,
+    "esi_level": 2,
+    "urgency_category": "emergency",
+    "arbiter_override": true,
+    "clinical_protocol": "Urgent 12-lead ECG within 10 minutes of ED arrival. Serial cardiac troponins. CHEWABLE ASPIRIN 325mg if no contraindication. Maintain SpO2 > 90%.",
+    "recommended_action": "Proceed immediately to the nearest Emergency Department equipped with 24/7 Cardiac Cath Lab / PCI.",
+    "unresolved_red_flags": [
+      "airway",
+      "swallowing",
+      "breathing",
+      "cardiac",
+      "neurological",
+      "bleeding"
+    ],
+    "universal_red_flags": [
+      {
+        "ruleId": "UNI-CAR-01",
+        "spans": [
+          "crushing chest"
+        ],
+        "amplifiers": [
+          "age_>=40y"
+        ],
+        "confidence": 1
+      }
+    ]
+  },
+  "latency_profile_ms": {
+    "single_shot": 0.657,
+    "mean": 0.609,
+    "p50": 0.49,
+    "p95": 1.365,
+    "iterations_benchmarked": 100
+  },
+  "emergency_fast_path_action": {
+    "status": "OVERRIDE_ENFORCED",
+    "spoken_directive": "This may be a heart emergency. Call 112 or 108 immediately. Do not drive yourself. Stay seated and rest while help is coming. When did this pressure begin?",
+    "round_trip_ttft_ms": 550
+  },
+  "timestamp": "2026-11-15T08:36:01.585Z"
+}

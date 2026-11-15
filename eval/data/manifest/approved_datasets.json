@@ -1,7 +1,7 @@
 {
   "$schema": "eval-manifest-schema-v1.2.0",
   "manifest_version": "1.2.0",
-  "last_updated": "2026-11-05T11:15:00.000Z",
+  "last_updated": "2026-11-15T08:00:00.000Z",
   "approved_datasets": [
     {
       "dataset_id": "synthetic-smoke-v1.0.0",
@@ -26,8 +26,8 @@
       "dataset_id": "synthetic-pilot-v1.2.0",
       "dataset_version": "1.2.0",
       "fixture_relative_path": "eval/data/pilot/pilot-scenarios.json",
-      "sha256": "59970841c93ce958056e6a9f4391d0afe368f7b1552b6c1a86ec0a36ab604874",
-      "scenario_count": 12,
+      "sha256": "a5969a5347eb4cccc322f35fad1178fd7e6f770a0100e25a7972e953c55649e9",
+      "scenario_count": 50,
       "approved_scenario_ids": [
         "PILOT-CARD-001",
         "PILOT-NEUR-002",
@@ -40,7 +40,45 @@
         "PILOT-GAST-009",
         "PILOT-MEDI-010",
         "PILOT-MUSC-011",
-        "PILOT-GENM-012"
+        "PILOT-GENM-012",
+        "PILOT-CARD-013",
+        "PILOT-CARD-014",
+        "PILOT-CARD-015",
+        "PILOT-CARD-016",
+        "PILOT-RESP-017",
+        "PILOT-RESP-018",
+        "PILOT-RESP-019",
+        "PILOT-RESP-020",
+        "PILOT-NEUR-021",
+        "PILOT-NEUR-022",
+        "PILOT-NEUR-023",
+        "PILOT-NEUR-024",
+        "PILOT-GAST-025",
+        "PILOT-GAST-026",
+        "PILOT-GAST-027",
+        "PILOT-GAST-028",
+        "PILOT-GAST-029",
+        "PILOT-MUSC-030",
+        "PILOT-MUSC-031",
+        "PILOT-MUSC-032",
+        "PILOT-PEDI-033",
+        "PILOT-PEDI-034",
+        "PILOT-PEDI-035",
+        "PILOT-PEDI-036",
+        "PILOT-PEDI-037",
+        "PILOT-GERI-038",
+        "PILOT-GERI-039",
+        "PILOT-GENM-040",
+        "PILOT-GENM-041",
+        "PILOT-GENM-042",
+        "PILOT-DERM-043",
+        "PILOT-DERM-044",
+        "PILOT-DERM-045",
+        "PILOT-DERM-046",
+        "PILOT-GENU-047",
+        "PILOT-GENU-048",
+        "PILOT-MEDI-049",
+        "PILOT-MEDI-050"
       ],
       "provenance_types": [
         "synthetic_authored"
@@ -50,7 +88,7 @@
       ],
       "schema_version": "1.2.0",
       "quarantined_from_benchmarks": true,
-      "description": "Quarantined 12-case synthetic calibration corpus. Machine-prohibited from inclusion in held-out benchmark datasets."
+      "description": "Quarantined 50-case synthetic calibration corpus. Machine-prohibited from inclusion in held-out benchmark datasets."
     }
   ]
 }
