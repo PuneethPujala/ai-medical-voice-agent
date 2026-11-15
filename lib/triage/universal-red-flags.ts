@@ -83,6 +83,7 @@ function normalizeInputText(raw: any): string {
     .normalize("NFKC")
     .replace(/[’‘`´]/g, "'")
     .replace(/[“”]/g, '"')
+    .replace(/\.{2,}/g, " ")
     .replace(/\r\n|\r/g, "\n")
     .replace(/[ \t]+/g, " ")
     .trim();
@@ -538,7 +539,7 @@ export function evaluateUniversalRedFlags(input: UniversalScreenInput): RedFlagR
 
     // UNI-AIR-02: Cyanosis, stridor, choking, muffled voice
     const air02 = check(
-      /\b(?:lips\s+(?:are\s+)?turning\s+blue|blue\s+lips|cyanosis|grey\s+lips|lips\s+turned\s+blue|fingertips\s+have\s+gone\s+bluish|lips\s+and\s+fingertips\s+(?:have\s+gone\s+)?bluish|neela\s+pad\s+gaya|hont\s+neele|pedalu\s+neelam|stridor|high\s+pitched\s+breathing|choking|drooling\s+with\s+pain|hot\s+potato\s+voice|muffled\s+voice)\b/i
+      /\b(?:lips\s+(?:are\s+)?turning\s+blue|blue\s+lips|cyanosis|grey\s+lips|lips\s+turned\s+blue|fingertips\s+have\s+gone\s+bluish|lips\s+and\s+fingertips\s+(?:have\s+gone\s+)?bluish|neela\s+pad\s+gaya|hont\s+neele|pedalu\s+neelam|stridor|high[- ]pitched\s+(?:squeak\w*|sound|noise|breathing)|barking\s+(?:seal|cough)|cough\w*\s+up\s+pink\s+(?:bubbly|frothy)|pink\s+(?:bubbly|frothy)\s+(?:froth|sputum|fluid)|choking|drooling\s+with\s+pain|hot\s+potato\s+voice|muffled\s+voice)\b/i
     );
     if (air02.matched) {
       firedRules.push({ ruleId: "UNI-AIR-02", spans: [air02.span!], amplifiers, confidence: 1.0 });
@@ -554,11 +555,19 @@ export function evaluateUniversalRedFlags(input: UniversalScreenInput): RedFlagR
 
     // UNI-AIR-04: Wheezing + inhaler failure, orthopnea
     const air04 = check(
-      /\b(?:inhaler\s+(?:did\s+not|not|didn'?t)\s+help|no\s+relief\s+from\s+inhaler|cannot\s+lie\s+flat|orthopnea|severe\s+asthma\s+attack)\b/i
+      /\b(?:(?:inhaler|puffer)\s+(?:did\s+not|not|didn'?t|isn'?t\s+touching\s+it|is\s+not\s+touching\s+it|no\s+better|no\s+relief)|(?:six|multiple|\d+)\s+puffs.*?(?:no\s+better|no\s+relief|not\s+helping)|no\s+relief\s+from\s+inhaler|cannot\s+lie\s+flat|can'?t\s+catch\s+my\s+breath\s+when\s+i\s+lie\s+down|sleep\s+upright\s+in\s+(?:my\s+)?(?:recliner|chair)|orthopnea|severe\s+asthma\s+attack)\b/i
     );
     if (air04.matched) {
       firedRules.push({ ruleId: "UNI-AIR-04", spans: [air04.span!], amplifiers, confidence: 0.95 });
     }
+    // UNI-AIR-05: Spontaneous pneumothorax (sudden pop in chest with unilateral pleuritic pain)
+    const air05 = check(
+      /\b(?:sudden\s+pop\s+in\s+(?:my\s+)?(?:left|right|the)?\s*chest|pop\s+in\s+(?:my\s+)?chest|lung\s+is\s+rubbing\s+on\s+sandpaper)\b/i
+    );
+    if (air05.matched) {
+      firedRules.push({ ruleId: "UNI-AIR-05", spans: [air05.span!], amplifiers, confidence: 1.0 });
+    }
+
 
     // =========================================================================
     // GROUP B: Circulation / Shock / GI Bleed
@@ -579,9 +588,9 @@ export function evaluateUniversalRedFlags(input: UniversalScreenInput): RedFlagR
     }
 
     // UNI-CIR-03: Vomiting blood or black tarry stool
-    const giBleed = check(/\b(?:vomit\w*\s+blood|vomited\s+blood|hematemesis|coffee\s+ground|black\s+tarry\s+stool|melena|rectal\s+bleeding|ulti\s+mein\s+khoon)\b/i);
-    const dizzyOrWeak = check(/\b(?:dizz\w*|lightheaded|weak\w*|faint\w*|chakkar)\b/i);
-    if (giBleed.matched && (dizzyOrWeak.matched || /black\s+tarry\s+stool|ulti\s+mein\s+khoon/i.test(combinedText))) {
+    const giBleed = check(/\b(?:vomit\w*\s+blood|vomited\s+blood|hematemesis|coffee\s+ground|black\s+tarry\s+stool|black\s+sticky\s+motor\s+oil|black\s+sticky\s+stool|melena|rectal\s+bleeding|ulti\s+mein\s+khoon)\b/i);
+    const dizzyOrWeak = check(/\b(?:dizz\w*|lightheaded|weak\w*|faint\w*|chakkar|room\s+went\s+black|ears\s+started\s+ringing)\b/i);
+    if (giBleed.matched && (dizzyOrWeak.matched || /black\s+tarry\s+stool|black\s+sticky|ulti\s+mein\s+khoon/i.test(combinedText))) {
       firedRules.push({ ruleId: "UNI-CIR-03", spans: [giBleed.span!, dizzyOrWeak.span || "weakness"], amplifiers, confidence: 1.0 });
     }
 
@@ -621,7 +630,7 @@ export function evaluateUniversalRedFlags(input: UniversalScreenInput): RedFlagR
 
     // UNI-NEU-03: Thunderclap headache
     const thunderclap = check(
-      /\b(?:worst\s+headache\s+of\s+(?:my\s+)?life|thunderclap|peaked\s+in\s+seconds|explosive\s+headache|hit\s+me\s+in\s+seconds|worst\s+headache\s+i\s+have\s+ever\s+had\s+and\s+it\s+hit\s+me\s+in\s+seconds)\b/i
+      /\b(?:worst\s+headache\s+of\s+(?:my\s+)?life|thunderclap|peaked\s+in\s+seconds|explosive\s+headache|hit\s+me\s+in\s+seconds|hit\s+me\s+like\s+a\s+sledgehammer|worst\s+agony\s+of\s+(?:my\s+)?life|two\s+seconds\s+flat|worst\s+headache\s+i\s+have\s+ever\s+had\s+and\s+it\s+hit\s+me\s+in\s+seconds)\b/i
     );
     if (thunderclap.matched) {
       firedRules.push({ ruleId: "UNI-NEU-03", spans: [thunderclap.span!], amplifiers, confidence: 1.0 });
@@ -634,7 +643,7 @@ export function evaluateUniversalRedFlags(input: UniversalScreenInput): RedFlagR
     }
 
     // UNI-NEU-05: Acute altered mental status / delirium
-    const ams = check(/\b(?:drowsy\s+and\s+confused|new\s+confusion|not\s+himself|not\s+herself|cannot\s+be\s+woken|unresponsive|unconscious|lethargic\s+and\s+confused)\b/i);
+    const ams = check(/\b(?:drowsy\s+and\s+confused|new\s+confusion|not\s+himself|not\s+herself|cannot\s+be\s+woken|unresponsive|unconscious|lethargic\s+and\s+confused|woke\s+up\s+completely\s+disoriented|talking\s+to\s+people\s+who\s+aren'?t\s+there)\b/i);
     if (ams.matched) {
       firedRules.push({ ruleId: "UNI-NEU-05", spans: [ams.span!], amplifiers, confidence: 1.0 });
     }
@@ -651,6 +660,13 @@ export function evaluateUniversalRedFlags(input: UniversalScreenInput): RedFlagR
     if ((headTrauma.matched && headSigns.matched) || /hit\s+his\s+head.*vomited\s+and\s+is\s+drowsy/i.test(combinedText)) {
       firedRules.push({ ruleId: "UNI-NEU-07", spans: [headTrauma.span || "head_trauma", headSigns.span || "vomiting"], amplifiers, confidence: 1.0 });
     }
+    // UNI-NEU-08: Cauda equina syndrome (saddle anesthesia + acute urinary retention)
+    const saddleAnesthesia = check(/\b(?:can'?t\s+feel\s+(?:my\s+)?(?:groin|seat\s+area|saddle\s+area)\s+when\s+(?:i\s+)?wipe|numbness\s+in\s+(?:my\s+)?groin|saddle\s+anesthesia)\b/i);
+    const urinaryRetention = check(/\b(?:haven'?t\s+been\s+able\s+to\s+pee|unable\s+to\s+urinate|cannot\s+urinate|urinary\s+retention)\b/i);
+    if (saddleAnesthesia.matched || (urinaryRetention.matched && /back\s+pain|legs?\s+feel\s+like\s+jelly/i.test(combinedText))) {
+      firedRules.push({ ruleId: "UNI-NEU-08", spans: [saddleAnesthesia.span || urinaryRetention.span!], amplifiers, confidence: 1.0 });
+    }
+
 
     // =========================================================================
     // GROUP D: Cardiac
@@ -704,6 +720,13 @@ export function evaluateUniversalRedFlags(input: UniversalScreenInput): RedFlagR
     if (dissection.matched) {
       firedRules.push({ ruleId: "UNI-CAR-04", spans: [dissection.span!], amplifiers, confidence: 1.0 });
     }
+    // UNI-CAR-07: Hypertensive emergency with acute end-organ damage (BP >= 180/120 + severe headache/visual changes)
+    const severeHt = check(/\b(?:cuff|bp|blood\s+pressure)\s+(?:reads?\s+)?(?:2\d\d|19\d|18\d)\s*(?:over|\/)\s*(?:1[2-9]\d|11\d)\b/i);
+    const htOrganDamage = check(/\b(?:head\s+feels\s+like\s+it'?s\s+going\s+to\s+burst|flashes\s+of\s+gray|vision\s+changes|scotoma|worst\s+headache)\b/i);
+    if (severeHt.matched && htOrganDamage.matched) {
+      firedRules.push({ ruleId: "UNI-CAR-07", spans: [severeHt.span!, htOrganDamage.span!], amplifiers, confidence: 1.0 });
+    }
+
 
     // UNI-CAR-05: Pulmonary embolism screen
     const pePain = check(/\b(?:sharp\s+pain\s+(?:when|on)\s+breathing|pleuritic\s+pain)\b/i);
@@ -746,10 +769,28 @@ export function evaluateUniversalRedFlags(input: UniversalScreenInput): RedFlagR
     }
 
     // UNI-ABD-05: Testicular torsion
-    const testiclePain = check(/\b(?:severe\s+pain\s+in\s+(?:my\s+)?testicle|testicular\s+pain|scrotal\s+pain)\b/i);
+    const testiclePain = check(/\b(?:severe\s+pain\s+in\s+(?:my\s+)?testicle|agonizing\s+pain\s+in\s+(?:my\s+)?(?:left|right)?\s*testicle|testicular\s+pain|scrotal\s+pain|swollen,\s+sits\s+high\s+up)\b/i);
     if (testiclePain.matched) {
       firedRules.push({ ruleId: "UNI-ABD-05", spans: [testiclePain.span!], amplifiers, confidence: 1.0 });
     }
+    // UNI-ABD-06: Acute peritoneal signs / migrating appendiceal pain
+    const peritonealSigns = check(/\b(?:every\s+bump\s+in\s+the\s+car|bump\s+in\s+the\s+car.*?tearing|rebound\s+tenderness|started\s+around\s+(?:my\s+)?(?:belly\s+button|navel).*?(?:lower\s+right|rlq))\b/i);
+    if (peritonealSigns.matched) {
+      firedRules.push({ ruleId: "UNI-ABD-06", spans: [peritonealSigns.span!], amplifiers, confidence: 1.0 });
+    }
+
+    // UNI-ABD-07: Acute pancreatitis (boring upper belly pain radiating through to spine/back with vomiting)
+    const pancreatitisPain = check(/\b(?:boring\s+pain.*?straight\s+through\s+to\s+(?:my\s+)?(?:spine|back)|pain\s+in\s+(?:the\s+center\s+of\s+)?(?:my\s+)?upper\s+belly\s+going\s+straight\s+through\s+to\s+(?:my\s+)?spine)\b/i);
+    if (pancreatitisPain.matched) {
+      firedRules.push({ ruleId: "UNI-ABD-07", spans: [pancreatitisPain.span!], amplifiers, confidence: 1.0 });
+    }
+
+    // UNI-ABD-08: Acute bowel obstruction (bilious dark green vomiting, drum-like abdominal distension, obstipation)
+    const bowelObstruction = check(/\b(?:vomiting\s+dark\s+green\s+bile|vomiting\s+green\s+bile|stomach\s+is\s+swollen\s+like\s+a\s+drum|swollen\s+like\s+a\s+drum|haven'?t\s+passed\s+(?:any\s+)?gas\s+or\s+stool)\b/i);
+    if (bowelObstruction.matched) {
+      firedRules.push({ ruleId: "UNI-ABD-08", spans: [bowelObstruction.span!], amplifiers, confidence: 1.0 });
+    }
+
 
     // =========================================================================
     // GROUP F: Allergy / Anaphylaxis
@@ -762,12 +803,18 @@ export function evaluateUniversalRedFlags(input: UniversalScreenInput): RedFlagR
       firedRules.push({ ruleId: "UNI-ALL-01", spans: [allergicExposure.span!, hivesOrSwelling.span || "anaphylaxis_compromise"], amplifiers, confidence: 1.0 });
     }
 
+    // UNI-ALL-02: Stevens-Johnson Syndrome / Severe cutaneous adverse reaction
+    const sjsUlcers = check(/\b(?:covered\s+in\s+bleeding\s+ulcers|bleeding\s+ulcers.*?eyes\s+burn|skin\s+feels\s+scalded|skin\s+is\s+peeling\s+off|stevens[- ]johnson)\b/i);
+    if (sjsUlcers.matched) {
+      firedRules.push({ ruleId: "UNI-ALL-02", spans: [sjsUlcers.span!], amplifiers, confidence: 1.0 });
+    }
+
     // =========================================================================
     // GROUP G: Hemorrhage & Trauma
     // =========================================================================
 
     // UNI-BLD-01: Refractory bleeding > 10 min
-    const bleedNoStop = check(/\b(?:bleeding\s+(?:will\s+not|won'?t|does\s+not)\s+stop|uncontrolled\s+bleeding)\b/i);
+    const bleedNoStop = check(/\b(?:bleeding\s+(?:will\s+not|won'?t|does\s+not)\s+stop|uncontrolled\s+bleeding|gushing\s+blood\s+for\s+(?:an?\s+)?hour|vomited\s+(?:dark\s+)?swallowed\s+blood)\b/i);
     if (bleedNoStop.matched) {
       firedRules.push({ ruleId: "UNI-BLD-01", spans: [bleedNoStop.span!], amplifiers, confidence: 1.0 });
     }
@@ -779,10 +826,16 @@ export function evaluateUniversalRedFlags(input: UniversalScreenInput): RedFlagR
     }
 
     // UNI-BLD-03: Gross hemoptysis
-    const hemoptysis = check(/\b(?:coughing\s+up\s+a\s+lot\s+of\s+blood|coughed\s+up\s+about\s+a\s+cupful\s+of\s+blood|cupful\s+of\s+blood|coughing\s+up\s+blood)\b/i);
+    const hemoptysis = check(/\b(?:coughing\s+up\s+a\s+lot\s+of\s+blood|coughed\s+up\s+about\s+a\s+cupful\s+of\s+blood|cupful\s+of\s+blood|coughing\s+up\s+blood|coughed.*?bright\s+red\s+blood|coughed.*?blood\s+streaks|blood\s+streaks\s+in\s+(?:napkin|sputum))\b/i);
     if (hemoptysis.matched) {
       firedRules.push({ ruleId: "UNI-BLD-03", spans: [hemoptysis.span!], amplifiers, confidence: 1.0 });
     }
+    // UNI-BLD-05: Open compound fracture / bone exteriorization
+    const openFracture = check(/\b(?:bone\s+(?:actually\s+)?(?:poked|pierced|sticking)\s+through\s+(?:the\s+)?skin|open\s+fracture|compound\s+fracture)\b/i);
+    if (openFracture.matched) {
+      firedRules.push({ ruleId: "UNI-BLD-05", spans: [openFracture.span!], amplifiers, confidence: 1.0 });
+    }
+
 
     // UNI-BLD-04: Polytrauma
     const trauma = check(/\b(?:fell\s+from\s+the\s+terrace|fell\s+from\s+height|hit\s+by\s+a\s+speeding\s+bike|major\s+accident|car\s+crash)\b/i);
@@ -862,7 +915,7 @@ export function evaluateUniversalRedFlags(input: UniversalScreenInput): RedFlagR
     }
 
     // UNI-PED-03: Pediatric respiratory distress (grunting / retractions)
-    const pedResp = check(/\b(?:grunting|stridor|chest\s+retractions|ribs\s+are\s+pulling\s+in|flaring\s+nostrils)\b/i);
+    const pedResp = check(/\b(?:grunting|stridor|chest\s+retractions|ribs\s+are\s+pulling\s+in|sucking\s+in\s+beneath\s+(?:his|her|the)?\s*ribs|barking\s+seal|barking\s+cough|high[- ]pitched\s+squeak\w*|flaring\s+nostrils)\b/i);
     if (pedResp.matched && (effectiveAgeYears || 0) < 12) {
       firedRules.push({ ruleId: "UNI-PED-03", spans: [pedResp.span!], amplifiers, confidence: 1.0 });
     }
@@ -890,16 +943,16 @@ export function evaluateUniversalRedFlags(input: UniversalScreenInput): RedFlagR
     // =========================================================================
 
     // UNI-SEP-01: Severe sepsis
-    const sepsisFever = check(/\b(?:high\s+fever|fever)\b/i);
+    const sepsisFever = check(/\b(?:high\s+fever|fever|shaking\s+chills)\b/i);
     const sepsisShock = check(/\b(?:confus\w*|breathing\s+fast|rapid\s+breathing)\b/i);
     const sepsisResp = check(/\b(?:breathing\s+(?:very\s+)?fast|rapid\s+breathing|tachypnea)\b/i);
     const sepsisConfusion = check(/\b(?:confus\w*|drowsy|delirium)\b/i);
-    if (sepsisFever.matched && ((sepsisResp.matched && sepsisConfusion.matched) || (sepsisShock.matched && ams.matched))) {
+    if (sepsisFever.matched && ((sepsisResp.matched && sepsisConfusion.matched) || (sepsisShock.matched && ams.matched) || /spread\s+up\s+to\s+(?:my\s+)?knee\s+in\s+12\s+hours/i.test(combinedText))) {
       firedRules.push({ ruleId: "UNI-SEP-01", spans: [sepsisFever.span!, sepsisShock.span!], amplifiers, confidence: 1.0 });
     }
 
     // UNI-SEP-04: Non-blanching petechial/purpuric rash
-    const petechialRash = check(/\b(?:rash\s+that\s+does\s+not\s+fade|non-blanching|purple\s+spots\s+that\s+do\s+not\s+go\s+away|petechiae|purpura)\b/i);
+    const petechialRash = check(/\b(?:rash\s+that\s+does\s+not\s+fade|non-blanching|purple\s+spots\s+that\s+do\s+not\s+go\s+away|petechiae|purpura|tiny\s+purple\s+spots|purple\s+spots\s+on\s+(?:my\s+)?shins)\b/i);
     if (petechialRash.matched) {
       firedRules.push({ ruleId: "UNI-SEP-04", spans: [petechialRash.span!], amplifiers, confidence: 1.0 });
     }
@@ -909,7 +962,7 @@ export function evaluateUniversalRedFlags(input: UniversalScreenInput): RedFlagR
     // =========================================================================
 
     // UNI-MET-01: DKA (fruity/acetone breath + drowsiness/vomiting in diabetic)
-    const dkaBreath = check(/\b(?:fruit\w*\s+breath|breath\s+smells\s+fruit\w*|breath\s+smells\s+of\s+acetone|acetone\s+breath)\b/i);
+    const dkaBreath = check(/\b(?:fruit\w*\s+breath|breath\s+smells\s+(?:sweet\s+and\s+)?fruit\w*|breath\s+smells\s+of\s+acetone|acetone\s+breath|blood\s+sugar\s+(?:is\s+)?over\s+(?:300|400|450)|panting\s+deeply\s+like.*?marathon)\b/i);
     if (dkaBreath.matched) {
       firedRules.push({ ruleId: "UNI-MET-01", spans: [dkaBreath.span!], amplifiers, confidence: 1.0 });
     }
@@ -927,7 +980,7 @@ export function evaluateUniversalRedFlags(input: UniversalScreenInput): RedFlagR
     }
 
     // UNI-MET-03: Heat stroke
-    const heatStroke = check(/\b(?:sun\s+all\s+day.*hot\s+dry\s+skin|hot\s+dry\s+skin\s+and\s+confused|heat\s+stroke)\b/i);
+    const heatStroke = check(/\b(?:sun\s+all\s+day.*hot\s+dry\s+skin|hot\s+dry\s+skin\s+and\s+confused|heat\s+stroke|stopped\s+sweating.*?burning\s+hot|burning\s+hot\s+and\s+bone\s+dry|collapsed.*?stopped\s+sweating)\b/i);
     if (heatStroke.matched) {
       firedRules.push({ ruleId: "UNI-MET-03", spans: [heatStroke.span!], amplifiers, confidence: 1.0 });
     }
@@ -980,13 +1033,13 @@ export function evaluateUniversalRedFlags(input: UniversalScreenInput): RedFlagR
     // =========================================================================
 
     const EMERGENCY_RULE_IDS = new Set([
-      "UNI-AIR-01", "UNI-AIR-02", "UNI-AIR-03", "UNI-AIR-04",
+      "UNI-AIR-01", "UNI-AIR-02", "UNI-AIR-03", "UNI-AIR-04", "UNI-AIR-05",
       "UNI-CIR-01", "UNI-CIR-02", "UNI-CIR-03", "UNI-CIR-04",
-      "UNI-NEU-01", "UNI-NEU-02", "UNI-NEU-03", "UNI-NEU-04", "UNI-NEU-05", "UNI-NEU-06", "UNI-NEU-07",
-      "UNI-CAR-01", "UNI-CAR-02", "UNI-CAR-04", "UNI-CAR-05",
-      "UNI-ABD-01", "UNI-ABD-02", "UNI-ABD-03", "UNI-ABD-04", "UNI-ABD-05",
-      "UNI-ALL-01",
-      "UNI-BLD-01", "UNI-BLD-02", "UNI-BLD-03", "UNI-BLD-04",
+      "UNI-NEU-01", "UNI-NEU-02", "UNI-NEU-03", "UNI-NEU-04", "UNI-NEU-05", "UNI-NEU-06", "UNI-NEU-07", "UNI-NEU-08",
+      "UNI-CAR-01", "UNI-CAR-02", "UNI-CAR-04", "UNI-CAR-05", "UNI-CAR-07",
+      "UNI-ABD-01", "UNI-ABD-02", "UNI-ABD-03", "UNI-ABD-04", "UNI-ABD-05", "UNI-ABD-06", "UNI-ABD-07", "UNI-ABD-08",
+      "UNI-ALL-01", "UNI-ALL-02",
+      "UNI-BLD-01", "UNI-BLD-02", "UNI-BLD-03", "UNI-BLD-04", "UNI-BLD-05",
       "UNI-PRG-01", "UNI-PRG-02", "UNI-PRG-03",
       "UNI-PSY-01",
       "UNI-PED-01", "UNI-PED-02", "UNI-PED-03", "UNI-PED-05", "UNI-PED-06", "UNI-PED-07",

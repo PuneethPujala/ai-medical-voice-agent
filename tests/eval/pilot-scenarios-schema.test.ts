@@ -1,11 +1,13 @@
 /**
  * Pilot Scenarios Schema Validation Battery
  *
- * Verifies that all 12 Phase 1 pilot scenarios:
- * 1. Strictly satisfy the ScenarioSchema contract.
- * 2. Maintain valid provenance tags (synthetic_authored or synthetic_derived).
- * 3. Never contain invalid "deidentification_verified" assertions.
- * 4. Include comprehensive patient profiles, red flags, critical omission checklists, and guideline citations.
+ * Verifies that:
+ * 1. Canonical 12 Phase 1 pilot scenarios (synthetic-pilot-v1.2.0) satisfy ScenarioSchema contract.
+ * 2. Expanded 50-cohort pilot scenarios (synthetic-pilot-v2.0.0) satisfy ScenarioSchema contract.
+ * 3. Both datasets maintain valid provenance tags (synthetic_authored).
+ * 4. Never contain invalid "deidentification_verified" assertions.
+ * 5. Include comprehensive patient profiles, red flags, critical omission checklists, and guideline citations.
+ * 6. Machine-enforces quarantine across benchmark manifests.
  */
 
 import { describe, it } from 'node:test';
@@ -15,33 +17,46 @@ import * as path from 'path';
 import { validateClinicalScenario, ClinicalScenario } from '../../eval/src/schema/scenario-schema';
 
 describe('Phase 1 Research Pilot Scenarios Schema & Invariant Battery', () => {
-  const pilotPath = path.resolve(__dirname, '../../eval/data/pilot/pilot-scenarios.json');
+  const pilot12Path = path.resolve(__dirname, '../../eval/data/pilot/pilot-scenarios.json');
+  const pilot50Path = path.resolve(__dirname, '../../eval/data/pilot/expanded-pilot-cohort-50.json');
 
-  it('1. pilot-scenarios.json exists and parses as valid JSON', () => {
-    assert.strictEqual(fs.existsSync(pilotPath), true, 'pilot-scenarios.json must exist');
-    const raw = fs.readFileSync(pilotPath, 'utf-8');
+  it('1. pilot-scenarios.json exists and contains canonical 12 Phase 1 pilot scenarios', () => {
+    assert.strictEqual(fs.existsSync(pilot12Path), true, 'pilot-scenarios.json must exist');
+    const raw = fs.readFileSync(pilot12Path, 'utf-8');
     const scenarios = JSON.parse(raw);
     assert.strictEqual(Array.isArray(scenarios), true, 'Pilot data must be an array');
-    assert.strictEqual(scenarios.length === 50, true, `Expected exactly 50 pilot scenarios, received ${scenarios.length}`);
+    assert.strictEqual(scenarios.length, 12, `Expected canonical 12 pilot scenarios, received ${scenarios.length}`);
   });
 
-  it('2. Every pilot scenario passes schema validation without errors', () => {
-    const raw = fs.readFileSync(pilotPath, 'utf-8');
-    const scenarios: ClinicalScenario[] = JSON.parse(raw);
+  it('2. expanded-pilot-cohort-50.json exists and contains 50 expanded pilot scenarios', () => {
+    assert.strictEqual(fs.existsSync(pilot50Path), true, 'expanded-pilot-cohort-50.json must exist');
+    const raw = fs.readFileSync(pilot50Path, 'utf-8');
+    const scenarios = JSON.parse(raw);
+    assert.strictEqual(Array.isArray(scenarios), true, 'Expanded pilot cohort data must be an array');
+    assert.strictEqual(scenarios.length, 50, `Expected exactly 50 expanded pilot scenarios, received ${scenarios.length}`);
+  });
 
-    const ids = new Set<string>();
+  it('3. Every pilot scenario across both cohorts passes schema validation without errors', () => {
+    const raw12 = fs.readFileSync(pilot12Path, 'utf-8');
+    const scenarios12: ClinicalScenario[] = JSON.parse(raw12);
+    const raw50 = fs.readFileSync(pilot50Path, 'utf-8');
+    const scenarios50: ClinicalScenario[] = JSON.parse(raw50);
 
-    for (const sc of scenarios) {
+    const allScenarios = [...scenarios12, ...scenarios50];
+    const checkedIds50 = new Set<string>();
+
+    for (const sc of scenarios50) {
+      assert.strictEqual(checkedIds50.has(sc.scenario_id), false, `Duplicate ID in 50-cohort: ${sc.scenario_id}`);
+      checkedIds50.add(sc.scenario_id);
+    }
+
+    for (const sc of allScenarios) {
       const res = validateClinicalScenario(sc);
       assert.strictEqual(
         res.valid,
         true,
         `Scenario ${sc.scenario_id} failed validation with issues: ${JSON.stringify(res.issues, null, 2)}`
       );
-
-      // Verify ID uniqueness
-      assert.strictEqual(ids.has(sc.scenario_id), false, `Duplicate scenario ID detected: ${sc.scenario_id}`);
-      ids.add(sc.scenario_id);
 
       // Verify authorship and review status invariants
       assert.strictEqual(
@@ -86,8 +101,8 @@ describe('Phase 1 Research Pilot Scenarios Schema & Invariant Battery', () => {
     }
   });
 
-  it('3. Covers emergent, urgent, and routine clinical presentations across specialties', () => {
-    const raw = fs.readFileSync(pilotPath, 'utf-8');
+  it('4. Covers emergent, urgent, and routine clinical presentations across specialties', () => {
+    const raw = fs.readFileSync(pilot50Path, 'utf-8');
     const scenarios: ClinicalScenario[] = JSON.parse(raw);
 
     const acuities = new Set(scenarios.map((s) => s.acuity));
@@ -96,14 +111,20 @@ describe('Phase 1 Research Pilot Scenarios Schema & Invariant Battery', () => {
     assert.strictEqual(acuities.has('urgent'), true, 'Must include urgent scenarios');
 
     const domains = new Set(scenarios.map((s) => s.domain));
-    assert.strictEqual(domains.size >= 6, true, `Pilot should cover diverse domains, covered ${domains.size}`);
+    assert.strictEqual(domains.size >= 8, true, `Expanded pilot should cover diverse domains, covered ${domains.size}`);
   });
 
-  it('4. Machine-enforces quarantine: Pilot IDs and Smoke ID do not overlap with benchmark/evaluation manifests', () => {
-    const raw = fs.readFileSync(pilotPath, 'utf-8');
-    const pilotScenarios: ClinicalScenario[] = JSON.parse(raw);
-    const quarantinedIds = new Set(pilotScenarios.map((s) => s.scenario_id));
-    quarantinedIds.add('TEST-SMOKE-001');
+  it('5. Machine-enforces quarantine: Pilot IDs and Smoke ID do not overlap with benchmark/evaluation manifests', () => {
+    const raw12 = fs.readFileSync(pilot12Path, 'utf-8');
+    const scenarios12: ClinicalScenario[] = JSON.parse(raw12);
+    const raw50 = fs.readFileSync(pilot50Path, 'utf-8');
+    const scenarios50: ClinicalScenario[] = JSON.parse(raw50);
+
+    const quarantinedIds = new Set([
+      ...scenarios12.map((s) => s.scenario_id),
+      ...scenarios50.map((s) => s.scenario_id),
+      'TEST-SMOKE-001',
+    ]);
 
     // Check Track B Challenge Cases manifest (Study 2)
     const trackBPath = path.resolve(__dirname, '../clinical-eval/cases.json');

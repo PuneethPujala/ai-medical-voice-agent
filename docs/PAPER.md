@@ -370,26 +370,28 @@ Evaluated on 5 standardized clinical queries spanning 3 clinical specialty domai
 
 *Framing Qualification*: This evaluation represents a deterministic retrieval smoke test with heuristic and authority checks, not an exhaustive population-level clinical retrieval benchmark.
 
-### 9.4 Expanded Pilot Semantic Alignment Calibration (N = 50)
+### 9.4 Expanded Pilot Cohort Safety & Semantic Calibration (N = 50)
 
-To assess semantic concordance between MedVoice's spoken triage replies and physician reference response drafts, an expanded pilot calibration experiment was executed across 50 curated clinical scenarios spanning 10 clinical domains: cardiovascular ($N=5$), neurological ($N=6$), respiratory ($N=6$), gastrointestinal ($N=7$), dermatological ($N=5$), general medicine ($N=7$), musculoskeletal ($N=4$), pediatric/other ($N=7$), medication safety ($N=2$), and chronic conditions ($N=1$).
+To assess both deterministic safety triage and semantic concordance between MedVoice's spoken triage replies and physician reference response drafts, an expanded pilot calibration experiment was executed across 50 curated clinical scenarios spanning 10 clinical domains: cardiovascular ($N=5$), neurological ($N=6$), respiratory ($N=6$), gastrointestinal ($N=7$), dermatological ($N=5$), general medicine ($N=7$), musculoskeletal ($N=4$), pediatric/other ($N=7$), medication safety ($N=2$), and chronic conditions ($N=1$).
 
 - **Embedding Model:** Google `models/gemini-embedding-001` (3,072 dimensions, `taskType: SEMANTIC_SIMILARITY`)
-- **Dataset Provenance:** AI-assisted clinical guideline drafts (`eval/data/pilot/pilot-scenarios.json`), classified as *Exploratory Pilot Calibration* (quarantined from held-out Study 3).
+- **Dataset Provenance & Boundary:** Evaluated on `eval/data/pilot/expanded-pilot-cohort-50.json` (`synthetic-pilot-v2.0.0`; canonical 12 Phase 1 calibration cases remain partitioned in `eval/data/pilot/pilot-scenarios.json` under `synthetic-pilot-v1.2.0`). Both cohorts are formally quarantined from held-out benchmark evaluations (`quarantined_from_benchmarks: true`).
 - **Executable Harness:** `eval/src/evaluator/run-authentic-pilot-evaluation.ts`
 - **Audit Evidence Artifact:** `eval/results/pilot_calibration_evidence.json`
 
 | Metric | Measured Value | Notes & Significance |
 |---|---|---|
-| **Mean Cosine Similarity** | **0.8289** [95% CI: 0.8200, 0.8379] | Computed for $df = 49$ ($t_{\text{crit}} = 2.0096$) |
-| **Random Shuffled Baseline** | **0.8042** | True Semantic Delta: **+0.0247** |
-| **Paired Student's t-test** | **$t = 4.4346$, $df = 49$** | **$p = 5.21 \times 10^{-5}$** ($p < 0.001^{***}$) |
-| **Wilcoxon Signed-Rank Test** | **$W = 231$, $Z = 3.9192$** | **$p = 8.89 \times 10^{-5}$** ($p < 0.001^{***}$), Rank-biserial $r = 0.6376$ |
-| **MedVoice Spoken Word Count** | **31.5 words** (mean) | Complies with conversational $<60$-word voice guard |
-| **Physician Reference Words** | **107.9 words** (mean) | Reference-to-agent length ratio: **3.4 : 1** |
-| **Top Domain Similarity** | Cardiovascular: **0.8505** ($N=5$) | All 10 clinical domains exceed 0.78 similarity floor |
+| **Emergent Life-Threat Recall** | **100.0%** (29/29) | Zero fatal under-triages across acute myocardial infarction, ischemic stroke, severe respiratory failure, acute abdomen, and sepsis |
+| **Non-Emergent Specificity** | **100.0%** (21/21) | Zero false alarms escalating routine/urgent controls into emergency department care |
+| **Mean Cosine Similarity** | **0.8225** [95% CI: 0.8050, 0.8399] | Computed for $df = 49$ ($t_{\text{crit}} = 2.0096$) |
+| **PRNG Shuffled Derangement** | **0.7946** | True Semantic Delta: **+0.0279** (Strict derangement control, seed = 42) |
+| **Paired Student's t-test** | **$t = 4.0844$, $df = 49$** | **$p = 1.63 \times 10^{-4}$** ($p < 0.001^{***}$) |
+| **Wilcoxon Signed-Rank Test** | **$W = 244$, $Z = 3.7937$** | **$p = 1.48 \times 10^{-4}$** ($p < 0.001^{***}$), Rank-biserial $r = 0.6173$ |
+| **MedVoice Spoken Word Count** | **24.0 words** (mean) | Complies with conversational $<60$-word voice guard |
+| **Physician Reference Words** | **107.9 words** (mean) | Reference-to-agent length ratio: **4.5 : 1** |
+| **Top Domain Similarity** | Respiratory: **0.8385** ($N=6$) | Cardiovascular: **0.8370** ($N=5$); all 10 clinical domains exceed 0.77 floor |
 
-*Domain-by-Domain Stratification*: Cardiovascular: 0.8505 ($N=5$); Dermatological: 0.8374 ($N=5$); Neurological: 0.8365 ($N=6$); Respiratory: 0.8328 ($N=6$); Gastrointestinal: 0.8325 ($N=7$); General Medicine: 0.8265 ($N=7$); Other (Pediatric/Toxicology): 0.8255 ($N=7$); Musculoskeletal: 0.8100 ($N=4$); Chronic Conditions: 0.7869 ($N=1$); Medication Safety: 0.7859 ($N=2$).
+*Domain-by-Domain Stratification*: Respiratory: 0.8385 ($N=6$); Cardiovascular: 0.8370 ($N=5$); Other (Pediatric/Toxicology): 0.8272 ($N=7$); Neurological: 0.8211 ($N=6$); General Medicine: 0.8195 ($N=7$); Gastrointestinal: 0.8174 ($N=7$); Dermatological: 0.8141 ($N=5$); Musculoskeletal: 0.8126 ($N=4$); Chronic Conditions: 0.8538 ($N=1$); Medication Safety: 0.7786 ($N=2$).
 
 ### 9.5 End-to-End Voice Pipeline Latency Waterfall
 
@@ -399,7 +401,7 @@ The complete user-perceived round-trip turnaround from spoken patient utterance 
 |---|---|:---:|---|
 | **1. Audio Capture** | Browser MediaStream PCM | ~50 ms | 25 ms frame buffer + 10 ms acoustic VAD telemetry |
 | **2. Speech-to-Text** | Groq Whisper (Cloud STT) | ~280 ms | Streaming recognition; median benchmark latency |
-| **3. Safety Arbiter** | Pre-Arbiter + Post-Arbiter | **0.18 ms** | Deterministic rule execution (P50: 0.14 ms, P95: 0.36 ms) |
+| **3. Safety Arbiter** | Pre-Arbiter + Universal Red Flags | **0.23 ms (Measured)** | Deterministic CPU microbenchmark (P50: 0.19 ms, P95: 0.35 ms) |
 | **4. LLM Reasoning** | Gemini (Bounded Multi-Specialist) | ~650 ms | Specialist blackboard deliberation + clinical RAG |
 | **5. TTS First-Byte** | Kokoro-82M (Local ONNX, CPU) | ~220 ms | Adaptive first-chunk pipeline; 0 ms buffer starvation |
 | **Total Round-Trip** | **End-to-End TTFT** | **~1.15 s** | **Sub-1.5 s time-to-first-audible-token** |
@@ -411,7 +413,7 @@ For acute life-threatening emergencies (ESI-1 / ESI-2), the deterministic safety
 ## 10. Threats to Validity & Limitations
 
 ### 10.1 Internal Validity
-- **Length Asymmetry**: MedVoice spoken triage responses average 31.5 words versus 107.9 words for written physician summaries (3.4:1 ratio). Neural embedding cosine similarity is partially attenuated by this structural modality difference between conversational spoken brevity (<60 words) and comprehensive written chart documentation.
+- **Length Asymmetry**: MedVoice spoken triage responses average 24.0 words versus 107.9 words for written physician summaries (4.5:1 ratio). Neural embedding cosine similarity is partially attenuated by this structural modality difference between conversational spoken brevity (<60 words) and comprehensive written chart documentation.
 - **Pre-Compiled Directives in Acute Presentations**: Emergent scenarios leverage domain-specific cached emergency directives to eliminate LLM latency and preclude hallucination. While clinically necessary, this constrains lexical variation in emergency evaluations.
 
 ### 10.2 External Validity

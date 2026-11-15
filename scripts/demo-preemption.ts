@@ -1,13 +1,17 @@
 /**
- * MedVoice AI: Deterministic Safety Arbiter Preemption CLI Demonstration
+ * MedVoice AI: Deterministic Safety Arbiter Emergency Preemption Microbenchmark
  * 
- * Demonstrates deterministic sub-millisecond ESI-2 preemption overriding
+ * Benchmarks deterministic sub-millisecond ESI preemption overriding
  * an unsafe or erroneous LLM "routine" disposition when acute red-flag symptoms are detected.
  * 
- * Scenario:
+ * Evaluates:
  *   Patient Presentation: "I have a crushing chest pressure and broke into a cold sweat"
  *   Simulated Faulty LLM Suggestion: "routine" (Ambulatory home monitoring)
- *   Deterministic Arbiter Action: HARD PREEMPTION OVERRIDE -> ESI 2 (EMERGENCY) in < 1 ms
+ *   Deterministic Arbiter Action: HARD PREEMPTION OVERRIDE -> ESI 2 (EMERGENCY) in < 1 ms CPU time
+ * 
+ * Note: Benchmarks the deterministic arbiter decision module directly on local CPU.
+ * Round-trip audio TTFT (~550ms fast-path, ~1150ms standard) is an architectural budget,
+ * not a live network/audio measurement.
  */
 
 import fs from 'fs';
@@ -17,22 +21,22 @@ import { evaluateSafetyArbiter } from '../lib/triage/safety-arbiter';
 
 async function runPreemptionDemo() {
   console.log('\n' + '='.repeat(80));
-  console.log('       MEDVOICE AI: CLINICAL SAFETY PREEMPTION ARBITER DEMONSTRATION');
-  console.log('       Deterministic Zero-Hallucination Emergency Preemption Shield');
+  console.log('  MEDVOICE AI: DETERMINISTIC SAFETY ARBITER MICROBENCHMARK DEMO');
+  console.log('  Deterministic Zero-Hallucination Emergency Preemption Shield');
   console.log('='.repeat(80));
 
   const patientUtterance = "I have a crushing chest pressure and broke into a cold sweat";
   const simulatedLlmDisposition = "routine";
   const patientAge = 58;
 
-  console.log('\n[PATIENT AUDIO STREAM DECODED]');
+  console.log('\n[EVALUATED CLINICAL VIGNETTE]');
   console.log(`  Patient Transcript: "${patientUtterance}"`);
   console.log(`  Demographics      : Age ${patientAge}, Male`);
-  console.log(`  Acoustic Signal   : Low-amplitude whisper / stressed paralinguistic tone`);
+  console.log(`  Presentation      : Acute Coronary Syndrome (ACS) suspected`);
 
   console.log('\n[SIMULATED GENERATIVE LLM DELIBERATION (UNCONSTRAINED BASELINE)]');
-  console.log(`  LLM Proposed Disposition : "${simulatedLlmDisposition}" (Home observation / OTC antacid)`);
-  console.log(`  Failure Mode Evaluated   : Hallucinatory Down-Triage / Fatal Conversational Minimization`);
+  console.log(`  Simulated LLM Proposed Disposition : "${simulatedLlmDisposition}" (Home observation / OTC antacid)`);
+  console.log(`  Failure Mode Tested                : Hallucinatory Down-Triage / Missed Life Threat`);
 
   // JIT Warm-up pass to measure realistic warm CPU latency
   for (let i = 0; i < 50; i++) {
@@ -71,7 +75,7 @@ async function runPreemptionDemo() {
   const meanLatency = latencies.reduce((a, b) => a + b, 0) / latencies.length;
 
   console.log('\n' + '-'.repeat(80));
-  console.log('  DETERMINISTIC SAFETY ARBITER EVALUATION (HARDWARE CPU EXECUTION)');
+  console.log('  DETERMINISTIC SAFETY ARBITER EVALUATION (MEASURED LOCAL CPU EXECUTION)');
   console.log('-'.repeat(80));
   console.log(`  Preemption Triggered      : ${decision.isEmergency ? '🚨 YES (IRREVERSIBLE EMERGENCY FLOOR)' : 'NO'}`);
   console.log(`  Assigned ESI Acuity       : Level ${decision.esiScore} (ESI-2: Emergent, High Risk)`);
@@ -89,26 +93,31 @@ async function runPreemptionDemo() {
     });
   }
 
-  console.log('\n  TIMING PROFILE (100-Cycle High-Resolution Benchmark):');
+  console.log('\n  MEASURED ARBITER MICROBENCHMARK LATENCY (100 Cycles):');
   console.log(`    • Single-Shot Latency   : ${singleLatencyMs.toFixed(3)} ms`);
   console.log(`    • Warm Mean Latency     : ${meanLatency.toFixed(3)} ms`);
   console.log(`    • P50 Latency           : ${p50.toFixed(3)} ms`);
   console.log(`    • P95 Latency           : ${p95.toFixed(3)} ms`);
 
   console.log('\n' + '-'.repeat(80));
-  console.log('  CLINICAL ACTION DIRECTIVE (EMERGENCY FAST-PATH <550 ms)');
+  console.log('  FAST-PATH DIRECTIVE & ARCHITECTURAL LATENCY BUDGET');
   console.log('-'.repeat(80));
-  console.log('  Directive Dispatched:');
+  console.log('  Emergency Fast-Path Directive:');
   console.log('    "This may be a heart emergency. Call 112 or 108 immediately.');
   console.log('     Do not drive yourself. Stay seated and rest while help is coming.');
   console.log('     When did this pressure begin?"');
-  console.log('\n  Audit Disposition Status : LLM "routine" downplay NEUTRALIZED and OVERRIDDEN.');
-  console.log('  Cryptographic Ledger     : SHA-256 state transition logged with immutable ESI-2 stamp.');
+  console.log('\n  Latency Waterfall Budget (Voice Pipeline):');
+  console.log('    • STT (Groq Whisper)         : ~280 ms (streaming transcription)');
+  console.log(`    • Safety Arbiter (Measured)  : ${meanLatency.toFixed(3)} ms (deterministic CPU preemption)`);
+  console.log('    • Fast-Path Response Select  : ~50 ms (pre-compiled emergency prompt bypasses LLM)');
+  console.log('    • Kokoro TTS First-Byte      : ~220 ms (streaming synthesis)');
+  console.log('    • Target Round-Trip TTFT     : ~550 ms (Emergency Preemption Budget)');
+  console.log('    • Standard Non-Emergent TTFT : ~1,150 ms (Includes full LLM deliberation)');
   console.log('='.repeat(80) + '\n');
 
   // Persist verifiable evidence
   const evidenceArtifact = {
-    demo_id: 'PREEMPTION-DEMO-ACS-001',
+    demo_id: 'PREEMPTION-MICROBENCHMARK-ACS-001',
     scenario: 'Crushing chest pressure with diaphoresis (Acute Coronary Syndrome)',
     patient_transcript: patientUtterance,
     patient_demographics: { age: patientAge, sex: 'male' },
@@ -123,17 +132,21 @@ async function runPreemptionDemo() {
       unresolved_red_flags: decision.unresolvedRedFlags,
       universal_red_flags: decision.universalRedFlagResult?.firedRules || [],
     },
-    latency_profile_ms: {
+    measured_arbiter_latency_profile_ms: {
       single_shot: Number(singleLatencyMs.toFixed(3)),
       mean: Number(meanLatency.toFixed(3)),
       p50: Number(p50.toFixed(3)),
       p95: Number(p95.toFixed(3)),
       iterations_benchmarked: 100,
     },
-    emergency_fast_path_action: {
-      status: 'OVERRIDE_ENFORCED',
-      spoken_directive: 'This may be a heart emergency. Call 112 or 108 immediately. Do not drive yourself. Stay seated and rest while help is coming. When did this pressure begin?',
-      round_trip_ttft_ms: 550,
+    architectural_pipeline_budget_ms: {
+      stt_whisper_ms: 280,
+      measured_arbiter_ms: Number(meanLatency.toFixed(3)),
+      fast_path_template_ms: 50,
+      tts_kokoro_first_byte_ms: 220,
+      budgeted_emergency_ttft_ms: 550,
+      budgeted_standard_ttft_ms: 1150,
+      note: 'Arbiter latency is empirically measured on local CPU. Audio pipeline latencies reflect architectural budget.'
     },
     timestamp: new Date().toISOString(),
   };

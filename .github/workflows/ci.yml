@@ -113,6 +113,9 @@ jobs:
           npx tsx scripts/test-classifier-independence.ts
           npx tsx scripts/test-safety-arbiter-decision.ts
           npx tsx scripts/test-clinical-safety-integration.ts
+          npm run test:clinical
+          npx tsx tests/eval/pilot-scenarios-schema.test.ts
+          npm run demo:preemption
 
       - name: Gate 5 — Canonical Regression Battery & Coverage Generation (LCOV & Cobertura)
         run: npm run test:coverage
