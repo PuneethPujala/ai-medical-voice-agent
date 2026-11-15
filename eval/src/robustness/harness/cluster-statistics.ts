@@ -50,7 +50,7 @@ export function calculateClusterMetrics(
     ? clusterSensitivities.reduce((a, b) => a + b, 0) / clusterSensitivities.length
     : 0;
 
-  // Intra-cluster variance computation
+  // Between-cluster variance computation across the parent emergency clusters
   const clusterVariance = clusterSensitivities.length > 1
     ? clusterSensitivities.reduce((acc, s) => acc + Math.pow(s - meanSensitivity, 2), 0) / (clusterSensitivities.length - 1)
     : 0;
@@ -90,7 +90,7 @@ export function calculateClusterMetrics(
     observed_cluster_sensitivity: Number((meanSensitivity * 100).toFixed(1)),
     cluster_ci95_lower: Number(ci95Lower.toFixed(1)),
     cluster_ci95_upper: Number(ci95Upper.toFixed(1)),
-    intra_cluster_variance: Number(clusterVariance.toFixed(4)),
+    between_cluster_variance: Number(clusterVariance.toFixed(4)),
     failure_breakdown_by_parent: failureBreakdown,
   };
 }

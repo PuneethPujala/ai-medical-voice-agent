@@ -65,7 +65,7 @@ async function runRobustnessBattery() {
   }
 
   let l1Misses = 0;
-  let endToEndUnderTriages = 0;
+  let arbiterLayer1Misses = 0;
   let negationLeakages = 0;
   let falseAlarms = 0;
 
@@ -91,16 +91,16 @@ async function runRobustnessBattery() {
           failureClass = 'L1_DETECTION_GAP';
           failureReason = `Colloquial / indirect phrasing not captured by Layer 1 regex: "${tc.patient_utterance}"`;
           l1Misses++;
-          endToEndUnderTriages++;
+          arbiterLayer1Misses++;
         } else if (tc.track === 'D_PERTURBATION') {
           failureClass = 'PHONETIC_CORRUPTION_MISS';
           failureReason = `Text perturbation or typo broke keyword matching: "${tc.patient_utterance}"`;
           l1Misses++;
-          endToEndUnderTriages++;
+          arbiterLayer1Misses++;
         } else {
-          failureClass = 'END_TO_END_UNDER_TRIAGE';
-          failureReason = `Canonical emergency presentation missed: "${tc.patient_utterance}"`;
-          endToEndUnderTriages++;
+          failureClass = 'ARBITER_LAYER1_MISS';
+          failureReason = `Canonical emergency presentation missed by Layer 1 arbiter: "${tc.patient_utterance}"`;
+          arbiterLayer1Misses++;
         }
       } else if (!tc.expected_emergency_escalation && actualEscalation) {
         // Non-emergency falsely escalated
@@ -122,8 +122,8 @@ async function runRobustnessBattery() {
       establishedAcuityFloor: actualEscalation ? 'HIGH_RISK' : 'NONE',
       escalationReasons: arbiterResult.redFlagsTriggered,
       arbiterOverrideApplied: arbiterResult.arbiterOverride,
-      esiLevel: arbiterResult.esiScore,
-      esiAssessmentStatus: 'NOT_ASSESSED', // Decoupled: Arbiter establishes floor, not formal ESI triage
+      esiLevel: null, // Decoupled: Arbiter establishes safety floor, not formal ESI triage
+      esiAssessmentStatus: 'NOT_ASSESSED',
       decisionLatencyMs: arbiterResult.latencyMs,
       unresolvedRedFlags: arbiterResult.unresolvedRedFlags,
       universalRedFlagsTriggered: (arbiterResult.universalRedFlagResult?.firedRules || []).map((r) => r.ruleId),
@@ -158,9 +158,9 @@ async function runRobustnessBattery() {
   const recD = (trackD.filter((r) => r.is_concordant).length / trackD.length) * 100;
   const specE = (trackE.filter((r) => r.is_concordant).length / trackE.length) * 100;
 
-  // Clustered analysis on Track B (Paraphrases across the 29 parent clusters)
+  // Clustered analysis on Track B alone (Paraphrases across the 29 parent clusters)
   const clusteredMetrics = calculateClusterMetrics(
-    [...trackA, ...trackB],
+    trackB,
     parentConditionMap,
     2000,
     42
@@ -185,11 +185,11 @@ async function runRobustnessBattery() {
   console.log('  CLUSTERED SENSITIVITY ANALYSIS (M = 29 Parent Clusters, Cluster Bootstrap 2000 Iterations):');
   console.log(`    • Observed Mean Cluster Sensitivity    : ${clusteredMetrics.observed_cluster_sensitivity}%`);
   console.log(`    • Cluster 95% Confidence Interval       : [${clusteredMetrics.cluster_ci95_lower}%, ${clusteredMetrics.cluster_ci95_upper}%]`);
-  console.log(`    • Intra-Cluster Variance               : ${clusteredMetrics.intra_cluster_variance}`);
+  console.log(`    • Between-Cluster Variance             : ${clusteredMetrics.between_cluster_variance}`);
   console.log('-'.repeat(80));
   console.log('  OBSERVED FAILURE TAXONOMY:');
   console.log(`    • Layer 1 Regex Gaps (Colloquial Misses): ${l1Misses}`);
-  console.log(`    • End-to-End Under-Triages (Emergency) : ${endToEndUnderTriages}`);
+  console.log(`    • Deterministic Arbiter Misses (L1)    : ${arbiterLayer1Misses}`);
   console.log(`    • Negation Leakage (False Alarms)      : ${negationLeakages}`);
   console.log(`    • Non-Emergency Over-Triage False Alarm: ${falseAlarms}`);
   console.log('='.repeat(80) + '\n');
@@ -208,7 +208,7 @@ async function runRobustnessBattery() {
       negation_test_specificity: Number(specE.toFixed(1)),
       perturbation_test_recall: Number(recD.toFixed(1)),
       l1_regex_miss_count: l1Misses,
-      end_to_end_under_triage_count: endToEndUnderTriages,
+      arbiter_layer1_miss_count: arbiterLayer1Misses,
       negation_leakage_count: negationLeakages,
     },
     clustered_sensitivity_analysis: clusteredMetrics,

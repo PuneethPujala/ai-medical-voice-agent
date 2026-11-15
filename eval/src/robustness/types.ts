@@ -62,7 +62,8 @@ export interface RobustnessTestCase {
 
 export type FailureClassification =
   | "L1_DETECTION_GAP"              // Layer 1 regex missed colloquial/perturbed symptom
-  | "END_TO_END_UNDER_TRIAGE"       // All layers failed; emergency not escalated
+  | "ARBITER_LAYER1_MISS"           // Deterministic CPU arbiter missed emergency presentation
+  | "END_TO_END_UNDER_TRIAGE"       // All layers failed; emergency not escalated (full pipeline)
   | "NEGATION_LEAKAGE"              // Negated or 3rd-party term triggered false emergency
   | "PHONETIC_CORRUPTION_MISS"      // STT typo broke detection
   | "OVER_TRIAGE_FALSE_ALARM"       // Non-emergency control inappropriately escalated
@@ -88,7 +89,7 @@ export interface ClusteredMetrics {
   observed_cluster_sensitivity: number; // Mean sensitivity across parent clusters
   cluster_ci95_lower: number;          // Cluster bootstrap 95% CI lower
   cluster_ci95_upper: number;          // Cluster bootstrap 95% CI upper
-  intra_cluster_variance: number;
+  between_cluster_variance: number;
   failure_breakdown_by_parent: Record<string, {
     parent_condition: string;
     variants_tested: number;
@@ -111,7 +112,7 @@ export interface RobustnessFailureLedger {
     negation_test_specificity: number;
     perturbation_test_recall: number;
     l1_regex_miss_count: number;
-    end_to_end_under_triage_count: number;
+    arbiter_layer1_miss_count: number;
     negation_leakage_count: number;
   };
   clustered_sensitivity_analysis: ClusteredMetrics;
