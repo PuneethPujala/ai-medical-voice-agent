@@ -99,7 +99,9 @@ export async function runRagBenchmark() {
     for (let r = 0; r < result.passages.length - 1; r++) {
       const curr = result.passages[r];
       const next = result.passages[r + 1];
-      if (curr.authority === "government_reference" && next.authority === "clinical_guideline" && next.relevanceScore >= curr.relevanceScore) {
+      const currScore = curr.relevanceScore ?? 0;
+      const nextScore = next.relevanceScore ?? 0;
+      if (curr.authority === "government_reference" && next.authority === "clinical_guideline" && nextScore >= currScore) {
         authorityViolations++;
       }
     }
