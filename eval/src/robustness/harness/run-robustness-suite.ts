@@ -25,9 +25,14 @@ import { calculateClusterMetrics } from './cluster-statistics';
 
 const fixturesDir = path.resolve('eval/src/robustness/fixtures');
 
-function computeFileSha256(filePath: string): string {
-  const content = fs.readFileSync(filePath);
-  return crypto.createHash('sha256').update(content).digest('hex');
+export function computeNormalizedSha256(content: string): string {
+  const normalized = content.replace(/\r\n?/g, '\n');
+  return crypto.createHash('sha256').update(normalized, 'utf8').digest('hex');
+}
+
+export function computeFileSha256(filePath: string): string {
+  const content = fs.readFileSync(filePath, 'utf8');
+  return computeNormalizedSha256(content);
 }
 
 function loadFixtures(filename: string): RobustnessTestCase[] {
@@ -43,9 +48,10 @@ async function runRobustnessBattery() {
   console.log('================================================================================\n');
 
   // Verify frozen safety engine integrity via source file SHA-256 hashes against frozen baseline 000abeb
+  // Uses canonical LF line ending normalization to remain OS-agnostic across Linux CI (LF) and Windows (CRLF)
   const EXPECTED_ENGINE_HASHES = {
-    universalRedFlags: '82e4a746c130b6a25f8c307c8cf9b7cce6659004b1bf0612df659f24119cbb69',
-    safetyArbiter: '89967d01f17bfe938e1d1417859a7a14a170f098ea91698797b6b6622fb03500',
+    universalRedFlags: '8b0031c51bfea3753405d29cbf5956047af70335dd409ef697923350effd6ec4',
+    safetyArbiter: '26f244fa42b3f043cf1f51dbe4be0f8f17fe3b0a57a01afda10b2e0d494ce639',
   };
 
   const redFlagsPath = path.resolve('lib/triage/universal-red-flags.ts');
@@ -261,7 +267,9 @@ async function runRobustnessBattery() {
   console.log(`[Audit Evidence Artifact] Saved complete failure ledger to: ${ledgerPath}\n`);
 }
 
-runRobustnessBattery().catch((err) => {
-  console.error('Robustness battery execution failed:', err);
-  process.exit(1);
-});
+if (process.argv[1] && process.argv[1].includes('run-robustness-suite')) {
+  runRobustnessBattery().catch((err) => {
+    console.error('Robustness battery execution failed:', err);
+    process.exit(1);
+  });
+}

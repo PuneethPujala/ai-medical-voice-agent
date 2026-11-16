@@ -37,5 +37,11 @@ The complete, publication-grade academic research paper and technical architectu
   - 35-Case Clinical Benchmark (22 Emergency / 13 Control): 100% Sensitivity (22/22)
   - Mean Arbiter Latency: 0.39ms (P50: 0.14ms)
   - RAG Benchmark: 100% MRR, 100% Recall@3
-- **10. Audit Concordance: Code Reality vs. Claims (All 20 Audited Criteria)**
-- **11. Regulatory & Clinical Boundary Disclaimers (Non-Autonomous Diagnosis)**
+  - 9.4 Expanded Pilot Cohort Safety & Semantic Calibration ($N=50$, $t=4.084$, $p < 0.001$)
+  - 9.5 End-to-End Voice Pipeline Latency Waterfall (~1.15s TTFT)
+  - 9.6 Deterministic Arbiter Adversarial & Colloquial Robustness ($N=345$, 125 Cataloged Failures)
+- **10. Threats to Validity & Limitations**
+- **11. Audit Concordance: Code Reality vs. Claims (All 20 Audited Criteria)**
+- **12. Regulatory & Clinical Boundary Disclaimers (Non-Autonomous Diagnosis)**
+- **13. Conclusion**
+

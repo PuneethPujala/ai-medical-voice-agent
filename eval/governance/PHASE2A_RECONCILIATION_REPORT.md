@@ -118,7 +118,7 @@ pie title Phase 2A.1 Cataloged Failure Distribution (N=125)
    - Disentangled third-party active emergencies (`NEG-TP-006`, `NEG-TP-008`) from non-emergency controls by establishing clear historical/resolved context.
    - Formalized 3 explicit dimensions: `attribution` (self/third_party), `temporal_status` (current/historical/resolved), and `emergency_status` (negative).
 3. **Runtime Engine Source SHA-256 Pinning & Invariant Enforcement**:
-   - Machine-verifies `universal-red-flags.ts` (`82e4a746c...`) and `safety-arbiter.ts` (`89967d01f...`) at test runtime in `run-robustness-suite.ts`.
+   - Machine-verifies `universal-red-flags.ts` (`8b0031c51bfea3753405d29cbf5956047af70335dd409ef697923350effd6ec4`) and `safety-arbiter.ts` (`26f244fa42b3f043cf1f51dbe4be0f8f17fe3b0a57a01afda10b2e0d494ce639`) at test runtime in `run-robustness-suite.ts` using normalized LF line endings (`\r\n` $\to$ `\n`) to guarantee deterministic cross-platform parity between Linux CI and Windows.
    - Asserts equality against hardcoded `EXPECTED_ENGINE_HASHES` constants and throws an explicit `[CRITICAL INVARIANT VIOLATION]` runtime error on hash mismatch.
 4. **Dynamic Clinical Confidence Intervals**:
    - Replaced hardcoded string intervals in `scripts/run-clinical-eval.ts` with dynamic Wilson score ($[85.1\%, 100.0\%]$) and Clopper-Pearson exact ($[84.6\%, 100.0\%]$) calculations for 22/22 emergency recall.
@@ -129,6 +129,7 @@ pie title Phase 2A.1 Cataloged Failure Distribution (N=125)
    - Added `tests/eval/cluster-statistics.test.ts` (4/4 passing).
    - Added `tests/eval/acoustic-framework.test.ts` (11/11 passing).
    - Added `tests/eval/clinical-eval-ci.test.ts` (5/5 passing).
+   - Added `tests/eval/engine-hash-integrity.test.ts` (4/4 passing cross-platform hashing tests).
    - Integrated robustness evaluation and unit tests into Gate 4 of CI workflow (`.github/workflows/ci.yml`).
 
 ---
