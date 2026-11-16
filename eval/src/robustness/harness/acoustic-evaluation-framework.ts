@@ -141,6 +141,15 @@ export function computeCharacterErrorRate(reference: string, hypothesis: string)
   return dp[normRef.length][normHyp.length] / normRef.length;
 }
 
+export interface ClinicalMention {
+  concept: string;
+  anatomicalSite?: string;
+  laterality?: 'left' | 'right' | 'bilateral';
+  polarity: 'present' | 'absent' | 'uncertain';
+  subject?: 'patient' | 'third_party' | 'unknown';
+  temporalScope?: 'current' | 'historical' | 'resolved' | 'unknown';
+}
+
 const NEGATION_PATTERNS = [
   'no',
   'not',
@@ -164,13 +173,27 @@ function hasNegationPrefix(text: string, targetPhrase: string): boolean {
   const idx = lowerText.indexOf(lowerTarget);
   if (idx === -1) return false;
 
-  // Look back up to 40 characters or 4 words preceding target phrase
-  const windowStart = Math.max(0, idx - 40);
-  const preceding = lowerText.slice(windowStart, idx);
+  // Look back up to 70 characters preceding target phrase
+  const windowStart = Math.max(0, idx - 70);
+  const rawWindow = lowerText.slice(windowStart, idx);
+
+  // Stop at the last sentence boundary or adversative boundary
+  const lastBoundary = Math.max(
+    rawWindow.lastIndexOf('.'),
+    rawWindow.lastIndexOf(';'),
+    rawWindow.lastIndexOf('!'),
+    rawWindow.lastIndexOf('?'),
+    rawWindow.lastIndexOf('\n'),
+    rawWindow.lastIndexOf(' but '),
+    rawWindow.lastIndexOf(' however '),
+    rawWindow.lastIndexOf(' except ')
+  );
+
+  const effectiveWindow = lastBoundary !== -1 ? rawWindow.slice(lastBoundary) : rawWindow;
 
   for (const neg of NEGATION_PATTERNS) {
     const regex = new RegExp(`\\b${neg}\\b`, 'i');
-    if (regex.test(preceding)) {
+    if (regex.test(effectiveWindow)) {
       return true;
     }
   }
@@ -196,21 +219,87 @@ interface SiteLateralityMap {
   [site: string]: 'left' | 'right' | 'bilateral';
 }
 
-function extractSiteLateralities(text: string): SiteLateralityMap {
-  const map: SiteLateralityMap = {};
+/**
+ * Extracts structured clinical mentions for anatomical sites with local polarity checking.
+ * Discards absent/negated mentions when determining active positive laterality.
+ */
+export function extractClinicalMentions(text: string): ClinicalMention[] {
+  const mentions: ClinicalMention[] = [];
   const lower = text.toLowerCase();
 
   for (const site of ANATOMICAL_SITES) {
     const sitePattern = site === 'foot' ? '(?:foot|feet)' : `${site}s?`;
-    const bilateralRegex = new RegExp(`\\b(bilateral|both)\\s+[a-z\\s]{0,15}\\b${sitePattern}\\b|\\b${sitePattern}\\b[a-z\\s]{0,15}\\b(bilateral|both)\\b`, 'i');
-    const leftRegex = new RegExp(`\\bleft\\s+[a-z\\s]{0,15}\\b${sitePattern}\\b|\\b${sitePattern}\\b[a-z\\s]{0,15}\\bleft\\b`, 'i');
-    const rightRegex = new RegExp(`\\bright\\s+[a-z\\s]{0,15}\\b${sitePattern}\\b|\\b${sitePattern}\\b[a-z\\s]{0,15}\\bright\\b`, 'i');
+    const regex = new RegExp(
+      `(?:\\b(left|right|bilateral|both)\\s+[a-z\\s]{0,15})?\\b(${sitePattern})\\b(?:[a-z\\s]{0,15}\\b(left|right|bilateral|both)\\b)?`,
+      'gi'
+    );
 
-    if (bilateralRegex.test(lower) || (leftRegex.test(lower) && rightRegex.test(lower))) {
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(lower)) !== null) {
+      const matchIndex = match.index;
+      const prefixLat = match[1]?.toLowerCase();
+      const suffixLat = match[3]?.toLowerCase();
+
+      let laterality: 'left' | 'right' | 'bilateral' | undefined = undefined;
+      const rawLat = prefixLat || suffixLat;
+      if (rawLat === 'both' || rawLat === 'bilateral') {
+        laterality = 'bilateral';
+      } else if (rawLat === 'left' || rawLat === 'right') {
+        laterality = rawLat;
+      }
+
+      // Check negation in the clause preceding this specific mention
+      const windowStart = Math.max(0, matchIndex - 60);
+      const window = lower.slice(windowStart, matchIndex);
+      const lastBoundary = Math.max(
+        window.lastIndexOf('.'),
+        window.lastIndexOf(';'),
+        window.lastIndexOf('!'),
+        window.lastIndexOf('?'),
+        window.lastIndexOf('\n'),
+        window.lastIndexOf(','),
+        window.lastIndexOf(' but ')
+      );
+      const clause = lastBoundary !== -1 ? window.slice(lastBoundary) : window;
+
+      let isNegated = false;
+      for (const neg of NEGATION_PATTERNS) {
+        if (new RegExp(`\\b${neg}\\b`, 'i').test(clause)) {
+          isNegated = true;
+          break;
+        }
+      }
+
+      mentions.push({
+        concept: `${site}_finding`,
+        anatomicalSite: site,
+        laterality,
+        polarity: isNegated ? 'absent' : 'present',
+        subject: 'patient',
+      });
+    }
+  }
+
+  return mentions;
+}
+
+function extractSiteLateralities(text: string): SiteLateralityMap {
+  const mentions = extractClinicalMentions(text);
+  const map: SiteLateralityMap = {};
+
+  for (const site of ANATOMICAL_SITES) {
+    const siteMentions = mentions.filter(
+      (m) => m.anatomicalSite === site && m.polarity === 'present'
+    );
+
+    if (siteMentions.length === 0) continue;
+
+    const lateralities = siteMentions.map((m) => m.laterality).filter(Boolean);
+    if (lateralities.includes('bilateral') || (lateralities.includes('left') && lateralities.includes('right'))) {
       map[site] = 'bilateral';
-    } else if (leftRegex.test(lower)) {
+    } else if (lateralities.includes('left')) {
       map[site] = 'left';
-    } else if (rightRegex.test(lower)) {
+    } else if (lateralities.includes('right')) {
       map[site] = 'right';
     }
   }

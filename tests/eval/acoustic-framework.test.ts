@@ -190,4 +190,26 @@ test('Acoustic & Transcription Clinical Integrity Battery', async (t) => {
     assert.equal(res.lateralityInverted, true);
     assert.ok(res.siteSpecificLateralityErrors && res.siteSpecificLateralityErrors.length > 0);
   });
+
+  await t.test('16. Sentence boundary negation isolation (Prevents cross-sentence leakage)', () => {
+    const res = evaluateClinicalTranscriptionIntegrity(
+      'No fever. The patient has chest pain.',
+      'No fever. The patient denies chest pain.',
+      ['chest pain'],
+      []
+    );
+    assert.equal(res.polarityInverted, true);
+    assert.equal(res.symptomOmitted, false);
+  });
+
+  await t.test('17. Polarity-aware laterality extraction (Excludes denied side from bilateral synthesis)', () => {
+    const res = evaluateClinicalTranscriptionIntegrity(
+      'Pain in the left arm, no pain in the right arm.',
+      'Pain in the right arm, no pain in the left arm.',
+      ['pain'],
+      []
+    );
+    assert.equal(res.lateralityInverted, true);
+    assert.equal(res.bilateralMismatch, false);
+  });
 });

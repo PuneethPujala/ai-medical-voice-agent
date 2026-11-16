@@ -107,12 +107,12 @@ To rigorously separate downplay recovery from safety invariant enforcement:
    - In **C3**, Post-Arbiter recovered **153 / 274 (55.8%)** cases based on keyword rules.
    - In **C4a**, semantic fact reconciliation enabled Post-Arbiter to recover **239 / 274 (87.2%)** cases.
 
-2. **Non-Downgrade Invariant Strict Enforcement**:
-   - Formally asserted across all 157 emergency-preempted cases:
-     $$\text{If } \text{PreArbiter.emergency} = \text{true} \implies \text{PostArbiter.final\_disposition} = \text{emergency\_evaluation}$$
+2. **Non-Downgrade Invariant Strict Enforcement on C1 Direct-Arbiter Emergency Cohort**:
+   - Formally asserted across all 157 cases where the direct C1 safety arbiter returned emergency (Track A: 29 canonical, Track B: 37 colloquial, Track C: 0 controls, Track D: 87 perturbations, Track E: 4 false alarms):
+     $$\text{If } \text{DirectSafetyArbiter.emergency} = \text{true} \implies \text{PostArbiter.final\_disposition} = \text{emergency\_evaluation}$$
    - **C3 Invariant Violations**: **0 / 157 (0.0%)** — Strictly Maintained.
    - **C4a Invariant Violations**: **0 / 157 (0.0%)** — Strictly Maintained.
-   - Neither multi-specialist consensus nor forced routine recommendations can ever downgrade an emergency preemption.
+   - *Cohort & Implementation Details*: This invariant evaluates the cohort of 157 test cases where direct safety-arbiter evaluation triggered emergency. Note that `evaluatePostArbiter()` independently calls `evaluateSafetyArbiter()` with the transcript and structured evidence (rather than reading `patientCase.pre_safety_flags` alone). In all 157 instances, forced routine outpatient consensus was completely overridden and emergency evaluation was preserved.
 
 ---
 
@@ -122,19 +122,19 @@ Latencies were measured with high-resolution timers (`performance.now()`) after 
 
 | Architectural Layer | Mean Latency | P50 Latency | P95 Latency | Operational Overhead |
 |---|:---:|:---:|:---:|---|
-| **C1: L1 Arbiter Baseline** | 0.73 ms | 0.50 ms | 0.84 ms | Raw CPU string matching (strictly sub-millisecond) |
-| **C2: +Evidence Extractor** | 1.08 ms | 0.78 ms | 1.44 ms | Fast regex parsing + structured adapter |
+| **C1: L1 Arbiter Baseline** | 0.73 ms | 0.50 ms | 0.84 ms | Raw CPU string matching (strictly sub-millisecond across distribution) |
+| **C2: +Evidence Extractor** | 1.08 ms | 0.78 ms | 1.44 ms | Sub-millisecond median; fast regex parsing + structured adapter |
 | **C3: +Clinical Board / Post** | 15.35 ms | 1.85 ms | 108.53 ms | Multi-specialist routing & board deliberation |
 | **C4a: +Fixture-Assisted Oracle** | 15.63 ms | 2.28 ms | 112.20 ms | Fact reconciliation + clinical board + post-arbiter |
 
-*Conclusion*: Deterministic safety arbitration and regex evidence extraction operate strictly sub-millisecond across the entire distribution (P95 $\le$ 1.44 ms). The multi-specialist clinical board layers (C3, C4a) exhibit low median latency (P50 1.85–2.28 ms), while tail latencies (P95 ~108–112 ms) reflect multi-specialist round evaluation, rule loop dispatch, and Node.js JIT/GC execution.
+*Conclusion*: Deterministic safety arbitration (C1) operates strictly sub-millisecond across the entire distribution (P50 = 0.50 ms, P95 = 0.84 ms, Mean = 0.73 ms). Rule-based evidence extraction (C2) achieves a sub-millisecond median (P50 = 0.78 ms; P95 = 1.44 ms, Mean = 1.08 ms). The multi-specialist clinical board layers (C3, C4a) maintain low median latencies (P50 1.85–2.28 ms), while tail latencies (P95 ~108–112 ms, Mean ~15 ms) reflect multi-specialist round deliberation, rule loop dispatch, and Node.js JIT/GC execution.
 
 ---
 
 ## 7. Conclusions & Next Steps
 
 1. **Empirical Validation of the Multi-Layer Architecture**:
-   - Deterministic Layer 1 rules provide an uncompromised 0.17 ms safety floor for canonical emergencies.
-   - Downstream semantic concept extraction and post-arbiter verification recover **69.4%** of colloquial emergency gaps without sacrificing control specificity.
+   - Deterministic Layer 1 rules provide a sub-millisecond safety floor for canonical emergencies (P50 = 0.50 ms).
+   - Downstream semantic concept extraction and post-arbiter verification recover **69.4%** of colloquial emergency gaps in an oracle-assisted upper bound without sacrificing control specificity.
 2. **Readiness for Phase 2C (Acoustic ASR Benchmark)**:
-   - With language understanding and reasoning ablations documented, Phase 2C will evaluate real audio perturbations through Whisper to quantify Word Error Rate (WER) and Clinically Significant Transcription Errors (CSTEs).
+   - With language understanding and reasoning ablations documented, Phase 2C will evaluate real audio perturbations through Whisper to quantify Word Error Rate (WER), Character Error Rate (CER), and Clinically Significant Transcription Errors (CSTEs).

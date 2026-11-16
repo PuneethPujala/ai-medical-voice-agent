@@ -432,6 +432,7 @@ export async function runPhase2bAblationSuite(): Promise<Phase2bAblationLedger> 
       c1_l1_baseline: c1Stage,
       c2_evidence_extractor: c2Stage,
       c3_clinical_board: c3Stage,
+      c4a_fixture_assisted: c4Stage,
       c4_production_runtime: c4Stage,
       c1_baseline_miss: c1Miss,
       rescued_by_c2: rescuedByC2,
@@ -450,7 +451,7 @@ export async function runPhase2bAblationSuite(): Promise<Phase2bAblationLedger> 
     const c1Esc = trackRecords.filter((r) => r.c1_l1_baseline.escalated).length;
     const c2Esc = trackRecords.filter((r) => r.c2_evidence_extractor.escalated).length;
     const c3Esc = trackRecords.filter((r) => r.c3_clinical_board.escalated).length;
-    const c4Esc = trackRecords.filter((r) => r.c4_production_runtime.escalated).length;
+    const c4Esc = trackRecords.filter((r) => r.c4a_fixture_assisted.escalated).length;
 
     return {
       total: trackRecords.length,
@@ -512,13 +513,13 @@ export async function runPhase2bAblationSuite(): Promise<Phase2bAblationLedger> 
         c1_false_alarms: trackCRecords.filter((r) => r.c1_l1_baseline.escalated).length,
         c2_false_alarms: trackCRecords.filter((r) => r.c2_evidence_extractor.escalated).length,
         c3_false_alarms: trackCRecords.filter((r) => r.c3_clinical_board.escalated).length,
-        c4_false_alarms: trackCRecords.filter((r) => r.c4_production_runtime.escalated).length,
+        c4_false_alarms: trackCRecords.filter((r) => r.c4a_fixture_assisted.escalated).length,
       },
       track_e_negation: {
         c1_false_alarms: trackERecords.filter((r) => r.c1_l1_baseline.escalated).length,
         c2_false_alarms: trackERecords.filter((r) => r.c2_evidence_extractor.escalated).length,
         c3_false_alarms: trackERecords.filter((r) => r.c3_clinical_board.escalated).length,
-        c4_false_alarms: trackERecords.filter((r) => r.c4_production_runtime.escalated).length,
+        c4_false_alarms: trackERecords.filter((r) => r.c4a_fixture_assisted.escalated).length,
       },
     },
     adverse_downplay_test: {
@@ -533,8 +534,12 @@ export async function runPhase2bAblationSuite(): Promise<Phase2bAblationLedger> 
         c4_recovery_rate: Number(((c4AdverseOverrides / adverseDownplayCount) * 100).toFixed(1)),
       },
       non_downgrade_invariant: {
+        tested_cohort_description:
+          'Direct C1 Safety Arbiter Emergency-Positive Cases (N=157 across Tracks A, B, D, E)',
+        total_direct_arbiter_positive_cases: totalEmergencyPreemptionsChecked,
         total_emergency_cases_checked: totalEmergencyPreemptionsChecked,
         c3_invariant_violations: c3InvariantViolations,
+        c4a_invariant_violations: c4InvariantViolations,
         c4_invariant_violations: c4InvariantViolations,
         invariant_strictly_maintained: c3InvariantViolations === 0 && c4InvariantViolations === 0,
       },
@@ -544,6 +549,7 @@ export async function runPhase2bAblationSuite(): Promise<Phase2bAblationLedger> 
       c1_l1_baseline: calculateLatencyMetric(c1Latencies),
       c2_evidence_extractor: calculateLatencyMetric(c2Latencies),
       c3_clinical_board: calculateLatencyMetric(c3Latencies),
+      c4a_fixture_assisted: calculateLatencyMetric(c4Latencies),
       c4_production_runtime: calculateLatencyMetric(c4Latencies),
     },
     records,
@@ -565,7 +571,7 @@ export async function runPhase2bAblationSuite(): Promise<Phase2bAblationLedger> 
     `  C3: +Board/Post| ${trackA.c3_rate}% (${trackA.c3_escalated}/29)  | ${trackB.c3_rate}% (${trackB.c3_escalated}/145) | ${trackC.c3_rate}% (${trackC.c3_escalated}/21)  | ${trackE.c3_rate}% (${trackE.c3_escalated}/50)  | ${ledger.latency_profiles.c3_clinical_board.p50_ms} ms`
   );
   console.log(
-    `  C4a: +Fixture | ${trackA.c4_rate}% (${trackA.c4_escalated}/29)  | ${trackB.c4_rate}% (${trackB.c4_escalated}/145) | ${trackC.c4_rate}% (${trackC.c4_escalated}/21)  | ${trackE.c4_rate}% (${trackE.c4_escalated}/50)  | ${ledger.latency_profiles.c4_production_runtime.p50_ms} ms`
+    `  C4a: +Fixture | ${trackA.c4_rate}% (${trackA.c4_escalated}/29)  | ${trackB.c4_rate}% (${trackB.c4_escalated}/145) | ${trackC.c4_rate}% (${trackC.c4_escalated}/21)  | ${trackE.c4_rate}% (${trackE.c4_escalated}/50)  | ${ledger.latency_profiles.c4a_fixture_assisted.p50_ms} ms`
   );
   console.log('--------------------------------------------------------------------------------');
   console.log('  RESCUE OF TRACK B BASELINE MISSES (108 Colloquial Failures):');
@@ -589,7 +595,7 @@ export async function runPhase2bAblationSuite(): Promise<Phase2bAblationLedger> 
     `    • Forced Downplay Recovery in C4 Post-Arbiter: ${c4AdverseOverrides} / ${adverseDownplayCount} (${((c4AdverseOverrides / adverseDownplayCount) * 100).toFixed(1)}%)`
   );
   console.log(
-    `    • Preemption Non-Downgrade Invariant Checked : ${totalEmergencyPreemptionsChecked} preemption cases`
+    `    • Preemption Non-Downgrade Invariant Checked : ${totalEmergencyPreemptionsChecked} direct C1 arbiter emergency-positive cases (Tracks A=29, B=37, D=87, E=4)`
   );
   console.log(
     `    • C3 Invariant Violations (Emergency -> Routine): ${c3InvariantViolations} (Strictly Maintained: ${c3InvariantViolations === 0 ? 'YES' : 'NO'})`

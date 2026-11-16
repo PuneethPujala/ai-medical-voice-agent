@@ -33,7 +33,8 @@ export interface Phase2bCaseRecord {
   c1_l1_baseline: StageExecutionResult;
   c2_evidence_extractor: StageExecutionResult;
   c3_clinical_board: StageExecutionResult;
-  c4_production_runtime: StageExecutionResult;
+  c4a_fixture_assisted: StageExecutionResult;
+  c4_production_runtime: StageExecutionResult; // Backward-compatible alias
 
   // Incremental analysis flags
   c1_baseline_miss: boolean;
@@ -115,9 +116,12 @@ export interface Phase2bAblationLedger {
       c4_recovery_rate: number;
     };
     non_downgrade_invariant: {
-      total_emergency_cases_checked: number;
+      tested_cohort_description: string;
+      total_direct_arbiter_positive_cases: number;
+      total_emergency_cases_checked?: number; // Backward-compatible alias
       c3_invariant_violations: number;
-      c4_invariant_violations: number;
+      c4a_invariant_violations: number;
+      c4_invariant_violations?: number; // Backward-compatible alias
       invariant_strictly_maintained: boolean;
     };
     invariant_maintained: boolean;
@@ -126,7 +130,8 @@ export interface Phase2bAblationLedger {
     c1_l1_baseline: LatencyMetric;
     c2_evidence_extractor: LatencyMetric;
     c3_clinical_board: LatencyMetric;
-    c4_production_runtime: LatencyMetric;
+    c4a_fixture_assisted: LatencyMetric;
+    c4_production_runtime: LatencyMetric; // Backward-compatible alias
   };
   records: Phase2bCaseRecord[];
 }

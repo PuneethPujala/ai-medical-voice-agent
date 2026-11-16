@@ -473,10 +473,12 @@ Of the 108 colloquial emergency misses produced by the C1 baseline:
 **Forced Downplay Recovery vs. Non-Downgrade Invariant Strict Enforcement**:  
 To rigorously distinguish empirical downplay recovery from structural safety invariant enforcement:
 1. *Forced Downplay Recovery*: Under simulated adversarial downplay where consensus proposed `routine_outpatient` for emergency presentations ($N=274$), Post-Arbiter recovered **153 / 274 (55.8%)** cases in C3 via keyword rules, and **239 / 274 (87.2%)** cases in C4a via candidate fact reconciliation.
-2. *Non-Downgrade Invariant Strict Enforcement*: Evaluated across all 157 emergency-preempted cases, zero invariant violations occurred in either C3 or C4a (**0 / 157, 0.0% violations**; strictly maintained). An emergency preemption established at Layer 1 cannot be downgraded by downstream deliberation regardless of consensus risk.
+2. *Non-Downgrade Invariant Strict Enforcement*: Evaluated across the 157 cases where the direct C1 safety arbiter triggered emergency preemption (Track A: 29 canonical, Track B: 37 colloquial, Track C: 0 controls, Track D: 87 perturbations, Track E: 4 false alarms):
+   $$\text{If } \text{DirectSafetyArbiter.emergency} = \text{true} \implies \text{PostArbiter.final\_disposition} = \text{emergency\_evaluation}$$
+   Zero invariant violations occurred in either C3 or C4a (**0 / 157, 0.0% violations**; strictly maintained). Note that `evaluatePostArbiter()` independently invokes `evaluateSafetyArbiter()` with the transcript and structured evidence (rather than relying on conversational pre-arbiter flags alone). In all 157 direct-arbiter-positive presentations, forced routine outpatient consensus was completely overridden and emergency evaluation was preserved.
 
 **Computational Overhead & Latency Profile**:  
-Deterministic safety arbitration and regex evidence extraction (C1, C2) operate strictly sub-millisecond across the distribution (P95 $\le$ 1.44 ms). The multi-specialist clinical board layers (C3, C4a) maintain low median latency (P50 1.85–2.28 ms), while tail latencies (P95 ~108–112 ms, Mean ~15 ms) reflect multi-specialist round deliberation and Node.js JIT/GC execution.
+Deterministic safety arbitration (C1) operates strictly sub-millisecond across the entire distribution (P50 = 0.50 ms, P95 = 0.84 ms, Mean = 0.73 ms). Rule-based evidence extraction (C2) achieves a sub-millisecond median (P50 = 0.78 ms; P95 = 1.44 ms, Mean = 1.08 ms). The multi-specialist clinical board layers (C3, C4a) maintain low median latencies (P50 1.85–2.28 ms), while tail latencies (P95 ~108–112 ms, Mean ~15 ms) reflect multi-specialist round deliberation and Node.js JIT/GC execution.
 
 ---
 
