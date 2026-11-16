@@ -10,6 +10,7 @@
     "lint": "eslint",
     "test:clinical": "tsx scripts/run-clinical-eval.ts",
     "eval:robustness": "tsx eval/src/robustness/harness/run-robustness-suite.ts",
+    "eval:phase2b": "tsx eval/src/robustness/harness/run-phase2b-ablation-suite.ts",
     "test:cluster-stats": "tsx tests/eval/cluster-statistics.test.ts",
     "demo:preemption": "tsx scripts/demo-preemption.ts",
     "test:board": "tsx scripts/run-multi-agent-eval.ts",

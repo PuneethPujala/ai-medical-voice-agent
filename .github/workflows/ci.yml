@@ -119,6 +119,8 @@ jobs:
           npx tsx tests/eval/clinical-eval-ci.test.ts
           npx tsx tests/eval/engine-hash-integrity.test.ts
           npm run eval:robustness
+          npx tsx tests/eval/phase2b-contracts.test.ts
+          npm run eval:phase2b
           npx tsx tests/eval/pilot-scenarios-schema.test.ts
           npm run demo:preemption
 

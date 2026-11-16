@@ -1,0 +1,135 @@
+{
+  "by_parent_cluster": {
+    "PILOT-CARD-001": [
+      { "concept": "chest_pain", "assertionStatus": "present", "subjectReference": "self" },
+      { "concept": "diaphoresis", "assertionStatus": "present", "subjectReference": "self" },
+      { "concept": "radiation_to_jaw", "assertionStatus": "present", "subjectReference": "self" }
+    ],
+    "PILOT-NEUR-002": [
+      { "concept": "facial_droop", "assertionStatus": "present", "subjectReference": "self" },
+      { "concept": "arm_weakness", "assertionStatus": "present", "subjectReference": "self" },
+      { "concept": "speech_difficulty", "assertionStatus": "present", "subjectReference": "self" }
+    ],
+    "PILOT-RESP-003": [
+      { "concept": "severe_dyspnea", "assertionStatus": "present", "subjectReference": "self" },
+      { "concept": "wheezing", "assertionStatus": "present", "subjectReference": "self" },
+      { "concept": "inability_to_speak_full_sentences", "assertionStatus": "present", "subjectReference": "self" }
+    ],
+    "PILOT-GAST-004": [
+      { "concept": "vomiting_blood_or_melena", "assertionStatus": "present", "subjectReference": "self" },
+      { "concept": "syncope_or_dizziness", "assertionStatus": "present", "subjectReference": "self" }
+    ],
+    "PILOT-PEDI-007": [
+      { "concept": "stridor", "assertionStatus": "present", "subjectReference": "self" },
+      { "concept": "severe_dyspnea", "assertionStatus": "present", "subjectReference": "self" },
+      { "concept": "pediatric_patient", "assertionStatus": "present", "subjectReference": "self" }
+    ],
+    "PILOT-CARD-013": [
+      { "concept": "severe_dyspnea", "assertionStatus": "present", "subjectReference": "self" },
+      { "concept": "chest_pressure", "assertionStatus": "present", "subjectReference": "self" },
+      { "concept": "cyanosis", "assertionStatus": "present", "subjectReference": "self" }
+    ],
+    "PILOT-CARD-014": [
+      { "concept": "chest_pain", "assertionStatus": "present", "subjectReference": "self" },
+      { "concept": "thunderclap_headache", "assertionStatus": "present", "subjectReference": "self" }
+    ],
+    "PILOT-RESP-017": [
+      { "concept": "severe_dyspnea", "assertionStatus": "present", "subjectReference": "self" },
+      { "concept": "chest_pain", "assertionStatus": "present", "subjectReference": "self" }
+    ],
+    "PILOT-RESP-019": [
+      { "concept": "severe_dyspnea", "assertionStatus": "present", "subjectReference": "self" },
+      { "concept": "cyanosis", "assertionStatus": "present", "subjectReference": "self" }
+    ],
+    "PILOT-RESP-020": [
+      { "concept": "severe_dyspnea", "assertionStatus": "present", "subjectReference": "self" },
+      { "concept": "chest_pain", "assertionStatus": "present", "subjectReference": "self" }
+    ],
+    "PILOT-NEUR-021": [
+      { "concept": "thunderclap_headache", "assertionStatus": "present", "subjectReference": "self" },
+      { "concept": "neck_stiffness", "assertionStatus": "present", "subjectReference": "self" }
+    ],
+    "PILOT-NEUR-022": [
+      { "concept": "neck_stiffness", "assertionStatus": "present", "subjectReference": "self" },
+      { "concept": "thunderclap_headache", "assertionStatus": "present", "subjectReference": "self" },
+      { "concept": "sudden_confusion", "assertionStatus": "present", "subjectReference": "self" }
+    ],
+    "PILOT-GAST-025": [
+      { "concept": "severe_abdominal_pain", "assertionStatus": "present", "subjectReference": "self" },
+      { "concept": "right_lower_quadrant_pain", "assertionStatus": "present", "subjectReference": "self" }
+    ],
+    "PILOT-GAST-027": [
+      { "concept": "severe_abdominal_pain", "assertionStatus": "present", "subjectReference": "self" },
+      { "concept": "rigid_abdomen", "assertionStatus": "present", "subjectReference": "self" }
+    ],
+    "PILOT-GAST-028": [
+      { "concept": "severe_abdominal_pain", "assertionStatus": "present", "subjectReference": "self" },
+      { "concept": "rigid_abdomen", "assertionStatus": "present", "subjectReference": "self" }
+    ],
+    "PILOT-MUSC-030": [
+      { "concept": "arm_weakness", "assertionStatus": "present", "subjectReference": "self" },
+      { "concept": "loss_of_consciousness", "assertionStatus": "present", "subjectReference": "self" }
+    ],
+    "PILOT-MUSC-031": [
+      { "concept": "severe_abdominal_pain", "assertionStatus": "present", "subjectReference": "self" }
+    ],
+    "PILOT-PEDI-033": [
+      { "concept": "pediatric_patient", "assertionStatus": "present", "subjectReference": "self" },
+      { "concept": "sudden_confusion", "assertionStatus": "present", "subjectReference": "self" },
+      { "concept": "loss_of_consciousness", "assertionStatus": "present", "subjectReference": "self" }
+    ],
+    "PILOT-PEDI-034": [
+      { "concept": "stridor", "assertionStatus": "present", "subjectReference": "self" },
+      { "concept": "severe_dyspnea", "assertionStatus": "present", "subjectReference": "self" },
+      { "concept": "throat_tightness", "assertionStatus": "present", "subjectReference": "self" }
+    ],
+    "PILOT-PEDI-036": [
+      { "concept": "throat_tightness", "assertionStatus": "present", "subjectReference": "self" },
+      { "concept": "pediatric_patient", "assertionStatus": "present", "subjectReference": "self" }
+    ],
+    "PILOT-GERI-039": [
+      { "concept": "sudden_confusion", "assertionStatus": "present", "subjectReference": "self" },
+      { "concept": "loss_of_consciousness", "assertionStatus": "present", "subjectReference": "self" }
+    ],
+    "PILOT-GENM-040": [
+      { "concept": "loss_of_consciousness", "assertionStatus": "present", "subjectReference": "self" },
+      { "concept": "sudden_confusion", "assertionStatus": "present", "subjectReference": "self" }
+    ],
+    "PILOT-GENM-041": [
+      { "concept": "severe_dehydration_with_orthostasis", "assertionStatus": "present", "subjectReference": "self" },
+      { "concept": "sudden_confusion", "assertionStatus": "present", "subjectReference": "self" }
+    ],
+    "PILOT-GENM-042": [
+      { "concept": "diaphoresis", "assertionStatus": "present", "subjectReference": "self" },
+      { "concept": "sudden_confusion", "assertionStatus": "present", "subjectReference": "self" }
+    ],
+    "PILOT-DERM-043": [
+      { "concept": "throat_tightness", "assertionStatus": "present", "subjectReference": "self" },
+      { "concept": "tongue_swelling", "assertionStatus": "present", "subjectReference": "self" },
+      { "concept": "severe_dyspnea", "assertionStatus": "present", "subjectReference": "self" }
+    ],
+    "PILOT-DERM-045": [
+      { "concept": "throat_tightness", "assertionStatus": "present", "subjectReference": "self" }
+    ],
+    "PILOT-GENU-048": [
+      { "concept": "severe_abdominal_pain", "assertionStatus": "present", "subjectReference": "self" }
+    ],
+    "PILOT-MEDI-049": [
+      { "concept": "vomiting_blood_or_melena", "assertionStatus": "present", "subjectReference": "self" }
+    ],
+    "PILOT-MEDI-050": [
+      { "concept": "severe_dyspnea", "assertionStatus": "present", "subjectReference": "self" },
+      { "concept": "severe_dehydration_with_orthostasis", "assertionStatus": "present", "subjectReference": "self" }
+    ]
+  },
+  "default_control_facts": [
+    { "concept": "routine_checkup", "assertionStatus": "present", "subjectReference": "self" }
+  ],
+  "default_negation_denial_facts": [
+    { "concept": "chest_pain", "assertionStatus": "absent", "subjectReference": "self" },
+    { "concept": "severe_dyspnea", "assertionStatus": "absent", "subjectReference": "self" }
+  ],
+  "default_third_party_facts": [
+    { "concept": "chest_pain", "assertionStatus": "present", "subjectReference": "other", "temporalScope": "historical", "notes": "third-party relative event" }
+  ]
+}

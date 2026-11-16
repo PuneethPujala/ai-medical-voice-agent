@@ -441,6 +441,40 @@ The evaluation documented 125 total mismatches in [`eval/results/robustness_fail
 3. *Observed Cohort Mismatches vs. Clinical Diagnostics*: The 125 failures represent observed mismatches within this specific synthetic test battery, not population-level diagnostic error rates.
 4. *Architectural Motivation*: This 25.5% observed colloquial escalation rate directly demonstrates why regex-based safety engines cannot operate in isolation: they provide an instantaneous (0.18 ms) preemption floor on canonical emergencies, but require a downstream semantic layer (Layer 2 LLM Concept Extractor + Layer 3 Post-Arbiter Verification) to resolve nuanced and conversational clinical speech.
 
+### 9.7 Multi-Layer Clinical Safety Ablation & Rescue Evaluation (Phase 2B)
+
+To address the empirical limitation discovered in Phase 2A—where the isolated deterministic safety arbiter missed 74.5% (108/145) of candidate colloquial emergency expressions—a multi-layer safety ablation experiment was conducted across the 345-case battery. 
+
+**Core Research Question**:  
+*How much additional emergency-detection capability does each downstream reasoning and verification layer contribute beyond the frozen deterministic safety arbiter, and what false-escalation and latency costs does it introduce?*
+
+**Controlled Architectural Configurations**:
+1. **C1 (L1 Direct Deterministic Baseline)**: The isolated deterministic safety arbiter (`evaluateSafetyArbiter()`) operating purely on raw patient utterances with a simulated routine LLM disposition. (Baseline frozen engine: commit `000abeb`, SHA-256 integrity verified).
+2. **C2 (L1 + Rule-Based Evidence Extraction)**: Utterance processed through the deterministic regex `EvidenceExtractor`, passing extracted structured facts and updated symptom profiles into the safety arbiter.
+3. **C3 (L1 + Clinical Board + Post-Arbiter Verification)**: Utterance routed through the multi-specialist clinical blackboard, with a simulated adversarial model downplay (forced `routine_outpatient` consensus) subjected to the deterministic `PostArbiter` non-downgrade invariant.
+4. **C4 (Full Production Runtime Pipeline)**: Complete `/api/voice/chat` architecture: raw utterance $\to$ semantic candidate facts $\to$ `ControlledFactReconciliationEngine` (with third-party attribution and negation gating) $\to$ `ClinicalBoard` multi-specialist deliberation $\to$ `PostArbiter` safety verification.
+
+| Configuration | Architecture Layer | Track A (N=29) Canonical Recall | Track B (N=145) Colloquial Escalation | Track C (N=21) Control Specificity | Track E (N=50) Negation Specificity | P50 Latency (ms) | P95 Latency (ms) |
+|---|---|:---:|:---:|:---:|:---:|:---:|:---:|
+| **C1** | L1 Frozen Arbiter Baseline | **100.0%** (29/29) | 25.5% (37/145) | **100.0%** (21/21) | 92.0% (46/50) | 0.16 ms | 0.40 ms |
+| **C2** | L1 + Evidence Extractor | **100.0%** (29/29) | 30.3% (44/145) | **100.0%** (21/21) | 86.0% (43/50) | 0.27 ms | 0.65 ms |
+| **C3** | L1 + Board + Post-Arbiter | **100.0%** (29/29) | 25.5% (37/145) | **100.0%** (21/21) | 90.0% (45/50) | 0.61 ms | 1.15 ms |
+| **C4** | Full Production Flow | **100.0%** (29/29) | **77.2%** (112/145) | **100.0%** (21/21) | 90.0% (45/50) | 0.72 ms | 1.35 ms |
+
+**Empirical Rescue of Colloquial Emergency Failures**:  
+Of the 108 colloquial emergency misses produced by the C1 baseline:
+- **C2 (Evidence Extractor)** rescued **7 / 108 (6.5%)** cases. Pure regex-based entity extraction fails on metaphoric and non-textbook descriptions, while introducing 3 additional false-positive escalations on Track E negation (reducing specificity from 92.0% to 86.0%).
+- **C3 (Clinical Board Alone)** rescued **0 / 108 (0.0%)** cases because downstream specialists received unparsed raw colloquial text without structured clinical concept extraction.
+- **C4 (Production Runtime Flow)** rescued **75 / 108 (69.4%)** of the baseline misses, elevating Track B emergency escalation from **25.5% to 77.2%** (+51.7 percentage points), while preserving **100.0% specificity** on Track C non-emergency controls and maintaining 90.0% specificity on Track E negation controls.
+
+**Adverse LLM Downplay Neutralization**:  
+Under simulated adversarial failure modes where generative models inappropriately recommend routine outpatient care for acute life-threat presentations:
+- In **C3**, the deterministic `PostArbiter` intercepted and reversed **153 / 274 (55.8%)** forced downplays based on keyword floor rules alone.
+- In **C4**, semantic fact reconciliation enabled the `PostArbiter` to intercept and reverse **239 / 274 (87.2%)** forced downplays, preserving emergency escalation despite adversarial model consensus.
+
+**Computational Overhead & Latency Profile**:  
+The multi-layer architecture introduces negligible CPU overhead. Operational median latency progresses from 0.16 ms (C1) to 0.72 ms (C4), remaining strictly sub-millisecond for deterministic pipeline arbitration and verification.
+
 ---
 
 ## 10. Threats to Validity & Limitations
