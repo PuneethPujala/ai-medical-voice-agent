@@ -29,7 +29,7 @@ This report establishes the complete reconciliation of Phase 2A, addressing all 
 - **Root Cause**: In `generate-robustness-corpora.ts`, only 18 parent scenarios had bespoke hand-crafted templates. The remaining 11 parents (55 cases, 37.9% of Track B) defaulted to a synthetic generic string template interpolating `${c.clinical_domain}`, creating nonsensical phrases (e.g., *"the agony in my other"*, *"pain in my chronic_conditions area is completely off the charts"*). Furthermore, `PILOT-RESP-019` (COPD exacerbation) suffered severe condition drift, generating shrimp/wasp anaphylaxis scenarios.
 - **Remediation**:
   1. Quarantined the legacy 55 generic fallbacks into [`eval/src/robustness/fixtures/unvalidated_generic_stress_cohort_55.json`](file:///c:/dev/Capstone/eval/src/robustness/fixtures/unvalidated_generic_stress_cohort_55.json) for historical provenance.
-  2. Re-authored 5 bespoke, clinically authentic colloquial variants for **all 29 parent presentations** (145 total cases).
+  2. Re-authored 5 bespoke candidate colloquial variants for **all 29 parent presentations** (145 total cases), initialized with `adjudicationStatus: "PENDING"` awaiting independent clinician sign-off per [`CLINICAL_ADJUDICATION_WORKFLOW.md`](file:///c:/dev/Capstone/eval/governance/CLINICAL_ADJUDICATION_WORKFLOW.md).
   3. Restored `PILOT-RESP-019` to genuine severe COPD exacerbation (pursed-lip breathing, refractory to rescue inhalers, purulent sputum, peripheral cyanosis). Systemic anaphylaxis was consolidated exclusively under `PILOT-DERM-043`.
   4. With authentic clinical paraphrases in place, the observed escalation rate on the synthetic candidate paraphrase cohort of the frozen Layer 1 regex engine on colloquial language is **25.5%** (37/145), with between-cluster variance of 0.0826 and cluster bootstrap 95% CI [15.9%, 36.6%]. Note that all 145 Track B candidates are maintained with `adjudicationStatus: "PENDING"` awaiting independent external clinical adjudication per [`CLINICAL_ADJUDICATION_WORKFLOW.md`](file:///c:/dev/Capstone/eval/governance/CLINICAL_ADJUDICATION_WORKFLOW.md).
 
@@ -66,7 +66,7 @@ This report establishes the complete reconciliation of Phase 2A, addressing all 
 
 ## 3. Comparative Benchmark Summary
 
-| Evaluation Dimension | Initial Exploratory (`e49bff0`) | Reconciled Phase 2A (`b98668e`) | Phase 2A.1 Adjudicated (Current) | Audit Status |
+| Evaluation Dimension | Initial Exploratory (`e49bff0`) | Reconciled Phase 2A (`b98668e`) | Phase 2A.1 Reconciled (Pending Adjudication) | Audit Status |
 |---|:---:|:---:|:---:|:---:|
 | **Total Test Cases** | 345 | 345 | 345 | ✅ Verified |
 | **Track A: Canonical Emergencies Recall** | 100.0% (29/29) | 100.0% (29/29) | **100.0% (29/29)** | ✅ Frozen baseline verified |

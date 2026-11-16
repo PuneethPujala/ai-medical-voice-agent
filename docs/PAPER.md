@@ -413,12 +413,12 @@ For acute life-threatening emergencies (ESI-1 / ESI-2), the deterministic safety
 To evaluate the empirical boundaries of MedVoice's Layer 1 deterministic safety shield, a multi-track adversarial robustness suite comprising 345 standardized clinical scenarios across five tracks was executed against the frozen deterministic engine (`lib/triage/universal-red-flags.ts` and `lib/triage/safety-arbiter.ts`, verified via source SHA-256 integrity pinning).
 
 **Evaluation Paradigm & Subsystem Scoping**:  
-This experiment deliberately isolates the **frozen deterministic Layer 1 pre-arbiter** under adverse, colloquial, and corrupted syntax. It does *not* evaluate the complete conversational pipeline, the multi-specialist LLM deliberation, or audio-level speech recognition. The explicit objective of this benchmark is empirical failure discovery: systematically discovering what deterministic keyword patterns miss when unassisted by downstream reasoning layers.
+This experiment deliberately isolates the **frozen deterministic safety arbiter** (`evaluateSafetyArbiter()`) under adverse, colloquial, and corrupted syntax. It directly tests deterministic safety-arbiter preemption against a simulated routine recommendation; it does *not* evaluate the complete conversational pipeline, the multi-specialist LLM deliberation, or audio-level speech recognition. The explicit objective of this benchmark is empirical failure discovery: systematically discovering what deterministic keyword patterns miss when unassisted by downstream reasoning layers.
 
 | Track | Scenario Description | N | Observed Result | Correct Interpretation & Scope |
 |---|---|:---:|:---:|---|
 | **Track A** | Canonical Life-Threat Emergencies | 29 | **100.0% Recall** (29/29) | Frozen Layer 1 deterministic preemption successfully catches all canonical textbook emergency presentations. |
-| **Track B** | Candidate Colloquial Paraphrases | 145 | **25.5% Recall** (37/145) | Observed escalation rate on candidate colloquial descriptions (5 variants per parent across 29 clusters). |
+| **Track B** | Candidate Colloquial Paraphrases | 145 | **25.5% Observed Escalation Rate** (37/145) | Observed escalation rate on candidate colloquial descriptions (5 variants per parent across 29 clusters). |
 | **Track C** | Non-Emergency Negative Controls | 21 | **100.0% Specificity** (21/21) | Zero false-alarm escalations on routine outpatient and ambulatory presentations. |
 | **Track D** | Synthetic Text & Phonetic Perturbations | 100 | **87.0% Recall** (87/100) | Layer 1 recall under synthetic character mutations and homophone corruptions (20 parents $\times$ 5 variants). |
 | **Track E** | Negation & Third-Party Controls | 50 | **92.0% Specificity** (46/50) | Correctly retained non-emergent status on 46/50 complex negation and historical denial scenarios. |
@@ -439,7 +439,7 @@ The evaluation documented 125 total mismatches in [`eval/results/robustness_fail
 1. *Pending Clinical Adjudication*: All 145 Track B candidate paraphrases are synthetically authored and maintained with `adjudicationStatus: "PENDING"` awaiting formal independent multi-clinician sign-off per [`CLINICAL_ADJUDICATION_WORKFLOW.md`](file:///c:/dev/Capstone/eval/governance/CLINICAL_ADJUDICATION_WORKFLOW.md).
 2. *Synthetic Text vs. Real Audio*: Track D represents synthetic string and phonetic mutations, not an acoustic Whisper evaluation. Live speech recognition benchmarks are partitioned into Phase 2C.
 3. *Observed Cohort Mismatches vs. Clinical Diagnostics*: The 125 failures represent observed mismatches within this specific synthetic test battery, not population-level diagnostic error rates.
-4. *Architectural Motivation*: This 25.5% colloquial sensitivity directly demonstrates why regex-based safety engines cannot operate in isolation: they provide an instantaneous (0.18 ms) preemption floor on canonical emergencies, but require a downstream semantic layer (Layer 2 LLM Concept Extractor + Layer 3 Post-Arbiter Verification) to resolve nuanced and conversational clinical speech.
+4. *Architectural Motivation*: This 25.5% observed colloquial escalation rate directly demonstrates why regex-based safety engines cannot operate in isolation: they provide an instantaneous (0.18 ms) preemption floor on canonical emergencies, but require a downstream semantic layer (Layer 2 LLM Concept Extractor + Layer 3 Post-Arbiter Verification) to resolve nuanced and conversational clinical speech.
 
 ---
 
