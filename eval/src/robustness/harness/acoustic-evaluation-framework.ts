@@ -83,8 +83,13 @@ export function evaluateClinicalTranscriptionIntegrity(
   groundTruth: string,
   transcription: string,
   criticalSymptoms: string[],
-  criticalNegations: string[]
-) {
+  criticalNegations: string[],
+  criticalLateralities?: ("left" | "right" | "bilateral")[]
+): {
+  negationLost: boolean;
+  symptomOmitted: boolean;
+  lateralityInverted: boolean;
+} {
   const lowerGt = groundTruth.toLowerCase();
   const lowerTx = transcription.toLowerCase();
 
@@ -102,5 +107,32 @@ export function evaluateClinicalTranscriptionIntegrity(
     }
   }
 
-  return { negationLost, symptomOmitted };
+  let lateralityInverted = false;
+  if (criticalLateralities && criticalLateralities.length > 0) {
+    for (const lat of criticalLateralities) {
+      if (lat === 'left') {
+        if (/\bleft\b/i.test(lowerGt) && /\bright\b/i.test(lowerTx) && !/\bleft\b/i.test(lowerTx)) {
+          lateralityInverted = true;
+        }
+      } else if (lat === 'right') {
+        if (/\bright\b/i.test(lowerGt) && /\bleft\b/i.test(lowerTx) && !/\bright\b/i.test(lowerTx)) {
+          lateralityInverted = true;
+        }
+      }
+    }
+  } else {
+    // Infer laterality inversion directly if not explicitly provided in clinical_target
+    const gtHasLeft = /\bleft\b/i.test(lowerGt);
+    const gtHasRight = /\bright\b/i.test(lowerGt);
+    const txHasLeft = /\bleft\b/i.test(lowerTx);
+    const txHasRight = /\bright\b/i.test(lowerTx);
+
+    if (gtHasLeft && !gtHasRight && txHasRight && !txHasLeft) {
+      lateralityInverted = true;
+    } else if (gtHasRight && !gtHasLeft && txHasLeft && !txHasRight) {
+      lateralityInverted = true;
+    }
+  }
+
+  return { negationLost, symptomOmitted, lateralityInverted };
 }

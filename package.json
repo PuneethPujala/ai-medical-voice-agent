@@ -9,6 +9,8 @@
     "start": "next start",
     "lint": "eslint",
     "test:clinical": "tsx scripts/run-clinical-eval.ts",
+    "eval:robustness": "tsx eval/src/robustness/harness/run-robustness-suite.ts",
+    "test:cluster-stats": "tsx tests/eval/cluster-statistics.test.ts",
     "demo:preemption": "tsx scripts/demo-preemption.ts",
     "test:board": "tsx scripts/run-multi-agent-eval.ts",
     "test:bargein": "tsx scripts/test-bargein.ts",

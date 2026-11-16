@@ -32,6 +32,15 @@ export type RobustnessTrack =
   | "D_PERTURBATION"
   | "E_NEGATION";
 
+export interface ClinicalEquivalenceReview {
+  reviewed: boolean;
+  reviewerId?: string;
+  parentConditionPreserved: boolean;
+  criticalFeaturesPreserved: boolean;
+  materialContradictions: string[];
+  adjudicationStatus: "PENDING" | "ACCEPTED" | "REJECTED" | "REVISE";
+}
+
 export interface RobustnessTestCase {
   test_case_id: string;
   parent_scenario_id: string; // Links variant back to parent clinical cluster
@@ -56,7 +65,10 @@ export interface RobustnessTestCase {
     is_negated: boolean;
     negation_cue?: string;
     attribution?: "self" | "third_party" | "historical";
+    temporal_status?: "current" | "historical" | "resolved" | "unknown";
+    emergency_status?: "positive" | "negative" | "indeterminate";
   };
+  clinical_equivalence_review?: ClinicalEquivalenceReview;
   clinical_rationale: string;
 }
 
@@ -103,6 +115,11 @@ export interface RobustnessFailureLedger {
   evaluation_id: string;
   timestamp: string;
   baseline_commit: string;
+  engine_integrity: {
+    universal_red_flags_sha256: string;
+    safety_arbiter_sha256: string;
+    engine_frozen_verified: boolean;
+  };
   total_evaluated: number;
   total_failures: number;
   summary_metrics: {

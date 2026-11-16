@@ -1,26 +1,31 @@
 {
-  "evaluation_id": "ROBUSTNESS-EVAL-1794756534572",
-  "timestamp": "2026-11-15T15:28:54.572Z",
+  "evaluation_id": "ROBUSTNESS-EVAL-1794795573184",
+  "timestamp": "2026-11-16T02:19:33.184Z",
   "baseline_commit": "000abeb",
+  "engine_integrity": {
+    "universal_red_flags_sha256": "82e4a746c130b6a25f8c307c8cf9b7cce6659004b1bf0612df659f24119cbb69",
+    "safety_arbiter_sha256": "89967d01f17bfe938e1d1417859a7a14a170f098ea91698797b6b6622fb03500",
+    "engine_frozen_verified": true
+  },
   "total_evaluated": 345,
   "total_failures": 125,
   "summary_metrics": {
     "canonical_emergencies_recall": 100,
-    "colloquial_paraphrases_recall": 26.2,
+    "colloquial_paraphrases_recall": 25.5,
     "non_emergency_specificity": 100,
-    "negation_test_specificity": 90,
+    "negation_test_specificity": 92,
     "perturbation_test_recall": 87,
-    "l1_regex_miss_count": 120,
-    "arbiter_layer1_miss_count": 120,
-    "negation_leakage_count": 5
+    "l1_regex_miss_count": 121,
+    "arbiter_layer1_miss_count": 121,
+    "negation_leakage_count": 4
   },
   "clustered_sensitivity_analysis": {
     "total_cases": 145,
     "total_clusters": 29,
-    "observed_cluster_sensitivity": 26.2,
-    "cluster_ci95_lower": 16.6,
-    "cluster_ci95_upper": 37.2,
-    "between_cluster_variance": 0.0803,
+    "observed_cluster_sensitivity": 25.5,
+    "cluster_ci95_lower": 15.9,
+    "cluster_ci95_upper": 36.6,
+    "between_cluster_variance": 0.0826,
     "failure_breakdown_by_parent": {
       "PILOT-CARD-001": {
         "parent_condition": "ischemic_heart_disease",
@@ -107,10 +112,11 @@
       "PILOT-RESP-017": {
         "parent_condition": "pulmonary_embolism",
         "variants_tested": 5,
-        "variants_escalated": 1,
-        "recall_percent": 20,
+        "variants_escalated": 0,
+        "recall_percent": 0,
         "missed_variants": [
           "PARAPHRASE-PILOT-RESP-017-V1",
+          "PARAPHRASE-PILOT-RESP-017-V2",
           "PARAPHRASE-PILOT-RESP-017-V3",
           "PARAPHRASE-PILOT-RESP-017-V4",
           "PARAPHRASE-PILOT-RESP-017-V5"
@@ -381,7 +387,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 1.41,
+        "decisionLatencyMs": 0.19,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -391,7 +397,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.392Z"
+        "auditTimestamp": "2026-11-16T02:19:33.131Z"
       }
     },
     {
@@ -413,7 +419,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.46,
+        "decisionLatencyMs": 0.11,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -423,7 +429,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.393Z"
+        "auditTimestamp": "2026-11-16T02:19:33.131Z"
       }
     },
     {
@@ -445,7 +451,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.24,
+        "decisionLatencyMs": 0.11,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -455,7 +461,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.395Z"
+        "auditTimestamp": "2026-11-16T02:19:33.131Z"
       }
     },
     {
@@ -477,7 +483,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.58,
+        "decisionLatencyMs": 0.14,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -487,7 +493,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.395Z"
+        "auditTimestamp": "2026-11-16T02:19:33.131Z"
       }
     },
     {
@@ -509,7 +515,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.66,
+        "decisionLatencyMs": 0.13,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -519,7 +525,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.396Z"
+        "auditTimestamp": "2026-11-16T02:19:33.131Z"
       }
     },
     {
@@ -541,7 +547,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.6,
+        "decisionLatencyMs": 0.14,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -551,7 +557,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.397Z"
+        "auditTimestamp": "2026-11-16T02:19:33.132Z"
       }
     },
     {
@@ -573,7 +579,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.62,
+        "decisionLatencyMs": 0.12,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -583,7 +589,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.397Z"
+        "auditTimestamp": "2026-11-16T02:19:33.132Z"
       }
     },
     {
@@ -605,7 +611,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.66,
+        "decisionLatencyMs": 0.11,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -615,7 +621,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.398Z"
+        "auditTimestamp": "2026-11-16T02:19:33.132Z"
       }
     },
     {
@@ -637,7 +643,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.51,
+        "decisionLatencyMs": 0.14,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -647,7 +653,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.399Z"
+        "auditTimestamp": "2026-11-16T02:19:33.132Z"
       }
     },
     {
@@ -669,7 +675,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.99,
+        "decisionLatencyMs": 0.89,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -679,7 +685,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.400Z"
+        "auditTimestamp": "2026-11-16T02:19:33.133Z"
       }
     },
     {
@@ -701,7 +707,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.73,
+        "decisionLatencyMs": 0.14,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -711,7 +717,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.400Z"
+        "auditTimestamp": "2026-11-16T02:19:33.133Z"
       }
     },
     {
@@ -733,7 +739,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.4,
+        "decisionLatencyMs": 0.11,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -743,7 +749,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.401Z"
+        "auditTimestamp": "2026-11-16T02:19:33.133Z"
       }
     },
     {
@@ -765,7 +771,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.4,
+        "decisionLatencyMs": 0.11,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -775,7 +781,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.401Z"
+        "auditTimestamp": "2026-11-16T02:19:33.133Z"
       }
     },
     {
@@ -797,7 +803,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.58,
+        "decisionLatencyMs": 0.1,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -807,7 +813,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.402Z"
+        "auditTimestamp": "2026-11-16T02:19:33.133Z"
       }
     },
     {
@@ -829,7 +835,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.48,
+        "decisionLatencyMs": 0.11,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -839,7 +845,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.403Z"
+        "auditTimestamp": "2026-11-16T02:19:33.134Z"
       }
     },
     {
@@ -861,7 +867,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.81,
+        "decisionLatencyMs": 0.1,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -871,7 +877,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.404Z"
+        "auditTimestamp": "2026-11-16T02:19:33.134Z"
       }
     },
     {
@@ -893,7 +899,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.57,
+        "decisionLatencyMs": 0.1,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -903,7 +909,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.405Z"
+        "auditTimestamp": "2026-11-16T02:19:33.134Z"
       }
     },
     {
@@ -925,7 +931,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.58,
+        "decisionLatencyMs": 0.09,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -935,7 +941,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.405Z"
+        "auditTimestamp": "2026-11-16T02:19:33.134Z"
       }
     },
     {
@@ -957,7 +963,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.54,
+        "decisionLatencyMs": 0.1,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -967,7 +973,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.406Z"
+        "auditTimestamp": "2026-11-16T02:19:33.134Z"
       }
     },
     {
@@ -989,7 +995,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.61,
+        "decisionLatencyMs": 0.11,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -999,7 +1005,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.406Z"
+        "auditTimestamp": "2026-11-16T02:19:33.134Z"
       }
     },
     {
@@ -1021,7 +1027,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.7,
+        "decisionLatencyMs": 0.11,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -1031,7 +1037,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.407Z"
+        "auditTimestamp": "2026-11-16T02:19:33.134Z"
       }
     },
     {
@@ -1053,7 +1059,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.72,
+        "decisionLatencyMs": 0.1,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -1063,7 +1069,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.409Z"
+        "auditTimestamp": "2026-11-16T02:19:33.134Z"
       }
     },
     {
@@ -1085,7 +1091,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.42,
+        "decisionLatencyMs": 0.11,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -1095,7 +1101,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.409Z"
+        "auditTimestamp": "2026-11-16T02:19:33.135Z"
       }
     },
     {
@@ -1117,7 +1123,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.36,
+        "decisionLatencyMs": 0.11,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -1127,7 +1133,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.410Z"
+        "auditTimestamp": "2026-11-16T02:19:33.135Z"
       }
     },
     {
@@ -1149,7 +1155,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.27,
+        "decisionLatencyMs": 0.1,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -1159,7 +1165,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.410Z"
+        "auditTimestamp": "2026-11-16T02:19:33.135Z"
       }
     },
     {
@@ -1191,20 +1197,20 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.411Z"
+        "auditTimestamp": "2026-11-16T02:19:33.135Z"
       }
     },
     {
       "test_case_id": "PARAPHRASE-PILOT-RESP-017-V1",
       "parent_scenario_id": "PILOT-RESP-017",
       "track": "B_COLLOQUIAL",
-      "variant_type": "slang_or_vernacular",
-      "patient_utterance": "Felt a sharp tearing snap inside my back and chest and now I am completely breathless.",
+      "variant_type": "colloquial_paraphrase",
+      "patient_utterance": "Sharp stabbing knife pain in the right side of my ribs every time I take a breath, and I just coughed up flecks of pink-red blood.",
       "expected_escalation": true,
       "actual_escalation": false,
       "is_concordant": false,
       "failure_classification": "L1_DETECTION_GAP",
-      "failure_reason": "Colloquial / indirect phrasing not captured by Layer 1 regex: \"Felt a sharp tearing snap inside my back and chest and now I am completely breathless.\"",
+      "failure_reason": "Colloquial / indirect phrasing not captured by Layer 1 regex: \"Sharp stabbing knife pain in the right side of my ribs every time I take a breath, and I just coughed up flecks of pink-red blood.\"",
       "safety_decision": {
         "emergencyEscalationRequired": false,
         "highRiskPresentation": false,
@@ -1213,7 +1219,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.21,
+        "decisionLatencyMs": 0.12,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -1223,20 +1229,52 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.411Z"
+        "auditTimestamp": "2026-11-16T02:19:33.135Z"
+      }
+    },
+    {
+      "test_case_id": "PARAPHRASE-PILOT-RESP-017-V2",
+      "parent_scenario_id": "PILOT-RESP-017",
+      "track": "B_COLLOQUIAL",
+      "variant_type": "indirect_description",
+      "patient_utterance": "Sudden breathlessness out of nowhere, right lung feels like a needle poking inside when inhaling, and spitting bloody mucus.",
+      "expected_escalation": true,
+      "actual_escalation": false,
+      "is_concordant": false,
+      "failure_classification": "L1_DETECTION_GAP",
+      "failure_reason": "Colloquial / indirect phrasing not captured by Layer 1 regex: \"Sudden breathlessness out of nowhere, right lung feels like a needle poking inside when inhaling, and spitting bloody mucus.\"",
+      "safety_decision": {
+        "emergencyEscalationRequired": false,
+        "highRiskPresentation": false,
+        "establishedAcuityFloor": "NONE",
+        "escalationReasons": [],
+        "arbiterOverrideApplied": false,
+        "esiLevel": null,
+        "esiAssessmentStatus": "NOT_ASSESSED",
+        "decisionLatencyMs": 0.12,
+        "unresolvedRedFlags": [
+          "airway",
+          "swallowing",
+          "breathing",
+          "cardiac",
+          "neurological",
+          "bleeding"
+        ],
+        "universalRedFlagsTriggered": [],
+        "auditTimestamp": "2026-11-16T02:19:33.135Z"
       }
     },
     {
       "test_case_id": "PARAPHRASE-PILOT-RESP-017-V3",
       "parent_scenario_id": "PILOT-RESP-017",
       "track": "B_COLLOQUIAL",
-      "variant_type": "colloquial_paraphrase",
-      "patient_utterance": "Pain tore through my chest straight to my spine like a knife and my pulse feels weak in one wrist.",
+      "variant_type": "slang_or_vernacular",
+      "patient_utterance": "Right side of my chest hurts like hell when breathing in, heart is racing, and I have bloody phlegm on my tissue.",
       "expected_escalation": true,
       "actual_escalation": false,
       "is_concordant": false,
       "failure_classification": "L1_DETECTION_GAP",
-      "failure_reason": "Colloquial / indirect phrasing not captured by Layer 1 regex: \"Pain tore through my chest straight to my spine like a knife and my pulse feels weak in one wrist.\"",
+      "failure_reason": "Colloquial / indirect phrasing not captured by Layer 1 regex: \"Right side of my chest hurts like hell when breathing in, heart is racing, and I have bloody phlegm on my tissue.\"",
       "safety_decision": {
         "emergencyEscalationRequired": false,
         "highRiskPresentation": false,
@@ -1245,7 +1283,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 1.73,
+        "decisionLatencyMs": 0.14,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -1255,7 +1293,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.413Z"
+        "auditTimestamp": "2026-11-16T02:19:33.135Z"
       }
     },
     {
@@ -1263,12 +1301,12 @@
       "parent_scenario_id": "PILOT-RESP-017",
       "track": "B_COLLOQUIAL",
       "variant_type": "indirect_description",
-      "patient_utterance": "Agonizing tearing sensation behind my sternum that started two minutes ago at maximum intensity.",
+      "patient_utterance": "Came back from a long flight with a swollen aching calf, and now sudden sharp pleuritic chest catch with blood-tinged cough.",
       "expected_escalation": true,
       "actual_escalation": false,
       "is_concordant": false,
       "failure_classification": "L1_DETECTION_GAP",
-      "failure_reason": "Colloquial / indirect phrasing not captured by Layer 1 regex: \"Agonizing tearing sensation behind my sternum that started two minutes ago at maximum intensity.\"",
+      "failure_reason": "Colloquial / indirect phrasing not captured by Layer 1 regex: \"Came back from a long flight with a swollen aching calf, and now sudden sharp pleuritic chest catch with blood-tinged cough.\"",
       "safety_decision": {
         "emergencyEscalationRequired": false,
         "highRiskPresentation": false,
@@ -1277,7 +1315,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.35,
+        "decisionLatencyMs": 0.11,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -1287,20 +1325,20 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.413Z"
+        "auditTimestamp": "2026-11-16T02:19:33.136Z"
       }
     },
     {
       "test_case_id": "PARAPHRASE-PILOT-RESP-017-V5",
       "parent_scenario_id": "PILOT-RESP-017",
       "track": "B_COLLOQUIAL",
-      "variant_type": "slang_or_vernacular",
-      "patient_utterance": "A rip inside my upper chest going down my back and I feel cold and clammy.",
+      "variant_type": "colloquial_paraphrase",
+      "patient_utterance": "Chest catches painfully with every shallow breath on the right, lightheaded, and coughed up streaks of fresh blood.",
       "expected_escalation": true,
       "actual_escalation": false,
       "is_concordant": false,
       "failure_classification": "L1_DETECTION_GAP",
-      "failure_reason": "Colloquial / indirect phrasing not captured by Layer 1 regex: \"A rip inside my upper chest going down my back and I feel cold and clammy.\"",
+      "failure_reason": "Colloquial / indirect phrasing not captured by Layer 1 regex: \"Chest catches painfully with every shallow breath on the right, lightheaded, and coughed up streaks of fresh blood.\"",
       "safety_decision": {
         "emergencyEscalationRequired": false,
         "highRiskPresentation": false,
@@ -1309,7 +1347,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.36,
+        "decisionLatencyMs": 0.13,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -1319,7 +1357,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.414Z"
+        "auditTimestamp": "2026-11-16T02:19:33.136Z"
       }
     },
     {
@@ -1341,7 +1379,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.18,
+        "decisionLatencyMs": 0.2,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -1351,7 +1389,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.414Z"
+        "auditTimestamp": "2026-11-16T02:19:33.136Z"
       }
     },
     {
@@ -1373,7 +1411,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.14,
+        "decisionLatencyMs": 0.12,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -1383,7 +1421,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.414Z"
+        "auditTimestamp": "2026-11-16T02:19:33.136Z"
       }
     },
     {
@@ -1405,7 +1443,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.4,
+        "decisionLatencyMs": 0.11,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -1415,7 +1453,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.415Z"
+        "auditTimestamp": "2026-11-16T02:19:33.136Z"
       }
     },
     {
@@ -1437,7 +1475,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.35,
+        "decisionLatencyMs": 0.09,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -1447,7 +1485,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.416Z"
+        "auditTimestamp": "2026-11-16T02:19:33.137Z"
       }
     },
     {
@@ -1469,7 +1507,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.37,
+        "decisionLatencyMs": 0.09,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -1479,7 +1517,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.416Z"
+        "auditTimestamp": "2026-11-16T02:19:33.137Z"
       }
     },
     {
@@ -1501,7 +1539,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.36,
+        "decisionLatencyMs": 0.09,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -1511,7 +1549,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.416Z"
+        "auditTimestamp": "2026-11-16T02:19:33.137Z"
       }
     },
     {
@@ -1533,7 +1571,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.37,
+        "decisionLatencyMs": 0.09,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -1543,7 +1581,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.417Z"
+        "auditTimestamp": "2026-11-16T02:19:33.137Z"
       }
     },
     {
@@ -1565,7 +1603,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.45,
+        "decisionLatencyMs": 0.09,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -1575,7 +1613,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.417Z"
+        "auditTimestamp": "2026-11-16T02:19:33.137Z"
       }
     },
     {
@@ -1597,7 +1635,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.54,
+        "decisionLatencyMs": 0.09,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -1607,7 +1645,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.419Z"
+        "auditTimestamp": "2026-11-16T02:19:33.137Z"
       }
     },
     {
@@ -1629,7 +1667,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.36,
+        "decisionLatencyMs": 0.09,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -1639,7 +1677,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.419Z"
+        "auditTimestamp": "2026-11-16T02:19:33.137Z"
       }
     },
     {
@@ -1661,7 +1699,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.5,
+        "decisionLatencyMs": 0.16,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -1671,7 +1709,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.420Z"
+        "auditTimestamp": "2026-11-16T02:19:33.137Z"
       }
     },
     {
@@ -1693,7 +1731,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.68,
+        "decisionLatencyMs": 0.24,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -1703,7 +1741,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.420Z"
+        "auditTimestamp": "2026-11-16T02:19:33.138Z"
       }
     },
     {
@@ -1725,7 +1763,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.57,
+        "decisionLatencyMs": 0.15,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -1735,7 +1773,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.421Z"
+        "auditTimestamp": "2026-11-16T02:19:33.138Z"
       }
     },
     {
@@ -1757,7 +1795,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.51,
+        "decisionLatencyMs": 0.12,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -1767,7 +1805,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.421Z"
+        "auditTimestamp": "2026-11-16T02:19:33.138Z"
       }
     },
     {
@@ -1789,7 +1827,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 2.46,
+        "decisionLatencyMs": 0.13,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -1799,7 +1837,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.424Z"
+        "auditTimestamp": "2026-11-16T02:19:33.138Z"
       }
     },
     {
@@ -1821,7 +1859,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.71,
+        "decisionLatencyMs": 0.11,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -1831,7 +1869,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.425Z"
+        "auditTimestamp": "2026-11-16T02:19:33.138Z"
       }
     },
     {
@@ -1853,7 +1891,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.47,
+        "decisionLatencyMs": 0.1,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -1863,7 +1901,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.425Z"
+        "auditTimestamp": "2026-11-16T02:19:33.138Z"
       }
     },
     {
@@ -1885,7 +1923,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.51,
+        "decisionLatencyMs": 0.09,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -1895,7 +1933,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.426Z"
+        "auditTimestamp": "2026-11-16T02:19:33.138Z"
       }
     },
     {
@@ -1917,7 +1955,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.95,
+        "decisionLatencyMs": 0.1,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -1927,7 +1965,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.427Z"
+        "auditTimestamp": "2026-11-16T02:19:33.139Z"
       }
     },
     {
@@ -1949,7 +1987,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.54,
+        "decisionLatencyMs": 0.09,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -1959,7 +1997,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.428Z"
+        "auditTimestamp": "2026-11-16T02:19:33.139Z"
       }
     },
     {
@@ -1981,7 +2019,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.51,
+        "decisionLatencyMs": 0.09,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -1991,7 +2029,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.428Z"
+        "auditTimestamp": "2026-11-16T02:19:33.139Z"
       }
     },
     {
@@ -2013,7 +2051,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.6,
+        "decisionLatencyMs": 0.1,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -2023,7 +2061,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.429Z"
+        "auditTimestamp": "2026-11-16T02:19:33.139Z"
       }
     },
     {
@@ -2045,7 +2083,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.6,
+        "decisionLatencyMs": 0.1,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -2055,7 +2093,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.430Z"
+        "auditTimestamp": "2026-11-16T02:19:33.139Z"
       }
     },
     {
@@ -2077,7 +2115,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.55,
+        "decisionLatencyMs": 0.09,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -2087,7 +2125,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.430Z"
+        "auditTimestamp": "2026-11-16T02:19:33.139Z"
       }
     },
     {
@@ -2109,7 +2147,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 1,
+        "decisionLatencyMs": 0.1,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -2119,7 +2157,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.431Z"
+        "auditTimestamp": "2026-11-16T02:19:33.139Z"
       }
     },
     {
@@ -2141,7 +2179,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.55,
+        "decisionLatencyMs": 0.09,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -2151,7 +2189,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.432Z"
+        "auditTimestamp": "2026-11-16T02:19:33.139Z"
       }
     },
     {
@@ -2173,7 +2211,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.51,
+        "decisionLatencyMs": 0.11,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -2183,7 +2221,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.434Z"
+        "auditTimestamp": "2026-11-16T02:19:33.140Z"
       }
     },
     {
@@ -2205,7 +2243,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.4,
+        "decisionLatencyMs": 0.1,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -2215,7 +2253,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.434Z"
+        "auditTimestamp": "2026-11-16T02:19:33.140Z"
       }
     },
     {
@@ -2237,7 +2275,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.4,
+        "decisionLatencyMs": 0.11,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -2247,7 +2285,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.435Z"
+        "auditTimestamp": "2026-11-16T02:19:33.140Z"
       }
     },
     {
@@ -2269,7 +2307,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.42,
+        "decisionLatencyMs": 0.1,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -2279,7 +2317,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.435Z"
+        "auditTimestamp": "2026-11-16T02:19:33.140Z"
       }
     },
     {
@@ -2301,7 +2339,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.35,
+        "decisionLatencyMs": 0.09,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -2311,7 +2349,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.435Z"
+        "auditTimestamp": "2026-11-16T02:19:33.140Z"
       }
     },
     {
@@ -2333,7 +2371,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.36,
+        "decisionLatencyMs": 0.08,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -2343,7 +2381,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.436Z"
+        "auditTimestamp": "2026-11-16T02:19:33.140Z"
       }
     },
     {
@@ -2365,7 +2403,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.34,
+        "decisionLatencyMs": 0.08,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -2375,7 +2413,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.436Z"
+        "auditTimestamp": "2026-11-16T02:19:33.140Z"
       }
     },
     {
@@ -2397,7 +2435,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.36,
+        "decisionLatencyMs": 0.09,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -2407,7 +2445,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.437Z"
+        "auditTimestamp": "2026-11-16T02:19:33.140Z"
       }
     },
     {
@@ -2429,7 +2467,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.26,
+        "decisionLatencyMs": 0.12,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -2439,7 +2477,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.437Z"
+        "auditTimestamp": "2026-11-16T02:19:33.141Z"
       }
     },
     {
@@ -2461,7 +2499,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.57,
+        "decisionLatencyMs": 0.1,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -2471,7 +2509,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.438Z"
+        "auditTimestamp": "2026-11-16T02:19:33.141Z"
       }
     },
     {
@@ -2493,7 +2531,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.46,
+        "decisionLatencyMs": 0.1,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -2503,7 +2541,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.438Z"
+        "auditTimestamp": "2026-11-16T02:19:33.141Z"
       }
     },
     {
@@ -2525,7 +2563,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.11,
+        "decisionLatencyMs": 0.1,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -2535,7 +2573,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.443Z"
+        "auditTimestamp": "2026-11-16T02:19:33.143Z"
       }
     },
     {
@@ -2567,7 +2605,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.443Z"
+        "auditTimestamp": "2026-11-16T02:19:33.143Z"
       }
     },
     {
@@ -2589,7 +2627,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.11,
+        "decisionLatencyMs": 0.1,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -2599,7 +2637,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.443Z"
+        "auditTimestamp": "2026-11-16T02:19:33.143Z"
       }
     },
     {
@@ -2621,7 +2659,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.11,
+        "decisionLatencyMs": 0.1,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -2631,7 +2669,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.443Z"
+        "auditTimestamp": "2026-11-16T02:19:33.143Z"
       }
     },
     {
@@ -2663,7 +2701,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.443Z"
+        "auditTimestamp": "2026-11-16T02:19:33.143Z"
       }
     },
     {
@@ -2695,7 +2733,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.443Z"
+        "auditTimestamp": "2026-11-16T02:19:33.143Z"
       }
     },
     {
@@ -2717,7 +2755,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.26,
+        "decisionLatencyMs": 0.11,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -2727,7 +2765,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.444Z"
+        "auditTimestamp": "2026-11-16T02:19:33.143Z"
       }
     },
     {
@@ -2749,7 +2787,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.25,
+        "decisionLatencyMs": 0.11,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -2759,7 +2797,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.444Z"
+        "auditTimestamp": "2026-11-16T02:19:33.144Z"
       }
     },
     {
@@ -2781,7 +2819,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.25,
+        "decisionLatencyMs": 0.12,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -2791,7 +2829,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.444Z"
+        "auditTimestamp": "2026-11-16T02:19:33.144Z"
       }
     },
     {
@@ -2813,7 +2851,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.22,
+        "decisionLatencyMs": 0.11,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -2823,7 +2861,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.444Z"
+        "auditTimestamp": "2026-11-16T02:19:33.144Z"
       }
     },
     {
@@ -2845,7 +2883,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.13,
+        "decisionLatencyMs": 0.12,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -2855,7 +2893,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.445Z"
+        "auditTimestamp": "2026-11-16T02:19:33.144Z"
       }
     },
     {
@@ -2887,7 +2925,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.445Z"
+        "auditTimestamp": "2026-11-16T02:19:33.144Z"
       }
     },
     {
@@ -2909,7 +2947,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.12,
+        "decisionLatencyMs": 0.11,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -2919,7 +2957,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.445Z"
+        "auditTimestamp": "2026-11-16T02:19:33.145Z"
       }
     },
     {
@@ -2941,7 +2979,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.16,
+        "decisionLatencyMs": 0.1,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -2951,7 +2989,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.446Z"
+        "auditTimestamp": "2026-11-16T02:19:33.145Z"
       }
     },
     {
@@ -2973,7 +3011,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.14,
+        "decisionLatencyMs": 0.13,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -2983,7 +3021,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.446Z"
+        "auditTimestamp": "2026-11-16T02:19:33.145Z"
       }
     },
     {
@@ -3005,7 +3043,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.14,
+        "decisionLatencyMs": 0.12,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -3015,7 +3053,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.446Z"
+        "auditTimestamp": "2026-11-16T02:19:33.145Z"
       }
     },
     {
@@ -3037,7 +3075,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.15,
+        "decisionLatencyMs": 0.12,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -3047,7 +3085,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.446Z"
+        "auditTimestamp": "2026-11-16T02:19:33.145Z"
       }
     },
     {
@@ -3079,7 +3117,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.447Z"
+        "auditTimestamp": "2026-11-16T02:19:33.146Z"
       }
     },
     {
@@ -3101,7 +3139,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.12,
+        "decisionLatencyMs": 0.11,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -3111,7 +3149,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.447Z"
+        "auditTimestamp": "2026-11-16T02:19:33.146Z"
       }
     },
     {
@@ -3133,7 +3171,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.13,
+        "decisionLatencyMs": 0.11,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -3143,7 +3181,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.447Z"
+        "auditTimestamp": "2026-11-16T02:19:33.146Z"
       }
     },
     {
@@ -3165,7 +3203,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.14,
+        "decisionLatencyMs": 0.11,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -3175,7 +3213,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.447Z"
+        "auditTimestamp": "2026-11-16T02:19:33.146Z"
       }
     },
     {
@@ -3197,7 +3235,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.16,
+        "decisionLatencyMs": 0.13,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -3207,7 +3245,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.447Z"
+        "auditTimestamp": "2026-11-16T02:19:33.146Z"
       }
     },
     {
@@ -3229,7 +3267,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.22,
+        "decisionLatencyMs": 0.1,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -3239,7 +3277,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.448Z"
+        "auditTimestamp": "2026-11-16T02:19:33.146Z"
       }
     },
     {
@@ -3261,7 +3299,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.13,
+        "decisionLatencyMs": 0.1,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -3271,7 +3309,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.448Z"
+        "auditTimestamp": "2026-11-16T02:19:33.146Z"
       }
     },
     {
@@ -3293,7 +3331,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.14,
+        "decisionLatencyMs": 0.1,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -3303,7 +3341,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.448Z"
+        "auditTimestamp": "2026-11-16T02:19:33.147Z"
       }
     },
     {
@@ -3325,7 +3363,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.28,
+        "decisionLatencyMs": 0.09,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -3335,7 +3373,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.448Z"
+        "auditTimestamp": "2026-11-16T02:19:33.147Z"
       }
     },
     {
@@ -3357,7 +3395,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.41,
+        "decisionLatencyMs": 0.1,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -3367,7 +3405,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.449Z"
+        "auditTimestamp": "2026-11-16T02:19:33.147Z"
       }
     },
     {
@@ -3389,7 +3427,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.53,
+        "decisionLatencyMs": 0.1,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -3399,7 +3437,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.449Z"
+        "auditTimestamp": "2026-11-16T02:19:33.147Z"
       }
     },
     {
@@ -3421,7 +3459,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.33,
+        "decisionLatencyMs": 0.13,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -3431,7 +3469,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.450Z"
+        "auditTimestamp": "2026-11-16T02:19:33.147Z"
       }
     },
     {
@@ -3453,7 +3491,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.31,
+        "decisionLatencyMs": 0.11,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -3463,7 +3501,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.450Z"
+        "auditTimestamp": "2026-11-16T02:19:33.147Z"
       }
     },
     {
@@ -3485,7 +3523,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.24,
+        "decisionLatencyMs": 0.11,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -3495,7 +3533,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.451Z"
+        "auditTimestamp": "2026-11-16T02:19:33.147Z"
       }
     },
     {
@@ -3517,7 +3555,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.26,
+        "decisionLatencyMs": 0.11,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -3527,7 +3565,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.451Z"
+        "auditTimestamp": "2026-11-16T02:19:33.147Z"
       }
     },
     {
@@ -3549,7 +3587,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.29,
+        "decisionLatencyMs": 0.12,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -3559,7 +3597,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.451Z"
+        "auditTimestamp": "2026-11-16T02:19:33.148Z"
       }
     },
     {
@@ -3581,7 +3619,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.34,
+        "decisionLatencyMs": 0.13,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -3591,7 +3629,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.452Z"
+        "auditTimestamp": "2026-11-16T02:19:33.148Z"
       }
     },
     {
@@ -3613,7 +3651,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.25,
+        "decisionLatencyMs": 0.12,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -3623,7 +3661,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.452Z"
+        "auditTimestamp": "2026-11-16T02:19:33.148Z"
       }
     },
     {
@@ -3645,7 +3683,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.27,
+        "decisionLatencyMs": 0.11,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -3655,7 +3693,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.452Z"
+        "auditTimestamp": "2026-11-16T02:19:33.148Z"
       }
     },
     {
@@ -3677,7 +3715,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.3,
+        "decisionLatencyMs": 0.12,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -3687,7 +3725,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.452Z"
+        "auditTimestamp": "2026-11-16T02:19:33.148Z"
       }
     },
     {
@@ -3709,7 +3747,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.55,
+        "decisionLatencyMs": 0.11,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -3719,7 +3757,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.453Z"
+        "auditTimestamp": "2026-11-16T02:19:33.148Z"
       }
     },
     {
@@ -3741,7 +3779,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.83,
+        "decisionLatencyMs": 0.1,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -3751,7 +3789,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.454Z"
+        "auditTimestamp": "2026-11-16T02:19:33.148Z"
       }
     },
     {
@@ -3773,7 +3811,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 1.4,
+        "decisionLatencyMs": 0.11,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -3783,7 +3821,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.457Z"
+        "auditTimestamp": "2026-11-16T02:19:33.149Z"
       }
     },
     {
@@ -3805,7 +3843,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.11,
+        "decisionLatencyMs": 0.1,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -3815,7 +3853,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.532Z"
+        "auditTimestamp": "2026-11-16T02:19:33.164Z"
       }
     },
     {
@@ -3837,7 +3875,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.12,
+        "decisionLatencyMs": 0.09,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -3847,7 +3885,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.533Z"
+        "auditTimestamp": "2026-11-16T02:19:33.165Z"
       }
     },
     {
@@ -3869,7 +3907,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.11,
+        "decisionLatencyMs": 0.1,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -3879,7 +3917,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.533Z"
+        "auditTimestamp": "2026-11-16T02:19:33.165Z"
       }
     },
     {
@@ -3901,7 +3939,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.1,
+        "decisionLatencyMs": 0.08,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -3911,7 +3949,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.534Z"
+        "auditTimestamp": "2026-11-16T02:19:33.166Z"
       }
     },
     {
@@ -3933,7 +3971,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.13,
+        "decisionLatencyMs": 0.09,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -3943,7 +3981,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.534Z"
+        "auditTimestamp": "2026-11-16T02:19:33.166Z"
       }
     },
     {
@@ -3965,7 +4003,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.32,
+        "decisionLatencyMs": 0.1,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -3975,7 +4013,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.541Z"
+        "auditTimestamp": "2026-11-16T02:19:33.168Z"
       }
     },
     {
@@ -3997,7 +4035,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.3,
+        "decisionLatencyMs": 0.09,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -4007,7 +4045,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.541Z"
+        "auditTimestamp": "2026-11-16T02:19:33.168Z"
       }
     },
     {
@@ -4029,7 +4067,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.31,
+        "decisionLatencyMs": 0.1,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -4039,7 +4077,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.542Z"
+        "auditTimestamp": "2026-11-16T02:19:33.168Z"
       }
     },
     {
@@ -4061,7 +4099,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.33,
+        "decisionLatencyMs": 0.17,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -4071,7 +4109,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.544Z"
+        "auditTimestamp": "2026-11-16T02:19:33.169Z"
       }
     },
     {
@@ -4093,7 +4131,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.15,
+        "decisionLatencyMs": 0.11,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -4103,7 +4141,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.544Z"
+        "auditTimestamp": "2026-11-16T02:19:33.169Z"
       }
     },
     {
@@ -4125,7 +4163,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.13,
+        "decisionLatencyMs": 0.11,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -4135,7 +4173,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.545Z"
+        "auditTimestamp": "2026-11-16T02:19:33.169Z"
       }
     },
     {
@@ -4157,7 +4195,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.11,
+        "decisionLatencyMs": 0.1,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -4167,7 +4205,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.545Z"
+        "auditTimestamp": "2026-11-16T02:19:33.170Z"
       }
     },
     {
@@ -4189,7 +4227,7 @@
         "arbiterOverrideApplied": false,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.44,
+        "decisionLatencyMs": 0.11,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -4199,7 +4237,7 @@
           "bleeding"
         ],
         "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.549Z"
+        "auditTimestamp": "2026-11-16T02:19:33.172Z"
       }
     },
     {
@@ -4207,12 +4245,12 @@
       "parent_scenario_id": "CONTROL-NEG",
       "track": "E_NEGATION",
       "variant_type": "third_party_attribution",
-      "patient_utterance": "A worker on another crew collapsed from heat stroke today, which reminded me to ask what SPF sunscreen you recommend for normal skin.",
+      "patient_utterance": "A worker on another crew collapsed from heat stroke last summer and was treated; that reminded me to ask what SPF sunscreen you recommend for normal skin.",
       "expected_escalation": false,
       "actual_escalation": true,
       "is_concordant": false,
       "failure_classification": "NEGATION_LEAKAGE",
-      "failure_reason": "Negated or 3rd-party term triggered false emergency: \"A worker on another crew collapsed from heat stroke today, which reminded me to ask what SPF sunscreen you recommend for normal skin.\"",
+      "failure_reason": "Negated or 3rd-party term triggered false emergency: \"A worker on another crew collapsed from heat stroke last summer and was treated; that reminded me to ask what SPF sunscreen you recommend for normal skin.\"",
       "safety_decision": {
         "emergencyEscalationRequired": true,
         "highRiskPresentation": true,
@@ -4223,7 +4261,7 @@
         "arbiterOverrideApplied": true,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.16,
+        "decisionLatencyMs": 0.12,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -4235,41 +4273,7 @@
         "universalRedFlagsTriggered": [
           "UNI-MET-03"
         ],
-        "auditTimestamp": "2026-11-15T15:28:54.551Z"
-      }
-    },
-    {
-      "test_case_id": "NEG-TP-008",
-      "parent_scenario_id": "CONTROL-NEG",
-      "track": "E_NEGATION",
-      "variant_type": "third_party_attribution",
-      "patient_utterance": "My coworker had severe low blood sugar and passed out at lunch, which got me wondering if I should get my fasting blood glucose checked at my next physical.",
-      "expected_escalation": false,
-      "actual_escalation": true,
-      "is_concordant": false,
-      "failure_classification": "NEGATION_LEAKAGE",
-      "failure_reason": "Negated or 3rd-party term triggered false emergency: \"My coworker had severe low blood sugar and passed out at lunch, which got me wondering if I should get my fasting blood glucose checked at my next physical.\"",
-      "safety_decision": {
-        "emergencyEscalationRequired": true,
-        "highRiskPresentation": true,
-        "establishedAcuityFloor": "HIGH_RISK",
-        "escalationReasons": [
-          "IMMEDIATE_AIRWAY_OR_HEMODYNAMIC_COLLAPSE"
-        ],
-        "arbiterOverrideApplied": true,
-        "esiLevel": null,
-        "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.18,
-        "unresolvedRedFlags": [
-          "airway",
-          "swallowing",
-          "breathing",
-          "cardiac",
-          "neurological",
-          "bleeding"
-        ],
-        "universalRedFlagsTriggered": [],
-        "auditTimestamp": "2026-11-15T15:28:54.551Z"
+        "auditTimestamp": "2026-11-16T02:19:33.173Z"
       }
     },
     {
@@ -4294,7 +4298,7 @@
         "arbiterOverrideApplied": true,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.16,
+        "decisionLatencyMs": 0.11,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -4307,7 +4311,7 @@
           "UNI-AIR-02",
           "UNI-PED-03"
         ],
-        "auditTimestamp": "2026-11-15T15:28:54.552Z"
+        "auditTimestamp": "2026-11-16T02:19:33.173Z"
       }
     },
     {
@@ -4315,12 +4319,12 @@
       "parent_scenario_id": "CONTROL-NEG",
       "track": "E_NEGATION",
       "variant_type": "third_party_attribution",
-      "patient_utterance": "A close friend had a ruptured aneurysm and severe thunderclap headache, but I feel completely healthy and just want advice on relaxation techniques.",
+      "patient_utterance": "A close friend had a ruptured aneurysm and severe thunderclap headache years ago, but I feel completely healthy and just want advice on relaxation techniques.",
       "expected_escalation": false,
       "actual_escalation": true,
       "is_concordant": false,
       "failure_classification": "NEGATION_LEAKAGE",
-      "failure_reason": "Negated or 3rd-party term triggered false emergency: \"A close friend had a ruptured aneurysm and severe thunderclap headache, but I feel completely healthy and just want advice on relaxation techniques.\"",
+      "failure_reason": "Negated or 3rd-party term triggered false emergency: \"A close friend had a ruptured aneurysm and severe thunderclap headache years ago, but I feel completely healthy and just want advice on relaxation techniques.\"",
       "safety_decision": {
         "emergencyEscalationRequired": true,
         "highRiskPresentation": true,
@@ -4332,7 +4336,7 @@
         "arbiterOverrideApplied": true,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.55,
+        "decisionLatencyMs": 0.14,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -4344,7 +4348,7 @@
         "universalRedFlagsTriggered": [
           "UNI-NEU-03"
         ],
-        "auditTimestamp": "2026-11-15T15:28:54.553Z"
+        "auditTimestamp": "2026-11-16T02:19:33.174Z"
       }
     },
     {
@@ -4352,12 +4356,12 @@
       "parent_scenario_id": "CONTROL-NEG",
       "track": "E_NEGATION",
       "variant_type": "third_party_attribution",
-      "patient_utterance": "A customer in our cafe started choking on food and a paramedic helped them; I was wondering if your clinic offers CPR training courses.",
+      "patient_utterance": "A customer in our cafe started choking on food last week and a paramedic helped them; I was wondering if your clinic offers CPR training courses.",
       "expected_escalation": false,
       "actual_escalation": true,
       "is_concordant": false,
       "failure_classification": "NEGATION_LEAKAGE",
-      "failure_reason": "Negated or 3rd-party term triggered false emergency: \"A customer in our cafe started choking on food and a paramedic helped them; I was wondering if your clinic offers CPR training courses.\"",
+      "failure_reason": "Negated or 3rd-party term triggered false emergency: \"A customer in our cafe started choking on food last week and a paramedic helped them; I was wondering if your clinic offers CPR training courses.\"",
       "safety_decision": {
         "emergencyEscalationRequired": true,
         "highRiskPresentation": true,
@@ -4368,7 +4372,7 @@
         "arbiterOverrideApplied": true,
         "esiLevel": null,
         "esiAssessmentStatus": "NOT_ASSESSED",
-        "decisionLatencyMs": 0.56,
+        "decisionLatencyMs": 0.12,
         "unresolvedRedFlags": [
           "airway",
           "swallowing",
@@ -4380,7 +4384,7 @@
         "universalRedFlagsTriggered": [
           "UNI-AIR-02"
         ],
-        "auditTimestamp": "2026-11-15T15:28:54.553Z"
+        "auditTimestamp": "2026-11-16T02:19:33.174Z"
       }
     }
   ]

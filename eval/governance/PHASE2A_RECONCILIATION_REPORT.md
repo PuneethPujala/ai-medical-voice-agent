@@ -66,19 +66,19 @@ This report establishes the complete reconciliation of Phase 2A, addressing all 
 
 ## 3. Comparative Benchmark Summary
 
-| Evaluation Dimension | Initial Exploratory (`e49bff0`) | Reconciled Phase 2A (Current) | Audit Status |
-|---|:---:|:---:|:---:|
-| **Total Test Cases** | 345 | 345 | ✅ Verified |
-| **Track A: Canonical Emergencies Recall** | 100.0% (29/29) | 100.0% (29/29) | ✅ Exact Match |
-| **Track B: Colloquial Paraphrases Recall** | 11.7% (17/145)* | **26.2% (38/145)** | ✅ Re-authored authentic |
-| **Track B Mean Cluster Sensitivity** | 26.4% (Math error)* | **26.2%** | ✅ Mathematically aligned |
-| **Track B Cluster 95% Bootstrap CI** | [21.3%, 32.2%]* | **[16.6%, 37.2%]** | ✅ Cluster-resampled ($B=2000$) |
-| **Between-Cluster Variance** | 0.0248 (Mislabeled)* | **0.0803** | ✅ Accurately measured |
-| **Track C: Non-Emergency Controls Specificity** | 100.0% (21/21) | 100.0% (21/21) | ✅ Perfect Specificity |
-| **Track D: Text-Level Perturbations Recall** | 98.0% (31 no-ops)* | **87.0% (87/100)** | ✅ 100% Active Perturbations |
-| **Track E: Negation Suite Specificity** | 100.0% (43 duplicates)* | **90.0% (45/50)** | ✅ 50 Unique scenarios |
-| **Layer 1 Failure Catalog Total** | 130 cataloged | **125 cataloged** | ✅ Fully categorized in JSON |
-| **Universal Red Flags Code Modifications** | 0 lines | **0 lines** | ✅ Frozen baseline preserved |
+| Evaluation Dimension | Initial Exploratory (`e49bff0`) | Reconciled Phase 2A (`b98668e`) | Phase 2A.1 Adjudicated (Current) | Audit Status |
+|---|:---:|:---:|:---:|:---:|
+| **Total Test Cases** | 345 | 345 | 345 | ✅ Verified |
+| **Track A: Canonical Emergencies Recall** | 100.0% (29/29) | 100.0% (29/29) | **100.0% (29/29)** | ✅ Frozen baseline verified |
+| **Track B: Colloquial Paraphrases Recall** | 11.7% (17/145)* | 26.2% (38/145) | **25.5% (37/145)** | ✅ PE drift fixed (`PILOT-RESP-017`) |
+| **Track B Mean Cluster Sensitivity** | 26.4% (Math error)* | 26.2% | **25.5%** | ✅ Mathematically aligned |
+| **Track B Cluster 95% Bootstrap CI** | [21.3%, 32.2%]* | [16.6%, 37.2%] | **[15.9%, 36.6%]** | ✅ Cluster-resampled ($B=2000$) |
+| **Between-Cluster Variance** | 0.0248 (Mislabeled)* | 0.0803 | **0.0826** | ✅ Accurately measured |
+| **Track C: Non-Emergency Controls Specificity** | 100.0% (21/21) | 100.0% (21/21) | **100.0% (21/21)** | ✅ Perfect Specificity |
+| **Track D: Synthetic Text Perturbations Recall** | 98.0% (31 no-ops)* | 87.0% (87/100) | **87.0% (87/100)** | ✅ 100% Active Perturbations |
+| **Track E: Negation Suite Specificity** | 100.0% (43 duplicates)* | 90.0% (45/50) | **92.0% (46/50)** | ✅ Ambiguities resolved |
+| **Layer 1 Failure Catalog Total** | 130 cataloged | 125 cataloged | **125 cataloged** | ✅ Categorized in failure ledger |
+| **Universal Red Flags Code Modifications** | 0 lines | 0 lines | **0 lines** | ✅ Frozen engine hash verified |
 
 *\* Denotes metrics affected by mathematical conflation or unvalidated templates in commit e49bff0.*
 
@@ -89,21 +89,42 @@ This report establishes the complete reconciliation of Phase 2A, addressing all 
 The 125 documented failures in [`eval/results/robustness_failure_ledger.json`](file:///c:/dev/Capstone/eval/results/robustness_failure_ledger.json) are classified into three distinct failure modes:
 
 ```mermaid
-pie title Phase 2A Cataloged Failure Distribution (N=125)
-    "L1 Detection Gap (Colloquial)" : 107
+pie title Phase 2A.1 Cataloged Failure Distribution (N=125)
+    "L1 Detection Gap (Colloquial)" : 108
     "Phonetic Corruption Miss" : 13
-    "Negation Leakage (False Alarm)" : 5
+    "Negation Leakage (False Alarm)" : 4
 ```
 
-1. **`L1_DETECTION_GAP` (107 cases)**:
+1. **`L1_DETECTION_GAP` (108 cases)**:
    - Root Cause: Layer 1 keyword regexes require exact lemmas (e.g., *"crushing chest pain"*). When patients describe the same physiology via metaphors (*"an elephant is sitting on my chest"*, *"lungs feel locked in a cage"*, *"stool looked like black axle grease"*), Layer 1 fails to trigger.
    - Clinical Implication: Confirms the architectural necessity of a semantic concept-detection layer (Layer 2 LLM/Biomedical NER).
 2. **`PHONETIC_CORRUPTION_MISS` (13 cases)**:
    - Root Cause: STT transcription errors and typos (*"coff"*, *"blud"*, *"womit"*, *"dizy"*) break strict string matching.
    - Clinical Implication: Confirms that pre-hospital voice agents cannot rely on un-normalized ASR transcripts without phonetic tolerance or embedding-based retrieval.
-3. **`NEGATION_LEAKAGE` (5 cases)**:
+3. **`NEGATION_LEAKAGE` (4 cases)**:
    - Root Cause: Fired red-flag rules on explicit denials or third-party context (*"My sister is having severe shortness of breath..."* or *"I have no difficulty breathing..."*).
    - Clinical Implication: Confirms the requirement for syntactic dependency parsing or clinical negation filters (NegEx) before applying safety floors.
+
+---
+
+## 5. Phase 2A.1 Ground-Truth Adjudication & Evaluation Integrity Upgrades
+
+1. **Correction of `PILOT-RESP-017` Pulmonary Embolism Paraphrases**:
+   - Replaced acute aortic dissection descriptions with authentic pleuritic chest pain, dyspnea, hemoptysis, and DVT presentations.
+   - Added structured `clinical_equivalence_review` metadata to all Track B candidates.
+2. **3-Dimensional Structuring of Track E (Negation Suite)**:
+   - Disentangled third-party active emergencies (`NEG-TP-006`, `NEG-TP-008`) from non-emergency controls by establishing clear historical/resolved context.
+   - Formalized 3 explicit dimensions: `attribution` (self/third_party), `temporal_status` (current/historical/resolved), and `emergency_status` (negative).
+3. **Engine Source SHA-256 Pinning**:
+   - Machine-verifies `universal-red-flags.ts` (`82e4a746c...`) and `safety-arbiter.ts` (`89967d01f...`) at test runtime.
+4. **Dynamic Clinical Confidence Intervals**:
+   - Replaced hardcoded string intervals in `scripts/run-clinical-eval.ts` with dynamic Wilson score ($[85.1\%, 100.0\%]$) and Clopper-Pearson exact ($[84.6\%, 100.0\%]$) calculations for 22/22 emergency recall.
+   - Adjudicated the 34/35 case (`ABD-001`): conservative over-triage of peritoneal signs to ESI 2 preserving zero-under-triage safety.
+5. **Acoustic Framework Laterality Integrity**:
+   - Implemented bilateral laterality verification in `evaluateClinicalTranscriptionIntegrity()`.
+6. **Automated Unit Testing & Package Script**:
+   - Added `tests/eval/cluster-statistics.test.ts` (4/4 passing).
+   - Registered `npm run eval:robustness` and `npm run test:cluster-stats`.
 
 ---
 
