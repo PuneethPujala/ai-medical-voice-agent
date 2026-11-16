@@ -100,4 +100,44 @@ test('Phase 2B Multi-Layer Architecture & Safety Invariant Contracts', async (t)
     // Reconciled facts should exist, but patient's personal verified profile must NOT be contaminated
     assert.equal(recon.profileUpdatesProposed.newUnverifiedConditions.length, 0);
   });
+
+  await t.test('5. Non-Downgrade Invariant: Post-Arbiter strictly forbids emergency downgrade under adverse consensus', () => {
+    // When a patient has pre-safety emergency flags, any post-arbiter deliberation MUST retain emergency evaluation
+    const emergencyCase: PatientCase = {
+      patient_id: 'CONTRACT-TEST-EMERGENCY',
+      patient_name: 'Emergency Patient',
+      transcript: 'Sudden severe dyspnea and cyanosis',
+      conversation_history: [],
+      demographics: { age: 62, age_group: 'adult' },
+      detected_symptoms: ['dyspnea', 'cyanosis'],
+      vitals: {},
+      speech_features: {} as any,
+      pre_safety_flags: ['UNI-AIR-01'],
+      immediate_danger_detected: true,
+      provenance_evidence: [],
+    };
+
+    const hostileRoutineConsensus: ClinicalConsensus = {
+      differential: [],
+      conflicts: [],
+      recommended_disposition: 'routine_outpatient',
+      consensus_risk: 'routine',
+      primary_specialty: 'general',
+      key_findings: [],
+      synthesized_reply_narrative: 'Patient is stable, advise routine outpatient check.',
+      orchestrator_summary: 'Routine advice',
+      requires_immediate_escalation: false,
+      active_specialists: ['general'],
+      deliberation_rounds_completed: 1,
+      deliberation_messages: [],
+    };
+
+    const postArbiterDecision = evaluatePostArbiter(emergencyCase, hostileRoutineConsensus);
+
+    // Invariant assertions:
+    assert.equal(postArbiterDecision.final_disposition, 'emergency_evaluation');
+    assert.equal(postArbiterDecision.final_triage_level, 'emergency');
+    assert.equal(postArbiterDecision.arbiter_override_applied, true);
+    assert.notEqual(postArbiterDecision.final_disposition, 'routine_outpatient');
+  });
 });

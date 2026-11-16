@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import {
   evaluateClinicalTranscriptionIntegrity,
   computeWordErrorRate,
+  computeCharacterErrorRate,
+  normalizeAcousticTranscript,
 } from '../../eval/src/robustness/harness/acoustic-evaluation-framework';
 
 test('Acoustic & Transcription Clinical Integrity Battery', async (t) => {
@@ -142,5 +144,50 @@ test('Acoustic & Transcription Clinical Integrity Battery', async (t) => {
     // Empty strings
     assert.equal(computeWordErrorRate('', ''), 0);
     assert.equal(computeWordErrorRate('one', ''), 1);
+  });
+
+  await t.test('12. Character Error Rate (CER) calculation correctness', () => {
+    assert.equal(computeCharacterErrorRate('cough', 'cough'), 0);
+    // 1 substitution ('c' -> 't') out of 5 chars = 0.2
+    assert.equal(computeCharacterErrorRate('cough', 'tough'), 0.2);
+    // 1 insertion ('s') out of 5 chars = 0.2
+    assert.equal(computeCharacterErrorRate('cough', 'coughs'), 0.2);
+    // 1 deletion ('h') out of 5 chars = 0.2
+    assert.equal(computeCharacterErrorRate('cough', 'coug'), 0.2);
+    // Empty string edge cases
+    assert.equal(computeCharacterErrorRate('', ''), 0);
+    assert.equal(computeCharacterErrorRate('a', ''), 1);
+  });
+
+  await t.test('13. Polarity inversion: Positive symptom negated in transcription', () => {
+    const res = evaluateClinicalTranscriptionIntegrity(
+      'The patient has severe chest pain and diaphoresis.',
+      'The patient denies severe chest pain and diaphoresis.',
+      ['chest pain'],
+      []
+    );
+    assert.equal(res.polarityInverted, true);
+    assert.equal(res.symptomOmitted, false);
+  });
+
+  await t.test('14. Negation equivalent rephrasing: Semantic polarity preserved (No negation lost)', () => {
+    const res = evaluateClinicalTranscriptionIntegrity(
+      'Patient reports no chest pain and no fever.',
+      'Patient reports denies chest pain and without fever.',
+      [],
+      ['no chest pain']
+    );
+    assert.equal(res.negationLost, false);
+  });
+
+  await t.test('15. Site-specific laterality swap detection', () => {
+    const res = evaluateClinicalTranscriptionIntegrity(
+      'Patient reports weakness in left arm and numbness in right leg.',
+      'Patient reports weakness in right arm and numbness in right leg.',
+      ['weakness', 'numbness'],
+      []
+    );
+    assert.equal(res.lateralityInverted, true);
+    assert.ok(res.siteSpecificLateralityErrors && res.siteSpecificLateralityErrors.length > 0);
   });
 });

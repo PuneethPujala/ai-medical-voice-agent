@@ -5,10 +5,12 @@ export type Phase2bAblationConfigId =
   | 'C1_L1_BASELINE'
   | 'C2_EVIDENCE_EXTRACTOR'
   | 'C3_CLINICAL_BOARD'
-  | 'C4_PRODUCTION_RUNTIME';
+  | 'C4_PRODUCTION_RUNTIME'
+  | 'C4A_FIXTURE_ASSISTED_ORACLE';
 
 export interface StageExecutionResult {
   config_id: Phase2bAblationConfigId;
+  config_label?: string;
   escalated: boolean;
   triage_level: string;
   disposition: string;
@@ -105,6 +107,19 @@ export interface Phase2bAblationLedger {
     total_adversarial_simulations: number;
     c3_post_arbiter_overrides: number;
     c4_post_arbiter_overrides: number;
+    forced_downplay_recovery: {
+      total_simulations: number;
+      c3_recovery_count: number;
+      c3_recovery_rate: number;
+      c4_recovery_count: number;
+      c4_recovery_rate: number;
+    };
+    non_downgrade_invariant: {
+      total_emergency_cases_checked: number;
+      c3_invariant_violations: number;
+      c4_invariant_violations: number;
+      invariant_strictly_maintained: boolean;
+    };
     invariant_maintained: boolean;
   };
   latency_profiles: {

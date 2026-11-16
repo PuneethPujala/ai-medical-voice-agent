@@ -174,6 +174,9 @@ export async function runPhase2bAblationSuite(): Promise<Phase2bAblationLedger> 
   let adverseDownplayCount = 0;
   let c3AdverseOverrides = 0;
   let c4AdverseOverrides = 0;
+  let totalEmergencyPreemptionsChecked = 0;
+  let c3InvariantViolations = 0;
+  let c4InvariantViolations = 0;
 
   for (const tc of allCases) {
     const isExpectedEmergency = tc.expected_emergency_escalation;
@@ -352,8 +355,14 @@ export async function runPhase2bAblationSuite(): Promise<Phase2bAblationLedger> 
 
     const c4BoardResult = await clinicalBoard.evaluate(c4PatientCase);
 
-    // Adversarial simulation for C4
-    const c4ForcedPostArbiter = evaluatePostArbiter(c4PatientCase, adverseConsensus);
+    // Adversarial simulation for C4: Construct forced routine consensus from C4's own board deliberation
+    const c4AdverseConsensus: ClinicalConsensus = {
+      ...c4BoardResult.consensus,
+      recommended_disposition: 'routine_outpatient',
+      consensus_risk: 'routine',
+      requires_immediate_escalation: false,
+    };
+    const c4ForcedPostArbiter = evaluatePostArbiter(c4PatientCase, c4AdverseConsensus);
     const t1C4 = performance.now();
     const c4Latency = t1C4 - t0C4;
     c4Latencies.push(c4Latency);
@@ -362,12 +371,32 @@ export async function runPhase2bAblationSuite(): Promise<Phase2bAblationLedger> 
       c4AdverseOverrides++;
     }
 
+    // Non-downgrade invariant check:
+    // If Layer 1 deterministic arbiter flagged emergency preemption, neither C3 nor C4 post-arbiter
+    // can ever downgrade the final disposition to routine outpatient, even under forced adverse consensus.
+    if (c1Escalated) {
+      totalEmergencyPreemptionsChecked++;
+      if (
+        c3BoardResult.post_arbiter.final_disposition !== 'emergency_evaluation' ||
+        c3ForcedPostArbiter.final_disposition !== 'emergency_evaluation'
+      ) {
+        c3InvariantViolations++;
+      }
+      if (
+        c4BoardResult.post_arbiter.final_disposition !== 'emergency_evaluation' ||
+        c4ForcedPostArbiter.final_disposition !== 'emergency_evaluation'
+      ) {
+        c4InvariantViolations++;
+      }
+    }
+
     const c4Escalated =
       c4BoardResult.post_arbiter.final_disposition === 'emergency_evaluation' ||
       c4BoardResult.post_arbiter.final_triage_level === 'emergency';
 
     const c4Stage: StageExecutionResult = {
       config_id: 'C4_PRODUCTION_RUNTIME',
+      config_label: 'C4a: Fixture-Assisted Semantic Fact Injection + Reconciliation + Deterministic Clinical Board',
       escalated: c4Escalated,
       triage_level: c4BoardResult.post_arbiter.final_triage_level,
       disposition: c4BoardResult.post_arbiter.final_disposition,
@@ -378,6 +407,7 @@ export async function runPhase2bAblationSuite(): Promise<Phase2bAblationLedger> 
       metadata: {
         candidate_facts_count: candidateFacts.length,
         accepted_facts_count: recon.acceptedFacts.length,
+        oracle_fixture_assisted: true,
       },
     };
 
@@ -495,7 +525,20 @@ export async function runPhase2bAblationSuite(): Promise<Phase2bAblationLedger> 
       total_adversarial_simulations: adverseDownplayCount,
       c3_post_arbiter_overrides: c3AdverseOverrides,
       c4_post_arbiter_overrides: c4AdverseOverrides,
-      invariant_maintained: c3AdverseOverrides > 0 && c4AdverseOverrides > 0,
+      forced_downplay_recovery: {
+        total_simulations: adverseDownplayCount,
+        c3_recovery_count: c3AdverseOverrides,
+        c3_recovery_rate: Number(((c3AdverseOverrides / adverseDownplayCount) * 100).toFixed(1)),
+        c4_recovery_count: c4AdverseOverrides,
+        c4_recovery_rate: Number(((c4AdverseOverrides / adverseDownplayCount) * 100).toFixed(1)),
+      },
+      non_downgrade_invariant: {
+        total_emergency_cases_checked: totalEmergencyPreemptionsChecked,
+        c3_invariant_violations: c3InvariantViolations,
+        c4_invariant_violations: c4InvariantViolations,
+        invariant_strictly_maintained: c3InvariantViolations === 0 && c4InvariantViolations === 0,
+      },
+      invariant_maintained: c3InvariantViolations === 0 && c4InvariantViolations === 0,
     },
     latency_profiles: {
       c1_l1_baseline: calculateLatencyMetric(c1Latencies),
@@ -522,13 +565,13 @@ export async function runPhase2bAblationSuite(): Promise<Phase2bAblationLedger> 
     `  C3: +Board/Post| ${trackA.c3_rate}% (${trackA.c3_escalated}/29)  | ${trackB.c3_rate}% (${trackB.c3_escalated}/145) | ${trackC.c3_rate}% (${trackC.c3_escalated}/21)  | ${trackE.c3_rate}% (${trackE.c3_escalated}/50)  | ${ledger.latency_profiles.c3_clinical_board.p50_ms} ms`
   );
   console.log(
-    `  C4: +Prod Flow| ${trackA.c4_rate}% (${trackA.c4_escalated}/29)  | ${trackB.c4_rate}% (${trackB.c4_escalated}/145) | ${trackC.c4_rate}% (${trackC.c4_escalated}/21)  | ${trackE.c4_rate}% (${trackE.c4_escalated}/50)  | ${ledger.latency_profiles.c4_production_runtime.p50_ms} ms`
+    `  C4a: +Fixture | ${trackA.c4_rate}% (${trackA.c4_escalated}/29)  | ${trackB.c4_rate}% (${trackB.c4_escalated}/145) | ${trackC.c4_rate}% (${trackC.c4_escalated}/21)  | ${trackE.c4_rate}% (${trackE.c4_escalated}/50)  | ${ledger.latency_profiles.c4_production_runtime.p50_ms} ms`
   );
   console.log('--------------------------------------------------------------------------------');
   console.log('  RESCUE OF TRACK B BASELINE MISSES (108 Colloquial Failures):');
   console.log(`    • C2 Evidence Extractor Rescued: ${rescuedC2} / ${totalBBaselineMisses} (${ledger.rescue_analysis.rescued_by_c2_rate}%)`);
   console.log(`    • C3 Clinical Board Rescued     : ${rescuedC3} / ${totalBBaselineMisses} (${ledger.rescue_analysis.rescued_by_c3_rate}%)`);
-  console.log(`    • C4 Production Runtime Rescued : ${rescuedC4} / ${totalBBaselineMisses} (${ledger.rescue_analysis.rescued_by_c4_rate}%)`);
+  console.log(`    • C4a Fixture-Assisted Rescued  : ${rescuedC4} / ${totalBBaselineMisses} (${ledger.rescue_analysis.rescued_by_c4_rate}%) [Oracle/Upper Bound]`);
   console.log('--------------------------------------------------------------------------------');
   console.log('  FALSE ESCALATION SAFETY AUDIT:');
   console.log(
@@ -538,12 +581,21 @@ export async function runPhase2bAblationSuite(): Promise<Phase2bAblationLedger> 
     `    • Track E Negation False Alarms : C1=${ledger.false_escalation_analysis.track_e_negation.c1_false_alarms}, C2=${ledger.false_escalation_analysis.track_e_negation.c2_false_alarms}, C3=${ledger.false_escalation_analysis.track_e_negation.c3_false_alarms}, C4=${ledger.false_escalation_analysis.track_e_negation.c4_false_alarms}`
   );
   console.log('--------------------------------------------------------------------------------');
-  console.log('  ADVERSE DOWNPLAY INVARIANT AUDIT:');
+  console.log('  ADVERSE DOWNPLAY RECOVERY & NON-DOWNGRADE INVARIANT AUDIT:');
   console.log(
-    `    • Forced Downplay Neutralized in C3 Post-Arbiter: ${c3AdverseOverrides} / ${adverseDownplayCount} (${((c3AdverseOverrides / adverseDownplayCount) * 100).toFixed(1)}%)`
+    `    • Forced Downplay Recovery in C3 Post-Arbiter: ${c3AdverseOverrides} / ${adverseDownplayCount} (${((c3AdverseOverrides / adverseDownplayCount) * 100).toFixed(1)}%)`
   );
   console.log(
-    `    • Forced Downplay Neutralized in C4 Post-Arbiter: ${c4AdverseOverrides} / ${adverseDownplayCount} (${((c4AdverseOverrides / adverseDownplayCount) * 100).toFixed(1)}%)`
+    `    • Forced Downplay Recovery in C4 Post-Arbiter: ${c4AdverseOverrides} / ${adverseDownplayCount} (${((c4AdverseOverrides / adverseDownplayCount) * 100).toFixed(1)}%)`
+  );
+  console.log(
+    `    • Preemption Non-Downgrade Invariant Checked : ${totalEmergencyPreemptionsChecked} preemption cases`
+  );
+  console.log(
+    `    • C3 Invariant Violations (Emergency -> Routine): ${c3InvariantViolations} (Strictly Maintained: ${c3InvariantViolations === 0 ? 'YES' : 'NO'})`
+  );
+  console.log(
+    `    • C4 Invariant Violations (Emergency -> Routine): ${c4InvariantViolations} (Strictly Maintained: ${c4InvariantViolations === 0 ? 'YES' : 'NO'})`
   );
   console.log('================================================================================\n');
 

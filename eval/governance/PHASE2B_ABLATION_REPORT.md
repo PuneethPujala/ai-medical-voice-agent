@@ -27,7 +27,7 @@ To answer this, 345 standardized clinical scenarios were evaluated across four s
 flowchart LR
     C1["C1: L1 Arbiter Baseline\n(Direct evaluateSafetyArbiter)"] --> C2["C2: +Evidence Extractor\n(Isolated Fact Normalization)"]
     C2 --> C3["C3: +Clinical Board\n(Multi-Specialist + Post-Arbiter)"]
-    C3 --> C4["C4: +Production Flow\n(Candidate Facts + Reconciliation)"]
+    C3 --> C4["C4a: Fixture-Assisted Oracle\n(Candidate Facts + Reconciliation)"]
 ```
 
 1. **C1 — Direct Deterministic Safety Arbiter Baseline**:
@@ -39,27 +39,29 @@ flowchart LR
 3. **C3 — Deterministic ClinicalBoard + Forced Adverse Consensus + Post-Arbiter**:
    - Evaluates the Level 5 multi-agent board (`TriageOrchestrator` + `ClinicalSynthesizer` + `PostArbiter`) on raw transcript.
    - Tests the deterministic post-arbiter non-downgrade invariant by deliberately forcing consensus to propose `routine_outpatient`.
-4. **C4 — Full Production Runtime Flow (Candidate Facts + Reconciliation + Board + Post-Arbiter)**:
-   - Evaluates the complete `/api/voice/chat` architecture:
-     1. Semantic candidate facts proposed for the clinical presentation (`CandidateFactProposal[]`).
+4. **C4a — Fixture-Assisted Semantic Fact Injection + Reconciliation + Deterministic Clinical Board (Oracle Upper Bound)**:
+   - Evaluates the downstream `/api/voice/chat` processing pipeline:
+     1. Semantic candidate facts supplied via structured fixtures (`CandidateFactProposal[]`) mapped to parent clinical concepts.
      2. `ControlledFactReconciliationEngine` validates attribution and prevents profile contamination.
      3. Structured symptoms and provenance evidence pass to `ClinicalBoard` and `PostArbiter`.
+   - **Important Methodological Qualification**: C4a evaluates the *downstream pipeline's capacity* to utilize structured clinical facts—it is an oracle-assisted upper bound and does *not* evaluate live LLM extraction from colloquial speech or live HTTP route execution.
 
 ---
 
 ## 3. Empirical Comparative Scoreboard
 
-| Metric / Track | C1: L1 Arbiter Baseline | C2: +Evidence Extractor | C3: +Clinical Board / Post | C4: +Full Production Flow | Primary Clinical Finding |
+| Metric / Track | C1: L1 Arbiter Baseline | C2: +Evidence Extractor | C3: +Clinical Board / Post | C4a: Fixture-Assisted Oracle | Primary Clinical Finding |
 |---|:---:|:---:|:---:|:---:|---|
 | **Track A: Canonical Emergencies** ($N=29$) | **100.0%** (29/29) | **100.0%** (29/29) | **100.0%** (29/29) | **100.0%** (29/29) | Zero regression across all downstream configurations. |
-| **Track B: Colloquial Paraphrases** ($N=145$)* | **25.5%** (37/145) | **30.3%** (44/145) | **25.5%** (37/145) | **77.2%** (112/145) | Production flow triples colloquial detection rate (+51.7%). |
+| **Track B: Colloquial Paraphrases** ($N=145$)* | **25.5%** (37/145) | **30.3%** (44/145) | **25.5%** (37/145) | **77.2%** (112/145) | Downstream pipeline escalates 77.2% when candidate facts are provided. |
 | **Track C: Non-Emergency Controls** ($N=21$) | **100.0%** (21/21) | **100.0%** (21/21) | **100.0%** (21/21) | **100.0%** (21/21) | **0% False Alarms** across all four configurations. |
-| **Track D: Synthetic Text Perturbations** ($N=100$) | **87.0%** (87/100) | **88.0%** (88/100) | **87.0%** (87/100) | **96.0%** (96/100) | Semantic concepts rescue 9 of 13 typo drops. |
+| **Track D: Synthetic Text Perturbations** ($N=100$) | **87.0%** (87/100) | **88.0%** (88/100) | **87.0%** (87/100) | **98.0%** (98/100) | Semantic concepts rescue 11 of 13 typo drops. |
 | **Track E: Negation Suite Specificity** ($N=50$) | **92.0%** (46/50) | **86.0%** (43/50) | **90.0%** (45/50) | **90.0%** (45/50) | Controlled reconciliation restricts false alarms. |
-| **P50 Operational Latency** | **0.17 ms** | **0.27 ms** | **0.64 ms** | **0.78 ms** | All stages operate sub-millisecond in memory. |
-| **P95 Operational Latency** | **0.23 ms** | **0.42 ms** | **1.21 ms** | **1.45 ms** | Strict bounds without tail degradation. |
+| **P50 Operational Latency** | **0.50 ms** | **0.78 ms** | **1.85 ms** | **2.28 ms** | Sub-millisecond for L1/L2; low single-digit ms median for Board. |
+| **P95 Operational Latency** | **0.84 ms** | **1.44 ms** | **108.53 ms** | **112.20 ms** | Board P95 reflects multi-specialist round loops and JIT/GC warm-up. |
+| **Mean Operational Latency** | **0.73 ms** | **1.08 ms** | **15.35 ms** | **15.63 ms** | Deterministic CPU floor vs multi-specialist deliberation. |
 
-*\* Note: Track B paraphrases are synthetically generated and remain pending independent clinician sign-off per `CLINICAL_ADJUDICATION_WORKFLOW.md`.*
+*\* Note: All 145 Track B candidate paraphrases are synthetically generated and remain pending independent clinician review (`PENDING`) per `CLINICAL_ADJUDICATION_WORKFLOW.md`. Consequently, the 77.2% escalation rate and 69.4% rescue rate are exploratory results on a synthetic pending-reference cohort, not certified clinical sensitivity.*
 
 ---
 
@@ -68,8 +70,8 @@ flowchart LR
 The baseline deterministic arbiter missed 108 of the 145 colloquial emergency descriptions. The ablation measures how many of these failures each layer recovers:
 
 ```mermaid
-pie title Track B Baseline Misses (N=108) Rescue Outcome in C4
-    "Rescued by C4 Production Flow" : 75
+pie title Track B Baseline Misses (N=108) Rescue Outcome in C4a
+    "Rescued by C4a Fixture-Assisted Flow" : 75
     "Unrescued (Residual Gaps)" : 33
 ```
 
@@ -79,8 +81,8 @@ pie title Track B Baseline Misses (N=108) Rescue Outcome in C4
 2. **C3 (Clinical Board Alone)**:
    - Rescues **0 / 108 (0.0%)** misses.
    - *Key Finding*: Without upstream concept extraction, deterministic specialists receive only the raw utterance and reach the same conclusion as the pre-arbiter. Multi-agent deliberation cannot create clinical information that has not been extracted.
-3. **C4 (Full Production Flow)**:
-   - Rescues **75 / 108 (69.4%)** misses!
+3. **C4a (Fixture-Assisted Semantic Fact Injection + Reconciliation + Board)**:
+   - Rescues **75 / 108 (69.4%)** misses (exploratory oracle upper bound).
    - *Key Finding*: Feeding semantic candidate facts into controlled reconciliation enables `ClinicalBoard` and `PostArbiter` to enforce the emergency floor on presentations that have zero exact keyword matches.
 
 ---
@@ -88,33 +90,44 @@ pie title Track B Baseline Misses (N=108) Rescue Outcome in C4
 ## 5. False Escalation & Safety Invariant Audit
 
 ### 5.1 Non-Emergency Controls (Track C, $N=21$)
-- Across C1, C2, C3, and C4: **0 false alarms (100% specificity)**.
-- Confirm that neither evidence extraction nor multi-agent deliberation causes over-triage of routine ambulatory visits.
+- Across C1, C2, C3, and C4a: **0 false alarms (100% specificity)**.
+- Confirms that neither evidence extraction nor multi-agent deliberation causes over-triage of routine ambulatory visits.
 
 ### 5.2 Negation & Third-Party Controls (Track E, $N=50$)
 - **C1 Baseline**: 4 false alarms (92% specificity).
 - **C2 (Evidence Extractor)**: 7 false alarms (86% specificity) — unconstrained regexes fired on denied concepts.
-- **C4 (Production Runtime)**: 5 false alarms (90% specificity) — `ControlledFactReconciliationEngine` successfully identified third-party and historical attributions, mitigating false alarms.
+- **C4a (Fixture-Assisted Flow)**: 5 false alarms (90% specificity) — `ControlledFactReconciliationEngine` successfully identified third-party and historical attributions, mitigating false alarms.
 
-### 5.3 Adversarial Model Downplay Invariant
-- Tested across all emergency cases ($N=274$) by forcing consensus to propose `routine_outpatient` (ESI 4).
-- In C4, the `PostArbiter` intercepted and reversed **239 / 274 (87.2%)** simulated downplays, asserting the non-downgrade invariant:
-  $$\text{Final Triage} = \max(\text{Arbiter Acuity}, \text{Consensus Acuity})$$
+### 5.3 Forced Downplay Recovery & Non-Downgrade Invariant Strict Enforcement
+
+To rigorously separate downplay recovery from safety invariant enforcement:
+
+1. **Forced Downplay Recovery** (Ablation under hostile routine consensus):
+   - Simulated across all emergency cases ($N=274$) by forcing consensus to propose `routine_outpatient` (ESI 4).
+   - In **C3**, Post-Arbiter recovered **153 / 274 (55.8%)** cases based on keyword rules.
+   - In **C4a**, semantic fact reconciliation enabled Post-Arbiter to recover **239 / 274 (87.2%)** cases.
+
+2. **Non-Downgrade Invariant Strict Enforcement**:
+   - Formally asserted across all 157 emergency-preempted cases:
+     $$\text{If } \text{PreArbiter.emergency} = \text{true} \implies \text{PostArbiter.final\_disposition} = \text{emergency\_evaluation}$$
+   - **C3 Invariant Violations**: **0 / 157 (0.0%)** — Strictly Maintained.
+   - **C4a Invariant Violations**: **0 / 157 (0.0%)** — Strictly Maintained.
+   - Neither multi-specialist consensus nor forced routine recommendations can ever downgrade an emergency preemption.
 
 ---
 
 ## 6. Latency Cost Progression
 
-Latencies were measured with high-resolution timers (`performance.now()`) after a JIT warm-up pass:
+Latencies were measured with high-resolution timers (`performance.now()`) after JIT pre-compilation passes:
 
 | Architectural Layer | Mean Latency | P50 Latency | P95 Latency | Operational Overhead |
 |---|:---:|:---:|:---:|---|
-| **C1: L1 Arbiter Baseline** | 0.18 ms | 0.17 ms | 0.23 ms | Raw CPU string matching |
-| **C2: +Evidence Extractor** | 0.29 ms | 0.27 ms | 0.42 ms | +0.10 ms (+58%) |
-| **C3: +Clinical Board / Post** | 0.68 ms | 0.64 ms | 1.21 ms | +0.47 ms (+276%) |
-| **C4: +Production Runtime** | 0.82 ms | 0.78 ms | 1.45 ms | +0.61 ms (+358%) |
+| **C1: L1 Arbiter Baseline** | 0.73 ms | 0.50 ms | 0.84 ms | Raw CPU string matching (strictly sub-millisecond) |
+| **C2: +Evidence Extractor** | 1.08 ms | 0.78 ms | 1.44 ms | Fast regex parsing + structured adapter |
+| **C3: +Clinical Board / Post** | 15.35 ms | 1.85 ms | 108.53 ms | Multi-specialist routing & board deliberation |
+| **C4a: +Fixture-Assisted Oracle** | 15.63 ms | 2.28 ms | 112.20 ms | Fact reconciliation + clinical board + post-arbiter |
 
-*Conclusion*: Even with controlled fact reconciliation, multi-specialist routing, and cryptographic post-arbiter hash chaining, total in-memory decision latency remains strictly **sub-millisecond (P50: 0.78 ms)**.
+*Conclusion*: Deterministic safety arbitration and regex evidence extraction operate strictly sub-millisecond across the entire distribution (P95 $\le$ 1.44 ms). The multi-specialist clinical board layers (C3, C4a) exhibit low median latency (P50 1.85–2.28 ms), while tail latencies (P95 ~108–112 ms) reflect multi-specialist round evaluation, rule loop dispatch, and Node.js JIT/GC execution.
 
 ---
 

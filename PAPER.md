@@ -40,7 +40,7 @@ The complete, publication-grade academic research paper and technical architectu
   - 9.4 Expanded Pilot Cohort Safety & Semantic Calibration ($N=50$, $t=4.084$, $p < 0.001$)
   - 9.5 End-to-End Voice Pipeline Latency Waterfall (~1.15s TTFT)
   - 9.6 Deterministic Arbiter Adversarial & Colloquial Robustness ($N=345$, 125 Cataloged Failures)
-  - 9.7 Multi-Layer Clinical Safety Ablation & Rescue Evaluation (Phase 2B: 69.4% Miss Rescue, 87.2% Downplay Neutralization)
+  - 9.7 Multi-Layer Clinical Safety Ablation & Rescue Evaluation (Phase 2B: C1–C4a Ablation, 69.4% Oracle Rescue Upper Bound, 0 Invariant Violations)
 - **10. Threats to Validity & Limitations**
 - **11. Audit Concordance: Code Reality vs. Claims (All 20 Audited Criteria)**
 - **12. Regulatory & Clinical Boundary Disclaimers (Non-Autonomous Diagnosis)**
