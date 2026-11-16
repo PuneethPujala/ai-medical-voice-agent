@@ -114,6 +114,10 @@ jobs:
           npx tsx scripts/test-safety-arbiter-decision.ts
           npx tsx scripts/test-clinical-safety-integration.ts
           npm run test:clinical
+          npm run test:cluster-stats
+          npx tsx tests/eval/acoustic-framework.test.ts
+          npx tsx tests/eval/clinical-eval-ci.test.ts
+          npm run eval:robustness
           npx tsx tests/eval/pilot-scenarios-schema.test.ts
           npm run demo:preemption
 

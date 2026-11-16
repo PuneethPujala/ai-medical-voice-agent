@@ -3,7 +3,7 @@
 **Milestone Classification**: `Phase 2A — Deterministic Arbiter Robustness Exploration (Exploratory Results, Reconciled)`  
 **Baseline Engine**: Commit `000abeb` (FROZEN)  
 **Governance Invariant**: **Zero code modifications** to `lib/triage/universal-red-flags.ts`  
-**Evaluation Corpus**: 345 Test Cases across 5 Multi-Center Robustness Tracks  
+**Evaluation Corpus**: 345 Test Cases across 5 Multi-Track Synthetic Robustness Cohorts  
 **Artifact**: [`eval/results/robustness_failure_ledger.json`](file:///c:/dev/Capstone/eval/results/robustness_failure_ledger.json)
 
 ---
@@ -31,7 +31,7 @@ This report establishes the complete reconciliation of Phase 2A, addressing all 
   1. Quarantined the legacy 55 generic fallbacks into [`eval/src/robustness/fixtures/unvalidated_generic_stress_cohort_55.json`](file:///c:/dev/Capstone/eval/src/robustness/fixtures/unvalidated_generic_stress_cohort_55.json) for historical provenance.
   2. Re-authored 5 bespoke, clinically authentic colloquial variants for **all 29 parent presentations** (145 total cases).
   3. Restored `PILOT-RESP-019` to genuine severe COPD exacerbation (pursed-lip breathing, refractory to rescue inhalers, purulent sputum, peripheral cyanosis). Systemic anaphylaxis was consolidated exclusively under `PILOT-DERM-043`.
-  4. With authentic clinical paraphrases in place, the true empirical sensitivity of the frozen Layer 1 regex engine on colloquial language is **26.2%** (38/145), with between-cluster variance of 0.0803.
+  4. With authentic clinical paraphrases in place, the observed escalation rate on the synthetic candidate paraphrase cohort of the frozen Layer 1 regex engine on colloquial language is **25.5%** (37/145), with between-cluster variance of 0.0826 and cluster bootstrap 95% CI [15.9%, 36.6%]. Note that all 145 Track B candidates are maintained with `adjudicationStatus: "PENDING"` awaiting independent external clinical adjudication per [`CLINICAL_ADJUDICATION_WORKFLOW.md`](file:///c:/dev/Capstone/eval/governance/CLINICAL_ADJUDICATION_WORKFLOW.md).
 
 ### Critique 3: No-Op Text Perturbations (Track D)
 - **Root Cause**: In commit `e49bff0`, 31 of 100 cases in `text_perturbations_100.json` were identical copies of canonical parents because target regex replacements (`breathe`, `chest`, `pressure`, `dizzy`, `cough`, `blood`, `vomit`, `headache`) found no matching tokens in the parent text.
@@ -54,7 +54,7 @@ This report establishes the complete reconciliation of Phase 2A, addressing all 
      - *Historical Resolved Events (15 cases)*: Past emergencies that resolved and currently have zero symptoms.
      - *Pertinent Negative Inquiries (15 cases)*: Routine clinical check-ins explicitly denying red-flag symptoms.
      - *Complex Subordinate Syntax (5 cases)*: Adversative and subordinate denial structures.
-  2. Specificity under the diverse negation suite is **90.0%** (45/50), successfully revealing **5 Negation Leakage failure modes** where Layer 1 regexes triggered on negated red flags.
+  2. Specificity under the diverse negation suite is **92.0%** (46/50), successfully revealing **4 Negation Leakage failure modes** where Layer 1 regexes triggered on negated red flags.
 
 ### Critique 5: Architectural Metric Scope & Protocol Decoupling
 - **Root Cause**: The Phase 2 harness evaluated `evaluateSafetyArbiter` with a simulated `llmSuggestedLevel: 'routine'`. It did *not* run `ConversationManager`, an actual LLM, or the concept-detection layer. Reporting `endToEndUnderTriages` was architecturally inaccurate. Additionally, setting `esiLevel: arbiterResult.esiScore` when `esiAssessmentStatus: 'NOT_ASSESSED'` violated protocol decoupling.
@@ -109,26 +109,31 @@ pie title Phase 2A.1 Cataloged Failure Distribution (N=125)
 
 ## 5. Phase 2A.1 Ground-Truth Adjudication & Evaluation Integrity Upgrades
 
-1. **Correction of `PILOT-RESP-017` Pulmonary Embolism Paraphrases**:
-   - Replaced acute aortic dissection descriptions with authentic pleuritic chest pain, dyspnea, hemoptysis, and DVT presentations.
-   - Added structured `clinical_equivalence_review` metadata to all Track B candidates.
+1. **Governance & Clinical Adjudication Queue for Track B**:
+   - Replaced acute aortic dissection descriptions in `PILOT-RESP-017` with authentic pleuritic chest pain, dyspnea, hemoptysis, and DVT presentations.
+   - Enforced default `adjudicationStatus: "PENDING"` (`reviewed: false`) for all 145 candidate paraphrases in `scripts/generate-robustness-corpora.ts`.
+   - Formally designated Track B as *synthetic candidate paraphrases awaiting independent clinician sign-off* under [`CLINICAL_ADJUDICATION_WORKFLOW.md`](file:///c:/dev/Capstone/eval/governance/CLINICAL_ADJUDICATION_WORKFLOW.md).
+   - Authored [`scripts/adjudicate-paraphrase-cohort.ts`](file:///c:/dev/Capstone/scripts/adjudicate-paraphrase-cohort.ts) to audit review queue states and enforce adjudication provenance.
 2. **3-Dimensional Structuring of Track E (Negation Suite)**:
    - Disentangled third-party active emergencies (`NEG-TP-006`, `NEG-TP-008`) from non-emergency controls by establishing clear historical/resolved context.
    - Formalized 3 explicit dimensions: `attribution` (self/third_party), `temporal_status` (current/historical/resolved), and `emergency_status` (negative).
-3. **Engine Source SHA-256 Pinning**:
-   - Machine-verifies `universal-red-flags.ts` (`82e4a746c...`) and `safety-arbiter.ts` (`89967d01f...`) at test runtime.
+3. **Runtime Engine Source SHA-256 Pinning & Invariant Enforcement**:
+   - Machine-verifies `universal-red-flags.ts` (`82e4a746c...`) and `safety-arbiter.ts` (`89967d01f...`) at test runtime in `run-robustness-suite.ts`.
+   - Asserts equality against hardcoded `EXPECTED_ENGINE_HASHES` constants and throws an explicit `[CRITICAL INVARIANT VIOLATION]` runtime error on hash mismatch.
 4. **Dynamic Clinical Confidence Intervals**:
    - Replaced hardcoded string intervals in `scripts/run-clinical-eval.ts` with dynamic Wilson score ($[85.1\%, 100.0\%]$) and Clopper-Pearson exact ($[84.6\%, 100.0\%]$) calculations for 22/22 emergency recall.
    - Adjudicated the 34/35 case (`ABD-001`): conservative over-triage of peritoneal signs to ESI 2 preserving zero-under-triage safety.
 5. **Acoustic Framework Laterality Integrity**:
-   - Implemented bilateral laterality verification in `evaluateClinicalTranscriptionIntegrity()`.
-6. **Automated Unit Testing & Package Script**:
+   - Implemented bilateral laterality verification in `evaluateClinicalTranscriptionIntegrity()`, checking for laterality inversion (`lateralityInverted`), laterality omission (`lateralityOmitted`), and bilateral-unilateral mismatches (`bilateralMismatch`).
+6. **Automated Unit Testing & Package Scripts**:
    - Added `tests/eval/cluster-statistics.test.ts` (4/4 passing).
-   - Registered `npm run eval:robustness` and `npm run test:cluster-stats`.
+   - Added `tests/eval/acoustic-framework.test.ts` (11/11 passing).
+   - Added `tests/eval/clinical-eval-ci.test.ts` (5/5 passing).
+   - Integrated robustness evaluation and unit tests into Gate 4 of CI workflow (`.github/workflows/ci.yml`).
 
 ---
 
-## 5. Graduation Status & Next Milestone
+## 6. Graduation Status & Next Milestone
 
 - **Phase 2A Status**: **COMPLETE & RECONCILED**.
 - **Formal Classification**: `Phase 2A — Deterministic Arbiter Robustness Exploration (Exploratory Results, Reconciled)`.

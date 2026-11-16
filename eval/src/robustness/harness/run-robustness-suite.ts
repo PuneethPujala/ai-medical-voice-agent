@@ -42,15 +42,32 @@ async function runRobustnessBattery() {
   console.log('  Baseline Engine: Commit 000abeb (FROZEN — EMPIRICAL FAILURE DISCOVERY MODE)   ');
   console.log('================================================================================\n');
 
-  // Verify frozen safety engine integrity via source file SHA-256 hashes
+  // Verify frozen safety engine integrity via source file SHA-256 hashes against frozen baseline 000abeb
+  const EXPECTED_ENGINE_HASHES = {
+    universalRedFlags: '82e4a746c130b6a25f8c307c8cf9b7cce6659004b1bf0612df659f24119cbb69',
+    safetyArbiter: '89967d01f17bfe938e1d1417859a7a14a170f098ea91698797b6b6622fb03500',
+  };
+
   const redFlagsPath = path.resolve('lib/triage/universal-red-flags.ts');
   const safetyArbiterPath = path.resolve('lib/triage/safety-arbiter.ts');
   const redFlagsSha = computeFileSha256(redFlagsPath);
   const safetyArbiterSha = computeFileSha256(safetyArbiterPath);
 
+  const isRedFlagsMatch = redFlagsSha === EXPECTED_ENGINE_HASHES.universalRedFlags;
+  const isSafetyArbiterMatch = safetyArbiterSha === EXPECTED_ENGINE_HASHES.safetyArbiter;
+  const engineVerified = isRedFlagsMatch && isSafetyArbiterMatch;
+
   console.log(`[Safety Engine Integrity Audit]:`);
-  console.log(`  • universal-red-flags.ts SHA-256: ${redFlagsSha}`);
-  console.log(`  • safety-arbiter.ts      SHA-256: ${safetyArbiterSha}\n`);
+  console.log(`  • universal-red-flags.ts SHA-256: ${redFlagsSha} [${isRedFlagsMatch ? 'VERIFIED MATCH' : 'MISMATCH'}]`);
+  console.log(`  • safety-arbiter.ts      SHA-256: ${safetyArbiterSha} [${isSafetyArbiterMatch ? 'VERIFIED MATCH' : 'MISMATCH'}]\n`);
+
+  if (!engineVerified) {
+    throw new Error(
+      `[CRITICAL INVARIANT VIOLATION] Frozen safety engine integrity check failed!\n` +
+      `  universal-red-flags.ts: expected ${EXPECTED_ENGINE_HASHES.universalRedFlags}, got ${redFlagsSha}\n` +
+      `  safety-arbiter.ts:      expected ${EXPECTED_ENGINE_HASHES.safetyArbiter}, got ${safetyArbiterSha}`
+    );
+  }
 
   const canonical29 = loadFixtures('canonical_emergencies_29.json');
   const paraphrases145 = loadFixtures('adversarial_paraphrases_145.json');

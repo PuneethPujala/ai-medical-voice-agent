@@ -14,7 +14,7 @@ interface ClinicalCase {
   description: string;
 }
 
-function computeWilsonScoreCI(k: number, n: number): [string, string] {
+export function computeWilsonScoreCI(k: number, n: number): [string, string] {
   if (n === 0) return ['0.0%', '0.0%'];
   const z = 1.959963984540054; // 95% two-sided normal quantile
   const z2 = z * z;
@@ -27,7 +27,7 @@ function computeWilsonScoreCI(k: number, n: number): [string, string] {
   return [(lower * 100).toFixed(1) + '%', (upper * 100).toFixed(1) + '%'];
 }
 
-function computeClopperPearsonCI(k: number, n: number, alpha = 0.05): [string, string] {
+export function computeClopperPearsonCI(k: number, n: number, alpha = 0.05): [string, string] {
   if (n === 0) return ['0.0%', '0.0%'];
   if (k === n) {
     const lower = Math.pow(alpha / 2, 1 / n);
@@ -251,4 +251,6 @@ function runClinicalEvaluation() {
   }
 }
 
-runClinicalEvaluation();
+if (process.argv[1] && process.argv[1].includes('run-clinical-eval')) {
+  runClinicalEvaluation();
+}

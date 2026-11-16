@@ -41,6 +41,8 @@ export interface AcousticEvaluationResult {
       negation_lost: boolean;    // "No chest pain" transcribed as "Chest pain" (False Alarm)
       symptom_omitted: boolean;  // Critical emergency descriptor dropped
       laterality_inverted: boolean; // Left vs Right flip
+      laterality_omitted: boolean;  // Laterality mentioned in GT was omitted in TX
+      bilateral_mismatch: boolean;  // Bilateral in GT reduced to unilateral in TX, or unilateral expanded to bilateral
     };
   };
   safety_arbiter_outcome: {
@@ -89,6 +91,8 @@ export function evaluateClinicalTranscriptionIntegrity(
   negationLost: boolean;
   symptomOmitted: boolean;
   lateralityInverted: boolean;
+  lateralityOmitted: boolean;
+  bilateralMismatch: boolean;
 } {
   const lowerGt = groundTruth.toLowerCase();
   const lowerTx = transcription.toLowerCase();
@@ -107,32 +111,62 @@ export function evaluateClinicalTranscriptionIntegrity(
     }
   }
 
-  let lateralityInverted = false;
-  if (criticalLateralities && criticalLateralities.length > 0) {
-    for (const lat of criticalLateralities) {
-      if (lat === 'left') {
-        if (/\bleft\b/i.test(lowerGt) && /\bright\b/i.test(lowerTx) && !/\bleft\b/i.test(lowerTx)) {
-          lateralityInverted = true;
-        }
-      } else if (lat === 'right') {
-        if (/\bright\b/i.test(lowerGt) && /\bleft\b/i.test(lowerTx) && !/\bright\b/i.test(lowerTx)) {
-          lateralityInverted = true;
-        }
-      }
-    }
-  } else {
-    // Infer laterality inversion directly if not explicitly provided in clinical_target
-    const gtHasLeft = /\bleft\b/i.test(lowerGt);
-    const gtHasRight = /\bright\b/i.test(lowerGt);
-    const txHasLeft = /\bleft\b/i.test(lowerTx);
-    const txHasRight = /\bright\b/i.test(lowerTx);
+  const bilateralRegex = /\b(bilateral|bilaterally|both)\b/i;
+  const leftRegex = /\bleft\b/i;
+  const rightRegex = /\bright\b/i;
 
-    if (gtHasLeft && !gtHasRight && txHasRight && !txHasLeft) {
+  const gtHasBilateral =
+    (criticalLateralities && criticalLateralities.includes('bilateral')) ||
+    bilateralRegex.test(lowerGt) ||
+    (leftRegex.test(lowerGt) && rightRegex.test(lowerGt));
+  const gtHasLeft =
+    (criticalLateralities && criticalLateralities.includes('left')) || leftRegex.test(lowerGt);
+  const gtHasRight =
+    (criticalLateralities && criticalLateralities.includes('right')) || rightRegex.test(lowerGt);
+
+  const txHasBilateral =
+    bilateralRegex.test(lowerTx) || (leftRegex.test(lowerTx) && rightRegex.test(lowerTx));
+  const txHasLeft = leftRegex.test(lowerTx);
+  const txHasRight = rightRegex.test(lowerTx);
+
+  let lateralityInverted = false;
+  let lateralityOmitted = false;
+  let bilateralMismatch = false;
+
+  const gtHasAnyLaterality = gtHasBilateral || gtHasLeft || gtHasRight;
+  const txHasAnyLaterality = txHasBilateral || txHasLeft || txHasRight;
+
+  if (gtHasAnyLaterality && !txHasAnyLaterality) {
+    lateralityOmitted = true;
+  }
+
+  if (gtHasBilateral) {
+    // Ground truth is bilateral
+    if (txHasAnyLaterality && !txHasBilateral) {
+      // Reduced to unilateral left or right
+      bilateralMismatch = true;
+    }
+  } else if (gtHasLeft && !gtHasRight) {
+    // Ground truth is unilateral left
+    if (txHasBilateral) {
+      bilateralMismatch = true;
+    } else if (txHasRight && !txHasLeft) {
       lateralityInverted = true;
-    } else if (gtHasRight && !gtHasLeft && txHasLeft && !txHasRight) {
+    }
+  } else if (gtHasRight && !gtHasLeft) {
+    // Ground truth is unilateral right
+    if (txHasBilateral) {
+      bilateralMismatch = true;
+    } else if (txHasLeft && !txHasRight) {
       lateralityInverted = true;
     }
   }
 
-  return { negationLost, symptomOmitted, lateralityInverted };
+  return {
+    negationLost,
+    symptomOmitted,
+    lateralityInverted,
+    lateralityOmitted,
+    bilateralMismatch,
+  };
 }

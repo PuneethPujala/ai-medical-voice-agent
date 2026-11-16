@@ -251,12 +251,12 @@ for (const canonical of canonical29) {
       expected_safety_floor: 'HIGH_RISK',
       expected_emergency_escalation: true,
       clinical_equivalence_review: {
-        reviewed: true,
-        reviewerId: "CLINICAL-RESEARCH-CORE-v2.1",
-        parentConditionPreserved: true,
-        criticalFeaturesPreserved: true,
+        reviewed: false,
+        reviewerId: undefined,
+        parentConditionPreserved: false,
+        criticalFeaturesPreserved: false,
         materialContradictions: [],
-        adjudicationStatus: "ACCEPTED",
+        adjudicationStatus: "PENDING",
       },
       clinical_rationale: t.rationale,
     });
