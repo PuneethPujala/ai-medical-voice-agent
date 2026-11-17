@@ -48,6 +48,10 @@ export interface SoapEncounterData {
     assessment?: string;
     plan?: string;
   };
+  soapSubjective?: string;
+  soapObjective?: string;
+  soapAssessment?: string;
+  soapPlan?: string;
   auditSha256?: string;
   boardConsensusCount?: string;
   userId?: string;
@@ -186,11 +190,16 @@ export function SoapReportModal({
             setArtifacts([]);
             setActiveArtifact(null);
             // Initialize from encounter props or synthesize initial note
-            if (encounter.soap?.subjective || encounter.soap?.assessment) {
-              setSubjective(encounter.soap?.subjective || "");
-              setObjective(encounter.soap?.objective || "");
-              setAssessment(encounter.soap?.assessment || "");
-              setPlan(encounter.soap?.plan || "");
+            const initSub = encounter.soap?.subjective || encounter.soapSubjective || "";
+            const initObj = encounter.soap?.objective || encounter.soapObjective || "";
+            const initAss = encounter.soap?.assessment || encounter.soapAssessment || "";
+            const initPln = encounter.soap?.plan || encounter.soapPlan || "";
+
+            if (initSub || initAss) {
+              setSubjective(initSub);
+              setObjective(initObj);
+              setAssessment(initAss);
+              setPlan(initPln);
             } else {
               const patientSummary =
                 patientUtterances.length > 0
@@ -213,11 +222,15 @@ export function SoapReportModal({
           }
         })
         .catch(() => {
-          if (encounter.soap?.subjective) {
-            setSubjective(encounter.soap.subjective);
-            setObjective(encounter.soap.objective || "");
-            setAssessment(encounter.soap.assessment || "");
-            setPlan(encounter.soap.plan || "");
+          const initSub = encounter.soap?.subjective || encounter.soapSubjective || "";
+          const initObj = encounter.soap?.objective || encounter.soapObjective || "";
+          const initAss = encounter.soap?.assessment || encounter.soapAssessment || "";
+          const initPln = encounter.soap?.plan || encounter.soapPlan || "";
+          if (initSub || initAss) {
+            setSubjective(initSub);
+            setObjective(initObj);
+            setAssessment(initAss);
+            setPlan(initPln);
           }
         })
         .finally(() => {
@@ -250,11 +263,26 @@ export function SoapReportModal({
   // Determine state
   const isSigned = Boolean(
     activeArtifact?.status === "signed" ||
-    (!activeArtifact && encounter.status === "approved")
+    (!activeArtifact && (encounter.status === "approved" || Boolean(encounter.approvedAt)))
   );
-  const isPendingReview = Boolean(activeArtifact?.status === "pending_review");
+  const isPendingReview = Boolean(
+    activeArtifact?.status === "pending_review" ||
+    (!activeArtifact && encounter.status === "completed_pending_review")
+  );
   const isDraft = !isSigned && !isPendingReview;
-  const isLegacy = !activeArtifact && encounter.status === "approved";
+  const isLegacy = !activeArtifact && (encounter.status === "approved" || Boolean(encounter.approvedAt));
+
+  const hasContent = Boolean(
+    subjective.trim() ||
+    objective.trim() ||
+    assessment.trim() ||
+    plan.trim() ||
+    encounter.soap?.subjective ||
+    encounter.soap?.assessment ||
+    encounter.soapSubjective ||
+    encounter.soapAssessment ||
+    activeArtifact
+  );
 
   // Derive timestamp strictly from the selected artifact (fallback to encounter only for legacy)
   const formatArtifactDate = (dateVal?: string | Date | null) => {
@@ -285,14 +313,12 @@ export function SoapReportModal({
 
   const signerOrAuthor = activeArtifact?.signedBy || encounter.approvedBy || cleanDoctorName;
 
-  const headerTimestampSubtitle = !isClinicianOrAdmin && !isSigned
-    ? `${formatArtifactDate(artifactTimestamp)} · ${cleanDoctorName}`
-    : isSigned
+  const headerTimestampSubtitle = isSigned
     ? `Signed ${formatArtifactDate(artifactTimestamp)} · ${signerOrAuthor}`
     : isPendingReview
-    ? `Submitted ${formatArtifactDate(artifactTimestamp)} · Pending Review`
+    ? `${formatArtifactDate(artifactTimestamp)} · Pending Review · ${cleanDoctorName}`
     : isDraft
-    ? `Updated ${formatArtifactDate(artifactTimestamp)} · Draft`
+    ? `${formatArtifactDate(artifactTimestamp)} · Draft · ${cleanDoctorName}`
     : isLegacy
     ? `Attested ${formatArtifactDate(artifactTimestamp)} · ${signerOrAuthor}`
     : `${formatArtifactDate(artifactTimestamp)} · ${cleanDoctorName}`;
@@ -484,13 +510,34 @@ Integrity: Attestation verified (SHA-256) · Zero fabricated vitals
 
   // 3. Sign Artifact (Atomic Transaction & Durable Audit)
   const handleSignArtifact = async () => {
-    if (!activeArtifact) return;
     setIsSaving(true);
     setSaveError(null);
     try {
-      const idempotencyKey = `sign-${activeArtifact.id}-${Date.now()}`;
+      let targetArtifact = activeArtifact;
+      if (!targetArtifact) {
+        const createRes = await fetch(
+          `/api/consultations/${encodeURIComponent(encounterId)}/artifacts`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chiefComplaint: chiefConcern,
+              soapSubjective: subjective,
+              soapObjective: objective,
+              soapAssessment: assessment,
+              soapPlan: plan,
+            }),
+          }
+        );
+        const createData = await createRes.json();
+        if (!createRes.ok) throw new Error(createData.error || "Failed to create draft");
+        targetArtifact = createData.artifact;
+        setActiveArtifact(targetArtifact);
+      }
+
+      const idempotencyKey = `sign-${targetArtifact.id}-${Date.now()}`;
       const res = await fetch(
-        `/api/consultations/${encodeURIComponent(encounterId)}/artifacts/${encodeURIComponent(activeArtifact.id)}/sign`,
+        `/api/consultations/${encodeURIComponent(encounterId)}/artifacts/${encodeURIComponent(targetArtifact.id)}/sign`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -677,23 +724,21 @@ Integrity: Attestation verified (SHA-256) · Zero fabricated vitals
                       <CheckCircle2 className="w-3 h-3 text-emerald-600" />
                       <span>Signed · v{activeArtifact.version}</span>
                     </span>
-                  ) : isLegacy ? (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-slate-100 text-slate-700 border border-slate-200 shrink-0 font-sans">
+                  ) : isSigned || isLegacy ? (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-medium bg-emerald-50 text-emerald-800 border border-emerald-200 shrink-0 font-sans">
                       <ShieldCheck className="w-3 h-3 text-emerald-600" />
-                      <span>Legacy attestation</span>
+                      <span>Certified · Signed</span>
                     </span>
-                  ) : isClinicianOrAdmin && activeArtifact ? (
-                    isPendingReview ? (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200 shrink-0 font-sans">
-                        <Clock className="w-3 h-3 text-amber-600" />
-                        <span>Pending review · v{activeArtifact.version}</span>
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-cyan-50 text-cyan-800 border border-cyan-200 shrink-0 font-sans">
-                        <Edit3 className="w-3 h-3 text-cyan-600" />
-                        <span>{activeArtifact.amendsArtifactId ? "Amendment draft" : "Draft"} · v{activeArtifact.version}</span>
-                      </span>
-                    )
+                  ) : isPendingReview ? (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-amber-50 text-amber-800 border border-amber-200 shrink-0 font-sans">
+                      <Clock className="w-3 h-3 text-amber-600" />
+                      <span>{activeArtifact ? `Pending review · v${activeArtifact.version}` : "Preliminary · Pending Review"}</span>
+                    </span>
+                  ) : isDraft ? (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-cyan-50 text-cyan-800 border border-cyan-200 shrink-0 font-sans">
+                      <Edit3 className="w-3 h-3 text-cyan-600" />
+                      <span>{activeArtifact?.amendsArtifactId ? "Amendment draft" : "Draft"}{activeArtifact ? ` · v${activeArtifact.version}` : ""}</span>
+                    </span>
                   ) : null}
                 </div>
                 {/* Clean Subtitle with correct selected artifact timestamp */}
@@ -785,7 +830,7 @@ Integrity: Attestation verified (SHA-256) · Zero fabricated vitals
 
         {/* ============================================================ Scrollable Content Body */}
         <div className="flex-1 min-h-0 overflow-y-auto px-4 sm:px-6 md:px-8 py-5 space-y-5 text-sm text-slate-800 font-sans">
-          {!isClinicianOrAdmin && !isSigned ? (
+          {!hasContent ? (
             <div className="py-16 px-4 text-center space-y-3">
               <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-400 mx-auto">
                 <FileText className="w-6 h-6" />
@@ -795,7 +840,7 @@ Integrity: Attestation verified (SHA-256) · Zero fabricated vitals
                   Clinical Documentation Unavailable
                 </h3>
                 <p className="text-xs text-slate-500 max-w-sm mx-auto leading-relaxed font-sans">
-                  Finalized clinical documentation is not currently available for this consultation.
+                  No clinical SOAP documentation has been recorded for this intake session yet.
                 </p>
               </div>
             </div>
@@ -875,34 +920,37 @@ Integrity: Attestation verified (SHA-256) · Zero fabricated vitals
                 </div>
               )}
 
-              {isPendingReview && isClinicianOrAdmin && (
+              {isPendingReview && (
                 <div className="p-3 rounded-xl bg-amber-50 border border-amber-200 text-amber-950 flex items-center justify-between text-xs font-sans">
                   <div className="flex items-center gap-2">
                     <Clock className="w-4 h-4 text-amber-600 shrink-0" />
                     <div>
-                      <span className="font-semibold">Pending Review (v{activeArtifact?.version})</span>
+                      <span className="font-semibold">
+                        {activeArtifact ? `Pending Review (v${activeArtifact.version})` : "Preliminary Intake Note · Pending Review"}
+                      </span>
                       <span className="text-amber-800 ml-1.5 hidden sm:inline">
-                        Document locked for clinical review.
+                        {isClinicianOrAdmin
+                          ? "Document locked for clinical review."
+                          : "Generated from clinical voice intake dialogue. Awaiting physician attestation."}
                       </span>
                     </div>
                   </div>
-                  <span className="text-[11px] text-amber-800 font-medium">
-                    Sign or Request Changes
+                  <span className="text-[11px] text-amber-800 font-medium font-sans">
+                    {isClinicianOrAdmin ? "Sign or Request Changes" : "Preliminary Record"}
                   </span>
                 </div>
               )}
 
-              {isDraft && activeArtifact && isClinicianOrAdmin && (
+              {isDraft && (
                 <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 text-slate-700 flex items-center justify-between text-xs font-sans">
                   <div className="flex items-center gap-2">
                     <Edit3 className="w-4 h-4 text-slate-500 shrink-0" />
                     <span className="font-medium">
-                      Draft Note (v{activeArtifact.version})
-                      {activeArtifact.amendsArtifactId && " · Amendment Draft"}
+                      {activeArtifact ? `Draft Note (v${activeArtifact.version})${activeArtifact.amendsArtifactId ? " · Amendment Draft" : ""}` : "Clinical Intake Summary · Draft Note"}
                     </span>
                   </div>
-                  <span className="text-[11px] text-slate-500 font-medium">
-                    Editable Draft
+                  <span className="text-[11px] text-slate-500 font-medium font-sans">
+                    {isClinicianOrAdmin ? "Editable Draft" : "In Progress"}
                   </span>
                 </div>
               )}
@@ -1133,7 +1181,7 @@ Integrity: Attestation verified (SHA-256) · Zero fabricated vitals
         <div className="px-4 sm:px-6 py-3 border-t border-slate-200/90 bg-white/95 backdrop-blur-md flex items-center justify-between gap-2.5 shrink-0 pb-[max(0.75rem,env(safe-area-inset-bottom))] font-sans">
           {/* Left: Utility Actions */}
           <div className="flex items-center gap-1.5 sm:gap-2">
-            {(isSigned || isClinicianOrAdmin) && (
+            {hasContent && (
               <button
                 type="button"
                 onClick={handleCopyNote}
@@ -1145,7 +1193,7 @@ Integrity: Attestation verified (SHA-256) · Zero fabricated vitals
               </button>
             )}
 
-            {isSigned && (
+            {hasContent && (
               <button
                 type="button"
                 onClick={handleExportFhir}

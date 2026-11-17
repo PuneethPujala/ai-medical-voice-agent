@@ -3891,7 +3891,13 @@ export default function ConsultPage() {
               assessment: (isEncounterSignedLocked && resumedConsultation) ? (resumedConsultation.soapAssessment || "") : (triageData?.soap?.assessment || ""),
               plan: (isEncounterSignedLocked && resumedConsultation) ? (resumedConsultation.soapPlan || "") : (triageData?.soap?.plan || ""),
             },
-            status: (isEncounterSignedLocked && resumedConsultation) ? resumedConsultation.status : undefined,
+            soapSubjective: (isEncounterSignedLocked && resumedConsultation) ? (resumedConsultation.soapSubjective || "") : (triageData?.soap?.subjective || ""),
+            soapObjective: (isEncounterSignedLocked && resumedConsultation) ? (resumedConsultation.soapObjective || "") : (triageData?.soap?.objective || ""),
+            soapAssessment: (isEncounterSignedLocked && resumedConsultation) ? (resumedConsultation.soapAssessment || "") : (triageData?.soap?.assessment || ""),
+            soapPlan: (isEncounterSignedLocked && resumedConsultation) ? (resumedConsultation.soapPlan || "") : (triageData?.soap?.plan || ""),
+            status: (isEncounterSignedLocked && resumedConsultation)
+              ? resumedConsultation.status
+              : (sessionMode === "CONSULT_COMPLETE" || persistenceStatus === "saved" ? "completed_pending_review" : "in_progress"),
             approvedAt: (isEncounterSignedLocked && resumedConsultation) ? resumedConsultation.approvedAt : undefined,
             approvedBy: (isEncounterSignedLocked && resumedConsultation) ? resumedConsultation.approvedBy : undefined,
             auditSha256: boardData?.trace?.audit_sha256,
