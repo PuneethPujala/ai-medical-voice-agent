@@ -446,7 +446,7 @@ async function runChallengeSuite() {
       console.log("  --- Multi-Turn Deterioration Test (CHALLENGE-05 Turn 2a: Alert / Able to Swallow Safely) ---");
       const turn2aResult = await cm.processTurn(
         "I take insulin for diabetes, and right now I am feeling very confused and disoriented",
-        turnResult.state
+        JSON.parse(JSON.stringify(turnResult.state))
       );
 
       // Verify immediate escalation to emergency
@@ -503,7 +503,7 @@ async function runChallengeSuite() {
       const cm2b = new ConversationManager();
       const turn2bResult = await cm2b.processTurn(
         "I take insulin for diabetes, but I am too drowsy to swallow safely and feel like I am passing out",
-        turnResult.state
+        JSON.parse(JSON.stringify(turnResult.state))
       );
 
       // Verify immediate escalation to emergency

@@ -1410,6 +1410,11 @@ function extractVerbatimSymptomPhrase(text: string, defaultPhrase = "chest pain"
       }
     }
 
+    // If this is emergency guidance, never replace life-critical safety/dispatch directives with a generic inquiry
+    if (contextHint.includes("emergency") || /\b(?:108|112|911|999|emergency|ambulance|choking\s+hazard)\b/i.test(candidateReply)) {
+      return candidateReply;
+    }
+
     // Generic variation if specific candidates exhausted
     return `Thank you for that context. Could you tell me more about how these symptoms are affecting you right now?`;
   }
