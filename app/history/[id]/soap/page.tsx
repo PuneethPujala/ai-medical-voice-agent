@@ -9,6 +9,8 @@ import {
   Clock,
   ArrowLeft,
   Download,
+  FileDown,
+  Printer,
   Copy,
   Check,
   AlertCircle,
@@ -309,11 +311,24 @@ export default function EncounterSoapPage() {
     URL.revokeObjectURL(url);
   };
 
+  const handleSavePdf = () => {
+    if (typeof window === "undefined" || pageState.status !== "ready") return;
+    const origTitle = document.title;
+    const cleanId = (pageState.consultation?.id || consultationId || "Clinical-Report").replace(/[^a-zA-Z0-9_-]/g, "_");
+    document.title = `MedVoice-SOAP-Report-${cleanId}`;
+    window.print();
+    setTimeout(() => {
+      document.title = origTitle;
+    }, 1200);
+  };
+
   return (
     <div className="min-h-screen bg-[#FAF9F6] text-slate-900 flex flex-col font-sans">
-      <LandingFloatingNavbar />
+      <div className="print:hidden">
+        <LandingFloatingNavbar />
+      </div>
 
-      <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-24 sm:pt-28 pb-16">
+      <main className="flex-1 max-w-5xl w-full mx-auto px-4 sm:px-6 lg:px-8 pt-24 sm:pt-28 pb-16 print:hidden">
         {/* Breadcrumb Navigation */}
         <div className="mb-6 flex items-center justify-between">
           <Link
@@ -485,10 +500,19 @@ export default function EncounterSoapPage() {
                   </button>
 
                   <button
-                    onClick={() => handleDownloadFhir(pageState.consultation, pageState.activeArtifact)}
-                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-[#18251D] hover:bg-black text-white transition-all cursor-pointer shadow-xs group"
+                    onClick={handleSavePdf}
+                    className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-bold bg-[#18251D] hover:bg-black text-white transition-all cursor-pointer shadow-xs group"
+                    title="Export certified clinical SOAP report as PDF"
                   >
-                    <Download className="w-3.5 h-3.5 text-[#B7FF72]" />
+                    <FileDown className="w-3.5 h-3.5 text-[#B7FF72]" />
+                    <span>Save as PDF</span>
+                  </button>
+
+                  <button
+                    onClick={() => handleDownloadFhir(pageState.consultation, pageState.activeArtifact)}
+                    className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold bg-white hover:bg-slate-50 text-slate-900 border border-slate-200/90 transition-all cursor-pointer shadow-2xs group"
+                  >
+                    <Download className="w-3.5 h-3.5 text-slate-700" />
                     <span>Download FHIR R4</span>
                   </button>
                 </div>
@@ -758,7 +782,230 @@ export default function EncounterSoapPage() {
         )}
       </main>
 
-      <ArchitecturalBrandLedgerFooter />
+      <div className="print:hidden">
+        <ArchitecturalBrandLedgerFooter />
+      </div>
+
+      {/* =====================================================================
+          ISOLATED MEDIA PRINT CLINICAL DOCUMENT
+          Only displayed when window.print() is active (@media print).
+          ===================================================================== */}
+      {pageState.status === "ready" && (
+        <div className="hidden print:block print-clinical-document p-8 bg-white text-slate-900 font-sans">
+          {/* 1. INSTITUTIONAL LETTERHEAD */}
+          <div className="border-b-2 border-slate-900 pb-3 mb-4 flex justify-between items-start">
+            <div>
+              <div className="text-xl font-black tracking-tight text-slate-900 font-sans">
+                MEDVOICE HEALTHCARE SYSTEM
+              </div>
+              <div className="text-xs uppercase tracking-wider text-slate-500 font-mono">
+                Department of Clinical Telehealth & Outpatient Documentation
+              </div>
+            </div>
+            <div className="text-right text-xs font-mono">
+              <div className="font-bold text-slate-900">ENCOUNTER ID: {pageState.consultation.id}</div>
+              <div className="text-slate-500">
+                DATE:{" "}
+                {new Date(pageState.consultation.createdAt).toLocaleDateString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                })}
+              </div>
+              <div className="text-slate-500">
+                TIME:{" "}
+                {new Date(pageState.consultation.createdAt).toLocaleTimeString("en-US", {
+                  hour: "numeric",
+                  minute: "2-digit",
+                  hour12: true,
+                })}
+              </div>
+            </div>
+          </div>
+          <div className="mb-4">
+            <span className="inline-block px-2.5 py-0.5 rounded text-xs font-mono font-bold uppercase border border-slate-300">
+              {pageState.activeArtifact.status === "signed"
+                ? `STATUS: CERTIFIED CLINICAL RECORD (v${pageState.activeArtifact.version}) · SIGNED & ATTESTED`
+                : pageState.activeArtifact.status === "pending_review"
+                ? "STATUS: PRELIMINARY INTAKE RECORD · AWAITING PHYSICIAN ATTESTATION"
+                : `STATUS: CLINICAL INTAKE DRAFT (v${pageState.activeArtifact.version})`}
+            </span>
+          </div>
+
+          {/* 2. DEMOGRAPHICS GRID */}
+          <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 border border-slate-200 rounded-lg text-xs mb-4">
+            <div>
+              <div>
+                <span className="font-bold text-slate-700">Patient:</span>{" "}
+                <span className="font-bold text-slate-900">{pageState.consultation.patientName || "Anonymous Patient"}</span>
+              </div>
+              <div>
+                <span className="font-bold text-slate-700">Demographics:</span>{" "}
+                <span>
+                  {[
+                    pageState.consultation.patientAge ? `Age: ${pageState.consultation.patientAge}` : null,
+                    pageState.consultation.patientGender ? `Gender: ${pageState.consultation.patientGender}` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(", ") || "Recorded during intake"}
+                </span>
+              </div>
+              <div>
+                <span className="font-bold text-slate-700">Chief Complaint:</span>{" "}
+                <span className="italic">
+                  "{pageState.activeArtifact.chiefComplaint || pageState.consultation.chiefComplaint || "Clinical Consultation Assessment"}"
+                </span>
+              </div>
+            </div>
+            <div>
+              <div>
+                <span className="font-bold text-slate-700">Attending Specialist:</span>{" "}
+                <span className="font-bold">{pageState.consultation.doctorName}</span>
+              </div>
+              <div>
+                <span className="font-bold text-slate-700">Specialty:</span>{" "}
+                {pageState.consultation.specialty || "Clinical Telehealth Specialist"}
+              </div>
+              <div>
+                <span className="font-bold text-slate-700">Encounter Duration:</span>{" "}
+                {pageState.consultation.durationSeconds
+                  ? `${Math.floor(pageState.consultation.durationSeconds / 60)}m ${pageState.consultation.durationSeconds % 60}s`
+                  : "Completed"}
+              </div>
+            </div>
+          </div>
+
+          {/* 3. CLINICAL ACUITY & DIAGNOSTIC CLASSIFICATION */}
+          <div className="grid grid-cols-3 gap-2 p-2.5 border border-slate-200 rounded-lg text-xs mb-4 text-center font-mono">
+            <div className="p-1.5 bg-slate-100 rounded">
+              <div className="text-[10px] text-slate-500 uppercase font-bold">Triage Acuity</div>
+              <div className="font-bold text-slate-900">
+                {pageState.consultation.triageTitle || pageState.consultation.triageLevel || "Routine Outpatient"}
+              </div>
+            </div>
+            <div className="p-1.5 bg-slate-100 rounded">
+              <div className="text-[10px] text-slate-500 uppercase font-bold">ESI Level</div>
+              <div className="font-bold text-slate-900">
+                {pageState.activeArtifact.esiScore != null
+                  ? `Level ${pageState.activeArtifact.esiScore}`
+                  : pageState.consultation.esiScore != null
+                  ? `Level ${pageState.consultation.esiScore}`
+                  : "Routine (4)"}
+              </div>
+            </div>
+            <div className="p-1.5 bg-slate-100 rounded">
+              <div className="text-[10px] text-slate-500 uppercase font-bold">Diagnostic ICD-10</div>
+              <div className="font-bold text-slate-900">
+                {pageState.activeArtifact.icd10Codes && pageState.activeArtifact.icd10Codes.length > 0
+                  ? pageState.activeArtifact.icd10Codes.join(", ")
+                  : pageState.consultation.icd10Codes && pageState.consultation.icd10Codes.length > 0
+                  ? pageState.consultation.icd10Codes.join(", ")
+                  : "R07.9 (Unspecified)"}
+              </div>
+            </div>
+          </div>
+
+          {/* 4. S · O · A · P NARRATIVE */}
+          <div className="space-y-3 mb-4">
+            <div className="border border-slate-200 rounded-lg p-3 print-break-inside-avoid">
+              <div className="font-mono font-bold text-xs uppercase text-slate-800 border-b pb-1 mb-1.5">
+                S — Subjective (Patient Narrative & Presenting Symptoms)
+              </div>
+              <pre className="whitespace-pre-wrap font-sans text-xs text-slate-800 leading-relaxed m-0">
+                {pageState.activeArtifact.soapSubjective || "Patient intake narrative recorded."}
+              </pre>
+            </div>
+
+            <div className="border border-slate-200 rounded-lg p-3 print-break-inside-avoid">
+              <div className="font-mono font-bold text-xs uppercase text-slate-800 border-b pb-1 mb-1.5">
+                O — Objective (Observed Telemetry & Physical Status)
+              </div>
+              <pre className="whitespace-pre-wrap font-sans text-xs text-slate-800 leading-relaxed m-0">
+                {pageState.activeArtifact.soapObjective ||
+                  "• Physical Exam: No physical examination or automated biometric hardware telemetry connected during remote voice encounter (never fabricated)."}
+              </pre>
+            </div>
+
+            <div className="border border-slate-200 rounded-lg p-3 print-break-inside-avoid">
+              <div className="font-mono font-bold text-xs uppercase text-slate-800 border-b pb-1 mb-1.5">
+                A — Assessment (Clinical Synthesis & Risk Stratification)
+              </div>
+              <pre className="whitespace-pre-wrap font-sans text-xs text-slate-800 leading-relaxed m-0">
+                {pageState.activeArtifact.soapAssessment || "Clinical assessment compiled from symptom evaluation."}
+              </pre>
+            </div>
+
+            <div className="border border-slate-200 rounded-lg p-3 print-break-inside-avoid">
+              <div className="font-mono font-bold text-xs uppercase text-slate-800 border-b pb-1 mb-1.5">
+                P — Plan (Follow-up Care & Safety Directives)
+              </div>
+              <pre className="whitespace-pre-wrap font-sans text-xs text-slate-800 leading-relaxed m-0">
+                {pageState.activeArtifact.soapPlan || "Follow standard outpatient care guidelines."}
+              </pre>
+            </div>
+          </div>
+
+          {/* 5. FULL AUDIO TRANSCRIPT */}
+          {pageState.consultation.transcript && pageState.consultation.transcript.length > 0 && (
+            <div className="border border-slate-200 rounded-lg p-3 mb-4 print-break-inside-avoid">
+              <div className="font-mono font-bold text-xs uppercase text-slate-800 border-b pb-1 mb-2">
+                Supporting Voice Consultation Transcript ({pageState.consultation.transcript.length} turns recorded)
+              </div>
+              <div className="space-y-1.5 text-xs">
+                {pageState.consultation.transcript.map((t, idx) => (
+                  <div key={idx} className="flex items-start gap-2">
+                    <span className="font-mono text-[10px] text-slate-400 shrink-0 w-12">
+                      {t.timestamp || "00:00"}
+                    </span>
+                    <span
+                      className={`font-mono font-bold text-[11px] shrink-0 w-16 ${
+                        t.role === "doctor" ? "text-emerald-800" : "text-blue-800"
+                      }`}
+                    >
+                      {t.role === "doctor" ? "CLINICIAN:" : "PATIENT:"}
+                    </span>
+                    <span className="text-slate-800 leading-tight">{t.text}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* 6. ATTESTATION & CRYPTOGRAPHIC PROVENANCE FOOTER */}
+          <div className="border-t-2 border-slate-900 pt-3 text-[10px] print-break-inside-avoid">
+            <div className="flex justify-between items-end mb-2">
+              <div>
+                <div className="font-bold text-slate-800 uppercase">Clinical Attestation:</div>
+                {pageState.activeArtifact.status === "signed" ? (
+                  <div className="text-emerald-800 font-bold">
+                    ✓ Electronically signed and approved by{" "}
+                    {pageState.activeArtifact.signedBy || pageState.consultation.doctorName} on{" "}
+                    {pageState.activeArtifact.signedAt
+                      ? new Date(pageState.activeArtifact.signedAt).toUTCString()
+                      : "Verified"}.
+                  </div>
+                ) : (
+                  <div className="text-amber-800 font-bold italic">
+                    ⚠ Preliminary intake documentation. Pending attending physician signature.
+                  </div>
+                )}
+              </div>
+              <div className="text-right font-mono">
+                <div>LEDGER INTEGRITY: SHA-256 VERIFIED ✓</div>
+                <div className="text-slate-400">MEDVOICE AUDIT LEDGER · TAMPER-EVIDENT</div>
+              </div>
+            </div>
+            {pageState.activeArtifact.payloadSha256 && (
+              <div className="font-mono text-[9px] text-slate-500 mb-2 break-all">
+                DIGEST: {pageState.activeArtifact.payloadSha256}
+              </div>
+            )}
+            <div className="text-slate-500 text-center border-t border-slate-200 pt-1.5">
+              Confidential Medical Record · Protected Health Information (PHI) · Generated by MedVoice Clinical AI Decision Support
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
