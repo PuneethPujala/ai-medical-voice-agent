@@ -7,6 +7,8 @@ import {
   migrateInterviewState,
   InterviewStateMigrationResult,
   RecoverableClinicalData,
+  CURRENT_INTERVIEW_STATE_SCHEMA_VERSION,
+  extractRecoverableClinicalData,
 } from "@/lib/triage/interview-state-migration";
 import type { ClinicalInterviewState } from "@/lib/triage/conversation-manager";
 import { getDoctorById, DoctorProfile } from "@/config/doctors";
@@ -111,16 +113,96 @@ export function ResumeStateRestorer({
         }
 
         // 2. Versioned Interview State Migration & Validation
-        const migration = migrateInterviewState(record.interviewState);
+        let migration: InterviewStateMigrationResult;
+
+        if (!record.interviewState || typeof record.interviewState !== "object") {
+          // If no persisted interviewState exists yet (e.g. newly created encounter or draft intake),
+          // synthesize a baseline v2 interview state so the consultation can continue seamlessly.
+          const baselineState: ClinicalInterviewState = {
+            phase: "active_inquiring",
+            informationState: "insufficient",
+            caseVersion: Number(record.caseVersion || 1),
+            slots: {
+              associated_symptoms: Array.isArray(record.detectedSymptoms) ? [...record.detectedSymptoms] : [],
+              neurological_signs: [],
+              pediatric_signs: [],
+              known_facts: [],
+            },
+            pendingQuestion: null,
+            agentRequests: [],
+            resolvedQuestions: [],
+            domainSufficiency: {
+              general: { status: "gathering", missing: ["onset", "character"] },
+              cardiology: { status: "inactive", missing: [] },
+              neurology: { status: "inactive", missing: [] },
+              pediatrics: { status: "inactive", missing: [] },
+            },
+            cumulativeTranscript: Array.isArray(record.transcript)
+              ? record.transcript.map((t: any) => `${t.role}: ${t.text}`).join("\n")
+              : "",
+            structuredHistory: {
+              chiefComplaint: record.chiefComplaint,
+              timeline: {},
+              unansweredDimensions: [
+                "onset_time",
+                "sudden_vs_gradual",
+                "speech_difficulty",
+                "visual_deficit",
+                "severe_headache",
+                "leg_mobility",
+              ],
+              patientCorrections: [],
+              patientQuestions: [],
+              recentDoctorReplies: [],
+              turnCount: Array.isArray(record.transcript) ? record.transcript.length : 0,
+            },
+            attributedFacts: Array.isArray(record.attributedFacts) ? record.attributedFacts : [],
+            unmappedObservations: Array.isArray(record.unmappedObservations) ? record.unmappedObservations : [],
+            deliveredTurnRecords: Array.isArray(record.deliveredTurnRecords) ? record.deliveredTurnRecords : [],
+          };
+
+          migration = {
+            status: "migrated",
+            state: baselineState,
+            sourceVersion: 0,
+            targetVersion: CURRENT_INTERVIEW_STATE_SCHEMA_VERSION,
+            warnings: ["Synthesized baseline interview state from persisted encounter record."],
+            rawPreserved: record.interviewState,
+            recoverableData: extractRecoverableClinicalData(record),
+          };
+        } else {
+          migration = migrateInterviewState(record.interviewState);
+        }
 
         if (migration.status === "unsupported_version" || migration.status === "corrupted") {
-          console.error(
-            `[ResumeStateRestorer] Encounter ${encounterId} state migration failed (${migration.status}):`,
+          console.warn(
+            `[ResumeStateRestorer] Encounter ${encounterId} state migration notice (${migration.status}):`,
             migration.error
           );
-          setMigrationFailure(migration);
+          // Enrich recoverable data from the encounter record itself if missing
+          const recordRecoverable = extractRecoverableClinicalData(record);
+          const enrichedMigration: InterviewStateMigrationResult = {
+            ...migration,
+            recoverableData: {
+              ...recordRecoverable,
+              ...(migration.recoverableData || {}),
+              chiefComplaint:
+                migration.recoverableData?.chiefComplaint ||
+                record.chiefComplaint ||
+                recordRecoverable.chiefComplaint,
+              transcript:
+                migration.recoverableData?.transcript ||
+                record.transcript ||
+                recordRecoverable.transcript,
+              detectedSymptoms:
+                migration.recoverableData?.detectedSymptoms ||
+                record.detectedSymptoms ||
+                recordRecoverable.detectedSymptoms,
+            },
+          };
+          setMigrationFailure(enrichedMigration);
           setIsLoading(false);
-          if (onMigrationFailure) onMigrationFailure(migration);
+          if (onMigrationFailure) onMigrationFailure(enrichedMigration);
           return;
         }
 
